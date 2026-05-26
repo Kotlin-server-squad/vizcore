@@ -46,7 +46,7 @@ jobs:
         run: ./gradlew :coroutine-viz-core:sourcesJar
 
       - name: Upload core JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coroutine-viz-core-jar
           path: backend/coroutine-viz-core/build/libs/*.jar
@@ -93,7 +93,7 @@ jobs:
         run: tar -czf frontend-dist.tar.gz -C dist .
 
       - name: Upload frontend dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/frontend-dist.tar.gz
@@ -131,7 +131,7 @@ jobs:
         run: ./gradlew :intellij-plugin:verifyPlugin
 
       - name: Upload plugin ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: intellij-plugin-zip
           path: intellij-plugin/build/distributions/*.zip
