@@ -8,6 +8,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Production Hardening
+- Session TTL with automatic cleanup via `RetentionPolicy` (configurable via `SESSION_MAX_AGE_MS`, `SESSION_MAX_COUNT`)
+- Graceful shutdown hook that stops retention policy and clears sessions
+- Global error handler via Ktor StatusPages (400/404/500 JSON responses, no stack traces exposed)
+- Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`
+- Rate limiting: 60 req/min per IP for API routes, 10 req/min for session creation
+- Frontend meta tags: description, theme-color, Open Graph, Twitter Card
+- SVG favicon for coroutine visualization branding
+- Docker production hardening: resource limits (768MB/1CPU backend, 128MB/0.5CPU frontend), log rotation, health check fix, image pinning, JVM tuning
+- Deployment guide (`docs/DEPLOYMENT.md`)
+- ADR 029: Production Hardening
+
 #### Documentation & Planning
 - Documentation reorganization: `docs/guides/`, `docs/planning/`, `docs/topics/`, `docs/adr/`
 - User Guide (`docs/guides/USER_GUIDE.md`)
@@ -47,11 +59,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CODEOWNERS file
 
 ### Changed
+- Backend Dockerfile `ENTRYPOINT` now supports `$JAVA_OPTS` environment variable
+- Docker prod health check uses `/health` instead of `/`
+- Nginx config: added security headers, static asset caching, disabled `server_tokens`
 - Consolidated Claude Code skills to monorepo root
 - Restored separate tabs for Events/Threads panels
 - Excluded `dist/` from ESLint
 - Retired outdated planning docs (TODO_STEP_BY_STEP, BACKEND/FRONTEND_IMPLEMENTATION_TASKS, IMPLEMENTATION_TODOS)
 - Purged `docs/old/` (11 archived files), empty stubs, and duplicate business analysis
+
+### Removed
+- Duplicate `SessionManager`, `VizSession`, and `EventStore` in app module (now uses core library versions with `createdAtMs`, `maxEvents`, bounded stores)
 
 ### Fixed
 - ESLint no longer lints build output in `dist/`
