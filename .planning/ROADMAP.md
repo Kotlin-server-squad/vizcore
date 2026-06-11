@@ -19,10 +19,11 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
 ## Phase Details
 
 ### Phase 1: Foundation & Production Readiness
-**Goal**: The running server is structurally sound and production-observable — it uses the authoritative core session classes with a bounded event store, and exposes health, logging, CORS, and full metrics.
+**Goal**: The running server is structurally sound and production-observable — it uses the authoritative core session classes with a bounded event store, exposes health, logging, CORS, and full metrics, and the four high-severity runtime defects from the 2026-06-11 audits are fixed (broken event serialization, validation crash, unreachable FAILED state, broken cancellation demo).
 **Depends on**: Nothing (first phase)
-**Requirements**: FND-01, FND-02, FND-03, PROD-01, PROD-02, PROD-03, PROD-04, PROD-05
+**Requirements**: FIX-01, FIX-02, FIX-03, FIX-04, FND-01, FND-02, FND-03, PROD-01, PROD-02, PROD-03, PROD-04, PROD-05
 **Success Criteria** (what must be TRUE):
+  0. SSE delivers events end-to-end and `GET /api/sessions/{id}/events` returns 200 with the stored events; Run Validation renders results without crashing; a throwing coroutine renders FAILED while cancelled victims render CANCELLED; the Cancellation scenario leaves `normal-child` COMPLETED — each backed by a regression test. (FIX-01..04 — sequence these as the first plan/wave, before the FND-01 de-fork.)
   1. The backend runs against `coroutine-viz-core`'s session classes only — the duplicate `backend/src/main/.../session/` fork is gone and the build resolves cleanly.
   2. A high-volume session never grows the event store past the configured `maxEvents` ceiling, and a regression test proves the bounded store is in use.
   3. `GET /api/health` (and `/live`, `/ready`) returns component checks, uptime, and version; logging uses dev/prod profiles; CORS reads from config.

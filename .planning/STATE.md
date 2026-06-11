@@ -1,11 +1,12 @@
 ---
-gsd_state_version: '1.0'
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
 status: planning
+stopped_at: Initialized planning artifacts from brownfield ingest + codebase audit
+last_updated: "2026-06-11T11:18:54.535Z"
+last_activity: 2026-06-11 — Brownfield ingest + codebase audit complete; PROJECT/REQUIREMENTS/ROADMAP/STATE initialized
 progress:
-  total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
   percent: 0
 ---
 
@@ -30,6 +31,7 @@ Progress: [░░░░░░░░░░] 0% (remaining-scope milestone; produc
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: -
 - Total execution time: -
@@ -41,6 +43,7 @@ Progress: [░░░░░░░░░░] 0% (remaining-scope milestone; produc
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: -
 - Trend: -
 
@@ -56,6 +59,7 @@ Recent decisions affecting current work:
 - Treat the duplicate `session/` fork removal as the first work item — it is the root cause of the unbounded-store (gap 2) and unwired-perf (gap 3) findings.
 - Persistence (ADR-015) and route-level auth (ADR-016) are designed-but-unimplemented; current deployment is in-memory/ephemeral (ADR-009).
 - Business-model and KPI variants are unresolved — V2 is the working default; not blocking engineering.
+- [Phase 1]: Folded runtime-audit fixes FIX-01..04 into Phase 1 (edited goal/requirements/success criteria); FIX wave executes first, before FND-01 de-fork. Evidence: VERIFICATION.md runtime addendum + SCENARIO-AUDIT.md (2026-06-11).
 
 ### Pending Todos
 

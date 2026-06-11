@@ -15,6 +15,13 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 - [ ] **FND-02**: The running server's EventStore is the bounded (`maxEvents`) variant — events evict at the cap, no unbounded growth (verifiable: a high-volume session never exceeds the configured ceiling).
 - [ ] **FND-03**: A regression test asserts the in-use EventStore is the bounded variant, so the fork cannot silently return.
 
+### Runtime Correctness (2026-06-11 walkthrough + scenario-audit findings)
+
+- [ ] **FIX-01**: All `VizEvent` subclasses are registered in a kotlinx.serialization `SerializersModule` polymorphic scope — SSE streaming and `GET /api/sessions/{id}/events` work end-to-end (no `SerializationException`), unblocking the Events tab and the conditional Channels/Flow/Sync/Jobs tabs. (Evidence: VERIFICATION.md RT-01/RT-03, SCENARIO-AUDIT.md SC-03.)
+- [ ] **FIX-02**: The frontend validation feature consumes the real backend response shape (`{sessionId, results[], timing}`) — Run Validation renders results and never crashes the page. (Evidence: VERIFICATION.md RT-02.)
+- [ ] **FIX-03**: `VizScope` classifies terminal coroutine state by cause type (not message-contains-label) — a throwing coroutine emits `CoroutineFailed` and renders FAILED, distinct from cancelled victims. (Evidence: SCENARIO-AUDIT.md SC-01.)
+- [ ] **FIX-04**: The Cancellation scenario performs a targeted child cancel — `child-to-be-cancelled` ends CANCELLED while `normal-child` ends COMPLETED. (Evidence: SCENARIO-AUDIT.md §3.)
+
 ### Production Readiness
 
 - [ ] **PROD-01**: `GET /api/health` (plus `/live`, `/ready`) returns `HealthStatus` with component checks (sessionManager, memory), uptime, and version.
