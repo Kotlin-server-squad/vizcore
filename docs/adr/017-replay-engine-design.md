@@ -108,5 +108,7 @@ Using rAF would tie playback to the display refresh rate, which is smoother for 
 - Adding new panels requires integrating them with the replay engine's `visibleEvents` contract
 
 ## Related
-- ADR-018: Export System Design (replay + export enables recording walkthroughs)
 - ADR-011: Animation System Design (animations should respect replay speed)
+
+## See also
+- ADR-018: Export System Design — video export builds on the replay engine. The dependency runs one way (ADR-018 → ADR-017); this is an advisory back-reference, not a dependency edge.

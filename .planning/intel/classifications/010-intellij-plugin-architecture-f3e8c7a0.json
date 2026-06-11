@@ -1,0 +1,25 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/010-intellij-plugin-architecture.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-010: IntelliJ Plugin Architecture",
+  "summary": "Hybrid architecture decision for IntelliJ IDEA plugin using VizSession events as primary data source with DebugProbes fallback, requiring library extraction and HTTP-based communication.",
+  "scope": [
+    "IntelliJ IDEA plugin",
+    "VizSession instrumentation",
+    "DebugProbes integration",
+    "Event system",
+    "Library extraction",
+    "HTTP protocol",
+    "Swing UI",
+    "coroutine-viz-core module"
+  ],
+  "cross_refs": [
+    "docs/adr/001-monorepo-architecture.md",
+    "Product Roadmap"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Status is Proposed, not Accepted, so locked is false. Manifest type override applied (ADR declared authoritative)."
+}

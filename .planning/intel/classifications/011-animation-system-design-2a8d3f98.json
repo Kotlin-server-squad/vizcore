@@ -1,0 +1,26 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/011-animation-system-design.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-011: Animation System Design",
+  "summary": "Centralize animation variants using framer-motion to eliminate duplication and enforce consistent timing across visualizer UI components.",
+  "scope": [
+    "frontend/src/lib/animation-variants.ts",
+    "CoroutineTree.tsx",
+    "animation system",
+    "framer-motion variants",
+    "entrance/exit animations",
+    "state indicators",
+    "flow visualizations",
+    "gauges",
+    "graph animations"
+  ],
+  "cross_refs": [
+    "frontend/src/lib/animation-variants.ts",
+    "CoroutineTree.tsx"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

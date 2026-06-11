@@ -1,0 +1,24 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/004-ci-cd-pipeline.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-004: CI/CD Pipeline",
+  "summary": "Implement GitHub Actions workflows with path filtering for automated linting, testing, and builds across frontend, backend, and shared packages.",
+  "scope": [
+    "CI/CD",
+    "GitHub Actions",
+    "Frontend workflow",
+    "Backend workflow",
+    "Shared workflow",
+    "Branch protection",
+    "ESLint",
+    "detekt",
+    "ktlint",
+    "Vitest"
+  ],
+  "cross_refs": [],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

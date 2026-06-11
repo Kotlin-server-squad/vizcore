@@ -117,4 +117,6 @@ Running behind a VPN or private network avoids application-level auth but provid
 
 ## Related
 - ADR-015: Persistence Strategy (key store migration to database)
-- ADR-019: Session Sharing (shared tokens operate outside user auth)
+
+## See also
+- ADR-019: Session Sharing builds on this auth model — share tokens operate outside user auth by design. The dependency runs one way (ADR-019 → ADR-016); this is an advisory back-reference, not a dependency edge.

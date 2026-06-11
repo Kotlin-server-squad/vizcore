@@ -1,0 +1,41 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/planning/ROADMAP.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Roadmap",
+  "summary": "Master roadmap tracking all completed and remaining work across backend, frontend, infrastructure, and production features with phased priority order.",
+  "scope": [
+    "backend",
+    "frontend",
+    "infrastructure",
+    "production-readiness",
+    "persistence",
+    "authentication",
+    "replay-engine",
+    "export-system",
+    "session-sharing",
+    "performance-scaling",
+    "observability",
+    "intellij-plugin",
+    "sdk-distribution",
+    "testing",
+    "marketing"
+  ],
+  "cross_refs": [
+    "../adr/015-persistence-strategy.md",
+    "../adr/016-authentication-architecture.md",
+    "../adr/017-replay-engine-design.md",
+    "../adr/018-export-system-design.md",
+    "../adr/019-session-sharing.md",
+    "../adr/020-performance-scaling.md",
+    "../adr/010-intellij-plugin-architecture.md",
+    "../adr/014-plugin-communication-protocol.md",
+    "../adr/021-sdk-distribution.md",
+    "../adr/022-frontend-testing-strategy.md",
+    "IMPLEMENTATION_ANALYSIS.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

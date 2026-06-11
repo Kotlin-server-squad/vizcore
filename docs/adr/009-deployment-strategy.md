@@ -19,7 +19,7 @@ Deploy using container-based PaaS:
 ### Environment Configuration
 - Frontend: `VITE_API_URL` points to deployed backend
 - Backend: CORS configured for deployed frontend domain
-- No database required (in-memory event store per session)
+- No database required for the current deployment — in-memory event store per session (the only implemented store today; ADR-015 defines optional persistence interfaces for a future storage backend)
 
 ## Rationale
 - Static frontend deployment is free/cheap and fast globally
@@ -31,4 +31,4 @@ Deploy using container-based PaaS:
 - Need to add production CORS configuration (currently only localhost:3000)
 - Need environment-specific Vite config for API URL
 - GitHub Actions can be extended with deploy jobs
-- No persistent storage needed (sessions are ephemeral)
+- No persistent storage is wired in — sessions are ephemeral in the current deployment. ADR-015 (dated later) supersedes the assumption that persistence will never be added: it defines optional persistence interfaces (the `*StoreInterface` seam). That design is Accepted but not yet implemented — in-memory remains the only store in code today.
