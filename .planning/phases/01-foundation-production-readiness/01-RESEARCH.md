@@ -783,22 +783,22 @@ sample.stop(scenarioDurationTimer)
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Metrics registry accessibility in VizSession.send()**
+1. **Metrics registry accessibility in VizSession.send()** — RESOLVED: Add `onEventEmitted: (() -> Unit)?` and `onEventDropped: (() -> Unit)?` callbacks to core `VizSession` (mirroring the existing `EventStore.onEvict` pattern), set from `MetricsWiring.wireMetrics()` via a `SessionManager` session-created hook, so counter increments flow through to VizSession WITHOUT adding Micrometer to `coroutine-viz-core`. Adopted by Plan 01-05 Task 3 (the callback hooks + `coroutine-viz-core` Micrometer-free assertion).
    - What we know: `PrometheusMeterRegistry` is created in `Monitoring.kt` and passed to `wireMetrics()` — but `VizSession.send()` is in core (no Ktor/Micrometer dep) and has no reference to the registry.
-   - What's unclear: Best approach to thread the counter increments through to VizSession without adding Micrometer to `coroutine-viz-core`'s dependency set.
-   - Recommendation: Add `onEventEmitted: (() -> Unit)?` and `onEventDropped: (() -> Unit)?` callbacks to `VizSession` (similar to the existing `onEvict` callback on `EventStore`), set them from `MetricsWiring.wireMetrics()` after session creation via `SessionManager.onSessionCreated` callback.
+   - What was unclear: Best approach to thread the counter increments through to VizSession without adding Micrometer to `coroutine-viz-core`'s dependency set.
+   - Recommendation (adopted): Add `onEventEmitted: (() -> Unit)?` and `onEventDropped: (() -> Unit)?` callbacks to `VizSession` (similar to the existing `onEvict` callback on `EventStore`), set them from `MetricsWiring.wireMetrics()` after session creation via `SessionManager.onSessionCreated` callback.
 
-2. **`/health` alias implementation**
+2. **`/health` alias implementation** — RESOLVED: Extract a shared `private suspend fun ApplicationCall.respondHealth()` helper and call it from both the `/health` alias and `/api/health` routes (no redirect, no duplicated body). Adopted by Plan 01-04 Task 1.
    - What we know: D-02 requires `/health` to keep working.
-   - What's unclear: Best Ktor idiom for aliasing — duplicate route body, call.respondRedirect, or shared function.
-   - Recommendation: Extract a shared `respondHealth(call)` suspend function and call it from both `/health` and `/api/health` routes.
+   - What was unclear: Best Ktor idiom for aliasing — duplicate route body, call.respondRedirect, or shared function.
+   - Recommendation (adopted): Extract a shared `respondHealth(call)` suspend function and call it from both `/health` and `/api/health` routes.
 
-3. **`ValidationPanel` error/warning rendering after FIX-02**
+3. **`ValidationPanel` error/warning rendering after FIX-02** — RESOLVED: Render `Fail` results in a Failures section and `Pass` results in a compact Passes list; drop the Warnings section entirely since the backend `ValidationResult` sealed class has no Warning variant. Adopted by Plan 01-02 Tasks 1–2 (results filtered by `type === 'Fail' | 'Pass'`, no Warnings section, `text-warning` forbidden in the panel).
    - What we know: Backend returns `results: [{type:'Pass'|'Fail', ruleName, message, details?}]`. The frontend currently shows separate Errors/Warnings sections. The backend's `ValidationResult` only has `Pass` and `Fail` — there is no "Warning" variant.
-   - What's unclear: Should the frontend render `Pass` results at all? Should `Fail` results be labelled as "Errors"?
-   - Recommendation: Rename the sections: `Fail` → Errors, `Pass` → Passes (or just show a summary count). Drop the Warnings section entirely since the backend has no Warning type.
+   - What was unclear: Should the frontend render `Pass` results at all? Should `Fail` results be labelled as "Errors"?
+   - Recommendation (adopted): Render `Fail` → Failures section, `Pass` → compact Passes list. Drop the Warnings section entirely since the backend has no Warning type.
 
 ---
 
