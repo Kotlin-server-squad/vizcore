@@ -8,8 +8,10 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 import io.ktor.sse.*
+import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.VizEvent
 import kotlinx.coroutines.flow.filter
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
@@ -196,7 +198,7 @@ fun Route.registerSessionRoutes() {
             for (event in storedEvents) {
                 send(
                     ServerSentEvent(
-                        data = Json.encodeToString(event),
+                        data = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event),
                         event = event.kind,
                         id = "${event.sessionId}-${event.seq}",
                     ),
@@ -212,7 +214,7 @@ fun Route.registerSessionRoutes() {
                 .collect { event ->
                     send(
                         ServerSentEvent(
-                            data = Json.encodeToString(event),
+                            data = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event),
                             event = event.kind,
                             id = "${event.sessionId}-${event.seq}",
                         ),

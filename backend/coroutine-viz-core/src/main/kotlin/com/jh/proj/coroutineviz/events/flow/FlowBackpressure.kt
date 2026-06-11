@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.events.flow
 
 import com.jh.proj.coroutineviz.events.VizEvent
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -8,6 +9,7 @@ import kotlinx.serialization.Serializable
  * This occurs when producer is faster than consumer.
  */
 @Serializable
+@SerialName("FlowBackpressure")
 data class FlowBackpressure(
     override val sessionId: String,
     override val seq: Long,

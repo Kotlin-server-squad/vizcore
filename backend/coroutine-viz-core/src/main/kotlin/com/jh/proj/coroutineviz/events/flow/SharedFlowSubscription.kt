@@ -1,12 +1,14 @@
 package com.jh.proj.coroutineviz.events.flow
 
 import com.jh.proj.coroutineviz.events.VizEvent
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
  * Emitted when a collector subscribes to or unsubscribes from a SharedFlow.
  */
 @Serializable
+@SerialName("SharedFlowSubscription")
 data class SharedFlowSubscription(
     override val sessionId: String,
     override val seq: Long,
