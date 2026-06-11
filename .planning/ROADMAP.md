@@ -11,7 +11,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (5/5 plans executed; verification found 2 blocker gaps)
+- [ ] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (5/5 plans executed; verification found 2 blocker gaps + CR-03; 3 gap-closure plans 01-06..01-08 added)
 - [ ] **Phase 2: User-Value Visualization** - Replay/time-travel, PNG/SVG/WebM export, side-by-side session comparison
 - [ ] **Phase 3: Persistence, Auth & Sharing** - Optional JDBC store + retention, route-level auth + tenant isolation, shareable read-only sessions
 - [ ] **Phase 4: Scale, Observability & SDK** - Sampling/batching/compression + load harness, OpenTelemetry export, published SDK + CI/CD CLI
@@ -32,7 +32,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
   3. `GET /api/health` (and `/live`, `/ready`) returns component checks, uptime, and version; logging uses dev/prod profiles; CORS reads from config.
   4. Micrometer exposes the full ADR-020 metric set (events emitted/dropped, scenario + event-processing durations, active sessions, SSE clients) and the OpenAPI spec is fully described and validates.
 
-**Plans**: 5 plans
+**Plans**: 8 plans (5 executed + 3 gap-closure)
 Plans:
 **Wave 1**
 
@@ -47,6 +47,15 @@ Plans:
 
 - [x] 01-04-PLAN.md — Health endpoints /api/health|live|ready + /health alias (PROD-01), CORS config test (PROD-03), OpenAPI accuracy (PROD-04)
 - [x] 01-05-PLAN.md — Prod logback profile selection (PROD-02) + full ADR-020 7-metric set (PROD-05)
+
+**Wave 4** *(gap closure — blocks Phase 1 pass; 01-06 and 01-07 run in parallel)*
+
+- [ ] 01-06-PLAN.md — Gap 1 (CR-02 / PROD-05): wire viz.sse.clients.active gauge into SSE stream lifecycle + value-asserting test
+- [ ] 01-07-PLAN.md — Gap 2 (CR-01 / FND-01,FND-03): delete the wrappers/ fork (11 files) + extend ForkDeletionTest to guard wrappers/
+
+**Wave 5** *(gap closure — blocked on Wave 4; 01-07 must complete first)*
+
+- [ ] 01-08-PLAN.md — Gap 3 (CR-03 / FND-01): add a Job to core VizScope.coroutineContext so cancel()/cancelAndJoin() work + cancellation regression test
 
 ### Phase 2: User-Value Visualization
 
