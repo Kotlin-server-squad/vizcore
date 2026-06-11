@@ -28,7 +28,14 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
   2. A high-volume session never grows the event store past the configured `maxEvents` ceiling, and a regression test proves the bounded store is in use.
   3. `GET /api/health` (and `/live`, `/ready`) returns component checks, uptime, and version; logging uses dev/prod profiles; CORS reads from config.
   4. Micrometer exposes the full ADR-020 metric set (events emitted/dropped, scenario + event-processing durations, active sessions, SSE clients) and the OpenAPI spec is fully described and validates.
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — FIX wave: VizEvent polymorphic serialization (FIX-01) + FAILED-state classification (FIX-03) + Cancellation scenario fix (FIX-04)
+- [ ] 01-02-PLAN.md — FIX-02: frontend ValidationPanel/TimingReport adaptation to the real {results, timing} contract
+- [ ] 01-03-PLAN.md — De-fork (FND-01) + bounded EventStore wiring (FND-02) + bounded-store/fork-deletion regression tests (FND-03)
+- [ ] 01-04-PLAN.md — Health endpoints /api/health|live|ready + /health alias (PROD-01), CORS config test (PROD-03), OpenAPI accuracy (PROD-04)
+- [ ] 01-05-PLAN.md — Prod logback profile selection (PROD-02) + full ADR-020 7-metric set (PROD-05)
 
 ### Phase 2: User-Value Visualization
 **Goal**: A developer can replay a captured session step-by-step, export visualizations to share, and compare two sessions side-by-side — the highest-visibility "see and understand" value, all client-side.
@@ -80,7 +87,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 0/TBD | Not started | - |
+| 1. Foundation & Production Readiness | 0/5 | Not started | - |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
