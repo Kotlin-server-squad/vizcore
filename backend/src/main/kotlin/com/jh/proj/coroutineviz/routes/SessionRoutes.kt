@@ -10,6 +10,7 @@ import io.ktor.server.sse.*
 import io.ktor.sse.*
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.sseClientsGauge
 import kotlinx.coroutines.flow.filter
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
@@ -189,6 +190,7 @@ fun Route.registerSessionRoutes() {
         }
 
         logger.info("SSE stream started for session: $sessionId")
+        sseClientsGauge.incrementAndGet()
 
         try {
             // 1️⃣ FIRST: Replay all stored events (history)
@@ -223,6 +225,7 @@ fun Route.registerSessionRoutes() {
         } catch (e: Exception) {
             logger.error("Error in SSE stream for session $sessionId", e)
         } finally {
+            sseClientsGauge.decrementAndGet()
             logger.info("SSE stream ended for session: $sessionId")
         }
     }
