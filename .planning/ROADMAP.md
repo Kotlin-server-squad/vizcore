@@ -41,7 +41,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-03-PLAN.md — De-fork (FND-01) + bounded EventStore wiring (FND-02) + bounded-store/fork-deletion regression tests (FND-03)
+- [x] 01-03-PLAN.md — De-fork (FND-01) + bounded EventStore wiring (FND-02) + bounded-store/fork-deletion regression tests (FND-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -110,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 2/5 | In progress | - |
+| 1. Foundation & Production Readiness | 3/5 | In Progress|  |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |

@@ -11,9 +11,9 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 
 ### Foundation & Structural Consolidation
 
-- [ ] **FND-01**: The running backend uses the single authoritative `coroutine-viz-core` session classes — the duplicate `com.jh.proj.coroutineviz.session.*` fork in `backend/src/main/` is removed and compilation resolves against core.
-- [ ] **FND-02**: The running server's EventStore is the bounded (`maxEvents`) variant — events evict at the cap, no unbounded growth (verifiable: a high-volume session never exceeds the configured ceiling).
-- [ ] **FND-03**: A regression test asserts the in-use EventStore is the bounded variant, so the fork cannot silently return.
+- [x] **FND-01**: The running backend uses the single authoritative `coroutine-viz-core` session classes — the duplicate `com.jh.proj.coroutineviz.session.*` fork in `backend/src/main/` is removed and compilation resolves against core.
+- [x] **FND-02**: The running server's EventStore is the bounded (`maxEvents`) variant — events evict at the cap, no unbounded growth (verifiable: a high-volume session never exceeds the configured ceiling).
+- [x] **FND-03**: A regression test asserts the in-use EventStore is the bounded variant, so the fork cannot silently return.
 
 ### Runtime Correctness (2026-06-11 walkthrough + scenario-audit findings)
 
@@ -137,9 +137,9 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
 | PROD-01 | Phase 1 | Pending |
 | PROD-02 | Phase 1 | Pending |
 | PROD-03 | Phase 1 | Pending |
@@ -178,6 +178,7 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | FETEST-03 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 39 total
 - Mapped to phases: 39
 - Unmapped: 0 ✓
