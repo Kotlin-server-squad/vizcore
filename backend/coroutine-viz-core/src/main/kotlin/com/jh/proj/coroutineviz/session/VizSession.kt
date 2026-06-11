@@ -57,6 +57,26 @@ class VizSession(
     val projectionService = ProjectionService(this)
 
     /**
+     * Optional callback invoked after each event is successfully emitted via [send].
+     * Used by the metrics layer to increment the events.emitted counter without
+     * adding a Micrometer dependency to coroutine-viz-core.
+     */
+    var onEventEmitted: (() -> Unit)? = null
+
+    /**
+     * Optional callback invoked each time an event is dropped due to the bounded
+     * EventStore capacity (mirrors EventStore.onEvict but at the session level).
+     * Used by the metrics layer to increment the events.dropped counter.
+     */
+    var onEventDropped: (() -> Unit)? = null
+
+    /**
+     * Optional callback invoked with the wall-clock nanos spent processing a single
+     * event inside [send] (store + applier + bus). Used for event.processing.duration.
+     */
+    var onEventProcessed: ((Long) -> Unit)? = null
+
+    /**
      * Allocate next sequence number.
      */
     fun nextSeq(): Long = seqGenerator.incrementAndGet()
@@ -66,9 +86,14 @@ class VizSession(
      * Synchronously emits event to bus, stores it, and updates snapshot.
      */
     fun send(event: VizEvent) {
+        val startNanos = if (onEventProcessed != null) System.nanoTime() else 0L
         store.append(event)
         applier.apply(event)
         eventBus.send(event)
+        onEventEmitted?.invoke()
+        if (onEventProcessed != null) {
+            onEventProcessed?.invoke(System.nanoTime() - startNanos)
+        }
     }
 
     /**

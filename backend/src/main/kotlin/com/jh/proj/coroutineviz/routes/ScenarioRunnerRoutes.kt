@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.scenarioDurationTimerRef
 import com.jh.proj.coroutineviz.scenarios.ScenarioConfigRequest
 import com.jh.proj.coroutineviz.scenarios.ScenarioExecutionResponse
 import com.jh.proj.coroutineviz.scenarios.ScenarioRunner
@@ -11,6 +12,7 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 
@@ -438,7 +440,9 @@ private suspend fun ApplicationCall.runScenarioWithResponse(
     block: suspend () -> ScenarioCompletionResponse,
 ) {
     try {
+        val sample = scenarioDurationTimerRef?.let { Timer.start() }
         val response = block()
+        sample?.stop(scenarioDurationTimerRef)
         delay(100)
         respond(HttpStatusCode.OK, response)
     } catch (e: Exception) {
