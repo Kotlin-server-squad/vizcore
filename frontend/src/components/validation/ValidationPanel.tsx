@@ -1,11 +1,10 @@
 import { Button, Card, CardBody, Divider } from '@heroui/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiPlay } from 'react-icons/fi'
+import { FiPlay, FiCheckCircle } from 'react-icons/fi'
 import { useValidation } from '@/hooks/use-validation'
 import {
   ValidationPassCard,
   ValidationErrorCard,
-  ValidationWarningCard,
 } from './ValidationResultCard'
 import { TimingReportView } from './TimingReportView'
 
@@ -78,44 +77,61 @@ export function ValidationPanel({ sessionId }: ValidationPanelProps) {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.4 }}
           >
-            {/* Summary pass/fail */}
-            <ValidationPassCard
-              valid={data.valid}
-              errorCount={data.errors.length}
-              warningCount={data.warnings.length}
-            />
+            {(() => {
+              const failures = data.results.filter(r => r.type === 'Fail')
+              const passes = data.results.filter(r => r.type === 'Pass')
+              return (
+                <>
+                  {/* Summary pass/fail */}
+                  <ValidationPassCard
+                    failCount={failures.length}
+                    totalCount={data.results.length}
+                  />
 
-            {/* Errors */}
-            {data.errors.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-danger">
-                  Errors ({data.errors.length})
-                </h3>
-                {data.errors.map((err, idx) => (
-                  <ValidationErrorCard key={`${err.code}-${idx}`} error={err} index={idx} />
-                ))}
-              </div>
-            )}
+                  {/* Failures */}
+                  {failures.length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-danger">
+                        Failures ({failures.length})
+                      </h3>
+                      {failures.map((result, idx) => (
+                        <ValidationErrorCard key={`${result.ruleName}-${idx}`} error={result} index={idx} />
+                      ))}
+                    </div>
+                  )}
 
-            {/* Warnings */}
-            {data.warnings.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-warning">
-                  Warnings ({data.warnings.length})
-                </h3>
-                {data.warnings.map((warn, idx) => (
-                  <ValidationWarningCard key={`${warn.code}-${idx}`} warning={warn} index={idx} />
-                ))}
-              </div>
-            )}
+                  {/* Passes — compact list, no individual cards */}
+                  {passes.length > 0 && (
+                    <motion.div
+                      className="space-y-2"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <h3 className="text-sm font-semibold text-success">
+                        Passes ({passes.length})
+                      </h3>
+                      <div className="space-y-1">
+                        {passes.map((result, idx) => (
+                          <div key={`${result.ruleName}-${idx}`} className="flex items-center gap-1">
+                            <FiCheckCircle className="text-success shrink-0" size={12} />
+                            <span className="text-xs text-default-500">{result.ruleName}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
 
-            <Divider />
+                  <Divider />
 
-            {/* Timing report */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-default-600">Timing Report</h3>
-              <TimingReportView timing={data.timing} />
-            </div>
+                  {/* Timing report */}
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-default-600">Timing Report</h3>
+                    <TimingReportView timing={data.timing} />
+                  </div>
+                </>
+              )
+            })()}
           </motion.div>
         )}
       </AnimatePresence>
