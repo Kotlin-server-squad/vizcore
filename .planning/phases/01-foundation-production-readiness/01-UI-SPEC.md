@@ -75,8 +75,10 @@ All sizes are Tailwind utility classes resolved by HeroUI theme. FIX-02 must mat
 | Label | `text-xs` | 12px | 400 (normal) | 1.33 | Metadata (coroutineId, timing labels, rule counts) |
 | Section heading | `text-sm font-semibold` | 14px | 600 (semibold) | 1.25 | "Failures (N)", "Passes (N)", "Timing Report" |
 | Card heading | `font-semibold` | 16px (inherits CardBody) | 600 (semibold) | 1.5 | "Session Validation" header card |
-| Timing stat value | `text-lg font-bold` | 18px | 700 (bold) | 1.75 | Per-coroutine duration stat values |
+| Timing stat value | `text-lg font-semibold` | 18px | 600 (semibold) | 1.75 | Per-coroutine duration stat values |
 | Mono | `font-mono` | 14px | 400 (normal) | 1.25 | Coroutine IDs, duration values, timing keys |
+
+**Declared weights:** exactly 2 — 400 (normal) and 600 (semibold). Weight 700 (bold) is not used in this phase.
 
 **Rule:** No new type sizes may be introduced. The spec declares exactly these roles; the executor must not add sizes outside this set.
 
@@ -139,6 +141,8 @@ interface BackendTimingReport {
 
 ## Component Adaptation Contract
 
+**Primary visual anchor:** the summary card (`data-testid="validation-summary"`) — established by spring-scale animation and glow pulse, renders before all other result sections.
+
 ### ValidationPanel.tsx — adapted logic
 
 1. **Summary card** (`data-testid="validation-summary"`): derive `failCount = data.results.filter(r => r.type === 'Fail').length`. Summary is "All rules passed" when `failCount === 0`, "N rule(s) failed" otherwise.
@@ -191,7 +195,7 @@ Replace the four-stat grid (`totalDurationNanos`, `eventCount`, `coroutineCount`
 **New layout — two sections:**
 
 1. **Total Duration card** — single `Card shadow="sm"` with:
-   - `text-lg font-bold text-primary` — formatted `totalDuration` value
+   - `text-lg font-semibold text-primary` — formatted `totalDuration` value
    - `text-xs text-default-500` — "Total Duration"
    - `formatMs(ms)` helper: `>= 1000` → `X.XXs`, else `Xms`
 
