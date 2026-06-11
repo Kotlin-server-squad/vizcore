@@ -11,7 +11,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [x] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (completed 2026-06-11)
+- [ ] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (5/5 plans executed; verification found 2 blocker gaps)
 - [ ] **Phase 2: User-Value Visualization** - Replay/time-travel, PNG/SVG/WebM export, side-by-side session comparison
 - [ ] **Phase 3: Persistence, Auth & Sharing** - Optional JDBC store + retention, route-level auth + tenant isolation, shareable read-only sessions
 - [ ] **Phase 4: Scale, Observability & SDK** - Sampling/batching/compression + load harness, OpenTelemetry export, published SDK + CI/CD CLI
