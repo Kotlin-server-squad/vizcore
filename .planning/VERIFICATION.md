@@ -175,3 +175,57 @@ Tackle the **Foundation area first (FND-01 → FND-02 → FND-03)** before any f
 - **Immediately after Foundation, prioritize AUTH-01** (Broken, security-critical): wrap non-public route groups in the already-defined `authenticatedApi()` and add the AUTH-05 E2E test that runs the real `module()` with `API_KEY` set. This is a small, high-value change closing an open-door vulnerability.
 
 A productive sequencing: **(1) De-fork — FND-01; (2) Wire bounded store + retention + regression test — FND-02/FND-03/PERS-03; (3) Close open auth — AUTH-01/AUTH-05.** Defer the genuinely-greenfield areas (Persistence JDBC, OTEL, Playwright/Storybook, WebM export, JWT/RBAC) until the existing-but-unwired assets are actually delivered to users.
+
+---
+
+## Runtime Walkthrough Addendum
+
+**Date:** 2026-06-11 · **Method:** live browser-driven walkthrough of the running React UI (`localhost:3000`) against the running backend (`localhost:8080`), via the Claude-for-Chrome MCP tools, cross-checked with direct REST/SSE calls and backend log inspection (`/tmp/vizcore-backend.log`). This is the runtime-evidence pass deferred from the static audit above. Servers: backend `BUILD`/`run` healthy at `/health`; frontend Vite dev server. Scenario exercised end-to-end: **Nested Coroutines** (create session → run → reload from persistence).
+
+The static audit's guiding rule — *tested-in-isolation but never-wired code is not a working feature* — held. The walkthrough **confirmed** the dead-code verdicts AND surfaced **two HIGH-severity runtime defects that static review and the 221/221 frontend + green backend test suites did not catch**, because those suites exercise mocked or snapshot data rather than live polymorphic HTTP/SSE serialization and the real backend↔frontend response contract.
+
+### New runtime findings (not in the matrix above)
+
+| ID | Severity | Title | Verdict |
+|---|---|---|---|
+| RT-01 | HIGH | `VizEvent` polymorphic serialization is unregistered → SSE stream and `/events` both fail | Broken |
+| RT-02 | HIGH | Validation feature crashes the whole page (backend↔frontend contract drift) | Broken |
+| RT-03 | MED | Events tab is always empty (downstream of RT-01) | Broken |
+| RT-04 | LOW | `/gallery` works but is unlinked in the top nav (orphaned route) | Partial |
+
+**RT-01 — `VizEvent` polymorphic serialization is broken (HIGH, Broken).**
+Backend log throws on every raw-event serialization:
+`kotlinx.serialization.SerializationException: Serializer for subclass 'CoroutineCreated' is not found in the polymorphic scope of 'VizEvent'.`
+- **Root cause:** `events/VizEvent.kt:9` declares `interface VizEvent` **non-sealed** (comment: *"Not sealed to allow extension from subpackages"*). Subclasses (`events/coroutine/CoroutineCreated.kt`, `@Serializable @SerialName("CoroutineCreated")`) are serializable individually, but no `SerializersModule` registers them in a polymorphic scope — `grep -r "polymorphic(\|SerializersModule\|subclass(" src/main` finds none. kotlinx.serialization therefore cannot resolve the serializer at runtime.
+- **Blast radius:** (1) SSE `/api/sessions/{id}/stream` errors and ends prematurely — log line `SessionRoutesKt$registerSessionRoutes$9:222 "Error in SSE stream" → :224 "SSE stream ended"` on the first emitted event; (2) `GET /api/sessions/{id}/events` returns **HTTP 500** (verified by curl: `HTTP 500 bytes=0`), repeatedly logged at `DefaultEnginePipelineKt:120`.
+- **Why the visualizations still render:** the tree/graph/thread-lanes and the header counters are driven by the **projected snapshot** (`GET /api/sessions/{id}` → `RuntimeSnapshot`/projection), which serializes plain DTOs, not the polymorphic `VizEvent` list. The raw event stream is the only consumer that hits the broken path. The green "Live Stream Active" indicator is therefore **misleading** — the underlying SSE connection has already errored out.
+- **Fix:** register all `VizEvent` subclasses in a `SerializersModule { polymorphic(VizEvent::class) { subclass(CoroutineCreated::class); … } }` installed on the Ktor `Json`/ContentNegotiation config (or seal the hierarchy). Add a runtime test that serializes a populated event list over the real `/events` route.
+
+**RT-02 — Validation feature crashes the entire page (HIGH, Broken).**
+Clicking **Run Validation** on a session replaces the whole app with the error-boundary screen *"Error — Cannot read properties of undefined (reading 'length')"*.
+- **Root cause:** backend `POST /api/validate/session/{id}` returns `{ sessionId, results: [{ type:'Pass'|…, ruleName, message }], timing }` (verified by curl — top-level keys `['sessionId','results','timing']`, 21 results, **no** `errors`/`warnings`/`valid`). The frontend `components/validation/ValidationPanel.tsx:84-85` reads `data.errors.length` and `data.warnings.length`, both `undefined` → `TypeError` caught by `CatchBoundaryImpl` (console stack: `ValidationPanel … react-dom_client`). The `ValidationResult` type in `frontend/src/types/api.ts` is out of sync with the actual backend response shape.
+- **Note:** the backend validation engine itself works (log: *"Running validation on session … with 28 events"*, returns 21 `Pass` rule results). This is purely a response-contract mismatch in the frontend adapter.
+- **Fix:** reconcile the `ValidationResult` type and `ValidationPanel` with the real `{results, timing}` shape (derive errors/warnings by filtering `results` on `type`), or change the backend to emit the `{valid, errors, warnings}` shape the UI expects. Regenerate `shared/api-types` from the OpenAPI spec and verify the validate endpoint's documented schema matches the served JSON.
+
+**RT-03 — Events tab always empty (MED, Broken — downstream of RT-01).**
+The "Events" tab renders *"No events yet"* both during a live run (header showed **20 events**, Threads tab populated) and after reload (header **28 events**). `SessionDetails.tsx:45` feeds `EventsList` from `allEvents = streamEnabled ? liveEvents : storedEvents || []`; `storedEvents` comes from `useSessionEvents` → the 500-ing `/events` endpoint, and `liveEvents` comes from the SSE stream that RT-01 kills. So both inputs are empty. Fixing RT-01 should resolve this; add an integration check that the Events tab count matches the header `eventCount`.
+
+### Static verdicts confirmed at runtime
+
+- **Hierarchy visualization — works at runtime.** Graph View renders the parent→child-1/child-2→child-1-1 tree with live state colors, IDs, jobs, scopes, parent refs; List View renders the same hierarchy with Job-Status badges. Driven by the projected snapshot (see RT-01).
+- **Thread lanes — works at runtime.** Threads tab shows "Thread Activity / 4 Threads" with per-worker `ASSIGNED` events and timestamps.
+- **Session lifecycle + persistence — works at runtime.** Create-session form, scenario "Prepare → Run", session-list listing, and reload-rebuilds-from-snapshot (4 coroutines / 28 events survived a full navigation away and back) all function.
+- **Scenario catalog + builder + gallery render.** 3 real-world (Order Processing, User Registration, Report Generation) + 9 basic patterns; `/scenarios/builder` (hierarchy editor, Execute, **Export JSON**, Quick Guide) and `/gallery` (category tabs Basic/Patterns/Flow/Sync/Channel, difficulty badges) all render.
+- **RPLY (Replay) — Missing, confirmed.** No playback/scrubber controls anywhere in the session UI; `ReplayController` has zero non-test importers.
+- **EXPT (Export) — Partial, confirmed.** No session-level Export button in the UI; `ExportButton` has zero non-test importers. (A *separate* "Export JSON" exists inside the Scenario Builder — that is the builder's own control, not the unwired `ExportButton`.)
+- **CMPR (Session Comparison) — absent at runtime, confirmed.** No comparison route exists (`routes/` = gallery, scenarios, sessions, index only); `ComparisonView` has zero non-test importers. Backend comparison may work, but it is unreachable from the UI.
+
+### Runtime-adjusted takeaways
+
+1. **RT-01 is now the highest-priority defect alongside FND-01.** The product's headline promise — *"real-time SSE event streaming"* — is broken end-to-end at the serialization layer, even though the snapshot-driven visualizations create the appearance of a working live stream. De-forking (FND-01) will not fix it; the polymorphic `SerializersModule` registration is a distinct, mandatory change.
+2. **Trust the snapshot, not the stream, when reasoning about why the UI "works."** Every visualization that renders does so via `RuntimeSnapshot`, masking the broken raw-event path.
+3. **The validate and events endpoints need contract tests against the *served* JSON**, not just unit tests with hand-built fixtures — both RT-01 and RT-02 are contract/serialization failures invisible to the existing green suites.
+
+**Revised runtime sequencing:** **(0) Fix RT-01 (`VizEvent` polymorphic registration) — unblocks SSE + `/events` + the Events tab (RT-03); (0b) Fix RT-02 (validation contract) — stops a full-page crash;** then proceed with the static plan: **(1) De-fork FND-01 → (2) bounded store FND-02/03 + PERS-03 → (3) close auth AUTH-01/05.** RT-01/RT-02 are small, self-contained, and user-visible, so they belong before the larger Foundation refactor.
+
+> **See also:** `.planning/SCENARIO-AUDIT.md` (2026-06-11) — logic + pedagogy audit of all 12 built-in scenarios. Headline findings: **SC-01** the FAILED coroutine state is unreachable (`VizScope.kt:182` label-in-message heuristic) so every failure demo renders CANCELLED, contradicting the on-screen lesson; the **Cancellation scenario's** targeted cancel is commented out (kills the whole tree instead); **User Registration's** "notifications don't fail registration" intent is disproven at runtime (needs `supervisorScope`); **Report Generation's** "timeout handling" is fake (no `withTimeout`); failure params (`?fail=true` etc.) are unreachable from the UI; scenario routes report `success:true` on failed runs.

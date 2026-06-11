@@ -1,7 +1,19 @@
 # RESUME — vizcore deep-dive audit & feature verification
 
 **Last session:** 2026-06-11
-**Stopped at:** About to run the **browser-driven (MCP Chrome) runtime walkthrough** of each feature/scenario. Blocked only by Chrome-extension pairing (see below).
+**Stopped at:** ✅ **Browser-driven runtime walkthrough COMPLETE** (addendum in `VERIFICATION.md`) **+ ✅ scenario logic audit COMPLETE** (`.planning/SCENARIO-AUDIT.md` — all 12 scenarios, code+runtime+pedagogy). Next: de-fork/fix phase planning (`/gsd-plan-phase 1`), with RT-01/RT-02/SC-01 sequenced first.
+
+## Scenario audit results (2026-06-11, same session)
+All 12 scenarios audited (code read + headless runs of every failure param + browser verification) → `.planning/SCENARIO-AUDIT.md`. Key: **SC-01 (HIGH)** FAILED state unreachable — `VizScope.kt:182` requires exception message to contain the coroutine label, and failed launch jobs report `isCancelled=true`, so every failure renders CANCELLED (verified in 4 failure paths); **Cancellation scenario broken** — `child1.cancel()` commented out at `ScenarioRunner.kt:117`, root `job.cancel()` kills all incl. `normal-child`; **Registration** failEmail disproves its own "don't fail registration" comment (needs supervisorScope), retry is fake; **Report** "timeout" has no `withTimeout`; **SC-02** failure params (?fail/?failEmail/?timeout) unreachable from UI (`SessionDetails.tsx:104` never passes params); **SC-03** Channels/Flow/Sync/Jobs tabs never mount (downstream of RT-01); **SC-04** VizScope has no Job → orphan roots, `cancel()` no-ops, routes return success:true on failed runs. Sound scenarios: Nested, Parallel, Mixed, Deep Nesting, all 3 channels (logic-wise).
+
+## Runtime walkthrough results (2026-06-11)
+Walked the running UI (`:3000` ↔ `:8080`) via Claude-for-Chrome MCP + REST/SSE + backend log. **2 new HIGH-severity runtime defects found that static review + green test suites missed:**
+- **RT-01 (HIGH):** `VizEvent` is a non-sealed `interface` with **no `SerializersModule` polymorphic registration** → `SerializationException: Serializer for subclass 'CoroutineCreated' not found`. Breaks SSE stream (errors+ends on first event) AND `GET /api/sessions/{id}/events` (HTTP 500). Visualizations only render because they're driven by the projected snapshot, not raw events. "Live Stream Active" badge is misleading.
+- **RT-02 (HIGH):** Validation feature crashes the whole page. Backend `/api/validate/session/{id}` returns `{sessionId, results[], timing}` but `ValidationPanel.tsx:84-85` reads `data.errors.length`/`data.warnings.length` (undefined) → error boundary.
+- **RT-03 (MED):** Events tab always empty (downstream of RT-01). **RT-04 (LOW):** `/gallery` works but unlinked in nav.
+- **Confirmed working at runtime:** hierarchy tree (Graph + List views), thread lanes, session create/run/persistence/reload, scenario catalog (3 real-world + 9 patterns), builder, gallery.
+- **Confirmed dead/absent at runtime:** RPLY (no controls), EXPT (no session export button), CMPR (no route). All three components have zero non-test importers.
+- **Revised sequencing:** fix RT-01 + RT-02 first (small, user-visible), then FND-01 de-fork → FND-02/03 + PERS-03 → AUTH-01/05.
 
 ## How to resume the conversation
 - `claude --continue` (resumes the most recent session in this repo) — or `claude --resume` and pick this session.
