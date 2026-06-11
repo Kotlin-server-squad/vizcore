@@ -612,45 +612,26 @@ export type SyncEvent =
   | DeadlockDetected
   | PotentialDeadlockWarning
 
-/** Validation result from the backend validation API */
-export interface ValidationResult {
+/** Validation response from the backend validation API (POST /api/validate/session/{id}) */
+export interface ValidationResponse {
   sessionId: string
-  valid: boolean
-  errors: ValidationError[]
-  warnings: ValidationWarning[]
-  timing: TimingReport
+  results: ValidationRuleResult[]
+  timing: BackendTimingReport
 }
 
-export interface ValidationError {
-  code: string
+/** Individual rule result — type discriminator is 'Pass' | 'Fail' (no Warning variant) */
+export interface ValidationRuleResult {
+  type: 'Pass' | 'Fail'
+  ruleName: string
   message: string
-  eventSeq?: number
-  coroutineId?: string
+  details?: string  // present on Fail only
 }
 
-export interface ValidationWarning {
-  code: string
-  message: string
-  eventSeq?: number
-  coroutineId?: string
-  suggestion?: string
-}
-
-/** Timing report returned by the validation API */
-export interface TimingReport {
-  totalDurationNanos: number
-  eventCount: number
-  coroutineCount: number
-  avgEventIntervalNanos: number
-  maxGapNanos: number
-  suspendResumeLatencies: LatencyBucket[]
-}
-
-export interface LatencyBucket {
-  label: string
-  minNanos: number
-  maxNanos: number
-  count: number
+/** Timing report returned by the validation API — values are in milliseconds */
+export interface BackendTimingReport {
+  coroutineDurations: Record<string, number>       // Map<coroutineId, durationMs>
+  suspensionDurations: Record<string, number[]>    // Map<coroutineId, List<durationMs>>
+  totalDuration: number                            // milliseconds
 }
 
 // ---------------------------------------------------------------------------
