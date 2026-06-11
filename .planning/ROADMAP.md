@@ -36,8 +36,8 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — FIX wave: VizEvent polymorphic serialization (FIX-01) + FAILED-state classification (FIX-03) + Cancellation scenario fix (FIX-04)
-- [ ] 01-02-PLAN.md — FIX-02: frontend ValidationPanel/TimingReport adaptation to the real {results, timing} contract
+- [x] 01-01-PLAN.md — FIX wave: VizEvent polymorphic serialization (FIX-01) + FAILED-state classification (FIX-03) + Cancellation scenario fix (FIX-04)
+- [x] 01-02-PLAN.md — FIX-02: frontend ValidationPanel/TimingReport adaptation to the real {results, timing} contract
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -110,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 0/5 | Not started | - |
+| 1. Foundation & Production Readiness | 2/5 | In progress | - |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
