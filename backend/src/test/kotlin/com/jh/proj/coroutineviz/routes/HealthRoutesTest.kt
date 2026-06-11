@@ -89,4 +89,71 @@ class HealthRoutesTest {
             assertTrue(memory["maxMb"]?.jsonPrimitive?.long!! > 0)
             assertTrue(memory["usagePercent"]?.jsonPrimitive?.double!! >= 0.0)
         }
+
+    @Test
+    fun `GET health alias returns 200 with version and components`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val response = client.get("/health")
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val version = body["version"]?.jsonPrimitive?.content
+            assertNotNull(version, "version field must be present")
+            assertTrue(version!!.isNotEmpty(), "version must be non-empty")
+
+            val components = body["components"]?.jsonObject
+            assertNotNull(components, "components field must be present")
+            assertTrue(components!!.isNotEmpty(), "components map must be non-empty")
+        }
+
+    @Test
+    fun `GET api health returns 200 with version and components`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val response = client.get("/api/health")
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("UP", body["status"]?.jsonPrimitive?.content)
+
+            val version = body["version"]?.jsonPrimitive?.content
+            assertNotNull(version, "version field must be present")
+            assertTrue(version!!.isNotEmpty(), "version must be non-empty")
+
+            val components = body["components"]?.jsonObject
+            assertNotNull(components, "components field must be present")
+            assertTrue(components!!.containsKey("sessionManager"), "components must include sessionManager")
+            assertTrue(components.containsKey("memory"), "components must include memory")
+        }
+
+    @Test
+    fun `GET api live returns 200 status UP`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val response = client.get("/api/live")
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("UP", body["status"]?.jsonPrimitive?.content)
+        }
+
+    @Test
+    fun `GET api ready returns 200 status UP`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val response = client.get("/api/ready")
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("UP", body["status"]?.jsonPrimitive?.content)
+        }
 }

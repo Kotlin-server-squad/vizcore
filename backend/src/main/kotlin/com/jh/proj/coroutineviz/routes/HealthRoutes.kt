@@ -2,9 +2,11 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.route
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -17,40 +19,78 @@ data class MemoryInfo(
 @Serializable
 data class HealthStatus(
     val status: String,
+    val version: String,
     val sessions: Int,
     val uptimeMs: Long,
     val memory: MemoryInfo,
+    val components: Map<String, String> = emptyMap(),
 )
 
 private val startTime = System.currentTimeMillis()
 
+private const val APP_VERSION = "0.0.1"
+
+private suspend fun ApplicationCall.respondHealth() {
+    val runtime = Runtime.getRuntime()
+    val maxMb = runtime.maxMemory() / (1024 * 1024)
+    val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+    val usagePercent = if (maxMb > 0) (usedMb.toDouble() / maxMb * 100) else 0.0
+
+    val memory =
+        MemoryInfo(
+            usedMb = usedMb,
+            maxMb = maxMb,
+            usagePercent = usagePercent,
+        )
+
+    val sessions = SessionManager.listSessions().size
+    val uptimeMs = System.currentTimeMillis() - startTime
+    val healthy = usagePercent < 90.0
+
+    val status =
+        HealthStatus(
+            status = if (healthy) "UP" else "DEGRADED",
+            version = APP_VERSION,
+            sessions = sessions,
+            uptimeMs = uptimeMs,
+            memory = memory,
+            components =
+                mapOf(
+                    "sessionManager" to "UP",
+                    "memory" to if (healthy) "UP" else "DEGRADED",
+                ),
+        )
+
+    val httpStatus = if (healthy) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable
+    respond(httpStatus, status)
+}
+
 fun Route.registerHealthRoutes() {
-    get("/health") {
-        val runtime = Runtime.getRuntime()
-        val maxMb = runtime.maxMemory() / (1024 * 1024)
-        val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
-        val usagePercent = if (maxMb > 0) (usedMb.toDouble() / maxMb * 100) else 0.0
+    // /health alias — kept for backwards compatibility
+    get("/health") { call.respondHealth() }
 
-        val memory =
-            MemoryInfo(
-                usedMb = usedMb,
-                maxMb = maxMb,
-                usagePercent = usagePercent,
-            )
+    route("/api") {
+        get("/health") { call.respondHealth() }
 
-        val sessions = SessionManager.listSessions().size
-        val uptimeMs = System.currentTimeMillis() - startTime
-        val healthy = usagePercent < 90.0
+        get("/live") {
+            call.respond(HttpStatusCode.OK, mapOf("status" to "UP"))
+        }
 
-        val status =
-            HealthStatus(
-                status = if (healthy) "UP" else "DEGRADED",
-                sessions = sessions,
-                uptimeMs = uptimeMs,
-                memory = memory,
-            )
-
-        val httpStatus = if (healthy) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable
-        call.respond(httpStatus, status)
+        get("/ready") {
+            val runtime = Runtime.getRuntime()
+            val maxMb = runtime.maxMemory()
+            val usedMb = runtime.totalMemory() - runtime.freeMemory()
+            val usagePercent = if (maxMb > 0) (usedMb.toDouble() / maxMb * 100) else 0.0
+            // Verify SessionManager is reachable by calling listSessions()
+            SessionManager.listSessions()
+            if (usagePercent < 95.0) {
+                call.respond(HttpStatusCode.OK, mapOf("status" to "UP"))
+            } else {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    mapOf("status" to "DOWN", "reason" to "high memory"),
+                )
+            }
+        }
     }
 }
