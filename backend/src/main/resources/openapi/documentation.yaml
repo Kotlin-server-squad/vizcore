@@ -14,6 +14,10 @@ servers:
   - url: "http://0.0.0.0:8080"
     description: "Local development server"
 
+# All endpoints are currently unauthenticated (Phase 1). Auth (ADR-016) is planned for Phase 3.
+# The global empty security array satisfies the security-defined lint rule.
+security: []
+
 tags:
   - name: Root
     description: Root and SSE smoke-test endpoints
@@ -95,11 +99,36 @@ paths:
   /health:
     get:
       tags: [Health]
+      summary: Application health status (alias)
+      description: >
+        Alias for /api/health. Returns the current health of the application
+        including active session count, uptime, JVM memory usage, version, and
+        component status map. Returns HTTP 200 when healthy and HTTP 503 when
+        memory usage exceeds 90%.
+      operationId: getHealthAlias
+      responses:
+        "200":
+          description: Application is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Application is degraded (memory usage above 90%)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /api/health:
+    get:
+      tags: [Health]
       summary: Application health status
       description: >
         Returns the current health of the application including active session
-        count, uptime, and JVM memory usage. Returns HTTP 200 when healthy and
-        HTTP 503 when memory usage exceeds 90%.
+        count, uptime, JVM memory usage, application version, and a component
+        status map. Returns HTTP 200 when healthy and HTTP 503 when memory
+        usage exceeds 90%.
       operationId: getHealth
       responses:
         "200":
@@ -114,6 +143,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /api/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: >
+        Kubernetes-compatible liveness probe. Returns HTTP 200 with
+        {"status":"UP"} if the application process is alive. Does not
+        check component health — use /api/ready for readiness.
+      operationId: getLiveness
+      responses:
+        "200":
+          description: Application process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [UP]
+                    description: Always "UP" for a live process
+
+  /api/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: >
+        Kubernetes-compatible readiness probe. Returns HTTP 200 with
+        {"status":"UP"} when the application is ready to serve traffic
+        (SessionManager reachable and memory usage below 95%). Returns
+        HTTP 503 with {"status":"DOWN","reason":"high memory"} when
+        memory exceeds the threshold.
+      operationId: getReadiness
+      responses:
+        "200":
+          description: Application is ready to serve traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [UP]
+                    description: Ready to serve
+        "503":
+          description: Application is not ready (high memory pressure)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, reason]
+                properties:
+                  status:
+                    type: string
+                    enum: [DOWN]
+                  reason:
+                    type: string
+                    description: Human-readable reason for not-ready state
 
   # ==========================================================================
   # SESSIONS
@@ -1524,13 +1615,16 @@ components:
       type: object
       description: >
         Application health report including uptime, active session count,
-        and JVM memory usage.
-      required: [status, sessions, uptimeMs, memory]
+        JVM memory usage, application version, and a component status map.
+      required: [status, version, sessions, uptimeMs, memory]
       properties:
         status:
           type: string
           description: "Health status: UP or DEGRADED"
           enum: [UP, DEGRADED]
+        version:
+          type: string
+          description: Application version (e.g. "0.0.1")
         sessions:
           type: integer
           description: Number of currently active visualization sessions
@@ -1540,6 +1634,13 @@ components:
           description: Milliseconds since the application started
         memory:
           $ref: "#/components/schemas/MemoryInfo"
+        components:
+          type: object
+          description: >
+            Map of component name to its status string (e.g. "UP" or "DEGRADED").
+            Included components: sessionManager, memory.
+          additionalProperties:
+            type: string
 
     MemoryInfo:
       type: object
