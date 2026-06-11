@@ -1,5 +1,7 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -10,6 +12,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -20,6 +23,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -96,7 +100,7 @@ class SseStreamTest {
             assertEquals(2, storedEvents.size, "Session should have 2 stored events for SSE replay")
 
             // Verify first event fields (these are serialized as SSE data)
-            val first = storedEvents[0] as CoroutineCreated
+            val first = assertIs<CoroutineCreated>(storedEvents[0], "First stored event should be CoroutineCreated")
             assertEquals("CoroutineCreated", first.kind)
             assertEquals(sessionId, first.sessionId)
             assertEquals(1L, first.seq)
@@ -104,16 +108,16 @@ class SseStreamTest {
             assertEquals("first-coroutine", first.label)
 
             // Verify second event fields
-            val second = storedEvents[1] as CoroutineCreated
+            val second = assertIs<CoroutineCreated>(storedEvents[1], "Second stored event should be CoroutineCreated")
             assertEquals("CoroutineCreated", second.kind)
             assertEquals(2L, second.seq)
             assertEquals("c-2", second.coroutineId)
             assertEquals("c-1", second.parentCoroutineId)
             assertEquals("second-coroutine", second.label)
 
-            // Verify each event can be serialized to JSON (as the SSE route does)
+            // Verify each event can be serialized to JSON via the polymorphic path (as the SSE route does)
             for (event in storedEvents) {
-                val json = Json.encodeToString(event as CoroutineCreated)
+                val json = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)
                 assertTrue(json.isNotEmpty(), "Event should serialize to non-empty JSON")
                 assertTrue(json.contains("\"sessionId\""), "Serialized event should contain sessionId")
                 assertTrue(json.contains("\"seq\""), "Serialized event should contain seq")
@@ -185,9 +189,9 @@ class SseStreamTest {
             // 'kind' is a computed property accessed directly by the SSE route, not serialized in JSON
             assertEquals("CoroutineCreated", event.kind, "Event kind should be 'CoroutineCreated'")
 
-            // Serialize the event the same way the SSE route does: Json.encodeToString(event)
-            val serialized = Json.encodeToString(event)
-            val eventJson = Json.parseToJsonElement(serialized).jsonObject
+            // Serialize the event the same way the SSE route does: polymorphic via appJson
+            val serialized = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)
+            val eventJson = appJson.parseToJsonElement(serialized).jsonObject
 
             // 'sessionId' and 'seq' are used to construct the SSE id field: "${event.sessionId}-${event.seq}"
             val eventSessionId = eventJson["sessionId"]?.jsonPrimitive?.content
