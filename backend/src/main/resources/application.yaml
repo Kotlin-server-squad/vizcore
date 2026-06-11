@@ -11,3 +11,6 @@ auth:
 cors:
   allowedOrigins: ${CORS_ALLOWED_ORIGINS:"http://localhost:3000,http://127.0.0.1:3000"}
   allowedMethods: ${CORS_ALLOWED_METHODS:"GET,POST,DELETE,OPTIONS"}
+
+session:
+  maxEvents: ${SESSION_MAX_EVENTS:10000}
