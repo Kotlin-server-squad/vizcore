@@ -10,5 +10,6 @@ RUN ./gradlew buildFatJar --no-daemon
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/build/libs/*-all.jar app.jar
+COPY --from=build /app/src/main/resources/logback-prod.xml /app/logback-prod.xml
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Dlogback.configurationFile=/app/logback-prod.xml", "-jar", "app.jar"]
