@@ -45,7 +45,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-04-PLAN.md — Health endpoints /api/health|live|ready + /health alias (PROD-01), CORS config test (PROD-03), OpenAPI accuracy (PROD-04)
+- [x] 01-04-PLAN.md — Health endpoints /api/health|live|ready + /health alias (PROD-01), CORS config test (PROD-03), OpenAPI accuracy (PROD-04)
 - [ ] 01-05-PLAN.md — Prod logback profile selection (PROD-02) + full ADR-020 7-metric set (PROD-05)
 
 ### Phase 2: User-Value Visualization
@@ -110,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 3/5 | In Progress|  |
+| 1. Foundation & Production Readiness | 4/5 | In Progress|  |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |

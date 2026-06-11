@@ -24,10 +24,10 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 
 ### Production Readiness
 
-- [ ] **PROD-01**: `GET /api/health` (plus `/live`, `/ready`) returns `HealthStatus` with component checks (sessionManager, memory), uptime, and version.
+- [x] **PROD-01**: `GET /api/health` (plus `/live`, `/ready`) returns `HealthStatus` with component checks (sessionManager, memory), uptime, and version.
 - [ ] **PROD-02**: Logging uses environment-selectable dev/prod Logback profiles; no stray `println`.
-- [ ] **PROD-03**: CORS allowed origins/methods are read from `application.yaml`/env, not hardcoded.
-- [ ] **PROD-04**: All endpoints and DTOs have OpenAPI descriptions and the generated spec validates.
+- [x] **PROD-03**: CORS allowed origins/methods are read from `application.yaml`/env, not hardcoded.
+- [x] **PROD-04**: All endpoints and DTOs have OpenAPI descriptions and the generated spec validates.
 - [ ] **PROD-05**: Micrometer exposes the full ADR-020 metric set (events emitted/dropped, scenario duration, event-processing duration, plus active-sessions and SSE-client gauges).
 
 ### Replay & Time Travel
@@ -140,10 +140,10 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | FND-01 | Phase 1 | Complete |
 | FND-02 | Phase 1 | Complete |
 | FND-03 | Phase 1 | Complete |
-| PROD-01 | Phase 1 | Pending |
+| PROD-01 | Phase 1 | Complete |
 | PROD-02 | Phase 1 | Pending |
-| PROD-03 | Phase 1 | Pending |
-| PROD-04 | Phase 1 | Pending |
+| PROD-03 | Phase 1 | Complete |
+| PROD-04 | Phase 1 | Complete |
 | PROD-05 | Phase 1 | Pending |
 | RPLY-01 | Phase 2 | Pending |
 | RPLY-02 | Phase 2 | Pending |
