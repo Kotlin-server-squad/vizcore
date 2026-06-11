@@ -6,7 +6,6 @@ import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -32,28 +31,32 @@ class VizScopeCompletionHandlerTest {
      * and since job.isCancelled == true for a failed job, it emits CoroutineCancelled.
      */
     @Test
-    fun `failing coroutine emits CoroutineFailed not CoroutineCancelled (FIX-03)`() =
-        runTest {
+    fun `failing coroutine emits CoroutineFailed not CoroutineCancelled (FIX-03)`(): Unit = runBlocking {
             val session = VizSession("test-fix-03")
-            val viz = VizScope(session)
+
+            // Use a standalone scope with SupervisorJob + CoroutineExceptionHandler so that
+            // the deliberate IllegalStateException thrown by 'failing-child' does not propagate
+            // to the test runner and fail the test before we can assert on events.
+            val exceptionHandler = CoroutineExceptionHandler { _, _ -> /* swallow expected exception */ }
+            val isolatedScope = CoroutineScope(SupervisorJob() + exceptionHandler)
+            val viz = VizScope(session, context = isolatedScope.coroutineContext)
 
             val job =
                 viz.vizLaunch("parent") {
                     vizLaunch("failing-child") {
-                        vizDelay(50)
+                        delay(50)
                         throw IllegalStateException("Intentional failure for regression test")
                     }.join()
                 }
 
-            // Wait for all coroutines to complete (with structured concurrency, parent
-            // will be cancelled when failing-child fails, so we wait/ignore the exception)
+            // Wait for all coroutines to complete; the parent is cancelled via structured concurrency
             try {
                 job.join()
             } catch (_: Exception) {
-                // expected — parent is cancelled due to child failure
+                // expected — parent is cancelled due to failing-child
             }
             // Give the invokeOnCompletion handlers time to fire
-            kotlinx.coroutines.delay(100)
+            delay(100)
 
             val events = session.store.all()
 

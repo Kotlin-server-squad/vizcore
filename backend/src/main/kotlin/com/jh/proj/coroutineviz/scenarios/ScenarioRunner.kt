@@ -112,16 +112,20 @@ object ScenarioRunner {
                             logger.debug("Normal child completed")
                         }
 
-                    // Cancel the long-running child
+                    // Cancel only the long-running child (targeted cancellation — FIX-04).
+                    // Previously child1.cancel() was commented out and the whole job was
+                    // cancelled externally, preventing normal-child from completing.
                     logger.debug("Cancelling long-running child...")
-//            child1.cancel()
+                    vizDelay(500)
+                    child1.cancel()
 
-                    logger.debug("Parent completed")
+                    // Wait for normal-child to finish on its own
+                    child2.join()
+
+                    logger.debug("Parent completed — normal-child finished, child1 was individually cancelled")
                 }
 
             logger.info("Waiting for cancellation scenario to complete...")
-            delay(1000)
-            job.cancel()
             job
         }
 

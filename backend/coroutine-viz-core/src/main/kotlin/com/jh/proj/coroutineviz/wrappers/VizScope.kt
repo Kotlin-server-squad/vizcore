@@ -179,26 +179,25 @@ class VizScope(
                     )
                 }
 
-                cause !is CancellationException && cause.message?.contains(ctx.label ?: "unknown") == true -> {
-                    // Failure - own code threw an exception
-                    // Note: In practice, this rarely happens because coroutineScope
-                    // converts exceptions to CancellationException
+                cause !is CancellationException -> {
+                    // Failure — coroutine threw a non-cancellation exception.
+                    // Previously the condition also checked cause.message.contains(ctx.label),
+                    // which was always false (the label is not in the exception message) and
+                    // caused this branch to be unreachable (FIX-03).
                     session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
                     session.send(
                         ctx.jobStateChanged(
                             isActive = false,
                             isCompleted = false,
-                            isCancelled = true,
+                            isCancelled = false,
                             childrenCount = coroutineContext[Job]?.children?.count() ?: 0,
                         ),
                     )
                 }
 
-                cause is CancellationException || job.isCancelled -> {
-                    // Cancellation - could be:
-                    // - Child failed (structured concurrency cancellation)
-                    // - Explicit cancellation
-                    // - Parent cancelled
+                else -> {
+                    // Cancellation — cause is CancellationException (explicit cancel, parent cancel,
+                    // or structured concurrency propagation from a failed child).
                     session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
                     session.send(
                         ctx.jobStateChanged(
@@ -208,13 +207,6 @@ class VizScope(
                             childrenCount = coroutineContext[Job]?.children?.count() ?: 0,
                         ),
                     )
-                }
-
-                else -> {
-                    // Failure - own code threw an exception
-                    // Note: In practice, this rarely happens because coroutineScope
-                    // converts exceptions to CancellationException
-                    throw IllegalArgumentException("It is not correct state")
                 }
             }
         }
@@ -337,26 +329,14 @@ class VizScope(
                     )
                 }
 
-                cause !is CancellationException && cause.message?.contains(ctx.label ?: "unknown") == true -> {
-                    // Failure - own code threw an exception
-                    // Note: In practice, this rarely happens because coroutineScope
-                    // converts exceptions to CancellationException
+                cause !is CancellationException -> {
+                    // Failure — deferred threw a non-cancellation exception (FIX-03 parity for vizAsync).
                     session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
                 }
 
-                cause is CancellationException || deferred.isCancelled -> {
-                    // Cancellation - could be:
-                    // - Child failed (structured concurrency cancellation)
-                    // - Explicit cancellation
-                    // - Parent cancelled
-                    session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
-                }
-
                 else -> {
-                    // Failure - own code threw an exception
-                    // Note: In practice, this rarely happens because coroutineScope
-                    // converts exceptions to CancellationException
-                    throw IllegalArgumentException("It is not correct state")
+                    // Cancellation — cause is CancellationException.
+                    session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
                 }
             }
         }
