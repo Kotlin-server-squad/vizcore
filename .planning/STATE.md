@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-04-PLAN.md (PROD-01/03/04 health probes + CORS test + OpenAPI spec)
-last_updated: "2026-06-11T14:03:44.451Z"
+status: verifying
+stopped_at: Completed 01-05-PLAN.md (PROD-02 logstash dep + prod logback wiring; PROD-05 full ADR-020 metrics + /metrics endpoint)
+last_updated: "2026-06-11T14:45:29.543Z"
 last_activity: 2026-06-11 -- Phase 01 Plan 02 complete (FIX-02 frontend types)
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 4
-  percent: 0
+  completed_plans: 5
+  percent: 20
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 
 Phase: 01 (foundation-production-readiness) — EXECUTING
 Plan: 5 of 5 (plans 01 and 02 complete)
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-11 -- Phase 01 Plan 02 complete (FIX-02 frontend types)
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
@@ -54,6 +54,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 *Updated after each plan completion*
 | Phase 01 P03 | 6 | 3 tasks | 15 files |
 | Phase 01 P04 | ~10min | 3 tasks | 4 files |
+| Phase 01 P05 | 15min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Recent decisions affecting current work:
 - [Phase ?]: D-01 big-bang delete: 10 fork files removed in one commit; no import changes needed (same package name)
 - [Phase ?]: APP_VERSION constant '0.0.1' hardcoded from build.gradle.kts version string (simplest non-empty version for Phase 1)
 - [Phase ?]: OpenAPI security: [] global declaration satisfies security-defined lint rule without real auth; ADR-016 auth planned for Phase 3
+- [Phase ?]: PROD-02: logstash dep added; prod logback profile wired via JVM flag in Dockerfile ENTRYPOINT
+- [Phase ?]: PROD-05: /metrics endpoint; all 7 ADR-020 metrics wired; coroutine-viz-core kept Micrometer-free via callbacks
 
 ### Pending Todos
 
@@ -96,6 +99,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-11T14:03:44.447Z
-Stopped at: Completed 01-04-PLAN.md (PROD-01/03/04 health probes + CORS test + OpenAPI spec)
-Resume file: .planning/phases/01-foundation-production-readiness/01-04-SUMMARY.md
+Last session: 2026-06-11T14:45:29.539Z
+Stopped at: Completed 01-05-PLAN.md (PROD-02 logstash dep + prod logback wiring; PROD-05 full ADR-020 metrics + /metrics endpoint)
+Resume file: None
