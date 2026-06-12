@@ -435,7 +435,8 @@ paths:
       tags: [Projections]
       summary: Get thread activity
       description: >
-        Returns a list of thread assignment and release events, showing which
+        Returns a map keyed by thread ID, where each value is the list of
+        thread assignment and release events for that thread — showing which
         coroutines ran on which threads and when. Useful for rendering thread
         lane visualizations.
       operationId: getSessionThreads
@@ -443,13 +444,15 @@ paths:
         - $ref: "#/components/parameters/SessionIdPath"
       responses:
         "200":
-          description: Array of thread activity events
+          description: Map of thread ID to that thread's activity events
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ThreadEvent"
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ThreadEvent"
         "400":
           description: Missing session ID
           content:
@@ -1729,7 +1732,7 @@ components:
         state:
           type: string
           description: "Current coroutine state"
-          enum: [CREATED, RUNNING, SUSPENDED, COMPLETED, CANCELLED, FAILED]
+          enum: [CREATED, ACTIVE, SUSPENDED, WAITING_FOR_CHILDREN, COMPLETED, CANCELLED, FAILED]
 
     # -----------------------------------------------------------------------
     # Events
@@ -1795,7 +1798,7 @@ components:
         state:
           type: string
           description: "Current coroutine state"
-          enum: [CREATED, RUNNING, SUSPENDED, COMPLETED, CANCELLED, FAILED]
+          enum: [CREATED, ACTIVE, SUSPENDED, WAITING_FOR_CHILDREN, COMPLETED, CANCELLED, FAILED]
         createdAtNanos:
           type: integer
           format: int64
@@ -1888,7 +1891,7 @@ components:
         state:
           type: string
           description: "Current coroutine state"
-          enum: [CREATED, RUNNING, SUSPENDED, COMPLETED, CANCELLED, FAILED]
+          enum: [CREATED, ACTIVE, SUSPENDED, WAITING_FOR_CHILDREN, COMPLETED, CANCELLED, FAILED]
         totalDuration:
           type: integer
           format: int64
@@ -2090,7 +2093,7 @@ components:
         coroutineDurations:
           type: object
           description: >
-            Map of coroutine ID to total duration in nanoseconds (from first
+            Map of coroutine ID to total duration in milliseconds (from first
             event to last event for that coroutine)
           additionalProperties:
             type: integer
@@ -2099,7 +2102,7 @@ components:
           type: object
           description: >
             Map of coroutine ID to list of individual suspension durations
-            in nanoseconds
+            in milliseconds
           additionalProperties:
             type: array
             items:
@@ -2108,7 +2111,7 @@ components:
         totalDuration:
           type: integer
           format: int64
-          description: Overall duration of the event stream in nanoseconds
+          description: Overall duration of the event stream in milliseconds
 
     # -----------------------------------------------------------------------
     # Scenarios
