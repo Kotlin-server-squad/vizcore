@@ -1,14 +1,26 @@
 ---
-status: diagnosed
+status: complete
 phase: 01-foundation-production-readiness
 source: [01-VERIFICATION.md]
 started: 2026-06-12T06:57:01Z
-updated: 2026-06-12T11:55:00Z
+updated: 2026-06-12T13:25:00Z
 ---
 
 ## Current Test
 
-[testing complete — round 2 executed 2026-06-12 via browser automation with network/console instrumentation]
+[testing complete — round 3 executed 2026-06-12 via browser automation after gap plans 01-14/01-15; both round-2 gaps verified closed in the live browser]
+
+## Round 3 Tests (post 01-14/01-15)
+
+### R3-1. Threads tab renders live thread-lane data (gap 1 re-test)
+expected: Gallery → Run, Threads tab shows lanes + dispatcher cards, no permanent empty state.
+result: pass
+reported: "Thread Activity panel rendered 6 worker lanes (DefaultDispatcher-worker-1/3/5/6/8/10) with ASSIGNED chips, coroutine ids, and timestamps; Dispatchers.Default card showed Thread Pool Size 6 with thread IDs 56/65/78/79/81/83."
+
+### R3-2. SSE connects on first load of a fresh 0-event session (gap 2 re-test)
+expected: Badge goes live without reload; events update during run; button recovers on completion; curl prints ': connected' with HTTP 200.
+result: pass
+reported: "Fresh gallery session connected immediately (green 'Connected' badge, no reload), events live-updated 23→40 during the run, button transitioned 'Scenario Running'→'Scenario Completed'. curl on a fresh 0-event session printed ': connected' with HTTP 200 (previously HTTP 000/no bytes)."
 
 ## Tests
 
@@ -35,7 +47,7 @@ blocked: 0
 ## Gaps
 
 - truth: "Threads tab renders live thread-lane data during and after a scenario run"
-  status: failed
+  status: resolved
   reason: "GET /api/sessions/{id}/threads returns 200 with data shaped Map<String, List<ThreadEvent>> (e.g. {\"57\":[…],\"80\":[…]}), but frontend ThreadActivityResponse expects {threads, dispatcherInfo}; data.threads is undefined → permanent 'No thread activity data available yet'. SessionDetails.tsx hides the mismatch with an 'as unknown as' double cast. Same finding as 01-REVIEW.md critical CR-02."
   severity: major
   test: 1
@@ -48,7 +60,7 @@ blocked: 0
     - "Align FE types/adapters with the real Map response (or change BE to return {threads, dispatcherInfo}); remove the double cast; value-asserting integration test on the live shape"
 
 - truth: "SSE connects on first load of a freshly created session (gallery → Run flow)"
-  status: failed
+  status: resolved
   reason: "On a session with zero events, the backend SSE handler writes no bytes (no headers flushed) until the first event — curl shows HTTP 000/no response; via the Vite proxy the browser's EventSource request died with HTTP 500. Per the EventSource spec a non-200 is FATAL (no auto-reconnect), so the live view is permanently dead: badge stuck 'Connecting…', event count frozen at last REST fetch (23 vs backend 40), Run button stuck 'Scenario Running'. Reload fixes it because replay bytes flush headers immediately. Round-1's 'Connecting… badge' cosmetic finding was this same bug, misdiagnosed."
   severity: major
   test: 1
