@@ -193,7 +193,11 @@ class VizScope(
                     // Previously the condition also checked cause.message.contains(ctx.label),
                     // which was always false (the label is not in the exception message) and
                     // caused this branch to be unreachable (FIX-03).
-                    session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
+                    //
+                    // Emit JobStateChanged BEFORE the terminal event so that CoroutineFailed
+                    // receives the higher seq (nextSeq() is called at construction time inside
+                    // each ctx.* factory). This ensures the terminal event is always the
+                    // highest-seq event for this coroutineId, satisfying NoEventsAfterTerminalRule.
                     session.send(
                         ctx.jobStateChanged(
                             isActive = false,
@@ -206,12 +210,17 @@ class VizScope(
                             childrenCount = job.children.count(),
                         ),
                     )
+                    session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
                 }
 
                 else -> {
                     // Cancellation — cause is CancellationException (explicit cancel, parent cancel,
                     // or structured concurrency propagation from a failed child).
-                    session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
+                    //
+                    // Emit JobStateChanged BEFORE the terminal event so that CoroutineCancelled
+                    // receives the higher seq (nextSeq() is called at construction time inside
+                    // each ctx.* factory). This ensures the terminal event is always the
+                    // highest-seq event for this coroutineId, satisfying NoEventsAfterTerminalRule.
                     session.send(
                         ctx.jobStateChanged(
                             isActive = false,
@@ -224,6 +233,7 @@ class VizScope(
                             childrenCount = job.children.count(),
                         ),
                     )
+                    session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
                 }
             }
         }
