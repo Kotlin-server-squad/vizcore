@@ -11,7 +11,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [x] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (5/5 plans executed; verification found 2 blocker gaps + CR-03; 3 gap-closure plans 01-06..01-08 added) (completed 2026-06-12)
+- [ ] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (5 plans executed; code-verification gap-closure 01-06..01-08 done; UAT then found 7 runtime gaps — gap-closure plans 01-09..01-12 added, pending execution)
 - [ ] **Phase 2: User-Value Visualization** - Replay/time-travel, PNG/SVG/WebM export, side-by-side session comparison
 - [ ] **Phase 3: Persistence, Auth & Sharing** - Optional JDBC store + retention, route-level auth + tenant isolation, shareable read-only sessions
 - [ ] **Phase 4: Scale, Observability & SDK** - Sampling/batching/compression + load harness, OpenTelemetry export, published SDK + CI/CD CLI
@@ -32,7 +32,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
   3. `GET /api/health` (and `/live`, `/ready`) returns component checks, uptime, and version; logging uses dev/prod profiles; CORS reads from config.
   4. Micrometer exposes the full ADR-020 metric set (events emitted/dropped, scenario + event-processing durations, active sessions, SSE clients) and the OpenAPI spec is fully described and validates.
 
-**Plans**: 8 plans (5 executed + 3 gap-closure)
+**Plans**: 12 plans (5 executed + 3 code-verification gap-closure executed + 4 UAT gap-closure pending)
 Plans:
 **Wave 1**
 
@@ -56,6 +56,16 @@ Plans:
 **Wave 5** *(gap closure — blocked on Wave 4; 01-07 must complete first)*
 
 - [x] 01-08-PLAN.md — Gap 3 (CR-03 / FND-01): add a Job to core VizScope.coroutineContext so cancel()/cancelAndJoin() work + cancellation regression test
+
+**Wave 6** *(UAT gap closure — 01-09, 01-10, 01-11 run in parallel; no file overlap)*
+
+- [ ] 01-09-PLAN.md — UAT gap: VizScope emits JobStateChanged before terminal event so the validator's NoEventsAfterTerminal rule passes on a clean run + terminal-ordering regression test
+- [ ] 01-10-PLAN.md — UAT gap: backend TimingAnalyzer converts durations ns→ms to match the documented frontend ms contract (fixes ~109,172s display) + magnitude-sanity test
+- [ ] 01-11-PLAN.md — UAT gap: consistent event discriminator (type→kind) across REST and SSE paths so the Jobs tab shows a non-zero count + raw-payload discriminator test
+
+**Wave 7** *(UAT gap closure — blocked on Wave 6; 01-11 must complete first, shared SessionDetails.tsx/use-event-stream.ts)*
+
+- [ ] 01-12-PLAN.md — UAT gaps: debounce SSE polling storm, completion-aware scenario button, Connected badge on first onopen, StructuredConcurrencyInfo parent-FAILED copy + button-state/copy tests
 
 ### Phase 2: User-Value Visualization
 
@@ -119,7 +129,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 8/8 | Complete   | 2026-06-12 |
+| 1. Foundation & Production Readiness | 8/12 | Gap closure (UAT) | - |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
