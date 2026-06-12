@@ -50,7 +50,7 @@ Plans:
 
 **Wave 4** *(gap closure — blocks Phase 1 pass; 01-06 and 01-07 run in parallel)*
 
-- [ ] 01-06-PLAN.md — Gap 1 (CR-02 / PROD-05): wire viz.sse.clients.active gauge into SSE stream lifecycle + value-asserting test
+- [x] 01-06-PLAN.md — Gap 1 (CR-02 / PROD-05): wire viz.sse.clients.active gauge into SSE stream lifecycle + value-asserting test
 - [ ] 01-07-PLAN.md — Gap 2 (CR-01 / FND-01,FND-03): delete the wrappers/ fork (11 files) + extend ForkDeletionTest to guard wrappers/
 
 **Wave 5** *(gap closure — blocked on Wave 4; 01-07 must complete first)*
@@ -119,7 +119,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 5/5 | Complete   | 2026-06-11 |
+| 1. Foundation & Production Readiness | 6/8 | In Progress|  |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
