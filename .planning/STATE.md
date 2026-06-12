@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-05-PLAN.md (PROD-02 logstash dep + prod logback wiring; PROD-05 full ADR-020 metrics + /metrics endpoint)
-last_updated: "2026-06-11T19:15:18.752Z"
-last_activity: 2026-06-11 -- Phase 01 execution started
+stopped_at: Completed 01-09-PLAN.md (FIX-03 terminal event ordering; VizScope JobStateChanged before terminal event; NoEventsAfterTerminalRule zero self-findings)
+last_updated: "2026-06-12T09:13:30.000Z"
+last_activity: 2026-06-12 -- Phase 01 execution started
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 8
-  completed_plans: 5
+  total_plans: 12
+  completed_plans: 9
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 ## Current Position
 
 Phase: 01 (foundation-production-readiness) — EXECUTING
-Plan: 1 of 8
+Plan: 1 of 12
 Status: Executing Phase 01
-Last activity: 2026-06-11 -- Phase 01 execution started
+Last activity: 2026-06-12 -- Phase 01 execution started
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
 
@@ -73,6 +73,7 @@ Recent decisions affecting current work:
 - [Phase ?]: OpenAPI security: [] global declaration satisfies security-defined lint rule without real auth; ADR-016 auth planned for Phase 3
 - [Phase ?]: PROD-02: logstash dep added; prod logback profile wired via JVM flag in Dockerfile ENTRYPOINT
 - [Phase ?]: PROD-05: /metrics endpoint; all 7 ADR-020 metrics wired; coroutine-viz-core kept Micrometer-free via callbacks
+- [Phase 1, Plan 09]: VizScope terminal ordering fix: emit JobStateChanged BEFORE coroutineFailed/coroutineCancelled so terminal event has highest seq; vizAsync left unchanged (no JobStateChanged emitted there)
 
 ### Pending Todos
 
@@ -99,6 +100,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-11T14:45:29.539Z
-Stopped at: Completed 01-05-PLAN.md (PROD-02 logstash dep + prod logback wiring; PROD-05 full ADR-020 metrics + /metrics endpoint)
+Last session: 2026-06-12T09:13:30.000Z
+Stopped at: Completed 01-09-PLAN.md (FIX-03 terminal event ordering; VizScope JobStateChanged before terminal event; NoEventsAfterTerminalRule zero self-findings)
 Resume file: None
