@@ -56,7 +56,13 @@ class VizScope(
     context: CoroutineContext = EmptyCoroutineContext,
     val scopeId: String = "scope-${session.nextSeq()}",
 ) : CoroutineScope {
-    override val coroutineContext: CoroutineContext = context + CoroutineName("VizScope-$scopeId")
+    // Compose session scope context first, then the caller's context (so a custom dispatcher
+    // wins), then a Job parented to the session scope's Job — session close cancels this scope,
+    // and cancel()/cancelAndJoin() resolve a Job this scope owns (a caller-supplied Job is
+    // deliberately overridden by the trailing Job).
+    override val coroutineContext: CoroutineContext =
+        session.sessionScope.coroutineContext + context +
+            Job(session.sessionScope.coroutineContext[Job]) + CoroutineName("VizScope-$scopeId")
 
     /**
      * Launch a coroutine with visualization tracking while maintaining structured concurrency.
