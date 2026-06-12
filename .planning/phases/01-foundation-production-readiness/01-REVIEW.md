@@ -65,8 +65,8 @@ files_reviewed_list:
 findings:
   critical: 0
   warning: 2
-  info: 8
-  total: 10
+  info: 7
+  total: 9
   resolved: 2
 status: triaged
 ---
@@ -422,4 +422,4 @@ All 18 fix-now findings resolved and committed atomically:
 - Backend (7): WR-02+WR-12 a89ce08, WR-03 b01e7b9, WR-06 4ec349e, WR-11 6325282, WR-14 354c0d1, WR-08 f438c18, IN-05 1c7c44e — `./gradlew test` green
 - Frontend (11): CR-01 616ebc9, WR-13 885c2f4, WR-16 ec7c834, WR-04 e0fdd24, WR-15 e076772, WR-05 a624a3f, WR-09 a2cc21f, IN-09 f261232, IN-11 569d51f, IN-12 5c29124, IN-13 926529d — 281/281 tests, tsc + eslint clean
 
-Remaining open: WR-07, WR-10 (backlogged as todos), IN-01–04/06–08/10 (accepted). New backlog todos: backend events-package fork, shared/api-types regeneration, ThreadLanesView unused-component cleanup.
+Remaining open: WR-07, WR-10 (backlogged as todos), IN-01–04/06–08 (accepted). IN-10 was promoted from accepted to FIXED after live smoke testing proved it user-visible (Mixed Sequential/Parallel scenario 404’d on its slash-bearing session id) — session ids now URL-encoded in api-client paths and gallery names sanitized; verified in browser. New backlog todos: backend events-package fork, shared/api-types regeneration, ThreadLanesView unused-component cleanup.
