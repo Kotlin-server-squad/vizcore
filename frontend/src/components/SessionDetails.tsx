@@ -424,7 +424,7 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
             )}
 
             <div className="py-2">
-              <DispatcherOverview sessionId={sessionId} />
+              <DispatcherOverview sessionId={sessionId} isLive={streamEnabled} />
             </div>
           </div>
         </Tab>

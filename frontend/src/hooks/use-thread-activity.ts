@@ -45,9 +45,15 @@ export function useThreadActivity(sessionId: string | undefined, isLive = false)
  * Derives the lane view model from the wire shape via buildThreadLanes.
  * External contract unchanged:
  * `{ ...query, data: Map<dispatcherName, ThreadLaneData[]>, dispatcherInfo }`.
+ *
+ * `isLive` is forwarded to useThreadActivity (WR-15): all observers of the
+ * shared ['thread-activity', sessionId] query key must agree on the live
+ * flag, otherwise TanStack Query refetches at the SMALLEST interval among
+ * observers and the legacy 2s poll silently defeats the 5s live-mode
+ * fallback.
  */
-export function useThreadLanesByDispatcher(sessionId: string | undefined) {
-  const { data: activity, ...query } = useThreadActivity(sessionId)
+export function useThreadLanesByDispatcher(sessionId: string | undefined, isLive = false) {
+  const { data: activity, ...query } = useThreadActivity(sessionId, isLive)
 
   const lanes = useMemo(
     () => (activity ? buildThreadLanes(activity) : undefined),
@@ -124,9 +130,12 @@ export function useThreadUtilizationStats(activity: ThreadActivityResponse | und
  *
  * A coroutine is active on a thread iff its derived segment is still open
  * (`endNanos == null`), i.e. an ASSIGNED event without a matching RELEASED.
+ *
+ * `isLive` is forwarded to useThreadActivity (WR-15) — see
+ * useThreadLanesByDispatcher for why all observers must agree on the flag.
  */
-export function useActiveCoroutinesPerThread(sessionId: string | undefined) {
-  const { data: activity } = useThreadActivity(sessionId)
+export function useActiveCoroutinesPerThread(sessionId: string | undefined, isLive = false) {
+  const { data: activity } = useThreadActivity(sessionId, isLive)
 
   const activeCoroutines = useMemo(() => {
     if (!activity) return new Map<number, string[]>()

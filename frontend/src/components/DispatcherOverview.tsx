@@ -5,10 +5,16 @@ import type { DispatcherInfo } from '@/types/api'
 
 interface DispatcherOverviewProps {
   sessionId: string
+  /**
+   * Forwarded to the shared ['thread-activity', sessionId] query (WR-15):
+   * while the SSE stream drives updates, polling falls back to the slow 5s
+   * interval instead of re-arming the legacy 2s poll on the shared key.
+   */
+  isLive?: boolean
 }
 
-export function DispatcherOverview({ sessionId }: DispatcherOverviewProps) {
-  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId)
+export function DispatcherOverview({ sessionId, isLive = false }: DispatcherOverviewProps) {
+  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId, isLive)
 
   if (isLoading) {
     return (
