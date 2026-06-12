@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-13-PLAN.md (CR-01/CR-02 gap closure: max-wait debounces, thread-activity invalidation)"
-last_updated: "2026-06-12T11:09:18.461Z"
+stopped_at: "Completed 01-14-PLAN.md (UAT round-2 gap 1: thread-activity wire-shape alignment via buildThreadLanes adapter)"
+last_updated: "2026-06-12T12:25:00.000Z"
 last_activity: 2026-06-12 -- Phase 01 execution started
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 13
-  completed_plans: 13
-  percent: 20
+  completed_phases: 0
+  total_plans: 15
+  completed_plans: 14
+  percent: 19
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 ## Current Position
 
 Phase: 01 (foundation-production-readiness) — EXECUTING
-Plan: 2 of 13
+Plan: 14 of 15 complete (01-15 remaining in Wave 9)
 Status: Ready to execute
 Last activity: 2026-06-12 -- Phase 01 execution started
 
@@ -59,6 +59,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 01 P11 | 4min | 2 tasks | 1 files |
 | Phase 01 P12 | 22 | 2 tasks | 7 files |
 | Phase 01 P13 | ~7 min | 2 tasks | 5 files |
+| Phase 01 P14 | ~10 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Normalization already correct; added discriminator regression test as the missing proof artifact
 - [Phase ?]: [Phase 1, Plan 13]: Max-wait caps added to both 01-12 debounces (SSE invalidation 1000ms, session refetch 1500ms); every SSE flush invalidates both sessions and thread-activity keys with a 5s live fallback poll (CR-01/CR-02 closed)
 - [Phase ?]: [Phase 1, Plan 13]: SessionDetails max-wait window ref reset moved to a streamEnabled-keyed teardown effect — per-event cleanup would restart the max-wait clock (plan instruction corrected via Rule 1)
+- [Phase 1, Plan 14]: Frontend aligned to the real GET /threads wire shape (Map<threadId, ThreadEvent[]>) via pure buildThreadLanes adapter; fictional {threads, dispatcherInfo} mock generators deleted so MSW serves the backend's exact shape (CR-02 regression trap closed)
+- [Phase 1, Plan 14]: useThreadLanesByDispatcher groups null-dispatcher lanes via (dispatcherId ?? 'Unknown') — strict id equality would silently drop them (Rule 1 fix to plan instruction)
+- [Phase 1, Plan 14]: SessionDetails.test.tsx mocks apiClient (not the hook) and renders the real ThreadTimeline so the UAT-gap-1 integration test exercises the genuine wire-shape pipeline
 
 ### Pending Todos
 
@@ -108,6 +112,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-12T11:09:18.457Z
-Stopped at: Completed 01-13-PLAN.md (CR-01/CR-02 gap closure: max-wait debounces, thread-activity invalidation)
+Last session: 2026-06-12T12:25:00.000Z
+Stopped at: Completed 01-14-PLAN.md (UAT round-2 gap 1: thread-activity wire-shape alignment)
 Resume file: None
