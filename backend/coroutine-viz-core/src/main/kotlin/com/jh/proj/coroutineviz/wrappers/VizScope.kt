@@ -474,17 +474,16 @@ class VizScope(
      * @param block The flow builder block
      * @return An InstrumentedFlow that tracks all operations
      */
-    fun <T> vizFlow(
+    suspend fun <T> vizFlow(
         label: String? = null,
         block: suspend FlowCollector<T>.() -> Unit,
     ): InstrumentedFlow<T> {
         val flowId = "flow-${session.nextSeq()}"
-        val coroutineId =
-            runCatching {
-                kotlinx.coroutines.runBlocking {
-                    currentCoroutineContext()[VizCoroutineElement]?.coroutineId
-                }
-            }.getOrNull()
+        // Read the caller's context directly. The previous runBlocking { ... } variant
+        // started a fresh coroutine whose context never contained the caller's
+        // VizCoroutineElement, so the lookup always returned null (and blocking a
+        // dispatcher thread was a deadlock hazard).
+        val coroutineId = currentCoroutineContext()[VizCoroutineElement]?.coroutineId
 
         // Emit FlowCreated event
         session.send(
@@ -522,17 +521,13 @@ class VizScope(
      * @param label Optional human-readable label
      * @return An InstrumentedFlow that tracks all operations
      */
-    fun <T> vizWrap(
+    suspend fun <T> vizWrap(
         existingFlow: Flow<T>,
         label: String? = null,
     ): InstrumentedFlow<T> {
         val flowId = "flow-${session.nextSeq()}"
-        val coroutineId =
-            runCatching {
-                kotlinx.coroutines.runBlocking {
-                    currentCoroutineContext()[VizCoroutineElement]?.coroutineId
-                }
-            }.getOrNull()
+        // See vizFlow: read the caller's context directly instead of runBlocking.
+        val coroutineId = currentCoroutineContext()[VizCoroutineElement]?.coroutineId
 
         // Emit FlowCreated event
         session.send(
