@@ -47,17 +47,24 @@ function createWrapper(queryClient: QueryClient) {
   }
 }
 
-const EVENT_PAYLOAD = JSON.stringify({
-  type: 'CoroutineCreated',
-  sessionId: 'session-1',
-  seq: 1,
-  tsNanos: 1000,
-  coroutineId: 'c1',
-  jobId: 'j1',
-  parentCoroutineId: null,
-  scopeId: 'scope-1',
-  label: 'test',
-})
+/**
+ * Build an event payload with a unique monotonic seq. Real backend streams
+ * have monotonically increasing seqs; the hook's replay-dedup guard (01-15)
+ * correctly drops literal seq duplicates, so every simulated event must carry
+ * a fresh seq.
+ */
+const eventPayload = (seq: number) =>
+  JSON.stringify({
+    type: 'CoroutineCreated',
+    sessionId: 'session-1',
+    seq,
+    tsNanos: 1000 + seq,
+    coroutineId: `c${seq}`,
+    jobId: `j${seq}`,
+    parentCoroutineId: null,
+    scopeId: 'scope-1',
+    label: `test-${seq}`,
+  })
 
 /** Count invalidateQueries calls whose queryKey starts with the given root. */
 function invalidationCount(queryClient: QueryClient, keyRoot: string): number {
@@ -98,9 +105,9 @@ describe('useEventStream - debounced invalidation', () => {
     )
 
     act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(3))
     })
 
     // At t=100ms — still inside the debounce window (~400ms): no invalidation yet
@@ -119,7 +126,7 @@ describe('useEventStream - debounced invalidation', () => {
 
     act(() => {
       for (let i = 0; i < 5; i++) {
-        mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+        mockEventSource.simulateEvent('CoroutineCreated', eventPayload(i + 1))
       }
       // Advance past the debounce window so the trailing-edge timer fires
       vi.advanceTimersByTime(600)
@@ -137,8 +144,8 @@ describe('useEventStream - debounced invalidation', () => {
     )
 
     act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
       vi.advanceTimersByTime(600)
     })
 
@@ -146,7 +153,7 @@ describe('useEventStream - debounced invalidation', () => {
     expect(invalidationCount(queryClient, 'sessions')).toBe(1)
 
     act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(3))
       vi.advanceTimersByTime(600)
     })
 
@@ -165,7 +172,7 @@ describe('useEventStream - debounced invalidation', () => {
     // A pure trailing-edge debounce would never flush; the max-wait cap must.
     act(() => {
       for (let i = 0; i < 8; i++) {
-        mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+        mockEventSource.simulateEvent('CoroutineCreated', eventPayload(i + 1))
         vi.advanceTimersByTime(200)
       }
     })
@@ -181,8 +188,8 @@ describe('useEventStream - debounced invalidation', () => {
     )
 
     act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
-      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
       vi.advanceTimersByTime(600)
     })
 
