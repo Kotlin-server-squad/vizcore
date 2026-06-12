@@ -418,28 +418,10 @@ export type VizEvent =
   | DeferredAwaitStartedEvent
   | DeferredAwaitCompletedEvent
 
-// Event filtering and pagination
-export interface EventFilter {
-  coroutineId?: string
-  scopeId?: string
-  kind?: VizEventKind | VizEventKind[]
-  fromTimestamp?: number
-  toTimestamp?: number
-}
-
-export interface PaginatedEventsRequest {
-  sessionId: string
-  sinceStep?: number
-  limit?: number
-  filter?: EventFilter
-}
-
-export interface PaginatedEventsResponse {
-  events: VizEvent[]
-  nextStep?: number | null
-  hasMore: boolean
-  total: number
-}
+// NOTE: the former EventFilter / PaginatedEventsRequest / PaginatedEventsResponse
+// types were removed (REVIEW WR-09): GET /sessions/{id}/events supports neither
+// pagination nor filtering — it always returns the full event list as a bare
+// JSON array.
 
 // API Response types
 export interface CreateSessionResponse {

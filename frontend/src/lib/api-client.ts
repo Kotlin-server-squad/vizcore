@@ -10,8 +10,6 @@ import type {
   ThreadActivity,
   HierarchyNode,
   CoroutineTimeline,
-  PaginatedEventsRequest,
-  PaginatedEventsResponse,
   ValidationResponse,
   SessionComparison,
 } from '@/types/api'
@@ -55,43 +53,14 @@ class ApiClient {
     return this.fetchJson(`/sessions/${sessionId}`, { method: 'DELETE' })
   }
 
-  async getSessionEvents(sessionId: string, options?: {
-    sinceStep?: number
-    limit?: number
-    filter?: string
-  }): Promise<VizEvent[]> {
-    const params = new URLSearchParams()
-    if (options?.sinceStep !== undefined) params.set('sinceStep', options.sinceStep.toString())
-    if (options?.limit) params.set('limit', options.limit.toString())
-    if (options?.filter) params.set('filter', options.filter)
-    
-    const query = params.toString()
-    const url = `/sessions/${sessionId}/events${query ? `?${query}` : ''}`
-    const events = await this.fetchJson<any[]>(url)
+  // Wire shape: GET /sessions/{id}/events returns the FULL event list as a
+  // bare JSON array (SessionRoutes.kt returns store.all() unconditionally).
+  // The backend supports no pagination or filtering on this endpoint — do
+  // not add query params here without implementing them server-side first.
+  async getSessionEvents(sessionId: string): Promise<VizEvent[]> {
+    const events = await this.fetchJson<any[]>(`/sessions/${sessionId}/events`)
     // Normalize events from backend format (type -> kind)
     return normalizeEvents(events)
-  }
-
-  async getSessionEventsPaginated(options: PaginatedEventsRequest): Promise<PaginatedEventsResponse> {
-    const params = new URLSearchParams()
-    if (options.sinceStep !== undefined) params.set('sinceStep', options.sinceStep.toString())
-    if (options.limit) params.set('limit', options.limit.toString())
-    if (options.filter) {
-      // Convert filter object to query string (simple implementation)
-      const filterStr = Object.entries(options.filter)
-        .map(([key, value]) => `${key}:${Array.isArray(value) ? value.join(',') : value}`)
-        .join(' AND ')
-      params.set('filter', filterStr)
-    }
-    
-    const query = params.toString()
-    const url = `/sessions/${options.sessionId}/events${query ? `?${query}` : ''}`
-    const response = await this.fetchJson<any>(url)
-    // Normalize events from backend format (type -> kind)
-    return {
-      ...response,
-      events: normalizeEvents(response.events || [])
-    }
   }
 
   // SSE Stream
@@ -154,7 +123,10 @@ class ApiClient {
     return this.fetchJson<ValidationResponse>(`/validate/session/${sessionId}`, { method: 'POST' })
   }
 
-  async getValidationRules(): Promise<{ rules: Array<{ id: string; name: string; description: string }> }> {
+  // Wire shape: GET /api/validate/rules returns a BARE array of
+  // {name, description} — no wrapper object and no id field
+  // (see ValidationRoutes.kt).
+  async getValidationRules(): Promise<Array<{ name: string; description: string }>> {
     return this.fetchJson(`/validate/rules`)
   }
 

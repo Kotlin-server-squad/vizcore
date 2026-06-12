@@ -137,32 +137,17 @@ describe('ApiClient', () => {
   })
 
   describe('getSessionEvents', () => {
-    it('makes GET request with query params', async () => {
+    it('makes a plain GET request — the endpoint supports no pagination/filter params (WR-09)', async () => {
       const events = [{ kind: 'coroutine.created', seq: 1 }]
       mockFetch.mockResolvedValue(mockJsonResponse(events))
 
-      await apiClient.getSessionEvents('session-1', {
-        sinceStep: 5,
-        limit: 10,
-        filter: 'coroutine',
-      })
-
-      const calledUrl = mockFetch.mock.calls[0]![0] as string
-      expect(calledUrl).toContain('/api/sessions/session-1/events?')
-      expect(calledUrl).toContain('sinceStep=5')
-      expect(calledUrl).toContain('limit=10')
-      expect(calledUrl).toContain('filter=coroutine')
-    })
-
-    it('makes GET request without query params when no options given', async () => {
-      mockFetch.mockResolvedValue(mockJsonResponse([]))
-
-      await apiClient.getSessionEvents('session-1')
+      const result = await apiClient.getSessionEvents('session-1')
 
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/sessions/session-1/events',
         { headers: { 'Content-Type': 'application/json' } }
       )
+      expect(result).toEqual(events)
     })
   })
 
