@@ -11,7 +11,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [x] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (5 plans executed; code-verification gap-closure 01-06..01-08 done; UAT then found 7 runtime gaps — gap-closure plans 01-09..01-12 added, pending execution) (completed 2026-06-12)
+- [x] **Phase 1: Foundation & Production Readiness** - Remove the session-package fork, wire the bounded store + full metrics, add health/logging/CORS/OpenAPI (5 plans executed; code-verification gap-closure 01-06..01-08 done; UAT gap-closure 01-09..01-12 done; re-verification found 2 live-stream freshness blockers — gap-closure plan 01-13 added) (completed 2026-06-12)
 - [ ] **Phase 2: User-Value Visualization** - Replay/time-travel, PNG/SVG/WebM export, side-by-side session comparison
 - [ ] **Phase 3: Persistence, Auth & Sharing** - Optional JDBC store + retention, route-level auth + tenant isolation, shareable read-only sessions
 - [ ] **Phase 4: Scale, Observability & SDK** - Sampling/batching/compression + load harness, OpenTelemetry export, published SDK + CI/CD CLI
@@ -32,7 +32,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
   3. `GET /api/health` (and `/live`, `/ready`) returns component checks, uptime, and version; logging uses dev/prod profiles; CORS reads from config.
   4. Micrometer exposes the full ADR-020 metric set (events emitted/dropped, scenario + event-processing durations, active sessions, SSE clients) and the OpenAPI spec is fully described and validates.
 
-**Plans**: 12 plans (5 executed + 3 code-verification gap-closure executed + 4 UAT gap-closure pending)
+**Plans**: 13 plans (5 executed + 3 code-verification gap-closure + 4 UAT gap-closure + 1 re-verification gap-closure)
 Plans:
 **Wave 1**
 
@@ -66,6 +66,10 @@ Plans:
 **Wave 7** *(UAT gap closure — blocked on Wave 6; 01-11 must complete first, shared SessionDetails.tsx/use-event-stream.ts)*
 
 - [x] 01-12-PLAN.md — UAT gaps: debounce SSE polling storm, completion-aware scenario button, Connected badge on first onopen, StructuredConcurrencyInfo parent-FAILED copy + button-state/copy tests
+
+**Wave 8** *(re-verification gap closure — blocked on Wave 7; closes CR-01/CR-02 introduced by 01-12, shared use-event-stream.ts/use-thread-activity.ts/SessionDetails.tsx)*
+
+- [ ] 01-13-PLAN.md — Re-verification gaps (CR-01/CR-02): invalidate the thread-activity query key in the SSE debounce + 5s live fallback poll so the Threads tab stops freezing; add max-wait caps to both trailing-edge debounces so a sustained event stream can't starve the session-snapshot refresh + regression tests
 
 ### Phase 2: User-Value Visualization
 
@@ -129,7 +133,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 12/12 | Complete   | 2026-06-12 |
+| 1. Foundation & Production Readiness | 12/13 | Gap closure | 2026-06-12 |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
