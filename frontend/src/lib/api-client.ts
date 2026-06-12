@@ -46,11 +46,11 @@ class ApiClient {
   }
 
   async getSession(sessionId: string): Promise<SessionSnapshot> {
-    return this.fetchJson<SessionSnapshot>(`/sessions/${sessionId}`)
+    return this.fetchJson<SessionSnapshot>(`/sessions/${encodeURIComponent(sessionId)}`)
   }
 
   async deleteSession(sessionId: string): Promise<{ message: string }> {
-    return this.fetchJson(`/sessions/${sessionId}`, { method: 'DELETE' })
+    return this.fetchJson(`/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
   }
 
   // Wire shape: GET /sessions/{id}/events returns the FULL event list as a
@@ -58,14 +58,14 @@ class ApiClient {
   // The backend supports no pagination or filtering on this endpoint — do
   // not add query params here without implementing them server-side first.
   async getSessionEvents(sessionId: string): Promise<VizEvent[]> {
-    const events = await this.fetchJson<unknown[]>(`/sessions/${sessionId}/events`)
+    const events = await this.fetchJson<unknown[]>(`/sessions/${encodeURIComponent(sessionId)}/events`)
     // Normalize events from backend format (type -> kind)
     return normalizeEvents(events)
   }
 
   // SSE Stream
   createEventSource(sessionId: string): EventSource {
-    return new EventSource(`${API_BASE_URL}/sessions/${sessionId}/stream`)
+    return new EventSource(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/stream`)
   }
 
   // Scenarios
@@ -104,23 +104,23 @@ class ApiClient {
   // The derived lane/dispatcher view model is built client-side via
   // buildThreadLanes in src/lib/thread-lanes.ts.
   async getThreadActivity(sessionId: string): Promise<ThreadActivity> {
-    return this.fetchJson<ThreadActivity>(`/sessions/${sessionId}/threads`)
+    return this.fetchJson<ThreadActivity>(`/sessions/${encodeURIComponent(sessionId)}/threads`)
   }
 
   async getHierarchy(sessionId: string, scopeId?: string): Promise<HierarchyNode[]> {
     const url = scopeId 
-      ? `/sessions/${sessionId}/hierarchy?scopeId=${encodeURIComponent(scopeId)}`
-      : `/sessions/${sessionId}/hierarchy`
+      ? `/sessions/${encodeURIComponent(sessionId)}/hierarchy?scopeId=${encodeURIComponent(scopeId)}`
+      : `/sessions/${encodeURIComponent(sessionId)}/hierarchy`
     return this.fetchJson<HierarchyNode[]>(url)
   }
 
   async getCoroutineTimeline(sessionId: string, coroutineId: string): Promise<CoroutineTimeline> {
-    return this.fetchJson<CoroutineTimeline>(`/sessions/${sessionId}/coroutines/${coroutineId}/timeline`)
+    return this.fetchJson<CoroutineTimeline>(`/sessions/${encodeURIComponent(sessionId)}/coroutines/${encodeURIComponent(coroutineId)}/timeline`)
   }
 
   // Validation
   async validateSession(sessionId: string): Promise<ValidationResponse> {
-    return this.fetchJson<ValidationResponse>(`/validate/session/${sessionId}`, { method: 'POST' })
+    return this.fetchJson<ValidationResponse>(`/validate/session/${encodeURIComponent(sessionId)}`, { method: 'POST' })
   }
 
   // Wire shape: GET /api/validate/rules returns a BARE array of

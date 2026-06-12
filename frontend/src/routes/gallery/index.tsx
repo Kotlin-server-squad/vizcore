@@ -254,7 +254,7 @@ function GalleryPage() {
     try {
       // Create session, then navigate to session page with run params.
       // The session page shows "Run Scenario" button — user clicks to start.
-      const session = await createSession.mutateAsync(`gallery-${scenario.name}`)
+      const session = await createSession.mutateAsync(`gallery-${scenario.name.replace(/[/\\]/g, "-")}`)
 
       navigate({
         to: '/sessions/$sessionId',
