@@ -15,6 +15,28 @@ const INVALIDATION_DEBOUNCE_MS = 400
  */
 const INVALIDATION_MAX_WAIT_MS = 1000
 
+/**
+ * Bounded retry budget for FATAL EventSource errors (UAT gap 2). Per the
+ * EventSource spec a non-200 response is terminal — the browser will NOT
+ * auto-reconnect — so without our own retry the live view stays dead until
+ * a full page reload.
+ */
+const SSE_MAX_RETRIES = 5
+
+/** Base reconnect delay; doubles per attempt (1s, 2s, 4s, 8s, 8s). */
+const SSE_RETRY_BASE_DELAY_MS = 1000
+
+/** Exponential backoff cap. */
+const SSE_RETRY_MAX_DELAY_MS = 8000
+
+/**
+ * The CLOSED readyState as a numeric literal — jsdom test environments do
+ * not reliably provide the EventSource global (so we avoid its static
+ * constants), and the hook only ever receives instances from
+ * apiClient.createEventSource.
+ */
+const EVENTSOURCE_CLOSED = 2
+
 export function useEventStream(sessionId: string | undefined, enabled = true) {
   const [events, setEvents] = useState<VizEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
@@ -26,6 +48,16 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
   // Timestamp of the first event in the current un-flushed window. Used to
   // enforce the max-wait cap so a sustained stream cannot starve the flush.
   const firstInvalidationAtRef = useRef<number | null>(null)
+  // Consecutive fatal-error retries since the last successful open.
+  const retryCountRef = useRef(0)
+  // Pending reconnect timer (fatal-error backoff), cancelled on teardown.
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Highest event seq appended so far. The backend replays FULL history on
+  // every new connection (REVIEW WR-01), so without this high-water mark a
+  // reconnect would visibly duplicate every event in the live view.
+  const maxSeqRef = useRef(0)
+  // The current EventSource (reconnects replace it within one effect run).
+  const eventSourceRef = useRef<EventSource | null>(null)
 
   const clearEvents = useCallback(() => {
     setEvents([])
@@ -37,125 +69,181 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
       return
     }
 
-    let eventSource: EventSource | null = null
+    // Reset on sessionId/enabled change only — NOT on reconnect, which
+    // happens inside a single effect run via connect() below.
+    retryCountRef.current = 0
+    maxSeqRef.current = 0
 
-    try {
-      eventSource = apiClient.createEventSource(sessionId)
+    const connect = () => {
+      retryTimerRef.current = null
 
-      eventSource.onopen = () => {
-        setIsConnected(true)
-        setError(null)
-      }
+      try {
+        const eventSource = apiClient.createEventSource(sessionId)
+        eventSourceRef.current = eventSource
 
-      eventSource.onerror = () => {
-        setIsConnected(false)
-        setError('Connection lost')
-      }
+        eventSource.onopen = () => {
+          setIsConnected(true)
+          setError(null)
+          // A successful open restores the full retry budget.
+          retryCountRef.current = 0
+        }
 
-      // Listen for all event types - both backend format (PascalCase) and frontend format (kebab-case)
-      // Backend sends: CoroutineCreated, CoroutineStarted, etc.
-      // Frontend expects: coroutine.created, coroutine.started, etc.
-      const eventTypes = [
-        // Backend PascalCase format
-        'CoroutineCreated',
-        'CoroutineStarted',
-        'CoroutineSuspended',
-        'CoroutineResumed',
-        'CoroutineBodyCompleted',
-        'CoroutineCompleted',
-        'CoroutineCancelled',
-        'CoroutineFailed',
-        'ThreadAssigned',
-        'DispatcherSelected',
-        'DeferredValueAvailable',
-        'DeferredAwaitStarted',
-        'DeferredAwaitCompleted',
-        'JobStateChanged',
-        'JobCancellationRequested',
-        'JobJoinRequested',
-        'JobJoinCompleted',
-        // Frontend kebab-case format (for backwards compatibility)
-        'coroutine.created',
-        'coroutine.started',
-        'coroutine.suspended',
-        'coroutine.resumed',
-        'coroutine.body-completed',
-        'coroutine.completed',
-        'coroutine.cancelled',
-        'coroutine.failed',
-        'thread.assigned',
-      ]
+        eventSource.onerror = () => {
+          setIsConnected(false)
 
-      eventTypes.forEach(eventType => {
-        eventSource?.addEventListener(eventType, (e: Event) => {
-          const messageEvent = e as MessageEvent
-          try {
-            const rawEvent = JSON.parse(messageEvent.data)
-            // Normalize event from backend format (type -> kind)
-            const event = normalizeEvent(rawEvent)
-            // If still no kind, set from SSE event type
-            if (!event.kind) {
-              (event as any).kind = eventType as VizEventKind
-            }
-            setEvents(prev => [...prev, event])
+          if (eventSourceRef.current?.readyState === EVENTSOURCE_CLOSED) {
+            // FATAL: per the EventSource spec, CLOSED is the terminal state
+            // after a non-200 response — the browser will not reconnect on
+            // its own (exactly the UAT gap 2 failure mode). Retry ourselves
+            // with bounded exponential backoff.
+            eventSourceRef.current.close()
+            eventSourceRef.current = null
 
-            // Max-wait-capped debounced invalidation: a burst of events still
-            // produces only one trailing-edge invalidation, but a sustained
-            // stream is guaranteed to flush at least once per
-            // INVALIDATION_MAX_WAIT_MS (the trailing edge can never be pushed
-            // past the max-wait boundary).
-            const flushInvalidation = () => {
-              invalidationTimerRef.current = null
-              // Reset the window so the next event starts a fresh max-wait clock.
-              firstInvalidationAtRef.current = null
-              queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
-              // CR-01 fix: the Threads tab relies on this invalidation while
-              // live (its background poll is slowed during streaming).
-              queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
-            }
-
-            if (firstInvalidationAtRef.current === null) {
-              firstInvalidationAtRef.current = Date.now()
-            }
-            const elapsed = Date.now() - firstInvalidationAtRef.current
-
-            if (invalidationTimerRef.current !== null) {
-              clearTimeout(invalidationTimerRef.current)
-            }
-            if (elapsed >= INVALIDATION_MAX_WAIT_MS) {
-              flushInvalidation()
-            } else {
-              invalidationTimerRef.current = setTimeout(
-                flushInvalidation,
-                Math.min(INVALIDATION_DEBOUNCE_MS, INVALIDATION_MAX_WAIT_MS - elapsed),
+            if (retryCountRef.current < SSE_MAX_RETRIES) {
+              retryCountRef.current += 1
+              const delay = Math.min(
+                SSE_RETRY_BASE_DELAY_MS * 2 ** (retryCountRef.current - 1),
+                SSE_RETRY_MAX_DELAY_MS,
               )
+              setError('Connection lost — retrying')
+              retryTimerRef.current = setTimeout(connect, delay)
+            } else {
+              setError('Connection lost')
             }
-          } catch {
-            // Silently ignore malformed events
-          }
-        })
-      })
-
-      // Also listen for error events from server
-      eventSource.addEventListener('error', (e: Event) => {
-        const messageEvent = e as MessageEvent
-        if (messageEvent.data) {
-          try {
-            const errorData = JSON.parse(messageEvent.data)
-            setError(errorData.error || 'Unknown error')
-          } catch {
-            // ignore
+          } else {
+            // TRANSIENT: the browser's native auto-reconnect is still alive.
+            // Do NOT create a new EventSource (prevents double connections).
+            setError('Connection lost')
           }
         }
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect')
-      setIsConnected(false)
+
+        // Listen for all event types - both backend format (PascalCase) and frontend format (kebab-case)
+        // Backend sends: CoroutineCreated, CoroutineStarted, etc.
+        // Frontend expects: coroutine.created, coroutine.started, etc.
+        const eventTypes = [
+          // Backend PascalCase format
+          'CoroutineCreated',
+          'CoroutineStarted',
+          'CoroutineSuspended',
+          'CoroutineResumed',
+          'CoroutineBodyCompleted',
+          'CoroutineCompleted',
+          'CoroutineCancelled',
+          'CoroutineFailed',
+          'ThreadAssigned',
+          'DispatcherSelected',
+          'DeferredValueAvailable',
+          'DeferredAwaitStarted',
+          'DeferredAwaitCompleted',
+          'JobStateChanged',
+          'JobCancellationRequested',
+          'JobJoinRequested',
+          'JobJoinCompleted',
+          // Frontend kebab-case format (for backwards compatibility)
+          'coroutine.created',
+          'coroutine.started',
+          'coroutine.suspended',
+          'coroutine.resumed',
+          'coroutine.body-completed',
+          'coroutine.completed',
+          'coroutine.cancelled',
+          'coroutine.failed',
+          'thread.assigned',
+        ]
+
+        eventTypes.forEach(eventType => {
+          eventSource.addEventListener(eventType, (e: Event) => {
+            const messageEvent = e as MessageEvent
+            try {
+              const rawEvent = JSON.parse(messageEvent.data)
+              // Normalize event from backend format (type -> kind)
+              const event = normalizeEvent(rawEvent)
+              // If still no kind, set from SSE event type
+              if (!event.kind) {
+                (event as any).kind = eventType as VizEventKind
+              }
+
+              // Replay dedup: a reconnect replays FULL history, so drop any
+              // event whose seq is at or below the high-water mark — BEFORE
+              // setEvents and BEFORE the invalidation debounce (duplicates
+              // must not burn invalidations either). Events without a numeric
+              // seq (legacy kebab-case frames) bypass the guard.
+              const seq = (event as { seq?: unknown }).seq
+              if (typeof seq === 'number') {
+                if (seq <= maxSeqRef.current) {
+                  return
+                }
+                maxSeqRef.current = seq
+              }
+
+              setEvents(prev => [...prev, event])
+
+              // Max-wait-capped debounced invalidation: a burst of events still
+              // produces only one trailing-edge invalidation, but a sustained
+              // stream is guaranteed to flush at least once per
+              // INVALIDATION_MAX_WAIT_MS (the trailing edge can never be pushed
+              // past the max-wait boundary).
+              const flushInvalidation = () => {
+                invalidationTimerRef.current = null
+                // Reset the window so the next event starts a fresh max-wait clock.
+                firstInvalidationAtRef.current = null
+                queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
+                // CR-01 fix: the Threads tab relies on this invalidation while
+                // live (its background poll is slowed during streaming).
+                queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
+              }
+
+              if (firstInvalidationAtRef.current === null) {
+                firstInvalidationAtRef.current = Date.now()
+              }
+              const elapsed = Date.now() - firstInvalidationAtRef.current
+
+              if (invalidationTimerRef.current !== null) {
+                clearTimeout(invalidationTimerRef.current)
+              }
+              if (elapsed >= INVALIDATION_MAX_WAIT_MS) {
+                flushInvalidation()
+              } else {
+                invalidationTimerRef.current = setTimeout(
+                  flushInvalidation,
+                  Math.min(INVALIDATION_DEBOUNCE_MS, INVALIDATION_MAX_WAIT_MS - elapsed),
+                )
+              }
+            } catch {
+              // Silently ignore malformed events
+            }
+          })
+        })
+
+        // Also listen for error events from server
+        eventSource.addEventListener('error', (e: Event) => {
+          const messageEvent = e as MessageEvent
+          if (messageEvent.data) {
+            try {
+              const errorData = JSON.parse(messageEvent.data)
+              setError(errorData.error || 'Unknown error')
+            } catch {
+              // ignore
+            }
+          }
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to connect')
+        setIsConnected(false)
+      }
     }
 
+    connect()
+
     return () => {
-      if (eventSource) {
-        eventSource.close()
+      // Cancel any pending fatal-error reconnect
+      if (retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
         setIsConnected(false)
       }
       // Clear any pending debounce timer on teardown
@@ -174,4 +262,3 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
     clearEvents,
   }
 }
-

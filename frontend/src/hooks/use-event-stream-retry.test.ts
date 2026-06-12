@@ -79,7 +79,11 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
   let queryClient: QueryClient
 
   /** The most recently created EventSource (the live connection attempt). */
-  const latest = () => sources[sources.length - 1]
+  const latest = (): MockEventSource => {
+    const source = sources.at(-1)
+    if (!source) throw new Error('no EventSource has been created yet')
+    return source
+  }
 
   /** Simulate a FATAL EventSource failure: readyState CLOSED (2) + onerror. */
   const fatalError = (source: MockEventSource) => {
