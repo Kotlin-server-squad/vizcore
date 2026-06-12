@@ -359,7 +359,7 @@ class EventSamplerTest {
         // Create a simple VizEvent with a lifecycle-like kind
         data class FakeEvent(
             override val sessionId: String,
-            override val seq: Long,
+            override var seq: Long,
             override val tsNanos: Long,
             override val kind: String,
         ) : VizEvent

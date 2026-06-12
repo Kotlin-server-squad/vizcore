@@ -195,9 +195,10 @@ class VizScope(
                     // caused this branch to be unreachable (FIX-03).
                     //
                     // Emit JobStateChanged BEFORE the terminal event so that CoroutineFailed
-                    // receives the higher seq (nextSeq() is called at construction time inside
-                    // each ctx.* factory). This ensures the terminal event is always the
-                    // highest-seq event for this coroutineId, satisfying NoEventsAfterTerminalRule.
+                    // receives the higher seq (VizSession.send finalizes seq atomically with the
+                    // store append, so send order == seq order). This ensures the terminal event
+                    // is always the highest-seq event for this coroutineId, satisfying
+                    // NoEventsAfterTerminalRule.
                     session.send(
                         ctx.jobStateChanged(
                             isActive = false,
@@ -218,9 +219,10 @@ class VizScope(
                     // or structured concurrency propagation from a failed child).
                     //
                     // Emit JobStateChanged BEFORE the terminal event so that CoroutineCancelled
-                    // receives the higher seq (nextSeq() is called at construction time inside
-                    // each ctx.* factory). This ensures the terminal event is always the
-                    // highest-seq event for this coroutineId, satisfying NoEventsAfterTerminalRule.
+                    // receives the higher seq (VizSession.send finalizes seq atomically with the
+                    // store append, so send order == seq order). This ensures the terminal event
+                    // is always the highest-seq event for this coroutineId, satisfying
+                    // NoEventsAfterTerminalRule.
                     session.send(
                         ctx.jobStateChanged(
                             isActive = false,

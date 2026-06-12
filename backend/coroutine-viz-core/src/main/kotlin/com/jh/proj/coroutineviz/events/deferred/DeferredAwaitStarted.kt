@@ -21,7 +21,7 @@ import kotlinx.serialization.Serializable
 @SerialName("DeferredAwaitStarted")
 data class DeferredAwaitStarted(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val deferredId: String,
     // The deferred's coroutine

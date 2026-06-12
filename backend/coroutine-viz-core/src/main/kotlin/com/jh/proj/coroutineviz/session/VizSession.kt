@@ -32,6 +32,11 @@ import java.util.concurrent.atomic.AtomicLong
  * 2. Event is applied to [snapshot] via [EventApplier] (state update)
  * 3. Event is broadcast via [eventBus] (real-time notifications)
  *
+ * All three steps run atomically under a single send lock, and the event's
+ * seq is finalized inside the same critical section. This guarantees that
+ * store order, seq order, and live-bus delivery order are identical — the
+ * invariant SSE replay deduplication (max-seq watermark) depends on.
+ *
  * @property sessionId Unique identifier for this session
  */
 class VizSession(
@@ -53,6 +58,12 @@ class VizSession(
 
     // Sequence generator to keep events globally ordered in this session
     private val seqGenerator = AtomicLong(0)
+
+    // Serializes seq finalization + store append + snapshot apply + bus broadcast (WR-02/WR-12).
+    private val sendLock = Any()
+
+    // Highest seq appended so far; guarded by [sendLock].
+    private var lastSentSeq = 0L
 
     val projectionService = ProjectionService(this)
 
@@ -84,16 +95,35 @@ class VizSession(
     /**
      * Non-suspending event send - PREFERRED for most use cases.
      * Synchronously emits event to bus, stores it, and updates snapshot.
+     *
+     * Seq finalization, store append, snapshot apply, and bus broadcast run as one
+     * atomic critical section: with concurrent senders, thread A can construct
+     * seq=10, thread B construct seq=11 and reach send() first. Without the lock
+     * the store (and bus) would deliver 11 before 10, breaking the max-seq
+     * watermark dedup used by SSE replay (WR-02). Inside the lock, an event whose
+     * provisional seq is no longer the highest is re-stamped with a fresh seq, so
+     * store order == seq order always holds (WR-12).
      */
     fun send(event: VizEvent) {
-        val startNanos = if (onEventProcessed != null) System.nanoTime() else 0L
-        store.append(event)
-        applier.apply(event)
-        eventBus.send(event)
-        onEventEmitted?.invoke()
-        if (onEventProcessed != null) {
-            onEventProcessed?.invoke(System.nanoTime() - startNanos)
+        // Capture the callback once: assigning onEventProcessed between a null
+        // check and the invocation must not produce a garbage `nanoTime - 0`
+        // duration sample (WR-12 check-then-act race).
+        val onProcessed = onEventProcessed
+        val startNanos = if (onProcessed != null) System.nanoTime() else 0L
+        synchronized(sendLock) {
+            if (event.seq <= lastSentSeq) {
+                // A concurrent sender appended a higher seq after this event was
+                // constructed (or the event carries a stale/placeholder seq):
+                // re-stamp so seq order matches append order.
+                event.seq = seqGenerator.incrementAndGet()
+            }
+            lastSentSeq = event.seq
+            store.append(event)
+            applier.apply(event)
+            eventBus.send(event)
         }
+        onEventEmitted?.invoke()
+        onProcessed?.invoke(System.nanoTime() - startNanos)
     }
 
     /**

@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
 @SerialName("FlowValueFiltered")
 data class FlowValueFiltered(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val flowId: String,
     // "filter", "filterNot", "filterIsInstance", "distinctUntilChanged"

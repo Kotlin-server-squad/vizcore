@@ -194,7 +194,7 @@ class PluginEventReceiver(private val project: Project) : Disposable {
  */
 data class GenericPluginEvent(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val eventKind: String,
     val rawJson: String,

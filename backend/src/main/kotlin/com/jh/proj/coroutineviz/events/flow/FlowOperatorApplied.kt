@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class FlowOperatorApplied(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val flowId: String,
     // The upstream flow this operator transforms

@@ -16,7 +16,7 @@ import kotlinx.serialization.Serializable
 @SerialName("ChannelCreated")
 data class ChannelCreated(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val channelId: String,
     val name: String? = null,

@@ -14,7 +14,7 @@ import kotlinx.serialization.Serializable
 @SerialName("ChannelReceiveSuspended")
 data class ChannelReceiveSuspended(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val channelId: String,
     val coroutineId: String,

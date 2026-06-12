@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
 @SerialName("FlowBackpressure")
 data class FlowBackpressure(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val flowId: String,
     val collectorId: String,

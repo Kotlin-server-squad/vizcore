@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class StateFlowValueChanged(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val flowId: String,
     val oldValuePreview: String,

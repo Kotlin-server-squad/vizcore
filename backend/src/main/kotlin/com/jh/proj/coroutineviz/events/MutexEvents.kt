@@ -23,7 +23,7 @@ sealed interface MutexEvent : VizEvent {
 @SerialName("MutexCreated")
 data class MutexCreated(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val mutexId: String,
     override val mutexLabel: String?,
@@ -39,7 +39,7 @@ data class MutexCreated(
 @SerialName("MutexLockRequested")
 data class MutexLockRequested(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val mutexId: String,
     override val mutexLabel: String?,
@@ -60,7 +60,7 @@ data class MutexLockRequested(
 @SerialName("MutexLockAcquired")
 data class MutexLockAcquired(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val mutexId: String,
     override val mutexLabel: String?,
@@ -79,7 +79,7 @@ data class MutexLockAcquired(
 @SerialName("MutexUnlocked")
 data class MutexUnlocked(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val mutexId: String,
     override val mutexLabel: String?,
@@ -100,7 +100,7 @@ data class MutexUnlocked(
 @SerialName("MutexTryLockFailed")
 data class MutexTryLockFailed(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val mutexId: String,
     override val mutexLabel: String?,
@@ -119,7 +119,7 @@ data class MutexTryLockFailed(
 @SerialName("MutexQueueChanged")
 data class MutexQueueChanged(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val mutexId: String,
     override val mutexLabel: String?,

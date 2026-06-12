@@ -20,7 +20,7 @@ import kotlinx.serialization.Serializable
 @SerialName("DeferredAwaitCompleted")
 data class DeferredAwaitCompleted(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val deferredId: String,
     val coroutineId: String,

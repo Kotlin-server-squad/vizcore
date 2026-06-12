@@ -52,7 +52,7 @@ enum class AntiPatternType {
 @SerialName("AntiPatternDetected")
 data class AntiPatternDetected(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val patternType: AntiPatternType,
     val severity: AntiPatternSeverity,
