@@ -78,6 +78,15 @@ const SSE_RETRY_BASE_DELAY_MS = 1000
 const SSE_RETRY_MAX_DELAY_MS = 8000
 
 /**
+ * Upper bound for the replay-dedup seen-seq set (REVIEW WR-13). When the set
+ * exceeds this size the oldest entries (insertion order) are evicted. The
+ * bound only needs to comfortably cover the reconnect replay window (the
+ * backend replays full history on every connection), so eviction can only
+ * matter for sessions far larger than the bounded EventStore retains.
+ */
+const SEEN_SEQS_MAX = 10_000
+
+/**
  * The CLOSED readyState as a numeric literal — jsdom test environments do
  * not reliably provide the EventSource global (so we avoid its static
  * constants), and the hook only ever receives instances from
@@ -100,10 +109,13 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
   const retryCountRef = useRef(0)
   // Pending reconnect timer (fatal-error backoff), cancelled on teardown.
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Highest event seq appended so far. The backend replays FULL history on
-  // every new connection (REVIEW WR-01), so without this high-water mark a
-  // reconnect would visibly duplicate every event in the live view.
-  const maxSeqRef = useRef(0)
+  // Seqs already appended. The backend replays FULL history on every new
+  // connection (REVIEW WR-01), so without dedup a reconnect would visibly
+  // duplicate every event in the live view. Dedup is by MEMBERSHIP, not a
+  // max-seq watermark: seq is allocated at event construction but appended
+  // later without a common lock, so events can legitimately arrive out of
+  // seq order — a watermark would silently drop them (REVIEW WR-13).
+  const seenSeqsRef = useRef<Set<number>>(new Set())
   // The current EventSource (reconnects replace it within one effect run).
   const eventSourceRef = useRef<EventSource | null>(null)
 
@@ -120,7 +132,7 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
     // Reset on sessionId/enabled change only — NOT on reconnect, which
     // happens inside a single effect run via connect() below.
     retryCountRef.current = 0
-    maxSeqRef.current = 0
+    seenSeqsRef.current = new Set()
 
     const connect = () => {
       retryTimerRef.current = null
@@ -180,16 +192,26 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
               }
 
               // Replay dedup: a reconnect replays FULL history, so drop any
-              // event whose seq is at or below the high-water mark — BEFORE
-              // setEvents and BEFORE the invalidation debounce (duplicates
-              // must not burn invalidations either). Events without a numeric
-              // seq (legacy kebab-case frames) bypass the guard.
+              // event whose seq was already appended — BEFORE setEvents and
+              // BEFORE the invalidation debounce (duplicates must not burn
+              // invalidations either). Membership in a bounded seen-set (not
+              // a max-seq watermark) so legitimately out-of-order seqs are
+              // NOT dropped (WR-13). Events without a numeric seq (legacy
+              // kebab-case frames) bypass the guard.
               const seq = (event as { seq?: unknown }).seq
               if (typeof seq === 'number') {
-                if (seq <= maxSeqRef.current) {
+                if (seenSeqsRef.current.has(seq)) {
                   return
                 }
-                maxSeqRef.current = seq
+                seenSeqsRef.current.add(seq)
+                // Bound the set: evict the oldest entry (Set iteration is
+                // insertion-ordered) once the cap is exceeded.
+                if (seenSeqsRef.current.size > SEEN_SEQS_MAX) {
+                  const oldest = seenSeqsRef.current.values().next().value
+                  if (oldest !== undefined) {
+                    seenSeqsRef.current.delete(oldest)
+                  }
+                }
               }
 
               setEvents(prev => [...prev, event])

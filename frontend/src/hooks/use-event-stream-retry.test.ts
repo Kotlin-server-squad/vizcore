@@ -1,6 +1,7 @@
 /**
  * TDD tests: 01-15 Task 2 — bounded exponential-backoff reconnect for fatal
- * EventSource errors + seq high-water-mark replay dedup.
+ * EventSource errors + seq seen-set replay dedup (WR-13: membership dedup,
+ * not a high-water mark, so out-of-order seqs are never dropped).
  *
  * UAT gap 2: a non-200 SSE response is FATAL per the EventSource spec (no
  * native auto-reconnect), leaving the live view dead until a page reload.
@@ -191,7 +192,7 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
     expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(3)
   })
 
-  it('does not duplicate replayed history after reconnect (seq high-water mark)', () => {
+  it('does not duplicate replayed history after reconnect (seq seen-set dedup)', () => {
     const { result } = renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),
     })
@@ -218,6 +219,62 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
       latest().simulateEvent('CoroutineCreated', eventPayload(3))
     })
     expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([1, 2, 3])
+  })
+
+  it('does not drop legitimately out-of-order seqs (WR-13: seen-set, not watermark)', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    // seq is allocated at event construction but store-append happens later
+    // without a common lock (backend WR-12), so seq 2 can reach the client
+    // BEFORE seq 1 — on first connect, not just on reconnect. A high-water
+    // mark would jump to 2 and silently drop seq 1 forever.
+    act(() => {
+      latest().simulateEvent('CoroutineCreated', eventPayload(2))
+      latest().simulateEvent('CoroutineCreated', eventPayload(1))
+    })
+    expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([2, 1])
+
+    // True duplicates are still dropped...
+    act(() => {
+      latest().simulateEvent('CoroutineCreated', eventPayload(2))
+      latest().simulateEvent('CoroutineCreated', eventPayload(1))
+    })
+    expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([2, 1])
+
+    // ...and the stream continues normally afterwards.
+    act(() => {
+      latest().simulateEvent('CoroutineCreated', eventPayload(3))
+    })
+    expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([2, 1, 3])
+  })
+
+  it('still dedups an out-of-order interleaving across a reconnect replay', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    act(() => {
+      latest().simulateEvent('CoroutineCreated', eventPayload(3))
+      latest().simulateEvent('CoroutineCreated', eventPayload(1))
+    })
+
+    act(() => {
+      fatalError(latest())
+    })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+
+    // Replay arrives seq-ordered this time and includes the missed seq 2:
+    // only 2 is new, 1 and 3 are membership-deduped.
+    act(() => {
+      latest().simulateEvent('CoroutineCreated', eventPayload(1))
+      latest().simulateEvent('CoroutineCreated', eventPayload(2))
+      latest().simulateEvent('CoroutineCreated', eventPayload(3))
+    })
+    expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([3, 1, 2])
   })
 
   it('transient errors (readyState not CLOSED) do not create a second EventSource', () => {
