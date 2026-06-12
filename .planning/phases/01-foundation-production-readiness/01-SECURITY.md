@@ -1,3 +1,13 @@
+---
+phase: 01
+slug: foundation-production-readiness
+status: secured
+threats_open: 0
+threats_total: 40
+asvs_level: 1
+created: 2026-06-12
+---
+
 # SECURITY — Phase 01: Foundation Production Readiness
 
 **Audit date:** 2026-06-12
