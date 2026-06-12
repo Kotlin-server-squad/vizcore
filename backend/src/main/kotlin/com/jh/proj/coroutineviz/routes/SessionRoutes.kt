@@ -196,6 +196,13 @@ fun Route.registerSessionRoutes() {
         sseClientsGauge.incrementAndGet()
 
         try {
+            // Flush status line + headers immediately: on a session with ZERO stored events
+            // the replay loop writes nothing, so without this frame the response never
+            // reaches the client (curl HTTP 000; the Vite proxy turns it into a 500, which
+            // EventSource treats as FATAL — no auto-reconnect). A comment frame is invisible
+            // to browser EventSource listeners, so no frontend changes are required.
+            send(ServerSentEvent(comments = "connected"))
+
             coroutineScope {
                 // Subscribe to live events BEFORE snapshotting the store: EventBus has
                 // replay = 0, so any event emitted between the store snapshot and the
