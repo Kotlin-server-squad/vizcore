@@ -32,7 +32,7 @@ vizcore is a brownfield product (~92% built): the event-sourced backend, 48 even
   3. `GET /api/health` (and `/live`, `/ready`) returns component checks, uptime, and version; logging uses dev/prod profiles; CORS reads from config.
   4. Micrometer exposes the full ADR-020 metric set (events emitted/dropped, scenario + event-processing durations, active sessions, SSE clients) and the OpenAPI spec is fully described and validates.
 
-**Plans**: 13 plans (5 executed + 3 code-verification gap-closure + 4 UAT gap-closure + 1 re-verification gap-closure)
+**Plans**: 15 plans (5 executed + 3 code-verification gap-closure + 4 UAT gap-closure + 1 re-verification gap-closure + 2 UAT round-2 gap-closure)
 Plans:
 **Wave 1**
 
@@ -70,6 +70,11 @@ Plans:
 **Wave 8** *(re-verification gap closure — blocked on Wave 7; closes CR-01/CR-02 introduced by 01-12, shared use-event-stream.ts/use-thread-activity.ts/SessionDetails.tsx)*
 
 - [x] 01-13-PLAN.md — Re-verification gaps (CR-01/CR-02): invalidate the thread-activity query key in the SSE debounce + 5s live fallback poll so the Threads tab stops freezing; add max-wait caps to both trailing-edge debounces so a sustained event stream can't starve the session-snapshot refresh + regression tests
+
+**Wave 9** *(UAT round-2 gap closure — 01-14 and 01-15 run in parallel; no file overlap)*
+
+- [ ] 01-14-PLAN.md — UAT gap 1 (REVIEW CR-02): align frontend thread-activity types/hooks to the real Map<threadId, ThreadEvent[]> wire shape via a buildThreadLanes adapter, remove the SessionDetails double cast, fix the MSW mock + value-asserting integration test on the live shape
+- [ ] 01-15-PLAN.md — UAT gap 2: backend SSE sends an immediate `: connected` comment so headers flush on 0-event sessions; frontend useEventStream gains bounded exponential-backoff retry for fatal EventSource errors + seq-based replay dedup + zero-event flush and retry tests
 
 ### Phase 2: User-Value Visualization
 
