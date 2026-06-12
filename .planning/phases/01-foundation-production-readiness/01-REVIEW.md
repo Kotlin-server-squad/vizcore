@@ -404,3 +404,14 @@ const tileClasses: Record<string, string> = {
 _Reviewed: 2026-06-12T12:44:26Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+
+## Triage (2026-06-12, user-approved)
+
+**Fix now — backend unit:** WR-02 (+WR-12 merged: atomic seq+append in VizSession.send), WR-03 (gauge deregistration on session close), WR-06 (rethrow CancellationException, sanitize error bodies), WR-11 (heap-tolerant health test), WR-14 (bounded SSE live buffer, DROP_OLDEST + overflow signal), WR-08 (OpenAPI spec: threads map shape, timing ms units, remove RUNNING enum; re-validate), IN-05 (vizAsync JobStateChanged-before-terminal parity).
+
+**Fix now — frontend unit:** CR-01 (full event-kind listener list from shared constants + completeness test), WR-04 (auto-enable once via ref), WR-05 (Clear → clearEvents()), WR-09 (remove fictional pagination/filter client surface), WR-13 (seen-set dedup replaces watermark), WR-15 (thread isLive through lane hooks + DispatcherOverview), WR-16 (setEvents([]) on sessionId/enabled reset), IN-09 (remove explicit any), IN-11 (MSW /events mock → wire shape), IN-12 (static Tailwind class map), IN-13 (close previous segment on duplicate ASSIGNED).
+
+**Backlog:** WR-07 (getOrCreateSession silent substitution — needs 404-vs-create design decision), WR-10 (vizLaunch emits lifecycle from inside body — instrumentation redesign).
+
+**Accepted (no action):** IN-01, IN-02, IN-03, IN-04, IN-06, IN-07, IN-08, IN-10.
