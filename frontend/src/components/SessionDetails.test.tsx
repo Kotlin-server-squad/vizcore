@@ -236,4 +236,105 @@ describe('SessionDetails', () => {
 
     expect(screen.getByText('Enable Live Stream')).toBeInTheDocument()
   })
+
+  it('shows "Run Scenario" enabled when coroutineCount is 0 (not started)', () => {
+    const session = makeSession({
+      coroutineCount: 0,
+      coroutines: [],
+    })
+
+    mockedUseSession.mockReturnValue({
+      data: session,
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    render(
+      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      { wrapper: createWrapper() },
+    )
+
+    // Not-started state: button is "Run Scenario" and enabled
+    const runButton = screen.getByRole('button', { name: /run scenario/i })
+    expect(runButton).not.toBeDisabled()
+  })
+
+  it('does NOT show the disabled "Scenario Running" button when all coroutines are terminal', () => {
+    const session = makeSession({
+      coroutineCount: 2,
+      coroutines: [
+        {
+          id: 'c1',
+          jobId: 'j1',
+          parentId: null,
+          scopeId: 'scope-1',
+          label: 'root',
+          state: 'COMPLETED' as CoroutineState,
+        },
+        {
+          id: 'c2',
+          jobId: 'j2',
+          parentId: 'c1',
+          scopeId: 'scope-1',
+          label: 'child',
+          state: 'COMPLETED' as CoroutineState,
+        },
+      ],
+    })
+
+    mockedUseSession.mockReturnValue({
+      data: session,
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    render(
+      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      { wrapper: createWrapper() },
+    )
+
+    // Completed state: the disabled "Scenario Running" button should NOT be present
+    expect(screen.queryByRole('button', { name: /scenario running/i })).not.toBeInTheDocument()
+    // Instead, an explicit completed indicator should appear
+    expect(screen.getByText(/scenario completed/i)).toBeInTheDocument()
+  })
+
+  it('shows disabled "Scenario Running" button when some coroutines are still active (in-progress)', () => {
+    const session = makeSession({
+      coroutineCount: 2,
+      coroutines: [
+        {
+          id: 'c1',
+          jobId: 'j1',
+          parentId: null,
+          scopeId: 'scope-1',
+          label: 'root',
+          state: 'ACTIVE' as CoroutineState,
+        },
+        {
+          id: 'c2',
+          jobId: 'j2',
+          parentId: 'c1',
+          scopeId: 'scope-1',
+          label: 'child',
+          state: 'COMPLETED' as CoroutineState,
+        },
+      ],
+    })
+
+    mockedUseSession.mockReturnValue({
+      data: session,
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    render(
+      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      { wrapper: createWrapper() },
+    )
+
+    // In-progress: "Scenario Running" disabled button is shown
+    const runningButton = screen.getByRole('button', { name: /scenario running/i })
+    expect(runningButton).toBeDisabled()
+  })
 })
