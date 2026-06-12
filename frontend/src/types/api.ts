@@ -454,6 +454,7 @@ export interface ThreadEvent {
   threadName: string
   timestamp: number
   eventType: 'ASSIGNED' | 'RELEASED'
+  dispatcherName?: string | null
 }
 
 export interface ThreadActivity {
@@ -533,7 +534,12 @@ export interface TimelineEvent {
   duration?: number | null  // For computed durations (suspend -> resume)
 }
 
-// Thread Activity - Enhanced structure
+// Thread Activity - DERIVED view model.
+// This is NOT a wire shape: the backend's GET /sessions/{id}/threads endpoint
+// returns `ThreadActivity` (the Map<threadId, ThreadEvent[]> above).
+// ThreadActivityResponse is produced client-side by `buildThreadLanes` in
+// `src/lib/thread-lanes.ts`, which derives lanes, segments, utilization and
+// dispatcher grouping from the wire shape.
 export interface ThreadActivityResponse {
   threads: ThreadLaneData[]
   dispatcherInfo: DispatcherInfo[]
