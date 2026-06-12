@@ -74,7 +74,7 @@ Plans:
 **Wave 9** *(UAT round-2 gap closure — 01-14 and 01-15 run in parallel; no file overlap)*
 
 - [x] 01-14-PLAN.md — UAT gap 1 (REVIEW CR-02): align frontend thread-activity types/hooks to the real Map<threadId, ThreadEvent[]> wire shape via a buildThreadLanes adapter, remove the SessionDetails double cast, fix the MSW mock + value-asserting integration test on the live shape
-- [ ] 01-15-PLAN.md — UAT gap 2: backend SSE sends an immediate `: connected` comment so headers flush on 0-event sessions; frontend useEventStream gains bounded exponential-backoff retry for fatal EventSource errors + seq-based replay dedup + zero-event flush and retry tests
+- [x] 01-15-PLAN.md — UAT gap 2: backend SSE sends an immediate `: connected` comment so headers flush on 0-event sessions; frontend useEventStream gains bounded exponential-backoff retry for fatal EventSource errors + seq-based replay dedup + zero-event flush and retry tests
 
 ### Phase 2: User-Value Visualization
 
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 14/15 | In progress | - |
+| 1. Foundation & Production Readiness | 15/15 | Complete   | 2026-06-12 |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |

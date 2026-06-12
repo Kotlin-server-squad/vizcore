@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-14-PLAN.md (UAT round-2 gap 1: thread-activity wire-shape alignment via buildThreadLanes adapter)"
-last_updated: "2026-06-12T12:25:00.000Z"
+stopped_at: "Completed 01-15-PLAN.md (UAT round-2 gap 2: SSE first-connect flush + fatal-error retry/dedup) — Phase 01 all 15 plans complete"
+last_updated: "2026-06-12T12:38:12.153Z"
 last_activity: 2026-06-12 -- Phase 01 execution started
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 15
-  completed_plans: 14
-  percent: 19
+  completed_plans: 15
+  percent: 20
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 ## Current Position
 
 Phase: 01 (foundation-production-readiness) — EXECUTING
-Plan: 14 of 15 complete (01-15 remaining in Wave 9)
+Plan: 15 of 15 complete (01-15 remaining in Wave 9)
 Status: Ready to execute
 Last activity: 2026-06-12 -- Phase 01 execution started
 
@@ -60,6 +60,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 01 P12 | 22 | 2 tasks | 7 files |
 | Phase 01 P13 | ~7 min | 2 tasks | 5 files |
 | Phase 01 P14 | ~10 min | 3 tasks | 10 files |
+| Phase 01 P15 | ~14min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [Phase 1, Plan 14]: Frontend aligned to the real GET /threads wire shape (Map<threadId, ThreadEvent[]>) via pure buildThreadLanes adapter; fictional {threads, dispatcherInfo} mock generators deleted so MSW serves the backend's exact shape (CR-02 regression trap closed)
 - [Phase 1, Plan 14]: useThreadLanesByDispatcher groups null-dispatcher lanes via (dispatcherId ?? 'Unknown') — strict id equality would silently drop them (Rule 1 fix to plan instruction)
 - [Phase 1, Plan 14]: SessionDetails.test.tsx mocks apiClient (not the hook) and renders the real ThreadTimeline so the UAT-gap-1 integration test exercises the genuine wire-shape pipeline
+- [Phase 1]: [Phase 1, Plan 15]: SSE first-connect fix is two-sided: backend ': connected' comment frame flushes headers on 0-event sessions; frontend retries fatal (readyState=2) EventSource errors with bounded backoff (1s,2s,4s,8s,8s; 5 retries, budget reset on open) plus maxSeqRef replay dedup so WR-01 full-history replay never duplicates the live view
+- [Phase 1]: [Phase 1, Plan 15]: Ktor testApplication live-stream reads must run under withContext(Dispatchers.Default) — the virtual-time dispatcher fires withTimeout before the wall-clock server writes bytes (MetricsWiringTest convention)
 
 ### Pending Todos
 
@@ -112,6 +115,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-12T12:25:00.000Z
-Stopped at: Completed 01-14-PLAN.md (UAT round-2 gap 1: thread-activity wire-shape alignment)
+Last session: 2026-06-12T12:38:12.148Z
+Stopped at: Completed 01-15-PLAN.md (UAT round-2 gap 2: SSE first-connect flush + fatal-error retry/dedup) — Phase 01 all 15 plans complete
 Resume file: None
