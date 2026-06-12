@@ -22,6 +22,14 @@ import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import type { JobStateChangedEvent } from '@/types/api'
+import { CoroutineState } from '@/types/api'
+
+/** Terminal coroutine states — no further transitions expected. */
+const TERMINAL_STATES = new Set<CoroutineState>([
+  CoroutineState.COMPLETED,
+  CoroutineState.CANCELLED,
+  CoroutineState.FAILED,
+])
 
 interface SessionDetailsProps {
   sessionId: string
@@ -47,7 +55,18 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
   const hasScenario = !!scenarioId
-  const hasStarted = session ? session.coroutineCount > 0 : false
+
+  // Three-state scenario derivation:
+  //   notStarted — coroutineCount === 0 (no coroutines seen yet)
+  //   running    — coroutines exist but at least one is non-terminal
+  //   completed  — coroutines exist and ALL are in a terminal state
+  const scenarioState: 'notStarted' | 'running' | 'completed' = useMemo(() => {
+    if (!session || session.coroutineCount === 0 || session.coroutines.length === 0) {
+      return 'notStarted'
+    }
+    const allTerminal = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
+    return allTerminal ? 'completed' : 'running'
+  }, [session])
 
   // Track job states from JobStateChanged events
   const jobStates = useMemo(() => {
@@ -243,22 +262,34 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
               <div>
                 <h3 className="mb-1 text-lg font-semibold">Scenario Controls</h3>
                 <p className="text-sm text-default-500">
-                  {hasStarted
-                    ? 'Scenario is running or has completed'
-                    : 'Ready to run the scenario'}
+                  {scenarioState === 'notStarted' && 'Ready to run the scenario'}
+                  {scenarioState === 'running' && 'Scenario is running'}
+                  {scenarioState === 'completed' && 'Scenario completed'}
                 </p>
               </div>
               <div className="flex gap-2">
+                {scenarioState === 'completed' ? (
+                  <Button
+                    color="success"
+                    size="lg"
+                    variant="flat"
+                    startContent={<FiPlay />}
+                    isDisabled
+                  >
+                    Scenario Completed
+                  </Button>
+                ) : (
                 <Button
                   color="primary"
                   size="lg"
                   startContent={<FiPlay />}
                   onPress={handleRunScenario}
                   isLoading={runScenario.isPending}
-                  isDisabled={hasStarted}
+                  isDisabled={scenarioState === 'running'}
                 >
-                  {hasStarted ? 'Scenario Running' : 'Run Scenario'}
+                  {scenarioState === 'running' ? 'Scenario Running' : 'Run Scenario'}
                 </Button>
+                )}
                 <Button
                   color="warning"
                   size="lg"

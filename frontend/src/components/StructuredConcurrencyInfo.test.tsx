@@ -23,16 +23,18 @@ describe('StructuredConcurrencyInfo', () => {
     const body = screen.getByText(/when a child coroutine throws/i)
     expect(body).toBeInTheDocument()
 
-    // The full text around the FAILED chip should say "FAILED" not just "CANCELLED" for the parent
-    // Look for the text that describes what happens to the parent
     const container = body.closest('div')
     expect(container).not.toBeNull()
     const text = container!.textContent ?? ''
-    // Should mention parent becoming FAILED
-    expect(text).toMatch(/FAILED/i)
-    // Should NOT say "parent" gets "CANCELLED"
-    // (siblings getting CANCELLED is correct — test is specific to parent semantics)
-    expect(text).not.toMatch(/parent.*CANCELLED/i)
+
+    // Should describe the parent becoming FAILED (completes exceptionally)
+    // The phrase "which gets FAILED" or "parent, which gets FAILED" must appear
+    expect(text).toMatch(/parent.*which gets FAILED/i)
+
+    // The text must NOT say "parent, which gets CANCELLED"
+    // (Note: siblings being cancelled is fine — the regex anchors on "which gets CANCELLED"
+    // to avoid false-matching "sibling coroutines are also cancelled")
+    expect(text).not.toMatch(/which gets CANCELLED/i)
   })
 
   it('retains sibling CANCELLED wording in the Failure Propagation block', () => {

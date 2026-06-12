@@ -54,8 +54,8 @@ export function StructuredConcurrencyInfo() {
             <div className="font-semibold text-danger">Failure Propagation</div>
             <div className="text-xs text-default-600 mt-1">
               When a child coroutine throws an exception, it enters <span className="font-mono bg-default-100 px-1 rounded">FAILED</span> state.
-              The exception propagates to the parent, which gets <span className="font-mono bg-default-100 px-1 rounded">CANCELLED</span>,
-              and all sibling coroutines are also cancelled. This is the <strong>power of structured concurrency</strong>:
+              The exception propagates to the parent, which gets <span className="font-mono bg-default-100 px-1 rounded">FAILED</span> (completes
+              exceptionally), and all sibling coroutines are also cancelled. This is the <strong>power of structured concurrency</strong>:
               failures don't leak, they're handled in a predictable, hierarchical way.
             </div>
           </div>

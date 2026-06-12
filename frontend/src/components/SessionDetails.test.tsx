@@ -295,8 +295,8 @@ describe('SessionDetails', () => {
 
     // Completed state: the disabled "Scenario Running" button should NOT be present
     expect(screen.queryByRole('button', { name: /scenario running/i })).not.toBeInTheDocument()
-    // Instead, an explicit completed indicator should appear
-    expect(screen.getByText(/scenario completed/i)).toBeInTheDocument()
+    // Instead, an explicit completed indicator button should appear
+    expect(screen.getByRole('button', { name: /scenario completed/i })).toBeInTheDocument()
   })
 
   it('shows disabled "Scenario Running" button when some coroutines are still active (in-progress)', () => {
