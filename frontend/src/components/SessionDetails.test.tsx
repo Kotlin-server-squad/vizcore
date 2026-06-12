@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { SessionDetails } from './SessionDetails'
-import type { SessionSnapshot, CoroutineState } from '@/types/api'
+import type { SessionSnapshot, CoroutineState, ThreadActivity } from '@/types/api'
 
 // Mock all hooks the component depends on
 vi.mock('@/hooks/use-sessions', () => ({
@@ -31,8 +32,13 @@ vi.mock('@/hooks/use-scenarios', () => ({
   })),
 }))
 
-vi.mock('@/hooks/use-thread-activity', () => ({
-  useThreadActivity: vi.fn(() => ({ data: undefined })),
+// The real use-thread-activity hooks run against a mocked apiClient so the
+// Threads tab integration test exercises the genuine wire-shape pipeline
+// (hook -> ThreadTimeline) end-to-end. Default resolves an empty map.
+vi.mock('@/lib/api-client', () => ({
+  apiClient: {
+    getThreadActivity: vi.fn(() => Promise.resolve({})),
+  },
 }))
 
 vi.mock('@/hooks/use-event-categories', () => ({
@@ -60,10 +66,6 @@ vi.mock('./EventsList', () => ({
 
 vi.mock('./StructuredConcurrencyInfo', () => ({
   StructuredConcurrencyInfo: () => <div data-testid="structured-concurrency-info" />,
-}))
-
-vi.mock('./ThreadTimeline', () => ({
-  ThreadTimeline: () => <div data-testid="thread-timeline" />,
 }))
 
 vi.mock('./DispatcherOverview', () => ({
@@ -104,9 +106,11 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { useSession } from '@/hooks/use-sessions'
 import { useEventStream } from '@/hooks/use-event-stream'
+import { apiClient } from '@/lib/api-client'
 
 const mockedUseSession = vi.mocked(useSession)
 const mockedUseEventStream = vi.mocked(useEventStream)
+const mockedApiClient = vi.mocked(apiClient)
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -396,5 +400,49 @@ describe('SessionDetails - session refetch max-wait under sustained stream (CR-0
     }
 
     expect(refetch.mock.calls.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('SessionDetails - Threads tab wire shape (UAT gap 1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('Threads tab renders thread activity from the real Map wire shape (UAT gap 1)', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession(),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    // Byte-for-byte the shape curl showed in UAT round 2:
+    // Map<threadId, ThreadEvent[]> — NOT {threads, dispatcherInfo}.
+    const wireMap: ThreadActivity = {
+      '57': [
+        { coroutineId: 'c-1', threadId: 57, threadName: 'worker-1', timestamp: 1000, eventType: 'ASSIGNED', dispatcherName: 'Default' },
+        { coroutineId: 'c-1', threadId: 57, threadName: 'worker-1', timestamp: 5000, eventType: 'RELEASED', dispatcherName: 'Default' },
+      ],
+      '80': [
+        { coroutineId: 'c-2', threadId: 80, threadName: 'worker-2', timestamp: 2000, eventType: 'ASSIGNED', dispatcherName: 'IO' },
+      ],
+    }
+    mockedApiClient.getThreadActivity.mockResolvedValue(wireMap)
+
+    render(<SessionDetails sessionId="session-1" />, {
+      wrapper: createWrapper(),
+    })
+
+    // Activate the Threads tab
+    await userEvent.click(screen.getByRole('tab', { name: 'Threads' }))
+
+    // 2. Thread names from the wire map are rendered (values, not test names)
+    expect(await screen.findByText('worker-1')).toBeInTheDocument()
+    expect(screen.getByText('worker-2')).toBeInTheDocument()
+
+    // 3. At least one ASSIGNED chip is rendered
+    expect(screen.getAllByText('ASSIGNED').length).toBeGreaterThanOrEqual(1)
+
+    // 1. The UAT-observed permanent empty state is gone
+    expect(screen.queryByText('No thread activity data available yet')).toBeNull()
   })
 })
