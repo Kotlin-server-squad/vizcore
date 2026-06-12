@@ -130,9 +130,15 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
     }
 
     // Reset on sessionId/enabled change only — NOT on reconnect, which
-    // happens inside a single effect run via connect() below.
+    // happens inside a single effect run via connect() below. The event
+    // buffer is cleared together with the dedup state (WR-16): TanStack
+    // Router reuses the component instance on param-only navigation, so
+    // without this reset session B's replay would be appended after session
+    // A's events, and re-enabling the stream would duplicate history.
+    // clearEvents stays available for explicit user-driven clearing.
     retryCountRef.current = 0
     seenSeqsRef.current = new Set()
+    setEvents([])
 
     const connect = () => {
       retryTimerRef.current = null

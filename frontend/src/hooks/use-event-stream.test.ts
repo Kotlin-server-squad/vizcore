@@ -173,4 +173,52 @@ describe('useEventStream', () => {
     expect(mockedApiClient.createEventSource).not.toHaveBeenCalled()
     expect(result.current.isConnected).toBe(false)
   })
+
+  it('clears buffered events when sessionId changes (WR-16: no cross-session mixing)', async () => {
+    // One MockEventSource per connection so each session gets its own stream.
+    const perSessionSources: MockEventSource[] = []
+    mockedApiClient.createEventSource.mockImplementation(() => {
+      const source = new MockEventSource()
+      perSessionSources.push(source)
+      return source as unknown as EventSource
+    })
+
+    const eventFor = (sessionId: string, seq: number) =>
+      JSON.stringify({
+        kind: 'CoroutineCreated',
+        sessionId,
+        seq,
+        tsNanos: 1000 + seq,
+        coroutineId: `c${seq}`,
+        jobId: `j${seq}`,
+        parentCoroutineId: null,
+        scopeId: 'scope-1',
+        label: 'test',
+      })
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useEventStream(sessionId, true),
+      { wrapper: createWrapper(), initialProps: { sessionId: 'session-A' } },
+    )
+
+    // Session A accumulates events
+    act(() => {
+      perSessionSources[0]!.simulateEvent('CoroutineCreated', eventFor('session-A', 1))
+      perSessionSources[0]!.simulateEvent('CoroutineCreated', eventFor('session-A', 2))
+    })
+    await waitFor(() => expect(result.current.events.length).toBe(2))
+
+    // Param-only navigation to session B (component instance reused)
+    rerender({ sessionId: 'session-B' })
+
+    // Session A's events must be gone immediately — not interleaved with B's
+    await waitFor(() => expect(result.current.events).toEqual([]))
+
+    // Session B's replay (seqs overlap with A's) is accepted fresh, exactly once
+    act(() => {
+      perSessionSources[1]!.simulateEvent('CoroutineCreated', eventFor('session-B', 1))
+    })
+    await waitFor(() => expect(result.current.events.length).toBe(1))
+    expect((result.current.events[0] as { sessionId?: string }).sessionId).toBe('session-B')
+  })
 })
