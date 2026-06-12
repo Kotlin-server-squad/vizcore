@@ -343,6 +343,27 @@ describe('SessionDetails', () => {
     const runningButton = screen.getByRole('button', { name: /scenario running/i })
     expect(runningButton).toBeDisabled()
   })
+
+  it('lets the user switch the live stream OFF on scenario pages (WR-04: auto-enable only once)', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession(),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    render(
+      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      { wrapper: createWrapper() },
+    )
+
+    // The scenario auto-enables the stream once on mount
+    const toggle = await screen.findByRole('button', { name: /live stream active/i })
+
+    // Disabling must stick — the old auto-enable effect re-armed instantly
+    await userEvent.click(toggle)
+    expect(await screen.findByRole('button', { name: /enable live stream/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /live stream active/i })).not.toBeInTheDocument()
+  })
 })
 
 describe('SessionDetails - session refetch max-wait under sustained stream (CR-02)', () => {

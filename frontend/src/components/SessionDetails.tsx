@@ -149,12 +149,18 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
     }
   }, [streamEnabled])
 
-  // Auto-enable live stream when scenario is present
+  // Auto-enable live stream ONCE when a scenario is present (WR-04). The
+  // effect must NOT depend on streamEnabled: re-running on every toggle
+  // created a fight-loop where disabling the stream instantly re-enabled it
+  // (after clearEvents had already wiped the accumulated live events), making
+  // the toggle impossible to switch off on scenario pages.
+  const autoEnabledRef = useRef(false)
   useEffect(() => {
-    if (hasScenario && !streamEnabled) {
+    if (hasScenario && !autoEnabledRef.current) {
+      autoEnabledRef.current = true
       setStreamEnabled(true)
     }
-  }, [hasScenario, streamEnabled])
+  }, [hasScenario])
 
   const handleRunScenario = async () => {
     if (!scenarioId) return
