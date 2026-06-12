@@ -1,118 +1,88 @@
 ---
-status: complete
+status: testing
 phase: 01-foundation-production-readiness
 source: [01-VERIFICATION.md]
 started: 2026-06-12T06:57:01Z
-updated: 2026-06-12T08:25:00Z
+updated: 2026-06-12T11:35:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+number: 1
+name: Threads tab freshness during live session
+expected: |
+  Run a scenario with live streaming enabled. The Threads tab (thread lanes)
+  keeps updating while the scenario executes — it does not freeze on its
+  first snapshot for the duration of the live session.
+awaiting: user response
 
 ## Tests
 
-### 1. Run Validation end-to-end browser test
-expected: With the full stack running, triggering Run Validation in the browser renders the validation results panel (result cards + timing report) from the live POST /api/validate response shape {sessionId, results[], timing}. Mocked in automated tests only — this proves the live path.
-result: issue
-reported: "Feature works end-to-end (POST /api/validate/session/{id} 200, Failures(3)/Passes(13) cards + timing report render, no crash) — but the Timing Report shows ~109,172s total duration for a ~5s scenario. Unit bug: backend TimingAnalyzer returns nanoseconds, frontend formatMs() treats the value as milliseconds."
-severity: major
+### 1. Threads tab freshness during live session
+expected: Run a scenario with live streaming; thread lanes update during execution (no freeze on first snapshot). Closed by 01-13 (CR-01) — every SSE debounce flush now invalidates ['thread-activity', sessionId] plus a 5s fallback poll while live; this confirms it in a real browser.
+result: [pending]
 
-### 2. SSE stream live rendering in browser
-expected: With the full stack running, opening a session in the browser establishes the EventSource connection (use-event-stream.ts) and live events render in the visualization panels (tree/graph/timeline). SSE serialization and delivery are proven by automated tests; this proves browser rendering.
-result: pass
+### 2. Bounded snapshot cadence under sustained stream
+expected: With Network DevTools open during a dense event stream, GET /api/sessions/{id} fires at least once per ~1–1.5s (max-wait caps: 1000ms invalidation, 1500ms session refetch) — refresh is never starved — and the ~88-requests-in-3s polling storm does not return.
+result: [pending]
 
 ## Summary
 
 total: 2
-passed: 1
-issues: 1
-pending: 0
+passed: 0
+issues: 0
+pending: 2
 skipped: 0
 blocked: 0
 
 ## Gaps
 
+## Resolved Gaps (previous rounds)
+
 - truth: "Validation Timing Report shows durations in correct units"
-  status: failed
-  reason: "User-observed: Total Duration 109172.17s (~30h) for a ~5s scenario; per-coroutine bars ~105000s"
+  status: resolved
+  reason: "Closed by plan 01-10 — TimingAnalyzer converts ns→ms; verified 2026-06-12 re-verification (12/12)"
   severity: major
   test: 1
-  artifacts:
-    - "backend/coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/checksystem/TimingAnalyzer.kt (totalDuration documented as NANOSECONDS)"
-    - "frontend/src/components/validation/TimingReportView.tsx (formatMs() treats value as MILLISECONDS)"
-  missing:
-    - "Unit conversion ns→ms at the FE boundary (or BE returns ms and documents it); test asserting a plausible duration magnitude"
 
 - truth: "Session validation passes on a clean scenario run (no NoEventsAfterTerminal failures from the app's own instrumentation)"
-  status: failed
-  reason: "POST /api/validate on the Exception Handling session reports 3× NoEventsAfterTerminal: every coroutine emits JobStateChanged AFTER its terminal event (e.g. CoroutineFailed@seq=22 → JobStateChanged@seq=23). Related: sibling CoroutineCancelled (seq 17) is recorded before the causing child's CoroutineFailed (seq 19) — effect before cause in the event log."
+  status: resolved
+  reason: "Closed by plan 01-09 — JobStateChanged emitted before terminal lifecycle event; verified 2026-06-12 re-verification (12/12)"
   severity: major
   test: 1
-  artifacts:
-    - "backend/coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/wrappers/VizScope.kt (invokeOnCompletion emits terminal event then jobStateChanged)"
-    - "backend/coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/checksystem/ (NoEventsAfterTerminal rule)"
-  missing:
-    - "Either emit JobStateChanged before the terminal lifecycle event, or exempt JobStateChanged from the NoEventsAfterTerminal rule — decide and align instrumentation with validator"
 
 - truth: "Jobs tab shows job states for a session with running/completed coroutines"
-  status: failed
-  reason: "Jobs (0) for a session with 3-4 coroutines and JobStateChanged events present in the store"
+  status: resolved
+  reason: "Closed by plan 01-11 — discriminator normalization (type→kind); verified 2026-06-12 re-verification (12/12)"
   severity: major
   test: 2
-  artifacts:
-    - "frontend/src/components/SessionDetails.tsx:53 (filters event.kind === 'JobStateChanged')"
-    - "REST /api/sessions/{id}/events payload carries discriminator field 'type', not 'kind'"
-  missing:
-    - "Consistent event discriminator between REST payloads and FE types (kind vs type); Jobs filter matching the actual field"
 
 - truth: "Session page does not poll the REST API at high frequency while SSE is connected"
-  status: failed
-  reason: "~88 GET /api/sessions/{id} + /threads requests observed in ~3s while the SSE stream was active (Auto-updating poller)"
+  status: resolved
+  reason: "Closed by plan 01-12 (debounced invalidation) + 01-13 (max-wait caps preserve freshness); verified 2026-06-12 re-verification (12/12)"
   severity: minor
   test: 2
-  artifacts:
-    - "frontend/src/hooks/use-thread-activity.ts:22 (refetchInterval: 2000)"
-    - "frontend/src/hooks/ (suspected per-SSE-event query invalidation without debounce)"
-  missing:
-    - "Debounced/throttled invalidation; rely on SSE for live data instead of polling the snapshot per event"
 
 - truth: "Scenario Controls return to runnable state after the scenario completes"
-  status: failed
-  reason: "Button stays disabled at 'Scenario Running' after all coroutines reach terminal state; persists across reload ('Scenario is running or has completed')"
+  status: resolved
+  reason: "Closed by plan 01-12; verified 2026-06-12 re-verification (12/12)"
   severity: minor
   test: 2
-  artifacts:
-    - "frontend/src/components/SessionDetails.tsx (scenario running state derivation)"
-  missing:
-    - "Completion detection driving the button back to a re-runnable or explicit 'Completed' state"
 
 - truth: "Connection badge reflects actual SSE state"
-  status: failed
-  reason: "'Connecting…' badge stays lit while events are actively streaming on first session load; shows 'Connected' only after reload"
+  status: resolved
+  reason: "Closed by plan 01-12; verified 2026-06-12 re-verification (12/12)"
   severity: cosmetic
   test: 2
-  artifacts:
-    - "frontend/src/hooks/use-event-stream.ts (onopen state handling)"
-  missing:
-    - "Badge state transition on EventSource onopen for the initial connection"
 
 - truth: "Structured Concurrency info panel matches implemented semantics"
-  status: failed
-  reason: "Panel says a failing child's parent 'gets CANCELLED', but backend emits CoroutineFailed for the parent and the tree renders FAILED (which matches Kotlin completes-exceptionally semantics)"
+  status: resolved
+  reason: "Closed by plan 01-12 — panel copy aligned with parent-FAILED rendering; verified 2026-06-12 re-verification (12/12)"
   severity: cosmetic
   test: 2
-  artifacts:
-    - "frontend/src/components/StructuredConcurrencyInfo.tsx (Failure Propagation copy)"
-  missing:
-    - "Panel copy aligned with actual parent-FAILED rendering"
 
 - truth: "Gallery Run flow lands on a runnable session page"
   status: resolved
-  reason: "Was: navigate() omitted scenarioId so the session page rendered no Scenario Controls (dead end) + silent catch{} swallowed errors + Gallery missing from nav. Fixed inline during this UAT (gallery/index.tsx passes scenarioId and logs errors; Layout.tsx adds Gallery nav link). Verified in browser: gallery → Run → session page with controls → scenario runs and renders."
+  reason: "Fixed inline during UAT round 1 (gallery/index.tsx passes scenarioId; Layout.tsx adds Gallery nav link); verified in browser"
   severity: major
   test: 2
-  artifacts:
-    - "frontend/src/routes/gallery/index.tsx (fixed)"
-    - "frontend/src/components/Layout.tsx (fixed)"
-  missing: []
