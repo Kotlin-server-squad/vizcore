@@ -73,8 +73,6 @@ blocked: 0
 
 ## Resolved Gaps (previous rounds)
 
-## Resolved Gaps (previous rounds)
-
 - truth: "Validation Timing Report shows durations in correct units"
   status: resolved
   reason: "Closed by plan 01-10 — TimingAnalyzer converts ns→ms; verified 2026-06-12 re-verification (12/12)"

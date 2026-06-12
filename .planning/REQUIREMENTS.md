@@ -20,7 +20,7 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 - [x] **FIX-01**: All `VizEvent` subclasses are registered in a kotlinx.serialization `SerializersModule` polymorphic scope — SSE streaming and `GET /api/sessions/{id}/events` work end-to-end (no `SerializationException`), unblocking the Events tab and the conditional Channels/Flow/Sync/Jobs tabs. (Evidence: VERIFICATION.md RT-01/RT-03, SCENARIO-AUDIT.md SC-03.)
 - [x] **FIX-02**: The frontend validation feature consumes the real backend response shape (`{sessionId, results[], timing}`) — Run Validation renders results and never crashes the page. (Evidence: VERIFICATION.md RT-02.) ✓ Completed 01-02; thread-activity wire-shape alignment (Threads tab, UAT round-2 gap 1) completed 01-14
 - [x] **FIX-03**: `VizScope` classifies terminal coroutine state by cause type (not message-contains-label) — a throwing coroutine emits `CoroutineFailed` and renders FAILED, distinct from cancelled victims. (Evidence: SCENARIO-AUDIT.md SC-01.)
-- [ ] **FIX-04**: The Cancellation scenario performs a targeted child cancel — `child-to-be-cancelled` ends CANCELLED while `normal-child` ends COMPLETED. (Evidence: SCENARIO-AUDIT.md §3.)
+- [x] **FIX-04**: The Cancellation scenario performs a targeted child cancel — `child-to-be-cancelled` ends CANCELLED while `normal-child` ends COMPLETED. (Evidence: SCENARIO-AUDIT.md §3.)
 
 ### Production Readiness
 
@@ -137,6 +137,10 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| FIX-01 | Phase 1 | Complete |
+| FIX-02 | Phase 1 | Complete |
+| FIX-03 | Phase 1 | Complete |
+| FIX-04 | Phase 1 | Complete |
 | FND-01 | Phase 1 | Complete |
 | FND-02 | Phase 1 | Complete |
 | FND-03 | Phase 1 | Complete |
@@ -176,7 +180,10 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | FETEST-01 | Phase 5 | Pending |
 | FETEST-02 | Phase 5 | Pending |
 | FETEST-03 | Phase 5 | Pending |
-
+| GROW-01 | Growth backlog | Deferred |
+| GROW-02 | Growth backlog | Deferred |
+| GROW-03 | Growth backlog | Deferred |
+| GROW-04 | Growth backlog | Deferred |
 **Coverage:**
 
 - v1 requirements: 39 total
