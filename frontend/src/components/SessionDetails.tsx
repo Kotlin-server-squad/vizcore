@@ -174,6 +174,13 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
     }
   }
 
+  // Clear ONLY empties the live event list (WR-05) — it must never delete
+  // the session. Reset (below) remains the destructive delete-and-navigate.
+  const handleClear = () => {
+    clearEvents()
+    refetch()
+  }
+
   const handleReset = async () => {
     if (!confirm('Reset this session? This will clear all coroutines and start fresh.')) {
       return
@@ -357,8 +364,7 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
                   size="lg"
                   variant="light"
                   startContent={<FiTrash2 />}
-                  onPress={handleReset}
-                  isLoading={deleteSession.isPending}
+                  onPress={handleClear}
                 >
                   Clear
                 </Button>

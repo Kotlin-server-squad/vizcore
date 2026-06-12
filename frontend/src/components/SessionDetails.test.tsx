@@ -104,12 +104,13 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: vi.fn(() => vi.fn()),
 }))
 
-import { useSession } from '@/hooks/use-sessions'
+import { useSession, useDeleteSession } from '@/hooks/use-sessions'
 import { useEventStream } from '@/hooks/use-event-stream'
 import { apiClient } from '@/lib/api-client'
 
 const mockedUseSession = vi.mocked(useSession)
 const mockedUseEventStream = vi.mocked(useEventStream)
+const mockedUseDeleteSession = vi.mocked(useDeleteSession)
 const mockedApiClient = vi.mocked(apiClient)
 
 function createWrapper() {
@@ -363,6 +364,54 @@ describe('SessionDetails', () => {
     await userEvent.click(toggle)
     expect(await screen.findByRole('button', { name: /enable live stream/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /live stream active/i })).not.toBeInTheDocument()
+  })
+
+  it('"Clear" clears the live events without deleting the session (WR-05)', async () => {
+    const refetch = vi.fn()
+    mockedUseSession.mockReturnValue({
+      data: makeSession(),
+      isLoading: false,
+      refetch,
+    } as unknown as ReturnType<typeof useSession>)
+
+    const clearEvents = vi.fn()
+    mockedUseEventStream.mockReturnValue({
+      events: [],
+      isConnected: true,
+      error: null,
+      clearEvents,
+    } as unknown as ReturnType<typeof useEventStream>)
+
+    const deleteMutateAsync = vi.fn()
+    mockedUseDeleteSession.mockReturnValue({
+      mutateAsync: deleteMutateAsync,
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteSession>)
+
+    const confirmSpy = vi.spyOn(window, 'confirm')
+
+    render(
+      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      { wrapper: createWrapper() },
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /clear/i }))
+
+    // Clear only empties the event list (plus a snapshot refetch)...
+    expect(clearEvents).toHaveBeenCalledTimes(1)
+    expect(refetch).toHaveBeenCalled()
+    // ...and must NOT delete the session or even prompt for it
+    expect(deleteMutateAsync).not.toHaveBeenCalled()
+    expect(confirmSpy).not.toHaveBeenCalled()
+
+    confirmSpy.mockRestore()
+    // Restore the default useEventStream mock for subsequent tests
+    mockedUseEventStream.mockImplementation(() => ({
+      events: [],
+      isConnected: false,
+      error: null,
+      clearEvents: vi.fn(),
+    }) as unknown as ReturnType<typeof useEventStream>)
   })
 })
 
