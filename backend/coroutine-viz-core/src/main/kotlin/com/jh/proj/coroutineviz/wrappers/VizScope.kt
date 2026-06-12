@@ -43,12 +43,15 @@ import kotlin.coroutines.EmptyCoroutineContext
  * It maintains structured concurrency within its own scope, independent of the caller's scope.
  * This allows multiple visualization sessions to run concurrently without interfering with each other.
  *
- * With the default Job (not SupervisorJob), child failures will cancel parent and siblings,
- * demonstrating proper structured concurrency behavior. Use SupervisorJob if you want
- * children to fail independently.
+ * The scope always uses a plain Job (not SupervisorJob) parented to the session scope's
+ * SupervisorJob, so child failures cancel the parent and siblings — demonstrating proper
+ * structured concurrency behavior. A Job supplied via [context] is deliberately ignored:
+ * the scope's own Job is appended after [context] in the composition, so session close
+ * reliably cancels this scope and cancel()/cancelAndJoin() act on a Job the scope owns.
  *
  * @param session The visualization session for tracking events
- * @param context Optional coroutine context (dispatcher, job, etc.) for customization
+ * @param context Optional coroutine context (e.g. a dispatcher) for customization.
+ *   Any Job element in this context is overridden by the scope's own Job (see above).
  * @param scopeId Unique identifier for this scope
  */
 class VizScope(
