@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz
 
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
@@ -67,6 +68,22 @@ class ForkDeletionTest {
          * The wrappers package directory under backend/src/main that must be empty.
          */
         private val WRAPPERS_FORK_DIR = File("src/main/kotlin/com/jh/proj/coroutineviz/wrappers")
+    }
+
+    /**
+     * Sanity anchor: both guard tests resolve paths relative to the test JVM's working
+     * directory and pass vacuously (exists() == false) if it is not backend/. Assert a
+     * directory that must exist when resolution is correct, so a wrong working directory
+     * fails loudly instead of letting the fork guard silently stop guarding.
+     */
+    @BeforeEach
+    fun `working directory sanity anchor`() {
+        val anchor = File("src/main/kotlin/com/jh/proj/coroutineviz")
+        assertTrue(
+            anchor.isDirectory,
+            "ForkDeletionTest path anchor missing — test working directory is not backend/; " +
+                "the fork guard would pass vacuously. cwd=${File("").absolutePath}",
+        )
     }
 
     @Test
