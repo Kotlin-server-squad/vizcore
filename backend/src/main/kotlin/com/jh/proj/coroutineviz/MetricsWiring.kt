@@ -3,9 +3,11 @@ package com.jh.proj.coroutineviz
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Gauge
+import io.micrometer.core.instrument.Meter
 import io.micrometer.core.instrument.Timer
 import io.micrometer.prometheus.PrometheusMeterRegistry
 import org.slf4j.LoggerFactory
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -47,6 +49,12 @@ fun wireMetrics(registry: PrometheusMeterRegistry) {
         .description("Time to process and broadcast a single event")
         .register(registry)
 
+    // Per-session buffer gauges: track Meter.Id by sessionId so the gauge can be
+    // deregistered when the session closes. Without removal, the registry keeps a
+    // strong reference to every closed session (EventStore included) and /metrics
+    // accumulates one stale events_buffer_size series per session ever created (WR-03).
+    val bufferGaugeIds = ConcurrentHashMap<String, Meter.Id>()
+
     // Wire callbacks into every new session via SessionManager.onSessionCreated
     SessionManager.onSessionCreated = { session ->
         // events.emitted: increment each time send() successfully completes
@@ -56,15 +64,23 @@ fun wireMetrics(registry: PrometheusMeterRegistry) {
         session.store.onEvict = { eventsDroppedCounter.increment() }
 
         // events.buffer.size: per-session gauge tagged by sessionId
-        Gauge.builder("events.buffer.size") { session.store.count().toDouble() }
-            .description("Current number of events in session buffer")
-            .tag("sessionId", session.sessionId)
-            .register(registry)
+        val bufferGauge =
+            Gauge.builder("events.buffer.size") { session.store.count().toDouble() }
+                .description("Current number of events in session buffer")
+                .tag("sessionId", session.sessionId)
+                .register(registry)
+        bufferGaugeIds[session.sessionId] = bufferGauge.id
 
         // event.processing.duration: record nanos from VizSession.send()
         session.onEventProcessed = { nanos ->
             eventProcessingTimer.record(nanos, TimeUnit.NANOSECONDS)
         }
+    }
+
+    // Deregister the per-session gauge when the session is closed, releasing the
+    // session reference held by the gauge's value lambda.
+    SessionManager.onSessionClosed = { sessionId ->
+        bufferGaugeIds.remove(sessionId)?.let { meterId -> registry.remove(meterId) }
     }
 
     logger.info("Metrics wiring complete (7 ADR-020 metrics registered)")

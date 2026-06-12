@@ -5,6 +5,7 @@ import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.sse.SSE
 import io.ktor.client.plugins.sse.sse
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class MetricsWiringTest {
@@ -224,6 +226,44 @@ class MetricsWiringTest {
                 }
                 assertEquals(0.0, gaugeAfterDisconnect, "viz_sse_clients_active should return to 0.0 after SSE client disconnects")
             }
+        }
+
+    @Test
+    fun `events buffer size gauge is deregistered when session is closed`() =
+        testApplication {
+            application { module() }
+
+            val jsonClient =
+                createClient {
+                    install(ContentNegotiation) {
+                        json()
+                    }
+                }
+
+            // Create a session — onSessionCreated registers the per-session gauge
+            val createResponse = jsonClient.post("/api/sessions?name=gauge-cleanup-test")
+            assertEquals(HttpStatusCode.Created, createResponse.status)
+            val sessionId =
+                createResponse.bodyAsText().substringAfter("\"sessionId\":\"").substringBefore("\"")
+            assertTrue(sessionId.isNotBlank(), "Session ID must be non-blank")
+
+            val bodyWhileOpen = client.get("/metrics").bodyAsText()
+            assertTrue(
+                bodyWhileOpen.contains("events_buffer_size{sessionId=\"$sessionId\""),
+                "events_buffer_size gauge for $sessionId should be registered while the session is open",
+            )
+
+            // Close the session — onSessionClosed must remove the gauge (WR-03:
+            // otherwise the registry strongly references the dead session and
+            // /metrics accumulates one stale series per session ever created)
+            val deleteResponse = jsonClient.delete("/api/sessions/$sessionId")
+            assertEquals(HttpStatusCode.OK, deleteResponse.status)
+
+            val bodyAfterClose = client.get("/metrics").bodyAsText()
+            assertFalse(
+                bodyAfterClose.contains("events_buffer_size{sessionId=\"$sessionId\""),
+                "events_buffer_size gauge for $sessionId must be deregistered after session close",
+            )
         }
 
     /**
