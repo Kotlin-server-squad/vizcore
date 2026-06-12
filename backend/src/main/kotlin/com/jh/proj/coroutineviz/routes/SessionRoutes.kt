@@ -12,6 +12,7 @@ import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.sseClientsGauge
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -19,6 +20,13 @@ import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
+
+/**
+ * Per-client SSE live buffer capacity. Bounds the memory a slow/stalled SSE client
+ * can pin on the server (WR-14): when the writer cannot keep up, the OLDEST buffered
+ * events are dropped (with a logged warning) instead of growing without limit.
+ */
+private const val SSE_LIVE_BUFFER_CAPACITY = 4096
 
 fun Route.registerSessionRoutes() {
     post("/api/sessions") {
@@ -208,7 +216,27 @@ fun Route.registerSessionRoutes() {
                 // replay = 0, so any event emitted between the store snapshot and the
                 // subscription would otherwise be permanently lost. Live events are
                 // buffered during replay and drained with a seq filter to deduplicate.
-                val liveBuffer = Channel<VizEvent>(Channel.UNLIMITED)
+                //
+                // The buffer is BOUNDED (WR-14): an unbounded channel let a slow or
+                // half-open client grow server memory without limit, because the
+                // collector below never suspends. On overflow the oldest buffered
+                // event is dropped and logged; the client can re-sync via /events.
+                // (onUndeliveredElement fires only for overflow drops here — this
+                // channel is never cancelled or closed-for-send explicitly.)
+                val liveBuffer =
+                    Channel<VizEvent>(
+                        capacity = SSE_LIVE_BUFFER_CAPACITY,
+                        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+                        onUndeliveredElement = { dropped ->
+                            logger.warn(
+                                "SSE live buffer overflow for session {} — dropped event " +
+                                    "kind={} seq={} (slow client; stream gap, refetch /events)",
+                                sessionId,
+                                dropped.kind,
+                                dropped.seq,
+                            )
+                        },
+                    )
                 launch {
                     session.bus.stream().collect { liveBuffer.send(it) }
                 }
@@ -220,7 +248,11 @@ fun Route.registerSessionRoutes() {
                     send(event.toSse())
                 }
 
-                // Track the last seq we've sent to avoid duplicates
+                // Track the last seq we've sent to avoid duplicates. The max-seq
+                // watermark is sound because VizSession.send finalizes seq atomically
+                // with the store append (WR-02/WR-12): store order == seq order ==
+                // bus delivery order, so any live event with seq <= the snapshot max
+                // was already part of the replayed snapshot.
                 val lastReplayedSeq = storedEvents.maxOfOrNull { it.seq } ?: 0L
 
                 // 2️⃣ Drain buffered + live events (filtering out already-replayed ones)
