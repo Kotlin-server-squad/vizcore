@@ -59,6 +59,16 @@ const EVENT_PAYLOAD = JSON.stringify({
   label: 'test',
 })
 
+/** Count invalidateQueries calls whose queryKey starts with the given root. */
+function invalidationCount(queryClient: QueryClient, keyRoot: string): number {
+  return vi
+    .mocked(queryClient.invalidateQueries)
+    .mock.calls.filter(([arg]) => {
+      const key = (arg as { queryKey?: unknown[] } | undefined)?.queryKey
+      return Array.isArray(key) && key[0] === keyRoot
+    }).length
+}
+
 describe('useEventStream - debounced invalidation', () => {
   let mockEventSource: MockEventSource
   let queryClient: QueryClient
@@ -115,8 +125,9 @@ describe('useEventStream - debounced invalidation', () => {
       vi.advanceTimersByTime(600)
     })
 
-    // A burst of 5 events should produce exactly 1 invalidation (not 5)
-    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1)
+    // A burst of 5 events should produce exactly 1 flush (not 5):
+    // one ['sessions', ...] invalidation (plus its paired thread-activity one)
+    expect(invalidationCount(queryClient, 'sessions')).toBe(1)
   })
 
   it('fires a second invalidation for a second separate burst after the window', () => {
@@ -131,16 +142,57 @@ describe('useEventStream - debounced invalidation', () => {
       vi.advanceTimersByTime(600)
     })
 
-    // First burst: 1 invalidation
-    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1)
+    // First burst: 1 flush
+    expect(invalidationCount(queryClient, 'sessions')).toBe(1)
 
     act(() => {
       mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
       vi.advanceTimersByTime(600)
     })
 
-    // Second separate burst: now 2 total
-    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(2)
+    // Second separate burst: now 2 flushes total
+    expect(invalidationCount(queryClient, 'sessions')).toBe(2)
+  })
+
+  it('flushes at least once per max-wait window under a sustained sub-debounce stream (CR-02)', () => {
+    renderHook(
+      () => useEventStream('session-1', true),
+      { wrapper: createWrapper(queryClient) },
+    )
+
+    // Sustained stream: one event every 200ms (below the 400ms debounce window)
+    // for 1400ms total — longer than INVALIDATION_MAX_WAIT_MS (1000ms).
+    // A pure trailing-edge debounce would never flush; the max-wait cap must.
+    act(() => {
+      for (let i = 0; i < 8; i++) {
+        mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+        vi.advanceTimersByTime(200)
+      }
+    })
+
+    // The stream is still going, yet at least one flush already happened.
+    expect(invalidationCount(queryClient, 'sessions')).toBeGreaterThanOrEqual(1)
+  })
+
+  it('every flush also invalidates the thread-activity query key (CR-01)', () => {
+    renderHook(
+      () => useEventStream('session-1', true),
+      { wrapper: createWrapper(queryClient) },
+    )
+
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['thread-activity', 'session-1'],
+    })
+    // Flushes are paired: one thread-activity invalidation per sessions flush.
+    expect(invalidationCount(queryClient, 'thread-activity')).toBe(
+      invalidationCount(queryClient, 'sessions'),
+    )
   })
 })
 

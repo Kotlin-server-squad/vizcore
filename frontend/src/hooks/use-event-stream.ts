@@ -7,6 +7,14 @@ import type { VizEvent, VizEventKind } from '@/types/api'
 /** Debounce window for batching SSE-driven cache invalidations (ms). */
 const INVALIDATION_DEBOUNCE_MS = 400
 
+/**
+ * Max-wait cap for the invalidation debounce (ms). Under a sustained event
+ * stream whose inter-event gap stays below INVALIDATION_DEBOUNCE_MS, a pure
+ * trailing-edge debounce would be reset forever and never flush. This cap
+ * guarantees at least one flush per INVALIDATION_MAX_WAIT_MS.
+ */
+const INVALIDATION_MAX_WAIT_MS = 1000
+
 export function useEventStream(sessionId: string | undefined, enabled = true) {
   const [events, setEvents] = useState<VizEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
@@ -15,6 +23,9 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
   // Ref to hold the debounce timer for invalidation — reset on each event,
   // so a burst of events produces only one trailing-edge invalidation.
   const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Timestamp of the first event in the current un-flushed window. Used to
+  // enforce the max-wait cap so a sustained stream cannot starve the flush.
+  const firstInvalidationAtRef = useRef<number | null>(null)
 
   const clearEvents = useCallback(() => {
     setEvents([])
@@ -88,15 +99,37 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
             }
             setEvents(prev => [...prev, event])
 
-            // Debounced invalidation: reset the timer on each event so that a burst
-            // of events produces only one trailing-edge invalidation call.
+            // Max-wait-capped debounced invalidation: a burst of events still
+            // produces only one trailing-edge invalidation, but a sustained
+            // stream is guaranteed to flush at least once per
+            // INVALIDATION_MAX_WAIT_MS (the trailing edge can never be pushed
+            // past the max-wait boundary).
+            const flushInvalidation = () => {
+              invalidationTimerRef.current = null
+              // Reset the window so the next event starts a fresh max-wait clock.
+              firstInvalidationAtRef.current = null
+              queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
+              // CR-01 fix: the Threads tab relies on this invalidation while
+              // live (its background poll is slowed during streaming).
+              queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
+            }
+
+            if (firstInvalidationAtRef.current === null) {
+              firstInvalidationAtRef.current = Date.now()
+            }
+            const elapsed = Date.now() - firstInvalidationAtRef.current
+
             if (invalidationTimerRef.current !== null) {
               clearTimeout(invalidationTimerRef.current)
             }
-            invalidationTimerRef.current = setTimeout(() => {
-              invalidationTimerRef.current = null
-              queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
-            }, INVALIDATION_DEBOUNCE_MS)
+            if (elapsed >= INVALIDATION_MAX_WAIT_MS) {
+              flushInvalidation()
+            } else {
+              invalidationTimerRef.current = setTimeout(
+                flushInvalidation,
+                Math.min(INVALIDATION_DEBOUNCE_MS, INVALIDATION_MAX_WAIT_MS - elapsed),
+              )
+            }
           } catch {
             // Silently ignore malformed events
           }
@@ -130,6 +163,7 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
         clearTimeout(invalidationTimerRef.current)
         invalidationTimerRef.current = null
       }
+      firstInvalidationAtRef.current = null
     }
   }, [sessionId, enabled, queryClient])
 

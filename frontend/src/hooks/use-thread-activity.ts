@@ -14,9 +14,10 @@ import type { ThreadActivityResponse, ThreadLaneData } from '@/types/api'
  * Fetch thread activity for a session.
  *
  * @param sessionId - the session to fetch thread data for
- * @param isLive    - when true the SSE stream is driving updates, so the
- *                    background polling interval is disabled; the view will
- *                    refresh via SSE-triggered cache invalidations instead.
+ * @param isLive    - when true the SSE stream is driving updates: the view
+ *                    refreshes via SSE-driven invalidation of
+ *                    ['thread-activity', sessionId] (see use-event-stream.ts),
+ *                    with a slow 5s fallback poll as defense-in-depth.
  *                    Defaults to false (legacy 2s poll behaviour).
  */
 export function useThreadActivity(sessionId: string | undefined, isLive = false) {
@@ -24,10 +25,12 @@ export function useThreadActivity(sessionId: string | undefined, isLive = false)
     queryKey: ['thread-activity', sessionId],
     queryFn: () => apiClient.getThreadActivity(sessionId!),
     enabled: !!sessionId,
-    // Disable the 2-second polling interval while the live SSE stream is
-    // driving updates.  When SSE is not active, fall back to the original
-    // 2-second background refresh so the Threads view still stays current.
-    refetchInterval: isLive ? false : 2000,
+    // While the live SSE stream is active, refreshes are primarily driven by
+    // SSE-triggered invalidation of ['thread-activity', sessionId]; keep a
+    // slow 5s fallback poll so the Threads view can never freeze if an
+    // invalidation is missed. When SSE is not active, use the original
+    // 2-second background refresh.
+    refetchInterval: isLive ? 5000 : 2000,
     staleTime: 1000, // Consider data stale after 1 second
   })
 }
