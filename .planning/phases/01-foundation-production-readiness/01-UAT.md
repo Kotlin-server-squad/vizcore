@@ -1,41 +1,65 @@
 ---
-status: testing
+status: diagnosed
 phase: 01-foundation-production-readiness
 source: [01-VERIFICATION.md]
 started: 2026-06-12T06:57:01Z
-updated: 2026-06-12T11:35:00Z
+updated: 2026-06-12T11:55:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Threads tab freshness during live session
-expected: |
-  Run a scenario with live streaming enabled. The Threads tab (thread lanes)
-  keeps updating while the scenario executes — it does not freeze on its
-  first snapshot for the duration of the live session.
-awaiting: user response
+[testing complete — round 2 executed 2026-06-12 via browser automation with network/console instrumentation]
 
 ## Tests
 
 ### 1. Threads tab freshness during live session
 expected: Run a scenario with live streaming; thread lanes update during execution (no freeze on first snapshot). Closed by 01-13 (CR-01) — every SSE debounce flush now invalidates ['thread-activity', sessionId] plus a 5s fallback poll while live; this confirms it in a real browser.
-result: [pending]
+result: issue
+reported: "The 01-13 invalidation itself WORKS — GET /threads observed firing during a live SSE stream. But the Threads tab renders 'No thread activity data available yet' permanently: backend /threads returns Map<threadId, ThreadEvent[]> while the FE types expect {threads, dispatcherInfo} (REVIEW.md critical CR-02), so data.threads is always undefined. Separately, the primary gallery→Run flow never establishes SSE at all on first load (see gap 2), freezing the entire live view (events frozen at last REST fetch, badge 'Connecting…', button stuck 'Scenario Running') until reload."
+severity: major
 
 ### 2. Bounded snapshot cadence under sustained stream
 expected: With Network DevTools open during a dense event stream, GET /api/sessions/{id} fires at least once per ~1–1.5s (max-wait caps: 1000ms invalidation, 1500ms session refetch) — refresh is never starved — and the ~88-requests-in-3s polling storm does not return.
-result: [pending]
+result: pass
+reported: "Verified under a genuinely connected SSE stream (scenario re-triggered via API on an existing session): header live-updated 40→80 events / 6→12 coroutines in real time; network showed 2× GET session snapshot + 1× /events + 1× /threads during the ~5s burst — bounded, max-wait honored, no starvation. Degraded (SSE-dead) mode also bounded: ~3 snapshot GETs per 4.5s. The 88-req/3s storm is gone."
 
 ## Summary
 
 total: 2
-passed: 0
-issues: 0
-pending: 2
+passed: 1
+issues: 1
+pending: 0
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+- truth: "Threads tab renders live thread-lane data during and after a scenario run"
+  status: failed
+  reason: "GET /api/sessions/{id}/threads returns 200 with data shaped Map<String, List<ThreadEvent>> (e.g. {\"57\":[…],\"80\":[…]}), but frontend ThreadActivityResponse expects {threads, dispatcherInfo}; data.threads is undefined → permanent 'No thread activity data available yet'. SessionDetails.tsx hides the mismatch with an 'as unknown as' double cast. Same finding as 01-REVIEW.md critical CR-02."
+  severity: major
+  test: 1
+  artifacts:
+    - "frontend/src/lib/api-client.ts:134 (getThreadActivity return type)"
+    - "frontend/src/hooks/use-thread-activity.ts (consumes .threads)"
+    - "frontend/src/components/SessionDetails.tsx:408 (double cast)"
+    - "backend ProjectionService.kt:234 (returns Map<String, List<ThreadEvent>>)"
+  missing:
+    - "Align FE types/adapters with the real Map response (or change BE to return {threads, dispatcherInfo}); remove the double cast; value-asserting integration test on the live shape"
+
+- truth: "SSE connects on first load of a freshly created session (gallery → Run flow)"
+  status: failed
+  reason: "On a session with zero events, the backend SSE handler writes no bytes (no headers flushed) until the first event — curl shows HTTP 000/no response; via the Vite proxy the browser's EventSource request died with HTTP 500. Per the EventSource spec a non-200 is FATAL (no auto-reconnect), so the live view is permanently dead: badge stuck 'Connecting…', event count frozen at last REST fetch (23 vs backend 40), Run button stuck 'Scenario Running'. Reload fixes it because replay bytes flush headers immediately. Round-1's 'Connecting… badge' cosmetic finding was this same bug, misdiagnosed."
+  severity: major
+  test: 1
+  artifacts:
+    - "backend/src/main/kotlin/com/jh/proj/coroutineviz/routes/SessionRoutes.kt:176 (sse route — no initial flush/heartbeat for 0-event sessions)"
+    - "frontend/src/hooks/use-event-stream.ts (no retry/recovery after fatal EventSource error)"
+  missing:
+    - "Backend: send an immediate comment/heartbeat (or connected event) on SSE open so headers flush for 0-event sessions"
+    - "Frontend: handle EventSource fatal errors with bounded retry/backoff instead of staying 'Connecting…' forever"
+
+## Resolved Gaps (previous rounds)
 
 ## Resolved Gaps (previous rounds)
 
