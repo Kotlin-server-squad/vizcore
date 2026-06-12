@@ -61,7 +61,7 @@ Plans:
 
 - [x] 01-09-PLAN.md — UAT gap: VizScope emits JobStateChanged before terminal event so the validator's NoEventsAfterTerminal rule passes on a clean run + terminal-ordering regression test
 - [x] 01-10-PLAN.md — UAT gap: backend TimingAnalyzer converts durations ns→ms to match the documented frontend ms contract (fixes ~109,172s display) + magnitude-sanity test
-- [ ] 01-11-PLAN.md — UAT gap: consistent event discriminator (type→kind) across REST and SSE paths so the Jobs tab shows a non-zero count + raw-payload discriminator test
+- [x] 01-11-PLAN.md — UAT gap: consistent event discriminator (type→kind) across REST and SSE paths so the Jobs tab shows a non-zero count + raw-payload discriminator test
 
 **Wave 7** *(UAT gap closure — blocked on Wave 6; 01-11 must complete first, shared SessionDetails.tsx/use-event-stream.ts)*
 
@@ -129,7 +129,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 10/12 | In Progress|  |
+| 1. Foundation & Production Readiness | 11/12 | In Progress|  |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
