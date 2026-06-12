@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { SessionDetails } from './SessionDetails'
@@ -103,8 +103,10 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 import { useSession } from '@/hooks/use-sessions'
+import { useEventStream } from '@/hooks/use-event-stream'
 
 const mockedUseSession = vi.mocked(useSession)
+const mockedUseEventStream = vi.mocked(useEventStream)
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -336,5 +338,63 @@ describe('SessionDetails', () => {
     // In-progress: "Scenario Running" disabled button is shown
     const runningButton = screen.getByRole('button', { name: /scenario running/i })
     expect(runningButton).toBeDisabled()
+  })
+})
+
+describe('SessionDetails - session refetch max-wait under sustained stream (CR-02)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    // Restore the default useEventStream mock implementation for other tests
+    mockedUseEventStream.mockImplementation(() => ({
+      events: [],
+      isConnected: false,
+      error: null,
+      clearEvents: vi.fn(),
+    }))
+  })
+
+  it('refetches the session snapshot at least once per max-wait window while events keep arriving', () => {
+    const refetch = vi.fn()
+    mockedUseSession.mockReturnValue({
+      data: makeSession(),
+      isLoading: false,
+      refetch,
+    } as unknown as ReturnType<typeof useSession>)
+
+    // Mutable live-event list driven through the useEventStream mock
+    const liveEvents: unknown[] = []
+    mockedUseEventStream.mockImplementation(() => ({
+      events: [...liveEvents],
+      isConnected: true,
+      error: null,
+      clearEvents: vi.fn(),
+    }) as unknown as ReturnType<typeof useEventStream>)
+
+    // scenarioId auto-enables the live stream (streamEnabled -> true)
+    const { rerender } = render(
+      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      { wrapper: createWrapper() },
+    )
+
+    // Sustained stream: a new event every 250ms (below the 500ms debounce
+    // window) for 2000ms total — longer than the 1500ms max-wait cap. A pure
+    // trailing-edge debounce would be reset forever and never refetch; the
+    // max-wait cap must flush at least once before the stream stops.
+    for (let i = 0; i < 8; i++) {
+      liveEvents.push({ kind: 'CoroutineCreated' })
+      rerender(
+        <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(250)
+      })
+    }
+
+    expect(refetch.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
 })

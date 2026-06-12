@@ -31,6 +31,17 @@ const TERMINAL_STATES = new Set<CoroutineState>([
   CoroutineState.FAILED,
 ])
 
+/** Debounce window for coalescing live-event-driven session refetches (ms). */
+const SESSION_REFETCH_DEBOUNCE_MS = 500
+
+/**
+ * Max-wait cap for the session-refetch debounce (ms). Under a sustained event
+ * stream whose inter-event gap stays below SESSION_REFETCH_DEBOUNCE_MS, a pure
+ * trailing-edge debounce would never fire; this cap guarantees the session
+ * snapshot refetches at least once per SESSION_REFETCH_MAX_WAIT_MS.
+ */
+const SESSION_REFETCH_MAX_WAIT_MS = 1500
+
 interface SessionDetailsProps {
   sessionId: string
   scenarioId?: string
@@ -52,6 +63,9 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
   const navigate = useNavigate()
   // Debounce ref: reset on each new live event; only the trailing edge refetches.
   const sessionRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Timestamp of the first un-flushed live event in the current debounce
+  // window — used to enforce the max-wait cap.
+  const firstSessionRefetchAtRef = useRef<number | null>(null)
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
   const hasScenario = !!scenarioId
@@ -81,27 +95,59 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
   }, [allEvents])
 
   // Coalesced session refetch: debounce so a burst of SSE events triggers at
-  // most one refetch per ~500ms window (trailing edge only).
-  // The old code ran a 200ms debounce on liveEvents.length AND a 500ms setInterval
-  // simultaneously — the latter is removed entirely.
+  // most one refetch per SESSION_REFETCH_DEBOUNCE_MS window (trailing edge),
+  // with a max-wait cap so a sustained stream still refetches at least once
+  // per SESSION_REFETCH_MAX_WAIT_MS (the trailing edge can never be starved).
   useEffect(() => {
     if (!streamEnabled || liveEvents.length === 0) return
+
+    const flushRefetch = () => {
+      sessionRefetchTimerRef.current = null
+      // Reset the window so the next event starts a fresh max-wait clock.
+      firstSessionRefetchAtRef.current = null
+      refetch()
+    }
+
+    if (firstSessionRefetchAtRef.current === null) {
+      firstSessionRefetchAtRef.current = Date.now()
+    }
+    const elapsed = Date.now() - firstSessionRefetchAtRef.current
 
     if (sessionRefetchTimerRef.current !== null) {
       clearTimeout(sessionRefetchTimerRef.current)
     }
-    sessionRefetchTimerRef.current = setTimeout(() => {
-      sessionRefetchTimerRef.current = null
-      refetch()
-    }, 500)
+    if (elapsed >= SESSION_REFETCH_MAX_WAIT_MS) {
+      flushRefetch()
+    } else {
+      sessionRefetchTimerRef.current = setTimeout(
+        flushRefetch,
+        Math.min(SESSION_REFETCH_DEBOUNCE_MS, SESSION_REFETCH_MAX_WAIT_MS - elapsed),
+      )
+    }
 
     return () => {
+      // NOTE: this cleanup runs between every liveEvents.length change, so it
+      // must NOT reset firstSessionRefetchAtRef here — doing so would restart
+      // the max-wait clock on every event and reintroduce starvation. The
+      // window ref is reset on flush (above) and on stream teardown (below).
       if (sessionRefetchTimerRef.current !== null) {
         clearTimeout(sessionRefetchTimerRef.current)
         sessionRefetchTimerRef.current = null
       }
     }
   }, [streamEnabled, liveEvents.length, refetch])
+
+  // Teardown for the max-wait window: reset the debounce refs only when the
+  // stream toggles or the component unmounts (not between individual events).
+  useEffect(() => {
+    return () => {
+      if (sessionRefetchTimerRef.current !== null) {
+        clearTimeout(sessionRefetchTimerRef.current)
+        sessionRefetchTimerRef.current = null
+      }
+      firstSessionRefetchAtRef.current = null
+    }
+  }, [streamEnabled])
 
   // Auto-enable live stream when scenario is present
   useEffect(() => {
