@@ -1,6 +1,6 @@
 # Phase 2: User-Value Visualization - Context
 
-**Gathered:** 2026-06-12
+**Gathered:** 2026-06-12 (updated 2026-06-12 — second discussion pass resolved the panel-coverage, comparison-pair, export-UX, and recording-robustness gray areas)
 **Status:** Ready for planning
 
 <domain>
@@ -39,11 +39,31 @@ A developer can replay a captured session step-by-step (play/pause/stop/step, sc
 - **D-15:** Replay mode is signaled by the **controller's presence plus a small "REPLAY" chip** near the session status badge, with the "● N new events" badge alongside. No theme-wide tinting.
 - **D-16:** **Snap on scrub, animate on play/step** — dragging the scrubber re-renders panels instantly at the target state (no animation storms); normal play and single steps keep framer-motion animations per ADR-011/027 (RPLY-03).
 
+### Replay panel coverage (RPLY-01 "every panel" interpretation)
+- **D-17:** **Event-derived panels replay; projection-backed tabs don't.** Tree, graph, thread lanes, timeline, and EventsList render from `visibleEvents`. Projection-backed tabs (Flow/Channels/Sync/Jobs/Validation/Dispatchers — fetched from backend REST projections) show a subtle "live data — not replayed" notice instead of a client-side projection rebuild. This is the binding reading of the success criterion's "every panel reflecting the current event".
+- **D-18:** **Dim future, keep visible** — during replay the full list/timeline stays rendered; events past the cursor are dimmed and the timeline gets a playhead line. The user always sees where the cursor sits in the whole session.
+
+### Comparison side-by-side pair (resolves prior discretion item)
+- **D-19:** The synchronized pair is **two coroutine trees** — pairs naturally with the existing common/unique coroutine tables; thread-lane pairing deferred.
+- **D-20:** **Selection sync + delta badges, no scroll/zoom coupling** — clicking a coroutine in tree A highlights its counterpart in tree B (matched by name/path); nodes unique to one session get a colored outline/badge (distinct A-only vs B-only accents); common nodes stay neutral.
+
+### Export UX surface
+- **D-21:** **SVG export auto-detects SVG-native panels** — the SVG option appears wherever the panel's root render is an `<svg>` element (graph view guaranteed per EXPT-02); no hardcoded panel list.
+- **D-22:** **JSON event export is committed** (no longer discretionary) — "Export events (JSON)" in the ExportMenu downloads the session's normalized event array as `.json`.
+
+### Recording robustness (extends D-05..08)
+- **D-23:** **ReplayController doubles as recording progress** — it gains a recording state (red dot + elapsed time + Stop button); Stop discards the partial recording. No separate overlay covering the panel.
+- **D-24:** **Backgrounded tab aborts the recording** — on `visibilitychange` → hidden, stop and discard, toast: "Recording cancelled — keep the tab visible while recording." (rAF throttling would otherwise freeze frames while the recorder clock runs.)
+- **D-25:** **Codec feature-detect cascade** — `MediaRecorder.isTypeSupported`: vp9 → vp8 → browser-default; if MediaRecorder is unavailable, the video option is disabled with an explanatory tooltip (Safari).
+- **D-26:** **Duration estimate + confirm** — before recording, estimate run length from event gaps ÷ speed; above ~2 minutes show a confirm dialog with the estimate and suggest a higher speed. No hard cap.
+- **D-27:** **2x capture resolution** — video frames captured at scale-2 matching the ADR-018 PNG tier for crisp text, consistent with image exports.
+
 ### Claude's Discretion
-- DOM→canvas frame-capture mechanism for recording the panel (html2canvas-per-frame vs intermediate canvas mirror) — pick what sustains acceptable fps.
+- DOM→canvas frame-capture mechanism for recording the panel (html2canvas-per-frame vs intermediate canvas mirror) — pick what sustains acceptable fps at the D-27 2x resolution.
 - Inter-event delay handling in `useReplay`: the existing hook plays raw tsNanos gaps (min-clamp 10ms only); ADR-017 specifies a 50ms–2000ms clamp — reconcile toward the ADR unless research finds a better feel.
-- Which visualization pair ships as the comparison side-by-side panel (tree vs thread lanes), exact delta-highlight styling, scrubber implementation details, keyboard-shortcut conflict handling (ADR-017 set is locked), large-session scrub performance tactics, SVG style-inlining approach.
-- Where the JSON export menu item (ADR-018 "bonus") lands — include if cheap, not a requirement.
+- Scrubber implementation details, keyboard-shortcut conflict handling (ADR-017 set is locked), large-session scrub performance tactics, SVG style-inlining approach.
+- Counterpart matching rule for D-20 selection sync (exact name vs name+path), exact delta-badge colors/styling within the design system.
+- Export file naming conventions (PNG/SVG/WebM/JSON), exact wording/placement of the D-17 "live data — not replayed" notice, D-26 confirm-dialog threshold fine-tuning.
 
 ### Folded Todos
 - **WR-07 getOrCreateSession silent substitution** (`.planning/todos/pending/wr-07-getorcreatesession-silent-substitution.md`) — unknown session ids silently create fresh sessions, masking races and corrupting comparisons. Resolved here as D-12 (strict 404 on reads); comparison work makes this phase the natural home.
@@ -121,6 +141,9 @@ A developer can replay a captured session step-by-step (play/pause/stop/step, sc
 - Gallery multi-select → Compare shortcut pre-filling the pickers — nice-to-have on top of the `/compare` route.
 - Remembering replay cursor position across exit/re-enter — rejected for now (D-04); revisit only if back-and-forth debugging demands it.
 - Deep-linkable replay position (cursor index in URL) — not discussed as scope; possible future polish.
+- Switchable comparison pair (thread lanes alongside trees) — rejected for now (D-19 ships trees only); revisit if thread-utilization comparison proves hard to read from the delta cards alone.
+- Client-side projection re-derivation so Flow/Channels/Sync/Jobs/Validation tabs time-travel too — rejected for this phase (D-17); would be its own significant slice.
+- Pause-and-resume recording across tab visibility changes — rejected in favor of abort-with-toast (D-24); revisit if aborts prove annoying in practice.
 
 ### Reviewed Todos (not folded)
 - "Retire standalone vizcor-be & vizcor-fe, redirect to monorepo" — repo housekeeping, unrelated to Phase 2 scope; stays a standalone todo (also reviewed-not-folded in Phase 1).

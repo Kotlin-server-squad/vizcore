@@ -178,3 +178,130 @@
 - Gallery multi-select → Compare shortcut
 - Remembered replay cursor across exit/re-enter
 - Deep-linkable replay cursor position in URL
+
+---
+
+# Update Session — 2026-06-12 (second pass)
+
+**Areas discussed:** Replay panel coverage, Comparison side-by-side pair, Export UX surface, Recording robustness
+**Mode:** Update of existing context — D-01..16 held locked; this pass resolved discretion-parked and undiscussed areas (now D-17..27).
+
+---
+
+## Replay panel coverage
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Event-derived only | Tree/graph/lanes/timeline + EventsList replay from visibleEvents; projection-backed tabs show "live data — not replayed" notice | ✓ |
+| Everything time-travels | Client-side re-derivation of all projections — biggest work item of the phase | |
+| Core views + best-effort tabs | Per-tab decision during planning | |
+
+**User's choice:** Event-derived only (recommended)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Dim future, keep visible | Full list/timeline rendered; past-cursor events dimmed; timeline playhead | ✓ |
+| Hide future entirely | Panels show only up-to-cursor events | |
+| Per-panel split | Timeline full-with-playhead, EventsList hides future | |
+
+**User's choice:** Dim future, keep visible (recommended)
+
+---
+
+## Comparison side-by-side pair
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Coroutine trees | Pairs with existing common/unique tables; nodes carry delta badges | ✓ |
+| Thread lanes | Visualizes thread-utilization delta directly | |
+| Switchable (trees + lanes) | Two synchronized-pair implementations — roughly doubles the slice | |
+
+**User's choice:** Coroutine trees (recommended)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Selection sync + badges | Click in A highlights counterpart in B; A-only/B-only outline colors; no scroll/zoom coupling | ✓ |
+| Scroll/zoom lock only | Spatial comparison; tables carry diff detail | |
+| Full sync | Scroll/zoom lock + selection sync + badges | |
+
+**User's choice:** Selection sync + badges (recommended)
+
+---
+
+## Export UX surface
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Auto-detect SVG-native | SVG option wherever panel root is an <svg>; graph view guaranteed | ✓ |
+| Graph view only | Literal EXPT-02 minimum | |
+| Explicit allowlist | Curated panel list | |
+
+**User's choice:** Auto-detect SVG-native (recommended)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Include in ExportMenu | "Export events (JSON)" — normalized event array as .json download | ✓ |
+| Drop it this phase | PNG/SVG/WebM only | |
+| Claude's discretion | Include only if trivially cheap | |
+
+**User's choice:** Include in ExportMenu (recommended) — JSON export is now committed, no longer discretionary
+
+---
+
+## Recording robustness
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Controller doubles as progress | ReplayController gains recording state: red dot + elapsed + Stop (discards) | ✓ |
+| Progress overlay + cancel | Dedicated overlay with percent/elapsed | |
+| Minimal dot only | Cancel in ExportMenu | |
+
+**User's choice:** Controller doubles as progress (recommended)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Abort with toast | visibilitychange→hidden stops + discards; toast explains | ✓ |
+| Pause and resume | Seamless output, trickier state handling | |
+| Best effort | Accept frozen frames | |
+
+**User's choice:** Abort with toast (recommended)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Feature-detect cascade | isTypeSupported: vp9 → vp8 → default; disabled + tooltip if MediaRecorder absent | ✓ |
+| Strict vp9 only | Video disabled on Safari | |
+| Claude's discretion | Decide during implementation | |
+
+**User's choice:** Feature-detect cascade (recommended)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Estimate + confirm | Estimate duration from gaps ÷ speed; confirm dialog above ~2 min, suggest higher speed | ✓ |
+| Hard cap auto-stop | Fixed cap with truncation toast | |
+| No guard | Stop button only | |
+
+**User's choice:** Estimate + confirm (recommended)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| 2x like PNG | Scale-2 capture matching ADR-018 PNG tier | ✓ |
+| On-screen size (1x) | Cheapest encode, soft text on hi-DPI | |
+| Claude's discretion | Benchmark, fall back if fps suffers | |
+
+**User's choice:** 2x like PNG (recommended)
+
+---
+
+## Claude's Discretion (updated)
+
+- Frame-capture mechanism (now at 2x resolution per D-27)
+- useReplay delay-clamp reconciliation toward ADR-017
+- Scrubber implementation, keyboard-shortcut conflicts, large-session scrub performance, SVG style-inlining
+- Counterpart matching rule for selection sync (name vs name+path); delta-badge styling
+- Export file naming; "live data — not replayed" notice wording; confirm-dialog threshold fine-tuning
+
+## Deferred Ideas (added this session)
+
+- Switchable comparison pair (thread lanes alongside trees)
+- Client-side projection re-derivation for full-tab time travel
+- Pause-and-resume recording across tab visibility changes
