@@ -110,15 +110,15 @@ describe('buildThreadLanes', () => {
     expect(unknownResult.dispatcherInfo).toEqual([
       { id: 'Unknown', name: 'Unknown', threadIds: [7], queueDepth: null },
     ])
-    expect(unknownResult.threads[0].dispatcherName).toBe(null)
+    expect(unknownResult.threads[0]!.dispatcherName).toBe(null)
 
     // Single-event map: span = 0 -> utilization 0, no NaN
     const singleEvent: ThreadActivity = {
       '3': [evt({ coroutineId: 'c-3', threadId: 3, timestamp: 4242, eventType: 'ASSIGNED', dispatcherName: 'Default' })],
     }
     const zeroSpan = buildThreadLanes(singleEvent)
-    expect(zeroSpan.threads[0].utilization).toBe(0)
-    expect(Number.isNaN(zeroSpan.threads[0].utilization)).toBe(false)
+    expect(zeroSpan.threads[0]!.utilization).toBe(0)
+    expect(Number.isNaN(zeroSpan.threads[0]!.utilization)).toBe(false)
   })
 
   it('ignores RELEASED events with no prior ASSIGNED for that coroutine without throwing', () => {
@@ -130,6 +130,6 @@ describe('buildThreadLanes', () => {
 
     expect(() => buildThreadLanes(orphanRelease)).not.toThrow()
     const result = buildThreadLanes(orphanRelease)
-    expect(result.threads[0].segments).toEqual([])
+    expect(result.threads[0]!.segments).toEqual([])
   })
 })

@@ -1,17 +1,21 @@
 /**
  * React Query hooks for Thread Activity API
- * 
- * Provides access to thread activity data with dispatcher information
- * and timeline segments for visualization.
+ *
+ * `useThreadActivity` returns the REAL wire shape of
+ * GET /sessions/{id}/threads: `ThreadActivity` (Map<threadId, ThreadEvent[]>).
+ * The derived lane/dispatcher view model (`ThreadActivityResponse`) is built
+ * client-side via `buildThreadLanes` (src/lib/thread-lanes.ts) and consumed
+ * by the lane-oriented hooks below.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useMemo } from 'react'
+import { buildThreadLanes } from '@/lib/thread-lanes'
 import type { ThreadActivityResponse, ThreadLaneData } from '@/types/api'
 
 /**
- * Fetch thread activity for a session.
+ * Fetch thread activity for a session (wire shape: ThreadActivity).
  *
  * @param sessionId - the session to fetch thread data for
  * @param isLive    - when true the SSE stream is driving updates: the view
@@ -36,35 +40,49 @@ export function useThreadActivity(sessionId: string | undefined, isLive = false)
 }
 
 /**
- * Get thread lanes grouped by dispatcher
+ * Get thread lanes grouped by dispatcher.
+ *
+ * Derives the lane view model from the wire shape via buildThreadLanes.
+ * External contract unchanged:
+ * `{ ...query, data: Map<dispatcherName, ThreadLaneData[]>, dispatcherInfo }`.
  */
 export function useThreadLanesByDispatcher(sessionId: string | undefined) {
   const { data: activity, ...query } = useThreadActivity(sessionId)
 
+  const lanes = useMemo(
+    () => (activity ? buildThreadLanes(activity) : undefined),
+    [activity],
+  )
+
   const grouped = useMemo(() => {
-    if (!activity?.threads || !activity?.dispatcherInfo) {
+    if (!lanes) {
       return new Map<string, ThreadLaneData[]>()
     }
 
     const result = new Map<string, ThreadLaneData[]>()
 
-    activity.dispatcherInfo.forEach(dispatcher => {
-      const threads = activity.threads.filter(t => t.dispatcherId === dispatcher.id)
+    lanes.dispatcherInfo.forEach(dispatcher => {
+      // Lanes without a dispatcherName carry dispatcherId null but group
+      // under the 'Unknown' DispatcherInfo entry.
+      const threads = lanes.threads.filter(
+        t => (t.dispatcherId ?? 'Unknown') === dispatcher.id,
+      )
       result.set(dispatcher.name, threads)
     })
 
     return result
-  }, [activity])
+  }, [lanes])
 
   return {
     ...query,
     data: grouped,
-    dispatcherInfo: activity?.dispatcherInfo || []
+    dispatcherInfo: lanes?.dispatcherInfo || []
   }
 }
 
 /**
- * Get thread utilization statistics
+ * Get thread utilization statistics (operates on the derived view model,
+ * which ThreadLanesView passes in).
  */
 export function useThreadUtilizationStats(activity: ThreadActivityResponse | undefined) {
   return useMemo(() => {
@@ -102,22 +120,25 @@ export function useThreadUtilizationStats(activity: ThreadActivityResponse | und
 }
 
 /**
- * Get active coroutines per thread at current time
+ * Get active coroutines per thread.
+ *
+ * A coroutine is active on a thread iff its derived segment is still open
+ * (`endNanos == null`), i.e. an ASSIGNED event without a matching RELEASED.
  */
 export function useActiveCoroutinesPerThread(sessionId: string | undefined) {
   const { data: activity } = useThreadActivity(sessionId)
 
   const activeCoroutines = useMemo(() => {
-    if (!activity?.threads) return new Map<number, string[]>()
+    if (!activity) return new Map<number, string[]>()
 
-    const now = Date.now() * 1_000_000 // Convert to nanos
+    const lanes = buildThreadLanes(activity)
     const result = new Map<number, string[]>()
 
-    activity.threads.forEach(thread => {
+    lanes.threads.forEach(thread => {
       const active = thread.segments
-        .filter(seg => seg.startNanos <= now && (!seg.endNanos || seg.endNanos > now))
+        .filter(seg => seg.endNanos == null)
         .map(seg => seg.coroutineId)
-      
+
       if (active.length > 0) {
         result.set(thread.threadId, active)
       }
@@ -128,4 +149,3 @@ export function useActiveCoroutinesPerThread(sessionId: string | undefined) {
 
   return activeCoroutines
 }
-

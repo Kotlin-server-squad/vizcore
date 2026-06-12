@@ -405,7 +405,7 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
         <Tab key="threads" title="Threads">
           <div className="space-y-4 pt-2">
             {threadActivity ? (
-              <ThreadTimeline threadActivity={threadActivity as unknown as import('@/types/api').ThreadActivity} />
+              <ThreadTimeline threadActivity={threadActivity} />
             ) : (
               <Card>
                 <CardBody>

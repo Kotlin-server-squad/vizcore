@@ -7,7 +7,7 @@ import type {
   VizEvent,
   ScenarioConfigRequest,
   ScenarioExecutionResponse,
-  ThreadActivityResponse,
+  ThreadActivity,
   HierarchyNode,
   CoroutineTimeline,
   PaginatedEventsRequest,
@@ -130,9 +130,12 @@ class ApiClient {
     })
   }
 
-  // Thread Activity & Hierarchy (Enhanced endpoints for dispatcher tracking)
-  async getThreadActivity(sessionId: string): Promise<ThreadActivityResponse> {
-    return this.fetchJson<ThreadActivityResponse>(`/sessions/${sessionId}/threads`)
+  // Thread Activity & Hierarchy
+  // Wire shape: Map<threadId, ThreadEvent[]> (see ProjectionService.getThreadActivity).
+  // The derived lane/dispatcher view model is built client-side via
+  // buildThreadLanes in src/lib/thread-lanes.ts.
+  async getThreadActivity(sessionId: string): Promise<ThreadActivity> {
+    return this.fetchJson<ThreadActivity>(`/sessions/${sessionId}/threads`)
   }
 
   async getHierarchy(sessionId: string, scopeId?: string): Promise<HierarchyNode[]> {

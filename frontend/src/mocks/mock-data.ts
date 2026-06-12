@@ -11,10 +11,8 @@ import {
 import type {
   HierarchyNode,
   HierarchyNodeTree,
-  ThreadActivityResponse,
-  ThreadLaneData,
-  ThreadSegment,
-  DispatcherInfo,
+  ThreadActivity,
+  ThreadEvent,
   CoroutineTimeline,
   TimelineEvent,
   SuspensionPoint,
@@ -124,83 +122,50 @@ export function generateMockSuspensionPoint(): SuspensionPoint {
 // THREAD ACTIVITY MOCK DATA
 // ============================================================================
 
-export function generateMockThreadSegment(
-  coroutineId: string,
-  startNanos: number,
-  duration: number = 100_000_000  // 100ms default
-): ThreadSegment {
-  return {
-    coroutineId,
-    coroutineName: `coroutine-${coroutineId}`,
-    startNanos,
-    endNanos: startNanos + duration,
-    state: Math.random() > 0.3 ? 'ACTIVE' : 'SUSPENDED'
-  }
-}
-
-export function generateMockThreadLane(
-  threadId: number,
-  dispatcherName: string = 'Default',
-  segmentCount: number = 5
-): ThreadLaneData {
-  const baseTime = Date.now() * 1_000_000
-  const segments: ThreadSegment[] = []
-  
-  let currentTime = baseTime
-  for (let i = 0; i < segmentCount; i++) {
-    const duration = (Math.random() * 200 + 50) * 1_000_000  // 50-250ms
-    segments.push(generateMockThreadSegment(`coro-${threadId}-${i}`, currentTime, duration))
-    currentTime += duration + (Math.random() * 50 * 1_000_000)  // Add gap
-  }
-
-  // Calculate utilization
-  const totalTime = currentTime - baseTime
-  const activeTime = segments.reduce((sum, seg) => 
-    sum + (seg.endNanos ? seg.endNanos - seg.startNanos : 0), 0
-  )
-  const utilization = activeTime / totalTime
-
-  return {
-    threadId,
-    threadName: `${dispatcherName}Dispatcher-worker-${threadId}`,
-    dispatcherId: `dispatcher-${dispatcherName}`,
-    dispatcherName,
-    segments,
-    utilization
-  }
-}
-
-export function generateMockThreadActivity(
+/**
+ * Generate thread activity in the REAL wire shape served by
+ * GET /sessions/{id}/threads: Map<threadId, ThreadEvent[]>
+ * (see backend ProjectionService.getThreadActivity).
+ *
+ * Keys are stringified thread ids; values are ThreadEvent arrays with paired
+ * ASSIGNED/RELEASED entries, monotonic nano timestamps, threadName
+ * `worker-{id}`, and dispatcherName alternating 'Default'/'IO'.
+ *
+ * Serving this shape through MSW guarantees the mock matches the backend
+ * serializer output — the regression trap that let a fictional
+ * {threads, dispatcherInfo} shape ship green (REVIEW CR-02) is closed.
+ */
+export function generateMockThreadActivityWire(
   threadCount: number = 4,
-  segmentsPerThread: number = 5
-): ThreadActivityResponse {
+  eventsPerThread: number = 4
+): ThreadActivity {
   const dispatchers = ['Default', 'IO']
-  const threads: ThreadLaneData[] = []
-  const dispatcherMap = new Map<string, number[]>()
+  const activity: ThreadActivity = {}
+  const baseTime = Date.now() * 1_000_000  // nanos
 
   for (let i = 1; i <= threadCount; i++) {
     const dispatcherName = dispatchers[i % 2] ?? 'Default'
-    threads.push(generateMockThreadLane(i, dispatcherName, segmentsPerThread))
+    const threadName = `worker-${i}`
+    const events: ThreadEvent[] = []
 
-    if (!dispatcherMap.has(dispatcherName)) {
-      dispatcherMap.set(dispatcherName, [])
+    let currentTime = baseTime + i * 1_000_000  // stagger threads by 1ms
+    for (let j = 0; j < eventsPerThread; j++) {
+      const pairIndex = Math.floor(j / 2)
+      events.push({
+        coroutineId: `coro-${i}-${pairIndex}`,
+        threadId: i,
+        threadName,
+        timestamp: currentTime,
+        eventType: j % 2 === 0 ? 'ASSIGNED' : 'RELEASED',
+        dispatcherName,
+      })
+      currentTime += 50_000_000  // 50ms between events (monotonic)
     }
-    dispatcherMap.get(dispatcherName)!.push(i)
+
+    activity[String(i)] = events
   }
 
-  const dispatcherInfo: DispatcherInfo[] = Array.from(dispatcherMap.entries()).map(
-    ([name, threadIds]) => ({
-      id: `dispatcher-${name}`,
-      name,
-      threadIds,
-      queueDepth: Math.floor(Math.random() * 10)
-    })
-  )
-
-  return {
-    threads,
-    dispatcherInfo
-  }
+  return activity
 }
 
 // ============================================================================
@@ -302,9 +267,11 @@ export function generateCompleteScenario(options?: {
     options?.hierarchyBreadth ?? 2
   )
   
-  const threadActivity = generateMockThreadActivity(
+  // Wire shape: Map<threadId, ThreadEvent[]> — exactly what the backend
+  // serves. Each "segment" is an ASSIGNED/RELEASED pair (2 events).
+  const threadActivity = generateMockThreadActivityWire(
     options?.threadCount ?? 4,
-    options?.segmentsPerThread ?? 5
+    (options?.segmentsPerThread ?? 5) * 2
   )
 
   // Flatten hierarchy to get all coroutine IDs

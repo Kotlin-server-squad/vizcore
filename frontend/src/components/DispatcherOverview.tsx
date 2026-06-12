@@ -1,5 +1,5 @@
 import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
-import { useThreadActivity } from '@/hooks/use-thread-activity'
+import { useThreadLanesByDispatcher } from '@/hooks/use-thread-activity'
 import { FiCpu, FiLayers, FiZap, FiAlertCircle } from 'react-icons/fi'
 import type { DispatcherInfo } from '@/types/api'
 
@@ -8,7 +8,7 @@ interface DispatcherOverviewProps {
 }
 
 export function DispatcherOverview({ sessionId }: DispatcherOverviewProps) {
-  const { data: activity, isLoading } = useThreadActivity(sessionId)
+  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId)
 
   if (isLoading) {
     return (
@@ -20,7 +20,7 @@ export function DispatcherOverview({ sessionId }: DispatcherOverviewProps) {
     )
   }
 
-  if (!activity?.dispatcherInfo || activity.dispatcherInfo.length === 0) {
+  if (dispatcherInfo.length === 0) {
     return (
       <Card>
         <CardBody>
@@ -32,7 +32,7 @@ export function DispatcherOverview({ sessionId }: DispatcherOverviewProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {activity.dispatcherInfo.map(dispatcher => (
+      {dispatcherInfo.map(dispatcher => (
         <DispatcherCard key={dispatcher.id} dispatcher={dispatcher} />
       ))}
     </div>
