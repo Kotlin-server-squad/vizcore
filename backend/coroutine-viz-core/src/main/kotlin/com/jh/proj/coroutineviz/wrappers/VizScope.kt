@@ -196,7 +196,11 @@ class VizScope(
                             isActive = false,
                             isCompleted = false,
                             isCancelled = false,
-                            childrenCount = coroutineContext[Job]?.children?.count() ?: 0,
+                            // The completed coroutine's own job — NOT the scope's context Job.
+                            // In this non-suspend lambda, a bare coroutineContext resolves to
+                            // this@VizScope.coroutineContext, which now carries the scope Job
+                            // and would count unrelated still-active coroutines.
+                            childrenCount = job.children.count(),
                         ),
                     )
                 }
@@ -210,7 +214,11 @@ class VizScope(
                             isActive = false,
                             isCompleted = false,
                             isCancelled = true,
-                            childrenCount = coroutineContext[Job]?.children?.count() ?: 0,
+                            // The completed coroutine's own job — NOT the scope's context Job.
+                            // In this non-suspend lambda, a bare coroutineContext resolves to
+                            // this@VizScope.coroutineContext, which now carries the scope Job
+                            // and would count unrelated still-active coroutines.
+                            childrenCount = job.children.count(),
                         ),
                     )
                 }
