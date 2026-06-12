@@ -13,6 +13,7 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.micrometer.core.instrument.Timer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 
@@ -290,15 +291,20 @@ fun Route.registerScenarioRunnerRoutes() {
                     errors = listOf(e.message ?: "Unknown validation error"),
                 ),
             )
+        } catch (e: CancellationException) {
+            // Client disconnect cancels the handler — rethrow to honor cooperative
+            // cancellation instead of attempting respond() inside a cancelled coroutine.
+            throw e
         } catch (e: Exception) {
+            // Keep stack traces in server logs only; never disclose internals to clients.
             logger.error("Error running custom scenario", e)
             call.respond(
                 HttpStatusCode.InternalServerError,
                 ScenarioExecutionResponse(
                     success = false,
                     sessionId = "",
-                    message = "Error executing scenario: ${e.message}",
-                    errors = listOf(e.stackTraceToString()),
+                    message = "Error executing scenario",
+                    errors = listOf(e.message ?: "internal error"),
                 ),
             )
         }
@@ -445,11 +451,17 @@ private suspend fun ApplicationCall.runScenarioWithResponse(
         sample?.stop(scenarioDurationTimerRef)
         delay(100)
         respond(HttpStatusCode.OK, response)
+    } catch (e: CancellationException) {
+        // Client disconnect cancels the handler (realistic scenarios block 15-35s on
+        // job.join()) — rethrow to honor cooperative cancellation instead of trying
+        // to respond inside a cancelled coroutine.
+        throw e
     } catch (e: Exception) {
+        // Sanitized body: message only; full stack trace stays in server logs.
         logger.error("Error running scenario", e)
         respond(
             HttpStatusCode.InternalServerError,
-            mapOf("error" to "Scenario failed: ${e.message}"),
+            mapOf("error" to "Scenario failed: ${e.message ?: "internal error"}"),
         )
     }
 }

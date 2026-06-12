@@ -231,6 +231,10 @@ object ScenarioRunner {
                     try {
                         child1.join()
                         child2.join()
+                    } catch (e: CancellationException) {
+                        // Never swallow cancellation — rethrow to keep cooperative
+                        // cancellation (and structured concurrency) intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.debug("Parent caught exception: ${e.message}")
                     }
@@ -627,6 +631,10 @@ object ScenarioRunner {
 
                     try {
                         notificationJobs.forEach { it.join() }
+                    } catch (e: CancellationException) {
+                        // Never swallow cancellation — rethrow to keep cooperative
+                        // cancellation (and structured concurrency) intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.warn("⚠️ Some notifications failed: ${e.message}")
                         // Don't fail registration if notifications fail
