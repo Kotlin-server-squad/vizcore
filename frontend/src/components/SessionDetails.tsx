@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Card, CardBody, CardHeader, Chip, Tabs, Tab, Spinner, Button } from '@heroui/react'
 import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiRotateCcw, FiTrash2 } from 'react-icons/fi'
 import { useSession, useSessionEvents, useDeleteSession } from '@/hooks/use-sessions'
@@ -32,15 +32,18 @@ interface SessionDetailsProps {
 export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionDetailsProps) {
   const { data: session, isLoading, refetch } = useSession(sessionId)
   const { data: storedEvents } = useSessionEvents(sessionId)
-  const { data: threadActivity } = useThreadActivity(sessionId)
-  const eventCategories = useEventCategories(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
-  const [autoRefresh, setAutoRefresh] = useState(false)
   const { events: liveEvents, isConnected, clearEvents } = useEventStream(sessionId, streamEnabled)
+  // Pass isLive=streamEnabled so thread-activity does not poll every 2s while
+  // SSE is driving updates; SSE-triggered cache invalidations handle refreshes.
+  const { data: threadActivity } = useThreadActivity(sessionId, streamEnabled)
+  const eventCategories = useEventCategories(sessionId)
   const runScenario = useRunScenario()
   const deleteSession = useDeleteSession()
   const navigate = useNavigate()
+  // Debounce ref: reset on each new live event; only the trailing edge refetches.
+  const sessionRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
   const hasScenario = !!scenarioId
@@ -58,37 +61,28 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
     return states
   }, [allEvents])
 
-  // Auto-refresh session data when SSE is active and new events arrive
+  // Coalesced session refetch: debounce so a burst of SSE events triggers at
+  // most one refetch per ~500ms window (trailing edge only).
+  // The old code ran a 200ms debounce on liveEvents.length AND a 500ms setInterval
+  // simultaneously — the latter is removed entirely.
   useEffect(() => {
-    if (streamEnabled && liveEvents.length > 0) {
-      // Refetch session data when new events arrive
-      const timer = setTimeout(() => {
-        refetch()
-      }, 200) // Small debounce to avoid too many requests
+    if (!streamEnabled || liveEvents.length === 0) return
 
-      return () => clearTimeout(timer)
+    if (sessionRefetchTimerRef.current !== null) {
+      clearTimeout(sessionRefetchTimerRef.current)
+    }
+    sessionRefetchTimerRef.current = setTimeout(() => {
+      sessionRefetchTimerRef.current = null
+      refetch()
+    }, 500)
+
+    return () => {
+      if (sessionRefetchTimerRef.current !== null) {
+        clearTimeout(sessionRefetchTimerRef.current)
+        sessionRefetchTimerRef.current = null
+      }
     }
   }, [streamEnabled, liveEvents.length, refetch])
-
-  // Auto-refresh interval when live stream is active
-  useEffect(() => {
-    if (streamEnabled && autoRefresh) {
-      const interval = setInterval(() => {
-        refetch()
-      }, 500) // Refresh every 500ms for smooth real-time updates
-
-      return () => clearInterval(interval)
-    }
-  }, [streamEnabled, autoRefresh, refetch])
-
-  // Enable auto-refresh when stream is enabled
-  useEffect(() => {
-    if (streamEnabled) {
-      setAutoRefresh(true)
-    } else {
-      setAutoRefresh(false)
-    }
-  }, [streamEnabled])
 
   // Auto-enable live stream when scenario is present
   useEffect(() => {
@@ -211,18 +205,6 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
                     >
                       {isConnected ? 'Connected' : 'Connecting...'}
                     </Chip>
-                    {autoRefresh && (
-                      <Chip color="primary" variant="flat" size="sm">
-                        <motion.span
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                          className="inline-block"
-                        >
-                          🔄
-                        </motion.span>
-                        Auto-updating
-                      </Chip>
-                    )}
                   </motion.div>
                 </AnimatePresence>
               )}

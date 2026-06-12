@@ -1,12 +1,9 @@
 /**
- * TDD RED: Task 1 - Polling storm prevention
- * Tests that SSE invalidation is debounced rather than fired per-event.
- *
- * These tests verify that a burst of SSE events triggers only one
- * queryClient.invalidateQueries call (debounced), not one per event.
+ * TDD tests: Task 1 - Polling storm prevention
+ * Verifies that SSE invalidation is debounced (not per-event).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
@@ -50,6 +47,18 @@ function createWrapper(queryClient: QueryClient) {
   }
 }
 
+const EVENT_PAYLOAD = JSON.stringify({
+  type: 'CoroutineCreated',
+  sessionId: 'session-1',
+  seq: 1,
+  tsNanos: 1000,
+  coroutineId: 'c1',
+  jobId: 'j1',
+  parentCoroutineId: null,
+  scopeId: 'scope-1',
+  label: 'test',
+})
+
 describe('useEventStream - debounced invalidation', () => {
   let mockEventSource: MockEventSource
   let queryClient: QueryClient
@@ -72,85 +81,74 @@ describe('useEventStream - debounced invalidation', () => {
     vi.restoreAllMocks()
   })
 
-  it('debounces invalidation: a burst of 5 events triggers at most one invalidation per debounce window', async () => {
-    renderHook(
-      () => useEventStream('session-1', true),
-      { wrapper: createWrapper(queryClient) },
-    )
-
-    const eventPayload = JSON.stringify({
-      type: 'CoroutineCreated',
-      sessionId: 'session-1',
-      seq: 1,
-      tsNanos: 1000,
-      coroutineId: 'c1',
-      jobId: 'j1',
-      parentCoroutineId: null,
-      scopeId: 'scope-1',
-      label: 'test',
-    })
-
-    // Simulate 5 rapid events
-    act(() => {
-      for (let i = 0; i < 5; i++) {
-        mockEventSource.simulateEvent('CoroutineCreated', eventPayload)
-      }
-    })
-
-    // Before debounce window elapses: no invalidations yet (or exactly 1 for debounced trailing edge)
-    // After debounce window: exactly 1 invalidation (not 5)
-    act(() => {
-      vi.advanceTimersByTime(600)
-    })
-
-    await waitFor(() => {
-      // 5 rapid events should produce AT MOST 1 invalidation call (debounced)
-      expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1)
-    })
-  })
-
   it('does not fire invalidation mid-burst (before debounce window closes)', () => {
     renderHook(
       () => useEventStream('session-1', true),
       { wrapper: createWrapper(queryClient) },
     )
 
-    const eventPayload = JSON.stringify({
-      type: 'CoroutineCreated',
-      sessionId: 'session-1',
-      seq: 1,
-      tsNanos: 1000,
-      coroutineId: 'c1',
-      jobId: 'j1',
-      parentCoroutineId: null,
-      scopeId: 'scope-1',
-      label: 'test',
-    })
-
     act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload)
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload)
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload)
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
     })
 
-    // At t=100ms (before debounce window of ~400ms): should not have fired yet
+    // At t=100ms — still inside the debounce window (~400ms): no invalidation yet
     act(() => {
       vi.advanceTimersByTime(100)
     })
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(0)
   })
+
+  it('fires exactly one invalidation after the debounce window for a burst of events', () => {
+    renderHook(
+      () => useEventStream('session-1', true),
+      { wrapper: createWrapper(queryClient) },
+    )
+
+    act(() => {
+      for (let i = 0; i < 5; i++) {
+        mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      }
+      // Advance past the debounce window so the trailing-edge timer fires
+      vi.advanceTimersByTime(600)
+    })
+
+    // A burst of 5 events should produce exactly 1 invalidation (not 5)
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1)
+  })
+
+  it('fires a second invalidation for a second separate burst after the window', () => {
+    renderHook(
+      () => useEventStream('session-1', true),
+      { wrapper: createWrapper(queryClient) },
+    )
+
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      vi.advanceTimersByTime(600)
+    })
+
+    // First burst: 1 invalidation
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', EVENT_PAYLOAD)
+      vi.advanceTimersByTime(600)
+    })
+
+    // Second separate burst: now 2 total
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(2)
+  })
 })
 
-describe('useThreadActivity - no polling while live', () => {
-  // NOTE: This test verifies the API contract: when isLive=true, refetchInterval is disabled.
-  // The implementation test is in use-thread-activity.test.ts — these are behavioral specs.
+describe('useThreadActivity - isLive flag disables polling', () => {
   it('useThreadActivity signature accepts isLive flag to disable polling interval', async () => {
-    // Import dynamically to verify the exported signature
     const mod = await import('./use-thread-activity')
-    // The function should accept an optional isLive parameter
     expect(typeof mod.useThreadActivity).toBe('function')
-    // When called with isLive=true, it should work without error (functional contract)
-    // Full behavior tested in use-thread-activity.test.ts
+    // function exists and accepts 2 args; full behavior is in use-thread-activity.test.ts
+    expect(mod.useThreadActivity.length).toBeGreaterThanOrEqual(1)
   })
 })

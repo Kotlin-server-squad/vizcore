@@ -1,14 +1,20 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { normalizeEvent } from '@/lib/utils'
 import type { VizEvent, VizEventKind } from '@/types/api'
+
+/** Debounce window for batching SSE-driven cache invalidations (ms). */
+const INVALIDATION_DEBOUNCE_MS = 400
 
 export function useEventStream(sessionId: string | undefined, enabled = true) {
   const [events, setEvents] = useState<VizEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  // Ref to hold the debounce timer for invalidation — reset on each event,
+  // so a burst of events produces only one trailing-edge invalidation.
+  const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearEvents = useCallback(() => {
     setEvents([])
@@ -81,9 +87,16 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
               (event as any).kind = eventType as VizEventKind
             }
             setEvents(prev => [...prev, event])
-            
-            // Invalidate session queries to update UI
-            queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
+
+            // Debounced invalidation: reset the timer on each event so that a burst
+            // of events produces only one trailing-edge invalidation call.
+            if (invalidationTimerRef.current !== null) {
+              clearTimeout(invalidationTimerRef.current)
+            }
+            invalidationTimerRef.current = setTimeout(() => {
+              invalidationTimerRef.current = null
+              queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
+            }, INVALIDATION_DEBOUNCE_MS)
           } catch {
             // Silently ignore malformed events
           }
@@ -111,6 +124,11 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
       if (eventSource) {
         eventSource.close()
         setIsConnected(false)
+      }
+      // Clear any pending debounce timer on teardown
+      if (invalidationTimerRef.current !== null) {
+        clearTimeout(invalidationTimerRef.current)
+        invalidationTimerRef.current = null
       }
     }
   }, [sessionId, enabled, queryClient])

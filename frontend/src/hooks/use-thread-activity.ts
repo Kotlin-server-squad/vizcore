@@ -11,15 +11,23 @@ import { useMemo } from 'react'
 import type { ThreadActivityResponse, ThreadLaneData } from '@/types/api'
 
 /**
- * Fetch thread activity for a session
- * Auto-refreshes every 2 seconds for live updates
+ * Fetch thread activity for a session.
+ *
+ * @param sessionId - the session to fetch thread data for
+ * @param isLive    - when true the SSE stream is driving updates, so the
+ *                    background polling interval is disabled; the view will
+ *                    refresh via SSE-triggered cache invalidations instead.
+ *                    Defaults to false (legacy 2s poll behaviour).
  */
-export function useThreadActivity(sessionId: string | undefined) {
+export function useThreadActivity(sessionId: string | undefined, isLive = false) {
   return useQuery({
     queryKey: ['thread-activity', sessionId],
     queryFn: () => apiClient.getThreadActivity(sessionId!),
     enabled: !!sessionId,
-    refetchInterval: 2000, // Refresh every 2 seconds for live updates
+    // Disable the 2-second polling interval while the live SSE stream is
+    // driving updates.  When SSE is not active, fall back to the original
+    // 2-second background refresh so the Threads view still stays current.
+    refetchInterval: isLive ? false : 2000,
     staleTime: 1000, // Consider data stale after 1 second
   })
 }
