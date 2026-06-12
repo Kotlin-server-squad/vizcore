@@ -194,7 +194,7 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
               const event = normalizeEvent(rawEvent)
               // If still no kind, set from SSE event type
               if (!event.kind) {
-                (event as any).kind = eventType as VizEventKind
+                (event as { kind?: VizEventKind }).kind = eventType as VizEventKind
               }
 
               // Replay dedup: a reconnect replays FULL history, so drop any

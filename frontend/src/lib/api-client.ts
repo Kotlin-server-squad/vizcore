@@ -58,7 +58,7 @@ class ApiClient {
   // The backend supports no pagination or filtering on this endpoint — do
   // not add query params here without implementing them server-side first.
   async getSessionEvents(sessionId: string): Promise<VizEvent[]> {
-    const events = await this.fetchJson<any[]>(`/sessions/${sessionId}/events`)
+    const events = await this.fetchJson<unknown[]>(`/sessions/${sessionId}/events`)
     // Normalize events from backend format (type -> kind)
     return normalizeEvents(events)
   }
