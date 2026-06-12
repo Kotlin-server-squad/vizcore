@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-09-PLAN.md (FIX-03 terminal event ordering; VizScope JobStateChanged before terminal event; NoEventsAfterTerminalRule zero self-findings)
-last_updated: "2026-06-12T09:13:30.000Z"
+stopped_at: Completed 01-10-PLAN.md (TimingAnalyzer ns→ms conversion; magnitude-sanity test)
+last_updated: "2026-06-12T09:32:21.049Z"
 last_activity: 2026-06-12 -- Phase 01 execution started
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 ## Current Position
 
 Phase: 01 (foundation-production-readiness) — EXECUTING
-Plan: 1 of 12
-Status: Executing Phase 01
+Plan: 2 of 12
+Status: Ready to execute
 Last activity: 2026-06-12 -- Phase 01 execution started
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
@@ -55,6 +55,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 01 P03 | 6 | 3 tasks | 15 files |
 | Phase 01 P04 | ~10min | 3 tasks | 4 files |
 | Phase 01 P05 | 15min | 2 tasks | 8 files |
+| Phase 01 P10 | 17 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,7 @@ Recent decisions affecting current work:
 - [Phase ?]: PROD-02: logstash dep added; prod logback profile wired via JVM flag in Dockerfile ENTRYPOINT
 - [Phase ?]: PROD-05: /metrics endpoint; all 7 ADR-020 metrics wired; coroutine-viz-core kept Micrometer-free via callbacks
 - [Phase 1, Plan 09]: VizScope terminal ordering fix: emit JobStateChanged BEFORE coroutineFailed/coroutineCancelled so terminal event has highest seq; vizAsync left unchanged (no JobStateChanged emitted there)
+- [Phase ?]: TimingAnalyzer ns->ms: divide by NANOS_PER_MILLI=1_000_000L; frontend BackendTimingReport unchanged (already ms contract)
 
 ### Pending Todos
 
@@ -100,6 +102,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-12T09:13:30.000Z
-Stopped at: Completed 01-09-PLAN.md (FIX-03 terminal event ordering; VizScope JobStateChanged before terminal event; NoEventsAfterTerminalRule zero self-findings)
+Last session: 2026-06-12T09:32:21.045Z
+Stopped at: Completed 01-10-PLAN.md (TimingAnalyzer ns→ms conversion; magnitude-sanity test)
 Resume file: None
