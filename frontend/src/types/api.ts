@@ -310,6 +310,8 @@ export type VizEventKind =
   | 'PotentialDeadlockWarning'
   // Actor event kinds
   | 'ActorCreated'
+  | 'ActorMessageSent'
+  | 'ActorMessageProcessing'
   | 'ActorMessageProcessed'
   | 'ActorStateChanged'
   | 'ActorMailboxChanged'
@@ -319,6 +321,8 @@ export type VizEventKind =
   | 'SelectClauseRegistered'
   | 'SelectClauseWon'
   | 'SelectCompleted'
+  // Anti-pattern detection
+  | 'AntiPatternDetected'
 
 export interface BaseVizEvent {
   sessionId: string
@@ -670,6 +674,31 @@ export interface CoroutineComparison {
 // Event kind constants for category detection
 // ---------------------------------------------------------------------------
 
+/** Coroutine lifecycle event kinds (backend PascalCase wire names) */
+export const COROUTINE_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'CoroutineCreated',
+  'CoroutineStarted',
+  'CoroutineSuspended',
+  'CoroutineResumed',
+  'CoroutineBodyCompleted',
+  'CoroutineCompleted',
+  'CoroutineCancelled',
+  'CoroutineFailed',
+])
+
+/** Dispatcher event kinds */
+export const DISPATCHER_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'DispatcherSelected',
+  'ThreadAssigned',
+])
+
+/** Deferred/async event kinds */
+export const DEFERRED_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'DeferredValueAvailable',
+  'DeferredAwaitStarted',
+  'DeferredAwaitCompleted',
+])
+
 /** Channel event kinds for use in category detection */
 export const CHANNEL_EVENT_KINDS: ReadonlySet<string> = new Set([
   'ChannelCreated',
@@ -773,6 +802,8 @@ export type ActorEvent = ActorCreated | ActorMessageProcessed | ActorStateChange
 
 export const ACTOR_EVENT_KINDS: ReadonlySet<string> = new Set([
   'ActorCreated',
+  'ActorMessageSent',
+  'ActorMessageProcessing',
   'ActorMessageProcessed',
   'ActorStateChanged',
   'ActorMailboxChanged',

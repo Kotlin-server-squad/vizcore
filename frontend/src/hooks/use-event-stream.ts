@@ -3,6 +3,54 @@ import { useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { normalizeEvent } from '@/lib/utils'
 import type { VizEvent, VizEventKind } from '@/types/api'
+import {
+  COROUTINE_EVENT_KINDS,
+  DISPATCHER_EVENT_KINDS,
+  DEFERRED_EVENT_KINDS,
+  JOB_EVENT_KINDS,
+  CHANNEL_EVENT_KINDS,
+  FLOW_EVENT_KINDS,
+  SYNC_EVENT_KINDS,
+  ACTOR_EVENT_KINDS,
+  SELECT_EVENT_KINDS,
+} from '@/types/api'
+
+/**
+ * Complete SSE listener list (REVIEW CR-01).
+ *
+ * The SSE route names each event after its `kind`, and a browser EventSource
+ * only delivers events that have a registered listener for that exact name —
+ * any kind missing here is SILENTLY dropped. The list is therefore derived
+ * from the shared kind constants in types/api.ts (one source of truth with
+ * category detection) instead of a hand-maintained inline array, plus the
+ * legacy kebab-case names for backwards compatibility.
+ *
+ * Completeness is enforced by use-event-stream-kinds.test.ts, which asserts
+ * coverage of all 66 kinds registered in the backend's
+ * VizEventSerializersModule.kt.
+ */
+export const SSE_EVENT_TYPES: readonly string[] = [
+  ...COROUTINE_EVENT_KINDS,
+  ...JOB_EVENT_KINDS, // includes WaitingForChildren
+  ...DISPATCHER_EVENT_KINDS,
+  ...DEFERRED_EVENT_KINDS,
+  ...CHANNEL_EVENT_KINDS,
+  ...FLOW_EVENT_KINDS,
+  ...SYNC_EVENT_KINDS, // mutex + semaphore + deadlock
+  ...ACTOR_EVENT_KINDS,
+  ...SELECT_EVENT_KINDS,
+  'AntiPatternDetected',
+  // Legacy kebab-case names (backwards compatibility)
+  'coroutine.created',
+  'coroutine.started',
+  'coroutine.suspended',
+  'coroutine.resumed',
+  'coroutine.body-completed',
+  'coroutine.completed',
+  'coroutine.cancelled',
+  'coroutine.failed',
+  'thread.assigned',
+]
 
 /** Debounce window for batching SSE-driven cache invalidations (ms). */
 const INVALIDATION_DEBOUNCE_MS = 400
@@ -117,41 +165,9 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
           }
         }
 
-        // Listen for all event types - both backend format (PascalCase) and frontend format (kebab-case)
-        // Backend sends: CoroutineCreated, CoroutineStarted, etc.
-        // Frontend expects: coroutine.created, coroutine.started, etc.
-        const eventTypes = [
-          // Backend PascalCase format
-          'CoroutineCreated',
-          'CoroutineStarted',
-          'CoroutineSuspended',
-          'CoroutineResumed',
-          'CoroutineBodyCompleted',
-          'CoroutineCompleted',
-          'CoroutineCancelled',
-          'CoroutineFailed',
-          'ThreadAssigned',
-          'DispatcherSelected',
-          'DeferredValueAvailable',
-          'DeferredAwaitStarted',
-          'DeferredAwaitCompleted',
-          'JobStateChanged',
-          'JobCancellationRequested',
-          'JobJoinRequested',
-          'JobJoinCompleted',
-          // Frontend kebab-case format (for backwards compatibility)
-          'coroutine.created',
-          'coroutine.started',
-          'coroutine.suspended',
-          'coroutine.resumed',
-          'coroutine.body-completed',
-          'coroutine.completed',
-          'coroutine.cancelled',
-          'coroutine.failed',
-          'thread.assigned',
-        ]
-
-        eventTypes.forEach(eventType => {
+        // Listen for ALL backend event kinds (PascalCase wire names, derived
+        // from the shared kind constants) plus the legacy kebab-case names.
+        SSE_EVENT_TYPES.forEach(eventType => {
           eventSource.addEventListener(eventType, (e: Event) => {
             const messageEvent = e as MessageEvent
             try {
