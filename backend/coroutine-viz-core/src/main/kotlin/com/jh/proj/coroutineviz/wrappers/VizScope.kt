@@ -360,11 +360,41 @@ class VizScope(
 
                 cause !is CancellationException -> {
                     // Failure — deferred threw a non-cancellation exception (FIX-03 parity for vizAsync).
+                    //
+                    // Emit JobStateChanged BEFORE the terminal event so that CoroutineFailed
+                    // receives the higher seq (VizSession.send finalizes seq atomically with the
+                    // store append, so send order == seq order) — same ordering 01-09 gave
+                    // vizLaunch, satisfying NoEventsAfterTerminalRule (IN-05).
+                    session.send(
+                        ctx.jobStateChanged(
+                            isActive = false,
+                            isCompleted = false,
+                            isCancelled = false,
+                            // The completed deferred's own job — NOT the scope's context Job
+                            // (see the equivalent vizLaunch handler for the rationale).
+                            childrenCount = deferred.children.count(),
+                        ),
+                    )
                     session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
                 }
 
                 else -> {
                     // Cancellation — cause is CancellationException.
+                    //
+                    // Emit JobStateChanged BEFORE the terminal event so that CoroutineCancelled
+                    // receives the higher seq (VizSession.send finalizes seq atomically with the
+                    // store append, so send order == seq order) — same ordering 01-09 gave
+                    // vizLaunch, satisfying NoEventsAfterTerminalRule (IN-05).
+                    session.send(
+                        ctx.jobStateChanged(
+                            isActive = false,
+                            isCompleted = false,
+                            isCancelled = true,
+                            // The completed deferred's own job — NOT the scope's context Job
+                            // (see the equivalent vizLaunch handler for the rationale).
+                            childrenCount = deferred.children.count(),
+                        ),
+                    )
                     session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
                 }
             }
