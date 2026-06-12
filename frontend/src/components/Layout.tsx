@@ -44,6 +44,15 @@ export function Layout({ children }: LayoutProps) {
               )}
             </Link>
           </NavbarItem>
+          <NavbarItem>
+            <Link to="/gallery">
+              {({ isActive }: { isActive: boolean }) => (
+                <Button variant={isActive ? 'flat' : 'light'} color={isActive ? 'primary' : 'default'}>
+                  Gallery
+                </Button>
+              )}
+            </Link>
+          </NavbarItem>
         </NavbarContent>
       </Navbar>
       <main>{children}</main>

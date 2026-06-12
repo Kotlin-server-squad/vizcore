@@ -260,11 +260,14 @@ function GalleryPage() {
         to: '/sessions/$sessionId',
         params: { sessionId: session.sessionId },
         search: {
+          scenarioId: scenario.scenarioId,
           scenarioName: scenario.name,
         },
       })
-    } catch {
-      // Errors surfaced via TanStack Query
+    } catch (error) {
+      // Session creation errors are surfaced via TanStack Query state;
+      // log navigation failures so a broken flow is not silent.
+      console.error('Gallery run failed:', error)
     } finally {
       setRunningId(null)
     }
