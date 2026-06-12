@@ -3,7 +3,7 @@ status: complete
 phase: 01-foundation-production-readiness
 source: [01-VERIFICATION.md]
 started: 2026-06-12T06:57:01Z
-updated: 2026-06-12T13:25:00Z
+updated: 2026-06-12T14:15:00Z
 ---
 
 ## Current Test
@@ -21,6 +21,11 @@ reported: "Thread Activity panel rendered 6 worker lanes (DefaultDispatcher-work
 expected: Badge goes live without reload; events update during run; button recovers on completion; curl prints ': connected' with HTTP 200.
 result: pass
 reported: "Fresh gallery session connected immediately (green 'Connected' badge, no reload), events live-updated 23→40 during the run, button transitioned 'Scenario Running'→'Scenario Completed'. curl on a fresh 0-event session printed ': connected' with HTTP 200 (previously HTTP 000/no bytes)."
+
+### R3-3. Human confirmation (user-driven, Deep Nesting)
+expected: User personally reproduces both checks on a fresh session.
+result: pass
+reported: "User ran gallery → Run on Deep Nesting (session gallery-Deep Nesting-1781270788417, freshly created): badge showed Connected immediately without reload, 6 coroutines / 47 events streamed live, button transitioned to Scenario Completed on its own, coroutine tree rendered all 5 levels COMPLETED, Jobs tab showed Jobs (9). Threads tab lanes + Dispatchers.Default card confirmed by user on the Parallel Execution session."
 
 ## Tests
 
