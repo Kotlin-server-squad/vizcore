@@ -12,7 +12,9 @@ import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.sseClientsGauge
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
 
@@ -194,35 +196,33 @@ fun Route.registerSessionRoutes() {
         sseClientsGauge.incrementAndGet()
 
         try {
-            // 1️⃣ FIRST: Replay all stored events (history)
-            val storedEvents = session.store.all()
-            logger.info("Replaying ${storedEvents.size} stored events for session: $sessionId")
-
-            for (event in storedEvents) {
-                send(
-                    ServerSentEvent(
-                        data = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event),
-                        event = event.kind,
-                        id = "${event.sessionId}-${event.seq}",
-                    ),
-                )
-            }
-
-            // Track the last seq we've sent to avoid duplicates
-            val lastReplayedSeq = storedEvents.maxOfOrNull { it.seq } ?: 0L
-
-            // 2️⃣ THEN: Stream live events (filtering out already-sent ones)
-            session.bus.stream()
-                .filter { it.seq > lastReplayedSeq }
-                .collect { event ->
-                    send(
-                        ServerSentEvent(
-                            data = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event),
-                            event = event.kind,
-                            id = "${event.sessionId}-${event.seq}",
-                        ),
-                    )
+            coroutineScope {
+                // Subscribe to live events BEFORE snapshotting the store: EventBus has
+                // replay = 0, so any event emitted between the store snapshot and the
+                // subscription would otherwise be permanently lost. Live events are
+                // buffered during replay and drained with a seq filter to deduplicate.
+                val liveBuffer = Channel<VizEvent>(Channel.UNLIMITED)
+                launch {
+                    session.bus.stream().collect { liveBuffer.send(it) }
                 }
+
+                // 1️⃣ Replay all stored events (history) — snapshot AFTER subscribing
+                val storedEvents = session.store.all()
+                logger.info("Replaying ${storedEvents.size} stored events for session: $sessionId")
+                for (event in storedEvents) {
+                    send(event.toSse())
+                }
+
+                // Track the last seq we've sent to avoid duplicates
+                val lastReplayedSeq = storedEvents.maxOfOrNull { it.seq } ?: 0L
+
+                // 2️⃣ Drain buffered + live events (filtering out already-replayed ones)
+                for (event in liveBuffer) {
+                    if (event.seq > lastReplayedSeq) {
+                        send(event.toSse())
+                    }
+                }
+            }
         } catch (e: CancellationException) {
             // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
             // cooperative cancellation; the finally block still decrements the gauge.
@@ -236,3 +236,10 @@ fun Route.registerSessionRoutes() {
         }
     }
 }
+
+private fun VizEvent.toSse(): ServerSentEvent =
+    ServerSentEvent(
+        data = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), this),
+        event = kind,
+        id = "$sessionId-$seq",
+    )
