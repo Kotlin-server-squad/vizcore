@@ -11,6 +11,7 @@ import io.ktor.sse.*
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.sseClientsGauge
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.filter
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
@@ -222,6 +223,11 @@ fun Route.registerSessionRoutes() {
                         ),
                     )
                 }
+        } catch (e: CancellationException) {
+            // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
+            // cooperative cancellation; the finally block still decrements the gauge.
+            logger.debug("SSE stream cancelled for session: {}", sessionId)
+            throw e
         } catch (e: Exception) {
             logger.error("Error in SSE stream for session $sessionId", e)
         } finally {
