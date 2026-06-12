@@ -155,4 +155,39 @@ class TimingAnalyzerTest {
         assertTrue(report.suspensionDurations.isEmpty(), "No suspensions in empty report")
         assertEquals(0L, report.totalDuration, "Total duration should be 0 for empty events")
     }
+
+    @Test
+    fun `durations are reported in milliseconds not nanoseconds`() {
+        // 5-second scenario: tsNanos span = 5_000_000_000 ns = 5000 ms
+        val events: List<VizEvent> =
+            listOf(
+                started("c1", 1, tsNanos = 0L),
+                // coroutine c1: 1_500_000 ns span = 1 ms (integer div)
+                suspended("c1", 2, tsNanos = 500_000L),
+                // suspension: 2_000_000 ns = 2 ms
+                resumed("c1", 3, tsNanos = 2_500_000L),
+                completed("c1", 4, tsNanos = 1_500_000L),
+                // c2: last event at 5_000_000_000 ns to drive totalDuration
+                started("c2", 5, tsNanos = 0L),
+                completed("c2", 6, tsNanos = 5_000_000_000L),
+            )
+
+        val report = TimingAnalyzer.analyze(events)
+
+        // Total stream: 5_000_000_000 ns / 1_000_000 = 5000 ms
+        assertEquals(5000L, report.totalDuration, "totalDuration must be 5000 ms for a 5s scenario (not 5_000_000_000)")
+        assertTrue(
+            report.totalDuration < 1_000_000L,
+            "totalDuration must NOT be in nanosecond range (was ${report.totalDuration})",
+        )
+
+        // c1 coroutine duration: max(tsNanos) - min(tsNanos) = 2_500_000 - 0 = 2_500_000 ns = 2 ms
+        val c1Duration = report.coroutineDurations["c1"]!!
+        assertEquals(2L, c1Duration, "c1 coroutine duration must be 2 ms (2_500_000 ns / 1_000_000)")
+
+        // Suspension: resumed(2_500_000) - suspended(500_000) = 2_000_000 ns = 2 ms
+        val c1Suspensions = report.suspensionDurations["c1"]!!
+        assertEquals(1, c1Suspensions.size, "c1 should have 1 suspension period")
+        assertEquals(2L, c1Suspensions[0], "Suspension duration must be 2 ms (2_000_000 ns / 1_000_000)")
+    }
 }
