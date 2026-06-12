@@ -121,6 +121,47 @@ describe('buildThreadLanes', () => {
     expect(Number.isNaN(zeroSpan.threads[0]!.utilization)).toBe(false)
   })
 
+  it('closes the previous segment on duplicate ASSIGNED for the same coroutine (IN-13)', () => {
+    // ASSIGNED @1000, ASSIGNED @2000 (duplicate — e.g. the intermediate
+    // RELEASED was dropped by the bounded EventStore), RELEASED @3000.
+    const duplicateAssigned: ThreadActivity = {
+      '21': [
+        evt({ coroutineId: 'c-dup', threadId: 21, timestamp: 1000, eventType: 'ASSIGNED', dispatcherName: 'Default' }),
+        evt({ coroutineId: 'c-dup', threadId: 21, timestamp: 2000, eventType: 'ASSIGNED', dispatcherName: 'Default' }),
+        evt({ coroutineId: 'c-dup', threadId: 21, timestamp: 3000, eventType: 'RELEASED', dispatcherName: 'Default' }),
+      ],
+    }
+
+    const result = buildThreadLanes(duplicateAssigned)
+    const lane = result.threads[0]!
+
+    // The first segment is closed at the duplicate's timestamp — NOT left
+    // open (an orphan would count as busy until the global max timestamp
+    // and report c-dup as permanently active).
+    expect(lane.segments).toEqual([
+      {
+        coroutineId: 'c-dup',
+        coroutineName: null,
+        startNanos: 1000,
+        endNanos: 2000,
+        state: 'ACTIVE',
+      },
+      {
+        coroutineId: 'c-dup',
+        coroutineName: null,
+        startNanos: 2000,
+        endNanos: 3000,
+        state: 'ACTIVE',
+      },
+    ])
+
+    // No open segments remain -> nothing reported as still active
+    expect(lane.segments.filter(s => s.endNanos == null)).toEqual([])
+
+    // span = 2000, busy = (2000-1000) + (3000-2000) = 2000 -> utilization 1
+    expect(lane.utilization).toBe(1)
+  })
+
   it('ignores RELEASED events with no prior ASSIGNED for that coroutine without throwing', () => {
     const orphanRelease: ThreadActivity = {
       '12': [

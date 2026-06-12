@@ -22,7 +22,11 @@ import type {
  *
  * - ASSIGNED opens a segment for its coroutineId; the next RELEASED with the
  *   same coroutineId on the same thread closes it. Unmatched RELEASED events
- *   are ignored. Segments left open keep `endNanos: null`.
+ *   are ignored. Segments left open keep `endNanos: null`. A duplicate
+ *   ASSIGNED for a coroutineId with an open segment (e.g. an intermediate
+ *   RELEASED dropped by the bounded EventStore) closes the stale segment at
+ *   the new event's timestamp before opening the new one — never orphaning
+ *   it (an orphan would inflate busy time until the global max timestamp).
  * - Utilization is computed against the global span across ALL events in the
  *   map; open segments are closed at the global max timestamp for the busy
  *   calculation. A zero span yields utilization 0 (never NaN).
@@ -54,6 +58,15 @@ export function buildThreadLanes(activity: ThreadActivity): ThreadActivityRespon
     const openByCoroutine = new Map<string, ThreadSegment>()
     for (const event of events) {
       if (event.eventType === 'ASSIGNED') {
+        // Duplicate ASSIGNED for a coroutine that already has an open
+        // segment: close the stale segment at this event's timestamp instead
+        // of orphaning it (IN-13 — an orphan stays open forever, inflating
+        // utilization and making useActiveCoroutinesPerThread report the
+        // coroutine as permanently active).
+        const stale = openByCoroutine.get(event.coroutineId)
+        if (stale) {
+          stale.endNanos = event.timestamp
+        }
         const segment: ThreadSegment = {
           coroutineId: event.coroutineId,
           coroutineName: null,
