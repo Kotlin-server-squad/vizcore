@@ -45,6 +45,19 @@ export function DispatcherOverview({ sessionId, isLive = false }: DispatcherOver
   )
 }
 
+/**
+ * Static literal class strings per dispatcher color (IN-12). Tailwind's JIT
+ * scanner only extracts COMPLETE literal class names — dynamically built
+ * strings like `bg-${color}/10` are never generated, so the tile silently
+ * rendered unstyled. Do not reintroduce template-constructed class names.
+ */
+const tileClasses: Record<DispatcherColor, string> = {
+  primary: 'bg-primary/10 text-primary',
+  secondary: 'bg-secondary/10 text-secondary',
+  success: 'bg-success/10 text-success',
+  warning: 'bg-warning/10 text-warning',
+}
+
 function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
   const color = getDispatcherColor(dispatcher.name)
   const icon = getDispatcherIcon(dispatcher.name)
@@ -55,7 +68,7 @@ function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
       <CardHeader>
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg bg-${color}/10 text-${color}`}>
+            <div className={`p-2 rounded-lg ${tileClasses[color]}`}>
               {icon}
             </div>
             <div>
@@ -125,8 +138,10 @@ function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
   )
 }
 
-function getDispatcherColor(name: string): 'primary' | 'secondary' | 'success' | 'warning' {
-  const colors: Record<string, 'primary' | 'secondary' | 'success' | 'warning'> = {
+type DispatcherColor = 'primary' | 'secondary' | 'success' | 'warning'
+
+function getDispatcherColor(name: string): DispatcherColor {
+  const colors: Record<string, DispatcherColor> = {
     'Default': 'primary',
     'IO': 'secondary',
     'Main': 'success',
