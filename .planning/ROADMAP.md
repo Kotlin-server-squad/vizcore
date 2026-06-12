@@ -69,7 +69,7 @@ Plans:
 
 **Wave 8** *(re-verification gap closure — blocked on Wave 7; closes CR-01/CR-02 introduced by 01-12, shared use-event-stream.ts/use-thread-activity.ts/SessionDetails.tsx)*
 
-- [ ] 01-13-PLAN.md — Re-verification gaps (CR-01/CR-02): invalidate the thread-activity query key in the SSE debounce + 5s live fallback poll so the Threads tab stops freezing; add max-wait caps to both trailing-edge debounces so a sustained event stream can't starve the session-snapshot refresh + regression tests
+- [x] 01-13-PLAN.md — Re-verification gaps (CR-01/CR-02): invalidate the thread-activity query key in the SSE debounce + 5s live fallback poll so the Threads tab stops freezing; add max-wait caps to both trailing-edge debounces so a sustained event stream can't starve the session-snapshot refresh + regression tests
 
 ### Phase 2: User-Value Visualization
 
@@ -133,7 +133,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Production Readiness | 12/13 | Gap closure | 2026-06-12 |
+| 1. Foundation & Production Readiness | 13/13 | Complete   | 2026-06-12 |
 | 2. User-Value Visualization | 0/TBD | Not started | - |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
