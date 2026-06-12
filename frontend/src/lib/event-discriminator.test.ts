@@ -160,6 +160,36 @@ describe('normalizeEvents — array normalization end-to-end', () => {
   it('returns empty array unchanged', () => {
     expect(normalizeEvents([])).toEqual([])
   })
+
+  it('simulates SessionDetails jobStates derivation: raw REST payload -> Map keyed by jobId', () => {
+    // Mirrors the real wire shape from GET /api/sessions/{id}/events
+    // (no kind field, only type)
+    const rawRestPayload = [
+      { type: 'CoroutineCreated', sessionId: 's1', seq: 1, tsNanos: 1000, coroutineId: 'c1', jobId: 'j1', parentCoroutineId: null, scopeId: 'scope', label: null },
+      { type: 'JobStateChanged', sessionId: 's1', seq: 2, tsNanos: 2000, coroutineId: 'c1', jobId: 'j1', parentCoroutineId: null, scopeId: 'scope', label: null, isActive: true, isCompleted: false, isCancelled: false, childrenCount: 0 },
+      { type: 'JobStateChanged', sessionId: 's1', seq: 3, tsNanos: 3000, coroutineId: 'c2', jobId: 'j2', parentCoroutineId: null, scopeId: 'scope', label: null, isActive: true, isCompleted: false, isCancelled: false, childrenCount: 1 },
+      { type: 'CoroutineFailed', sessionId: 's1', seq: 4, tsNanos: 4000, coroutineId: 'c1', jobId: 'j1', parentCoroutineId: null, scopeId: 'scope', label: null },
+    ]
+
+    const normalized = normalizeEvents(rawRestPayload)
+
+    // Every event has a defined kind
+    expect(normalized.every(e => !!e.kind)).toBe(true)
+
+    // Replicate SessionDetails jobStates useMemo logic
+    const jobStates = new Map<string, (typeof normalized)[number]>()
+    for (const event of normalized) {
+      if (event.kind === 'JobStateChanged') {
+        const jobEvent = event as { jobId: string } & (typeof normalized)[number]
+        jobStates.set(jobEvent.jobId, event)
+      }
+    }
+
+    // Two distinct jobs should appear
+    expect(jobStates.size).toBe(2)
+    expect(jobStates.has('j1')).toBe(true)
+    expect(jobStates.has('j2')).toBe(true)
+  })
 })
 
 describe('eventTypeToKind — direct mapping', () => {
