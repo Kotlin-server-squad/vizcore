@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
-import { HeroUIProvider } from '@heroui/react'
+import { HeroUIProvider, ToastProvider } from '@heroui/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
@@ -32,6 +32,9 @@ if (!rootElement.innerHTML) {
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <HeroUIProvider>
+          {/* ToastProvider must mount above the router so it exists before any
+              addToast() call fires (issue #5086 ordering footgun). */}
+          <ToastProvider placement="bottom-right" />
           <RouterProvider router={router} />
         </HeroUIProvider>
       </QueryClientProvider>
