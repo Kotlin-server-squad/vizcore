@@ -8,14 +8,14 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 
 fun Route.registerComparisonRoutes() {
-    get("/api/compare") {
-        val sessionAId = call.request.queryParameters["sessionA"]
-        val sessionBId = call.request.queryParameters["sessionB"]
+    get("/api/sessions/compare") {
+        val sessionAId = call.request.queryParameters["a"]
+        val sessionBId = call.request.queryParameters["b"]
 
         if (sessionAId == null || sessionBId == null) {
             call.respond(
                 HttpStatusCode.BadRequest,
-                mapOf("error" to "Both sessionA and sessionB query parameters are required"),
+                mapOf("error" to "Both a and b query parameters are required"),
             )
             return@get
         }
