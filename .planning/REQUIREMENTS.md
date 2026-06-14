@@ -38,8 +38,8 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 
 ### Export & Sharing
 
-- [ ] **EXPT-01**: A developer can export a visualization as PNG (via html2canvas) and download it.
-- [ ] **EXPT-02**: A developer can export a graph view as standalone style-inlined SVG, and export a replay as WebM video (MediaRecorder).
+- [x] **EXPT-01**: A developer can export a visualization as PNG (via html2canvas) and download it.
+- [x] **EXPT-02**: A developer can export a graph view as standalone style-inlined SVG, and export a replay as WebM video (MediaRecorder).
 - [ ] **SHAR-01**: A developer can create a share token (expiry 1d/7d/30d/never) for a session via `POST /api/sessions/:id/share`.
 - [ ] **SHAR-02**: Anyone with a valid token can open a read-only shared view via `GET /api/shared/:token`; tokens are revocable and rate-limited.
 
@@ -152,8 +152,8 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | RPLY-01 | Phase 2 | Complete |
 | RPLY-02 | Phase 2 | Complete |
 | RPLY-03 | Phase 2 | Pending |
-| EXPT-01 | Phase 2 | Pending |
-| EXPT-02 | Phase 2 | Pending |
+| EXPT-01 | Phase 2 | Complete |
+| EXPT-02 | Phase 2 | Complete |
 | CMPR-01 | Phase 2 | Complete (P01) |
 | CMPR-02 | Phase 2 | Pending |
 | PERS-01 | Phase 3 | Pending |

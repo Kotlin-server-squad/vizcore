@@ -99,7 +99,7 @@ Plans:
 
 **Wave 2** *(frontend features, parallel)*
 
-- [ ] 02-05-PLAN.md — Export menu: PNG info header (EXPT-01/D-08) + standalone style-inlined SVG with `<svg>`-root auto-detect (EXPT-02/D-21) + JSON event export (D-22) + ExportMenu dropdown with toasts *(depends on 02-04)*
+- [x] 02-05-PLAN.md — Export menu: PNG info header (EXPT-01/D-08) + standalone style-inlined SVG with `<svg>`-root auto-detect (EXPT-02/D-21) + JSON event export (D-22) + ExportMenu dropdown with toasts *(depends on 02-04)*
 - [ ] 02-06-PLAN.md — `/compare` route with shareable `?a=&b=` + ComparisonView controlled selection + SyncedTreePair (two synced trees, delta badges, selection sync) + Compare nav + session-not-found state (CMPR-02, D-10/11/19/20) *(depends on 02-01)*
 
 **Wave 3** *(replay integration)*
@@ -161,7 +161,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Production Readiness | 15/15 | Complete    | 2026-06-12 |
-| 2. User-Value Visualization | 4/8 | In Progress|  |
+| 2. User-Value Visualization | 5/8 | In Progress|  |
 | 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Not started | - |
