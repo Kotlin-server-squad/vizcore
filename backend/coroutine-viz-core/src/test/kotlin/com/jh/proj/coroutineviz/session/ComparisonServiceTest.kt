@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.session
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
+import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -195,6 +196,89 @@ class ComparisonServiceTest {
         assertEquals("COMPLETED", common.stateB)
         assertEquals(2, common.eventCountA)
         assertEquals(3, common.eventCountB)
+    }
+
+    private fun threadAssignedEvent(
+        sessionId: String,
+        seq: Long,
+        coroutineId: String,
+        threadId: Long,
+        threadName: String = "thread-$threadId",
+        tsNanos: Long = System.nanoTime(),
+    ) = ThreadAssigned(
+        sessionId = sessionId,
+        seq = seq,
+        tsNanos = tsNanos,
+        coroutineId = coroutineId,
+        jobId = "job-$coroutineId",
+        parentCoroutineId = null,
+        scopeId = "scope-1",
+        label = null,
+        threadId = threadId,
+        threadName = threadName,
+        dispatcherName = "Default",
+    )
+
+    @Test
+    fun `distinctThreadsDiff is the difference in distinct thread count B minus A`() {
+        val sessionA = createSession("session-a")
+        val sessionB = createSession("session-b")
+
+        // Session A: 1 distinct thread (thread 10)
+        sessionA.send(createdEvent("session-a", 1, "c-1"))
+        sessionA.send(threadAssignedEvent("session-a", 2, "c-1", threadId = 10))
+
+        // Session B: 3 distinct threads (10, 11, 12)
+        sessionB.send(createdEvent("session-b", 1, "c-1"))
+        sessionB.send(threadAssignedEvent("session-b", 2, "c-1", threadId = 10))
+        sessionB.send(threadAssignedEvent("session-b", 3, "c-2", threadId = 11))
+        sessionB.send(threadAssignedEvent("session-b", 4, "c-3", threadId = 12))
+
+        val result = ComparisonService.compare(sessionA, sessionB)
+
+        assertEquals(2, result.distinctThreadsDiff) // B(3) - A(1)
+    }
+
+    @Test
+    fun `distinctThreadsDiff is zero when both sessions use the same single thread`() {
+        val sessionA = createSession("session-a")
+        val sessionB = createSession("session-b")
+
+        // Both sessions run everything on one thread (id 7), even with multiple assignments
+        sessionA.send(threadAssignedEvent("session-a", 1, "c-1", threadId = 7))
+        sessionA.send(threadAssignedEvent("session-a", 2, "c-2", threadId = 7))
+
+        sessionB.send(threadAssignedEvent("session-b", 1, "c-1", threadId = 7))
+        sessionB.send(threadAssignedEvent("session-b", 2, "c-2", threadId = 7))
+        sessionB.send(threadAssignedEvent("session-b", 3, "c-3", threadId = 7))
+
+        val result = ComparisonService.compare(sessionA, sessionB)
+
+        assertEquals(0, result.distinctThreadsDiff)
+    }
+
+    @Test
+    fun `distinctThreadsDiff does not perturb the existing diff fields`() {
+        val sessionA = createSession("session-a")
+        val sessionB = createSession("session-b")
+
+        sessionA.send(createdEvent("session-a", 1, "c-1", "alpha"))
+        sessionA.send(threadAssignedEvent("session-a", 2, "c-1", threadId = 10))
+
+        sessionB.send(createdEvent("session-b", 1, "c-1", "alpha"))
+        sessionB.send(threadAssignedEvent("session-b", 2, "c-1", threadId = 10))
+        sessionB.send(createdEvent("session-b", 3, "c-2", "beta"))
+        sessionB.send(threadAssignedEvent("session-b", 4, "c-2", threadId = 11))
+
+        val result = ComparisonService.compare(sessionA, sessionB)
+
+        // Existing aggregate fields remain correct alongside the new thread metric
+        assertEquals(1, result.coroutineCountDiff) // B(2) - A(1)
+        assertEquals(2, result.eventCountDiff) // B(4) - A(2)
+        assertEquals(listOf("c-2"), result.coroutinesOnlyInB)
+        assertTrue(result.coroutinesOnlyInA.isEmpty())
+        assertEquals(1, result.commonCoroutines.size)
+        assertEquals(1, result.distinctThreadsDiff) // B(2 threads) - A(1 thread)
     }
 
     @Test
