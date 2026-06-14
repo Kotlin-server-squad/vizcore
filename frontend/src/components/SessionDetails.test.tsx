@@ -125,6 +125,30 @@ vi.mock('./replay/ReplayController', () => ({
   ),
 }))
 
+// useRecordReplay mocked to an inert shim — the scripted WebM pipeline is unit-
+// tested in use-record-replay.test.ts; here we only need SessionDetails to mount
+// without touching MediaRecorder/captureStream (absent in jsdom).
+vi.mock('@/hooks/use-record-replay', () => ({
+  useRecordReplay: () => ({
+    canRecord: false,
+    isRecording: false,
+    elapsedMs: 0,
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(),
+    confirmOpen: false,
+    confirmEstimateMs: 0,
+    confirmSpeed: 1,
+    confirmRecord: vi.fn(),
+    cancelConfirm: vi.fn(),
+  }),
+}))
+
+// RecordConfirmModal mocked to a no-op so SessionDetails mounts without HeroUI
+// Modal portal machinery in these wiring tests.
+vi.mock('./replay/RecordConfirmModal', () => ({
+  RecordConfirmModal: () => null,
+}))
+
 vi.mock('framer-motion', () => ({
   motion: {
     div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as ReactNode}</div>,

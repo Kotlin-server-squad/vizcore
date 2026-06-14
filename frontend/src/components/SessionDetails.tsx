@@ -22,7 +22,9 @@ import { JobPanel } from './jobs/JobPanel'
 import { ValidationPanel } from './validation/ValidationPanel'
 import { ReplayController } from './replay/ReplayController'
 import { LiveDataNotice } from './replay/LiveDataNotice'
+import { RecordConfirmModal } from './replay/RecordConfirmModal'
 import { ExportMenu } from './export/ExportMenu'
+import { useRecordReplay } from '@/hooks/use-record-replay'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -117,6 +119,25 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
     setReplayActive(false)
     setReplaySnapshot([])
   }, [])
+
+  // Scripted WebM recording (EXPT-02, plan 02-08): the ExportMenu Record item
+  // drives this one-click pipeline — enter replay → seek 0 → record the active
+  // panel at 2x while auto-playing → auto-stop at the last event → download.
+  // The estimate + auto-stop read whichever events will be frozen on entry: the
+  // live snapshot if already replaying, otherwise the source the toggle would
+  // freeze (so a one-click record from the live view records the full timeline).
+  const recordEvents = replayActive
+    ? replaySnapshot
+    : streamEnabled
+      ? liveEvents
+      : storedEvents || []
+  const recordReplay = useRecordReplay({
+    getPanelEl: () => panelRef.current,
+    events: recordEvents,
+    replay,
+    enterReplay,
+    sessionId,
+  })
 
   // On entering replay (snapshot applied), jump to the end and stay paused
   // (D-03). Keyed on the snapshot identity so re-entry re-seeks; useReplay's
@@ -403,6 +424,7 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
                 sessionName={scenarioName ?? sessionId}
                 events={panelEvents}
                 panel={viewMode === 'graph' ? 'graph' : 'tree'}
+                onRecord={recordReplay.canRecord ? recordReplay.startRecording : undefined}
               />
 
               {/* View Mode Toggle */}
@@ -429,12 +451,28 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
         </CardBody>
       </Card>
 
-      {/* Sticky ReplayController bar (D-13) — directly above the tabs. */}
+      {/* Sticky ReplayController bar (D-13) — directly above the tabs. While
+          recording, the controller shows the red-dot recording cluster and the
+          scripted pipeline drives playback (D-06/D-23). */}
       {replayActive && (
         <div className="sticky top-16 z-30">
-          <ReplayController replay={replay} />
+          <ReplayController
+            replay={replay}
+            isRecording={recordReplay.isRecording}
+            elapsedMs={recordReplay.elapsedMs}
+            onStopRecording={recordReplay.stopRecording}
+          />
         </div>
       )}
+
+      {/* D-26 long-recording confirm (>120s estimate). */}
+      <RecordConfirmModal
+        isOpen={recordReplay.confirmOpen}
+        estimateMs={recordReplay.confirmEstimateMs}
+        speed={recordReplay.confirmSpeed}
+        onConfirm={recordReplay.confirmRecord}
+        onCancel={recordReplay.cancelConfirm}
+      />
 
       {/* Scenario Control Panel */}
       {hasScenario && (

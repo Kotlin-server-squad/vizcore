@@ -115,8 +115,8 @@ export interface ReplayRecorder {
   start: () => void
   /** Capture one frame of the panel into the mirror canvas + requestFrame. */
   captureFrame: () => Promise<void>
-  /** Stop, assemble the Blob, and download the `.webm`. */
-  stop: () => Promise<void>
+  /** Stop, assemble the Blob, and download the `.webm`; resolves the filename. */
+  stop: () => Promise<string>
   /** Stop WITHOUT downloading (abort/discard path — D-23/D-24). */
   discard: () => void
 }
@@ -216,13 +216,13 @@ export function createReplayRecorder({
     recorder.start()
   }
 
-  function stop(): Promise<void> {
-    return new Promise<void>((resolve) => {
+  function stop(): Promise<string> {
+    return new Promise<string>((resolve) => {
+      const filename = buildExportFilename(sessionId, 'replay', 'webm')
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: mimeType })
-        const filename = buildExportFilename(sessionId, 'replay', 'webm')
         downloadBlob(blob, filename)
-        resolve()
+        resolve(filename)
       }
       if (recorder.state !== 'inactive') {
         recorder.stop()
