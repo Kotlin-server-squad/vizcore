@@ -176,4 +176,27 @@ describe('projectCoroutines', () => {
   it('returns an empty array for no events', () => {
     expect(projectCoroutines([])).toEqual([])
   })
+
+  it('re-emitted CoroutineCreated is last-write-wins at the original position (WR-01)', () => {
+    // Oracle: the backend EventApplier does `coroutines[id] = CoroutineNode(..,
+    // CREATED)` into a LinkedHashMap. Re-assigning an EXISTING key overwrites
+    // every field AND resets state to CREATED, while keeping the key's ORIGINAL
+    // insertion position. So a stream that creates c-1, advances it, creates
+    // c-2, then RE-creates c-1 with changed metadata must:
+    //   - keep c-1 first (original insertion order preserved on re-set), and
+    //   - reflect the NEW metadata + a reset to CREATED for c-1.
+    const events: VizEvent[] = [
+      coroEvent('coroutine.created', { coroutineId: 'c-1', seq: 0, tsNanos: 100, parentCoroutineId: null, scopeId: 'scope-A', label: 'first' }),
+      coroEvent('coroutine.started', { coroutineId: 'c-1', seq: 1, tsNanos: 200, label: 'first' }),
+      coroEvent('coroutine.created', { coroutineId: 'c-2', seq: 2, tsNanos: 300, label: 'second' }),
+      // Re-emit c-1 with DIFFERENT parent/scope/label — backend overwrites + resets state.
+      coroEvent('coroutine.created', { coroutineId: 'c-1', seq: 3, tsNanos: 400, parentCoroutineId: 'c-2', scopeId: 'scope-B', label: 'first-rebound' }),
+    ]
+
+    expect(projectCoroutines(events)).toEqual([
+      // Position preserved (c-1 still first), fields overwritten, state reset to CREATED.
+      node({ id: 'c-1', parentId: 'c-2', scopeId: 'scope-B', label: 'first-rebound', state: CoroutineState.CREATED }),
+      node({ id: 'c-2', label: 'second', state: CoroutineState.CREATED }),
+    ])
+  })
 })

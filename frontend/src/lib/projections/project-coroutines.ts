@@ -10,6 +10,9 @@
  * for the same event prefix: same ids, parentId, scopeId, label, and terminal /
  * in-progress state. Nodes are emitted in CREATION order (first CoroutineCreated
  * seen), matching the backend RuntimeSnapshot.coroutines insertion-ordered map.
+ * A re-emitted CoroutineCreated for an existing id is LAST-write-wins (overwrites
+ * the node fields and resets state to CREATED) at the original insertion
+ * position — exactly the backend LinkedHashMap re-assignment semantics.
  *
  * Framework-free (no React imports) and side-effect-free — does not mutate its
  * input — so it is safe to call inside a useMemo.
@@ -61,19 +64,22 @@ export function projectCoroutines(events: VizEvent[]): CoroutineNode[] {
     if (!isCoroutineEvent(event)) continue
 
     if (event.kind === 'coroutine.created') {
-      // A duplicate CoroutineCreated keeps the original node (the backend map
-      // would overwrite, but re-creation is not expected in a real stream;
-      // first-write-wins preserves creation order deterministically).
-      if (!nodes.has(event.coroutineId)) {
-        nodes.set(event.coroutineId, {
-          id: event.coroutineId,
-          jobId: event.jobId,
-          parentId: event.parentCoroutineId,
-          scopeId: event.scopeId,
-          label: event.label,
-          state: CoroutineState.CREATED,
-        })
-      }
+      // Mirror the backend EventApplier.handleCreated exactly (WR-01): the
+      // server assigns `snapshot.coroutines[id] = CoroutineNode(..., CREATED)`
+      // into a LinkedHashMap, i.e. LAST-write-wins on every field (parentId /
+      // scopeId / label) AND a reset to state CREATED, while re-assigning an
+      // existing key preserves its ORIGINAL insertion position. A JS Map's
+      // `set` on an existing key likewise preserves position, so always writing
+      // a fresh node reproduces the server snapshot for re-emitted CoroutineCreated
+      // and keeps the deep-equal-against-server invariant (T-02-05) intact.
+      nodes.set(event.coroutineId, {
+        id: event.coroutineId,
+        jobId: event.jobId,
+        parentId: event.parentCoroutineId,
+        scopeId: event.scopeId,
+        label: event.label,
+        state: CoroutineState.CREATED,
+      })
       continue
     }
 
