@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as ScenariosIndexRouteImport } from './routes/scenarios/index'
 import { Route as GalleryIndexRouteImport } from './routes/gallery/index'
+import { Route as CompareIndexRouteImport } from './routes/compare/index'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
 import { Route as ScenariosBuilderRouteImport } from './routes/scenarios/builder'
 
@@ -36,6 +37,11 @@ const GalleryIndexRoute = GalleryIndexRouteImport.update({
   path: '/gallery/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompareIndexRoute = CompareIndexRouteImport.update({
+  id: '/compare/',
+  path: '/compare/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
   id: '/sessions/$sessionId',
   path: '/sessions/$sessionId',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/compare': typeof CompareIndexRoute
   '/gallery': typeof GalleryIndexRoute
   '/scenarios': typeof ScenariosIndexRoute
   '/sessions': typeof SessionsIndexRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/compare': typeof CompareIndexRoute
   '/gallery': typeof GalleryIndexRoute
   '/scenarios': typeof ScenariosIndexRoute
   '/sessions': typeof SessionsIndexRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/compare/': typeof CompareIndexRoute
   '/gallery/': typeof GalleryIndexRoute
   '/scenarios/': typeof ScenariosIndexRoute
   '/sessions/': typeof SessionsIndexRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/compare'
     | '/gallery'
     | '/scenarios'
     | '/sessions'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/compare'
     | '/gallery'
     | '/scenarios'
     | '/sessions'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/compare/'
     | '/gallery/'
     | '/scenarios/'
     | '/sessions/'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ScenariosBuilderRoute: typeof ScenariosBuilderRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
+  CompareIndexRoute: typeof CompareIndexRoute
   GalleryIndexRoute: typeof GalleryIndexRoute
   ScenariosIndexRoute: typeof ScenariosIndexRoute
   SessionsIndexRoute: typeof SessionsIndexRoute
@@ -138,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GalleryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/compare/': {
+      id: '/compare/'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof CompareIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/$sessionId': {
       id: '/sessions/$sessionId'
       path: '/sessions/$sessionId'
@@ -159,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ScenariosBuilderRoute: ScenariosBuilderRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
+  CompareIndexRoute: CompareIndexRoute,
   GalleryIndexRoute: GalleryIndexRoute,
   ScenariosIndexRoute: ScenariosIndexRoute,
   SessionsIndexRoute: SessionsIndexRoute,

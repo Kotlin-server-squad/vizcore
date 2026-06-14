@@ -16,24 +16,70 @@ import {
 } from '@heroui/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiArrowUp, FiArrowDown, FiMinus } from 'react-icons/fi'
-import { useSessions } from '@/hooks/use-sessions'
+import { useSessions, useSession } from '@/hooks/use-sessions'
 import { useComparison } from '@/hooks/use-comparison'
 import { formatNanoTime } from '@/lib/utils'
+import { EmptyState } from '@/components/EmptyState'
+import { FiAlertCircle } from 'react-icons/fi'
+import { SyncedTreePair } from './SyncedTreePair'
 import type { SessionComparison, CoroutineComparison } from '@/types/api'
+
+/**
+ * Detects a strict-404 "session not found" error from the compare query
+ * (D-12). The backend returns a 404 with an error body; api-client surfaces
+ * its `error` message or a generic `HTTP 404`.
+ */
+function isSessionNotFound(error: Error | null): boolean {
+  if (!error) return false
+  const msg = error.message.toLowerCase()
+  return msg.includes('404') || msg.includes('not found')
+}
+
+export interface ComparisonViewProps {
+  /** Controlled Session A id (route ?a= search param, shareable). */
+  a?: string
+  /** Controlled Session B id (route ?b= search param, shareable). */
+  b?: string
+  /** Called when the Session A picker changes — writes the route ?a= param. */
+  onAChange?: (id: string | undefined) => void
+  /** Called when the Session B picker changes — writes the route ?b= param. */
+  onBChange?: (id: string | undefined) => void
+  /** Navigate to the session browser from the session-not-found surface. */
+  onBrowseSessions?: () => void
+}
 
 /**
  * Side-by-side comparison of two coroutine visualization sessions.
  *
  * Renders two session selector dropdowns at the top, summary stats with
- * color-coded diffs, and a breakdown of coroutines unique to each session
- * and common coroutines with state differences.
+ * color-coded diffs, a breakdown of coroutines unique to each session and
+ * common coroutines with state differences, and (when comparison data is
+ * present) a synchronized side-by-side coroutine-tree pair below the tables.
+ *
+ * A/B selection is controlled by the route (`?a=&b=`) so URLs are shareable
+ * (D-10). An unknown session id surfaces a "Session not found" state (D-12)
+ * instead of a phantom results view.
  */
-export function ComparisonView() {
-  const [sessionAId, setSessionAId] = useState<string | undefined>()
-  const [sessionBId, setSessionBId] = useState<string | undefined>()
+export function ComparisonView({
+  a,
+  b,
+  onAChange,
+  onBChange,
+  onBrowseSessions,
+}: ComparisonViewProps = {}) {
+  // Fall back to internal state only when the route does not control selection
+  // (keeps the component usable in isolation / existing unit tests).
+  const [internalA, setInternalA] = useState<string | undefined>()
+  const [internalB, setInternalB] = useState<string | undefined>()
+  const controlled = onAChange !== undefined || onBChange !== undefined
+  const sessionAId = controlled ? a : internalA
+  const sessionBId = controlled ? b : internalB
+  const setSessionAId = controlled ? (onAChange ?? (() => {})) : setInternalA
+  const setSessionBId = controlled ? (onBChange ?? (() => {})) : setInternalB
 
   const { data: sessions, isLoading: sessionsLoading } = useSessions()
   const { data: comparison, isLoading: comparisonLoading, isError, error } = useComparison(sessionAId, sessionBId)
+  const notFound = isError && isSessionNotFound(error ?? null)
 
   return (
     <motion.div
@@ -100,9 +146,26 @@ export function ComparisonView() {
         </div>
       )}
 
-      {/* Error */}
+      {/* Session not found (D-12): strict 404 on an unknown ?a=/?b= id —
+          show a dedicated surface in place of results, never a phantom view. */}
+      {notFound && (
+        <div data-testid="comparison-not-found">
+          <EmptyState
+            icon={<FiAlertCircle className="h-12 w-12" />}
+            title="Session not found"
+            description="This session does not exist or has been removed. Pick another session to continue."
+            action={
+              onBrowseSessions
+                ? { label: 'Browse sessions', onClick: onBrowseSessions }
+                : undefined
+            }
+          />
+        </div>
+      )}
+
+      {/* Error (non-404) */}
       <AnimatePresence>
-        {isError && (
+        {isError && !notFound && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -134,6 +197,11 @@ export function ComparisonView() {
             <SummaryStats comparison={comparison} />
             <UniqueCoroutines comparison={comparison} />
             <CommonCoroutines comparison={comparison} />
+            <ComparisonTrees
+              comparison={comparison}
+              sessionAId={sessionAId}
+              sessionBId={sessionBId}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -149,6 +217,48 @@ export function ComparisonView() {
         </Card>
       )}
     </motion.div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Synced tree pair wiring
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches each session's snapshot and renders the synchronized side-by-side
+ * coroutine-tree pair (D-19) below the diff tables. Reuses the existing
+ * Spinner pattern while the two snapshots load.
+ */
+function ComparisonTrees({
+  comparison,
+  sessionAId,
+  sessionBId,
+}: {
+  comparison: SessionComparison
+  sessionAId: string | undefined
+  sessionBId: string | undefined
+}) {
+  const { data: snapshotA, isLoading: loadingA } = useSession(sessionAId)
+  const { data: snapshotB, isLoading: loadingB } = useSession(sessionBId)
+
+  if (loadingA || loadingB) {
+    return (
+      <div className="flex items-center justify-center py-12" data-testid="trees-loading">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
+
+  if (!snapshotA || !snapshotB) return null
+
+  return (
+    <SyncedTreePair
+      sessionAId={sessionAId ?? snapshotA.sessionId}
+      sessionBId={sessionBId ?? snapshotB.sessionId}
+      coroutinesA={snapshotA.coroutines}
+      coroutinesB={snapshotB.coroutines}
+      comparison={comparison}
+    />
   )
 }
 

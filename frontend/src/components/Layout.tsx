@@ -53,6 +53,15 @@ export function Layout({ children }: LayoutProps) {
               )}
             </Link>
           </NavbarItem>
+          <NavbarItem>
+            <Link to="/compare">
+              {({ isActive }: { isActive: boolean }) => (
+                <Button variant={isActive ? 'flat' : 'light'} color={isActive ? 'primary' : 'default'}>
+                  Compare
+                </Button>
+              )}
+            </Link>
+          </NavbarItem>
         </NavbarContent>
       </Navbar>
       <main>{children}</main>
