@@ -68,6 +68,36 @@ class ForkDeletionTest {
          * The wrappers package directory under backend/src/main that must be empty.
          */
         private val WRAPPERS_FORK_DIR = File("src/main/kotlin/com/jh/proj/coroutineviz/wrappers")
+
+        /**
+         * The events package directory under backend/src/main that must contain zero
+         * .kt files after the FND-01 events/ de-fork (Plan 02-02). The events package
+         * (including channel/coroutine/deferred/dispatcher/flow/job subdirectories) is
+         * owned exclusively by coroutine-viz-core. Walked recursively because it has
+         * nested subpackages.
+         */
+        private val EVENTS_FORK_DIR = File("src/main/kotlin/com/jh/proj/coroutineviz/events")
+
+        /**
+         * The checksystem package directory under backend/src/main that must contain
+         * zero .kt files after the FND-01 checksystem/ de-fork (Plan 02-02). This is
+         * the package whose TimingAnalyzer fork carried the ns→ms conversion; the fix
+         * now lives authoritatively in coroutine-viz-core. A reintroduced fork could
+         * shadow the core conversion under adverse classloader ordering (T-02-03).
+         */
+        private val CHECKSYSTEM_FORK_DIR = File("src/main/kotlin/com/jh/proj/coroutineviz/checksystem")
+
+        /**
+         * Recursively count .kt files under [dir], returning 0 if it is absent.
+         * Used for packages with nested subpackages (e.g. events/) where a flat
+         * listFiles would miss fork classes hiding in subdirectories.
+         */
+        private fun countKtFilesRecursive(dir: File): List<File> =
+            if (dir.exists() && dir.isDirectory) {
+                dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+            } else {
+                emptyList()
+            }
     }
 
     /**
@@ -153,6 +183,36 @@ class ForkDeletionTest {
             allKtFiles,
             "backend/src/main/.../wrappers/ must contain 0 .kt files after de-fork. " +
                 "Found $allKtFiles .kt file(s). The wrappers package belongs exclusively to coroutine-viz-core."
+        )
+    }
+
+    @Test
+    fun `no events fork classes remain under backend src main (FND-01 static guard)`() {
+        // events/ has nested subpackages (channel/coroutine/deferred/dispatcher/flow/job),
+        // so walk recursively rather than a flat listFiles.
+        val ktFiles = countKtFilesRecursive(EVENTS_FORK_DIR)
+
+        assertEquals(
+            0,
+            ktFiles.size,
+            "backend/src/main/.../events/ must contain 0 .kt files after the FND-01 de-fork (Plan 02-02). " +
+                "Found ${ktFiles.size} .kt file(s) — the events package belongs exclusively to coroutine-viz-core. " +
+                "Re-introduced files: ${ktFiles.map { it.relativeTo(EVENTS_FORK_DIR).path }}"
+        )
+    }
+
+    @Test
+    fun `no checksystem fork classes remain under backend src main (FND-01 static guard)`() {
+        // checksystem/ is flat today but walk recursively for symmetry and future-proofing.
+        val ktFiles = countKtFilesRecursive(CHECKSYSTEM_FORK_DIR)
+
+        assertEquals(
+            0,
+            ktFiles.size,
+            "backend/src/main/.../checksystem/ must contain 0 .kt files after the FND-01 de-fork (Plan 02-02). " +
+                "Found ${ktFiles.size} .kt file(s) — the checksystem package belongs exclusively to coroutine-viz-core. " +
+                "A reintroduced TimingAnalyzer fork could shadow the core ns→ms conversion (T-02-03). " +
+                "Re-introduced files: ${ktFiles.map { it.relativeTo(CHECKSYSTEM_FORK_DIR).path }}"
         )
     }
 }
