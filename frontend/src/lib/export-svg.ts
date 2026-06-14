@@ -1,116 +1,118 @@
 /**
- * Exports an HTML element as a self-contained SVG file using foreignObject.
+ * Standalone style-inlined SVG export (EXPT-02, D-21).
  *
- * Computed styles are embedded inline on every element so the exported SVG
- * renders correctly without external stylesheets.
+ * `findSvgRoot` auto-detects whether a panel renders a genuine `<svg viewBox>`
+ * root. Per OQ-2 the HTML/CSS coroutine graph has no `<svg>` root and falls
+ * back to PNG; only genuinely-SVG panels (DeadlockVisualization /
+ * FlowParticlePath / SemaphoreGauge / JobStatusDisplay) export to SVG.
+ *
+ * `exportToSvg` deep-clones the SVG, inlines a WHITELIST of computed-style
+ * props (avoiding the multi-MB bloat of a full computed-style dump — Pattern 4
+ * / threat T-02-08), sets `xmlns` + explicit dimensions, and downloads
+ * `image/svg+xml` using the export-png object-URL download idiom.
  */
 
 /**
- * Properties that are safe to skip when embedding inline styles because they
- * match the default or have no visual impact inside a foreignObject wrapper.
+ * Computed-style properties inlined onto every element of the cloned SVG.
+ * Whitelisted (10 props) per Pattern 4 — NOT a full computed-style dump.
  */
-const SKIP_PROPERTIES = new Set([
-  'animation',
-  'animation-delay',
-  'animation-direction',
-  'animation-duration',
-  'animation-fill-mode',
-  'animation-iteration-count',
-  'animation-name',
-  'animation-play-state',
-  'animation-timing-function',
-  'transition',
-  'transition-delay',
-  'transition-duration',
-  'transition-property',
-  'transition-timing-function',
-])
+const STYLE_WHITELIST = [
+  'fill',
+  'stroke',
+  'stroke-width',
+  'stroke-dasharray',
+  'color',
+  'opacity',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'transform',
+] as const
 
 /**
- * Recursively embeds computed styles as inline style attributes on every
- * Element node in the cloned DOM tree.
+ * Find the panel's `<svg>` export root (D-21 auto-detect).
+ *
+ * @returns the element itself if it is an `<svg>`, else the first descendant
+ *   `svg[viewBox]` / `svg[width]`, else `null` (panel is not SVG-native →
+ *   the SVG export option is hidden and PNG remains).
  */
-function embedStyles(
-  original: Element,
-  clone: Element,
-  win: Window,
-): void {
-  const computed = win.getComputedStyle(original)
-  let styleText = ''
-  for (let i = 0; i < computed.length; i++) {
-    const prop = computed[i]!
-    if (SKIP_PROPERTIES.has(prop)) continue
-    styleText += `${prop}:${computed.getPropertyValue(prop)};`
+export function findSvgRoot(el: HTMLElement): SVGSVGElement | null {
+  if (el.matches('svg')) {
+    return el as unknown as SVGSVGElement
   }
-  clone.setAttribute('style', styleText)
+  return el.querySelector<SVGSVGElement>('svg[viewBox], svg[width]')
+}
 
-  const origChildren = original.children
-  const cloneChildren = clone.children
-  for (let i = 0; i < origChildren.length; i++) {
-    const origChild = origChildren[i]
-    const cloneChild = cloneChildren[i]
-    if (origChild && cloneChild) {
-      embedStyles(origChild, cloneChild, win)
+/**
+ * Inline the whitelisted computed styles from `source` onto `target`, then
+ * recurse over matching child element pairs (cloned tree mirrors the live one).
+ */
+function inlineStyles(source: Element, target: Element): void {
+  const computed = window.getComputedStyle(source)
+  const decls: string[] = []
+  for (const prop of STYLE_WHITELIST) {
+    const value = computed.getPropertyValue(prop)
+    if (value && value !== 'none' && value !== 'normal') {
+      decls.push(`${prop}:${value}`)
+    }
+  }
+  if (decls.length > 0) {
+    const existing = target.getAttribute('style')
+    target.setAttribute(
+      'style',
+      existing ? `${existing};${decls.join(';')}` : decls.join(';')
+    )
+  }
+
+  const sourceChildren = source.children
+  const targetChildren = target.children
+  for (let i = 0; i < sourceChildren.length; i++) {
+    const sc = sourceChildren[i]
+    const tc = targetChildren[i]
+    if (sc && tc) {
+      inlineStyles(sc, tc)
     }
   }
 }
 
 /**
- * Serialises a cloned element tree into an SVG string that wraps the HTML
- * content in a `<foreignObject>`.
+ * Serialize a live `<svg>` into a standalone, style-inlined SVG file and
+ * trigger an in-browser download.
+ *
+ * @param svg - The live SVG root (from {@link findSvgRoot}).
+ * @param filename - Optional filename (defaults to `coroutine-viz-{timestamp}.svg`).
  */
-function buildSvgString(clone: Element, width: number, height: number): string {
-  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml')
-  const serializer = new XMLSerializer()
-  const htmlString = serializer.serializeToString(clone)
+export function exportToSvg(svg: SVGSVGElement, filename?: string): void {
+  const resolvedFilename = filename ?? `coroutine-viz-${Date.now()}.svg`
 
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
-    `<foreignObject width="100%" height="100%">`,
-    htmlString,
-    `</foreignObject>`,
-    `</svg>`,
-  ].join('\n')
-}
+  const clone = svg.cloneNode(true) as SVGSVGElement
 
-/**
- * Triggers a file download in the browser by creating a temporary anchor
- * element.
- */
-function triggerDownload(svgContent: string, filename: string): void {
-  const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' })
+  // Inline whitelisted computed styles (Pattern 4).
+  inlineStyles(svg, clone)
+
+  // Ensure xmlns + explicit dimensions so the file renders standalone.
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  const rect = svg.getBoundingClientRect()
+  const width = rect.width || Number(svg.getAttribute('width')) || 0
+  const height = rect.height || Number(svg.getAttribute('height')) || 0
+  if (width) clone.setAttribute('width', String(width))
+  if (height) clone.setAttribute('height', String(height))
+
+  // ADR-018 metadata comment.
+  const metadata = `<!-- Exported by Coroutine Visualizer (ADR-018) at ${new Date().toISOString()} -->`
+  const serialized = new XMLSerializer().serializeToString(clone)
+  const svgString = `<?xml version="1.0" encoding="UTF-8"?>\n${metadata}\n${serialized}`
+
+  const blob = new Blob([svgString], { type: 'image/svg+xml' })
   const url = URL.createObjectURL(blob)
   try {
     const link = document.createElement('a')
     link.href = url
-    link.download = filename
+    link.download = resolvedFilename
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
   } finally {
     URL.revokeObjectURL(url)
   }
-}
-
-/**
- * Captures an HTML element as a self-contained SVG file and triggers a
- * download.
- *
- * The exported SVG uses a `<foreignObject>` to embed the HTML content with
- * all computed styles inlined, making the file completely self-contained.
- *
- * @param element - The HTML element to export
- * @param filename - Optional filename (defaults to `coroutine-viz-{timestamp}.svg`)
- */
-export function exportToSvg(element: HTMLElement, filename?: string): void {
-  const resolvedFilename =
-    filename ?? `coroutine-viz-${Date.now()}.svg`
-
-  const rect = element.getBoundingClientRect()
-  const clone = element.cloneNode(true) as Element
-
-  embedStyles(element, clone, window)
-
-  const svgString = buildSvgString(clone, rect.width, rect.height)
-  triggerDownload(svgString, resolvedFilename)
 }

@@ -89,6 +89,39 @@ describe('exportToPng', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url')
   })
 
+  it('composites the ADR-018 info header before capture (D-08)', async () => {
+    // Capture the element passed to html2canvas at call time.
+    let capturedHtml = ''
+    mockHtml2Canvas.mockImplementation((el: HTMLElement) => {
+      capturedHtml = el.innerHTML
+      return Promise.resolve(mockCanvas)
+    })
+
+    await exportToPng(mockElement, 'with-header.png', {
+      sessionName: 'session-abc123',
+      eventCount: 42,
+    })
+
+    // Header content (session name + event count) present at capture time.
+    expect(capturedHtml).toContain('session-abc123')
+    expect(capturedHtml).toContain('42 events')
+    expect(capturedHtml).toContain('data-export-header')
+
+    // Header removed from the live DOM after capture.
+    expect(mockElement.querySelector('[data-export-header]')).toBeNull()
+  })
+
+  it('does not add a header when no header info is provided', async () => {
+    let capturedHtml = ''
+    mockHtml2Canvas.mockImplementation((el: HTMLElement) => {
+      capturedHtml = el.innerHTML
+      return Promise.resolve(mockCanvas)
+    })
+
+    await exportToPng(mockElement)
+    expect(capturedHtml).not.toContain('data-export-header')
+  })
+
   it('throws when canvas.toBlob produces null', async () => {
     mockToBlob.mockImplementation((cb: (blob: Blob | null) => void) => {
       cb(null)
