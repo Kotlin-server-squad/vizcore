@@ -94,11 +94,22 @@ const SEEN_SEQS_MAX = 10_000
  */
 const EVENTSOURCE_CLOSED = 2
 
-export function useEventStream(sessionId: string | undefined, enabled = true) {
+export function useEventStream(
+  sessionId: string | undefined,
+  enabled = true,
+  replayActive = false,
+) {
   const [events, setEvents] = useState<VizEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  // Live mirror of replayActive so the SSE listener (registered once per
+  // connection inside the effect below) reads the current value without
+  // tearing down / re-registering the EventSource. While true, the cache
+  // side effect (invalidation/refetch) is gated OFF — events still buffer
+  // for the "● N new events" badge, but the frozen replay panels are not
+  // jittered by live invalidation (D-02 / T-02-12).
+  const replayActiveRef = useRef(replayActive)
   // Ref to hold the debounce timer for invalidation — reset on each event,
   // so a burst of events produces only one trailing-edge invalidation.
   const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -222,6 +233,17 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
 
               setEvents(prev => [...prev, event])
 
+              // D-02 replay gate: while replay is active, KEEP appending events
+              // (above) but suppress the cache side effect entirely — no
+              // debounce timer is even scheduled. The EventSource, dedup,
+              // backoff, and max-wait machinery are all left untouched; only
+              // the invalidation is gated (T-02-12 / T-02-14). On exiting
+              // replay a single flush applies the buffered events (D-04),
+              // handled by the replayActive teardown effect below.
+              if (replayActiveRef.current) {
+                return
+              }
+
               // Max-wait-capped debounced invalidation: a burst of events still
               // produces only one trailing-edge invalidation, but a sustained
               // stream is guaranteed to flush at least once per
@@ -298,6 +320,29 @@ export function useEventStream(sessionId: string | undefined, enabled = true) {
       firstInvalidationAtRef.current = null
     }
   }, [sessionId, enabled, queryClient])
+
+  // Replay gate sync + exit flush (D-02 / D-04). Keep the ref in lockstep with
+  // the prop so the SSE listener reads the live value, and when replay turns
+  // OFF perform exactly one invalidation flush so the events buffered during
+  // replay apply to the now-live panels. Cancel any stale pending debounce
+  // timer first so the flush stays single. Skipped when there is no active
+  // session/stream (nothing to flush).
+  const wasReplayActiveRef = useRef(replayActive)
+  useEffect(() => {
+    const wasActive = wasReplayActiveRef.current
+    replayActiveRef.current = replayActive
+    wasReplayActiveRef.current = replayActive
+
+    if (wasActive && !replayActive && sessionId && enabled) {
+      if (invalidationTimerRef.current !== null) {
+        clearTimeout(invalidationTimerRef.current)
+        invalidationTimerRef.current = null
+      }
+      firstInvalidationAtRef.current = null
+      queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
+      queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
+    }
+  }, [replayActive, sessionId, enabled, queryClient])
 
   return {
     events,

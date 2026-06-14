@@ -222,3 +222,110 @@ describe('useEventStream', () => {
     expect((result.current.events[0] as { sessionId?: string }).sessionId).toBe('session-B')
   })
 })
+
+describe('useEventStream - replay gate (D-02/D-04)', () => {
+  let mockEventSource: MockEventSource
+  let queryClient: QueryClient
+
+  const eventFor = (seq: number) =>
+    JSON.stringify({
+      kind: 'CoroutineCreated',
+      sessionId: 'session-1',
+      seq,
+      tsNanos: 1000 + seq,
+      coroutineId: `c${seq}`,
+      jobId: `j${seq}`,
+      parentCoroutineId: null,
+      scopeId: 'scope-1',
+      label: 'test',
+    })
+
+  function wrapper(qc: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return createElement(QueryClientProvider, { client: qc }, children)
+    }
+  }
+
+  function invalidationCount(qc: QueryClient, keyRoot: string): number {
+    return vi
+      .mocked(qc.invalidateQueries)
+      .mock.calls.filter(([arg]) => {
+        const key = (arg as { queryKey?: unknown[] } | undefined)?.queryKey
+        return Array.isArray(key) && key[0] === keyRoot
+      }).length
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.clearAllMocks()
+    mockEventSource = new MockEventSource()
+    mockedApiClient.createEventSource.mockReturnValue(
+      mockEventSource as unknown as EventSource,
+    )
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    vi.spyOn(queryClient, 'invalidateQueries')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('appends events but does NOT invalidate while replayActive is true', () => {
+    const { result } = renderHook(
+      () => useEventStream('session-1', true, true),
+      { wrapper: wrapper(queryClient) },
+    )
+
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', eventFor(1))
+      mockEventSource.simulateEvent('CoroutineCreated', eventFor(2))
+      vi.advanceTimersByTime(2000)
+    })
+
+    // Events still buffer (the "● N new events" badge counts these)...
+    expect(result.current.events.length).toBe(2)
+    // ...but no cache invalidation fires while replay is active (D-02).
+    expect(invalidationCount(queryClient, 'sessions')).toBe(0)
+    expect(invalidationCount(queryClient, 'thread-activity')).toBe(0)
+  })
+
+  it('flushes a single invalidation when replayActive flips back to false (D-04)', () => {
+    const { rerender } = renderHook(
+      ({ replayActive }: { replayActive: boolean }) =>
+        useEventStream('session-1', true, replayActive),
+      { wrapper: wrapper(queryClient), initialProps: { replayActive: true } },
+    )
+
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', eventFor(1))
+      mockEventSource.simulateEvent('CoroutineCreated', eventFor(2))
+      vi.advanceTimersByTime(2000)
+    })
+    expect(invalidationCount(queryClient, 'sessions')).toBe(0)
+
+    // Exit replay → buffered events apply via exactly one flush.
+    act(() => {
+      rerender({ replayActive: false })
+      vi.advanceTimersByTime(2000)
+    })
+
+    expect(invalidationCount(queryClient, 'sessions')).toBe(1)
+    expect(invalidationCount(queryClient, 'thread-activity')).toBe(1)
+  })
+
+  it('invalidates normally when replayActive is false (no regression)', () => {
+    renderHook(() => useEventStream('session-1', true, false), {
+      wrapper: wrapper(queryClient),
+    })
+
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', eventFor(1))
+      vi.advanceTimersByTime(2000)
+    })
+
+    expect(invalidationCount(queryClient, 'sessions')).toBe(1)
+  })
+})
