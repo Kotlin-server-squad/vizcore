@@ -32,8 +32,8 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 
 ### Replay & Time Travel
 
-- [ ] **RPLY-01**: A developer can play, pause, stop, step-forward, and step-back through a session's events from a replay controller, with all panels reflecting the current event index.
-- [ ] **RPLY-02**: A developer can select playback speed (0.5x-5x) and scrub to any position via a progress bar.
+- [x] **RPLY-01**: A developer can play, pause, stop, step-forward, and step-back through a session's events from a replay controller, with all panels reflecting the current event index.
+- [x] **RPLY-02**: A developer can select playback speed (0.5x-5x) and scrub to any position via a progress bar.
 - [ ] **RPLY-03**: Animations respect the active replay speed and the current event (per ADR-011/027).
 
 ### Export & Sharing
@@ -149,8 +149,8 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | PROD-03 | Phase 1 | Complete |
 | PROD-04 | Phase 1 | Complete |
 | PROD-05 | Phase 1 | Complete |
-| RPLY-01 | Phase 2 | Pending |
-| RPLY-02 | Phase 2 | Pending |
+| RPLY-01 | Phase 2 | Complete |
+| RPLY-02 | Phase 2 | Complete |
 | RPLY-03 | Phase 2 | Pending |
 | EXPT-01 | Phase 2 | Pending |
 | EXPT-02 | Phase 2 | Pending |

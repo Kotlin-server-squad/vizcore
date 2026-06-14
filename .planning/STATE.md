@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-06-14T09:33:39.753Z"
+last_updated: "2026-06-14T11:14:53.647Z"
 last_activity: 2026-06-14 -- Phase 02 Plan 01 complete
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 23
-  completed_plans: 17
+  completed_plans: 18
   percent: 20
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 ## Current Position
 
 Phase: 02 (user-value-visualization) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-06-14 -- Phase 02 Plan 01 complete
 
@@ -64,6 +64,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 01 P15 | ~14min | 3 tasks | 5 files |
 | Phase 02 P01 | ~18min | 2 tasks | 8 files |
 | Phase 02 P02 | ~12 min | 2 tasks | 4 files |
+| Phase 02 P03 | ~17 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2, Plan 02]: events/ + checksystem/ forks deleted (54 .kt); core is keeper (flow events keep @SerialName the forks lacked). ns->ms fix (NANOS_PER_MILLI) landed in core TimingAnalyzer with proving test; core's own TimingAnalyzerTest rescaled to ms.
 - [Phase ?]: [Phase 2, Plan 02]: D-12 strict-404 audit complete — all 22 getOrCreateSession callers are scenario/pattern/flow create POSTs; every read/SSE/compare route uses getSession->404 (WR-07 closed backend-wide).
 - [Phase ?]: [Phase 2, Plan 02]: parallel Gradle test-worker flakiness is pre-existing/environmental — full suite green with --max-workers=1; deferred, not a de-fork regression.
+- [Phase ?]: [Phase 2, Plan 03]: projectCoroutines emits nodes in creation order (matches backend RuntimeSnapshot LinkedHashMap) so deep-equal vs server snapshot holds; terminal state by event kind only (FIX-03). useReplay clamp aligned to ADR-017 (base 50-2000ms then /speed); two 10ms timing tests realigned to 50ms floor (Rule 1).
 
 ### Pending Todos
 
@@ -124,6 +126,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-14T09:33:28.388Z
+Last session: 2026-06-14T11:14:47.422Z
 Stopped at: Completed 02-01-PLAN.md
 Resume file: None
