@@ -93,6 +93,13 @@ class ComparisonRoutesTest {
 
             val response = client.get("/api/sessions/compare?a=${sessionA.sessionId}&b=does-not-exist")
             assertEquals(HttpStatusCode.NotFound, response.status)
+
+            // WR-09: the 404 body must serialize to the documented ErrorResponse
+            // shape (`{"error":"..."}`) so the FE 404 detection keeps working.
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val error = body["error"]?.jsonPrimitive?.content
+            assertNotNull(error, "404 body must carry an `error` field (ErrorResponse schema)")
+            assertEquals("Session not found: does-not-exist", error)
         }
 
     @Test
