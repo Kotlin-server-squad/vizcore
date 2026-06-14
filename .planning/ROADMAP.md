@@ -108,7 +108,7 @@ Plans:
 
 **Wave 4** *(WebM recording)*
 
-- [ ] 02-08-PLAN.md — WebM recording: pure pipeline (codec cascade, 2x mirror-canvas capture, duration estimate) + useRecordReplay scripted flow + RecordConfirmModal + abort-on-hidden + SessionDetails wiring (EXPT-02 video, D-05..08/23..27) *(depends on 02-05/02-07)*
+- [x] 02-08-PLAN.md — WebM recording: pure pipeline (codec cascade, 2x mirror-canvas capture, duration estimate) + useRecordReplay scripted flow + RecordConfirmModal + abort-on-hidden + SessionDetails wiring (EXPT-02 video, D-05..08/23..27) *(depends on 02-05/02-07)*
 
 **UI hint**: yes
 
