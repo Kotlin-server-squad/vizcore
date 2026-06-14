@@ -104,7 +104,7 @@ Plans:
 
 **Wave 3** *(replay integration)*
 
-- [ ] 02-07-PLAN.md — Mount replay in SessionDetails: ReplayController Stop/FastForward/keyboard + sticky bar + REPLAY chip/new-events badge + projected event-derived panels + gated SSE buffering + dim/scrub/animate + ExportMenu mount (RPLY-01/02/03, D-01..18) *(depends on 02-03/02-04/02-05)*
+- [x] 02-07-PLAN.md — Mount replay in SessionDetails: ReplayController Stop/FastForward/keyboard + sticky bar + REPLAY chip/new-events badge + projected event-derived panels + gated SSE buffering + dim/scrub/animate + ExportMenu mount (RPLY-01/02/03, D-01..18) *(depends on 02-03/02-04/02-05)*
 
 **Wave 4** *(WebM recording)*
 
