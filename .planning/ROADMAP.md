@@ -92,7 +92,7 @@ Plans:
 
 **Wave 1** *(backend + frontend foundation, parallel — zero file overlap)*
 
-- [ ] 02-01-PLAN.md — Compare-route rename to `/api/sessions/compare?a=&b=` + thread-utilization delta (CMPR-01/OQ-3) + OpenAPI doc + shared/api-types regen + frontend client/type alignment
+- [x] 02-01-PLAN.md — Compare-route rename to `/api/sessions/compare?a=&b=` + thread-utilization delta (CMPR-01/OQ-3) + OpenAPI doc + shared/api-types regen + frontend client/type alignment
 - [ ] 02-02-PLAN.md — FQCN fork reconciliation (events/ + checksystem/ into core, ns→ms fix landed in core) + ForkDeletionTest extension + strict-404 read-path audit (D-12, folded todos)
 - [ ] 02-03-PLAN.md — Client-side event→snapshot projection layer (projectCoroutines/projectThreadActivity, OQ-1) tested against the server snapshot oracle + useReplay 50–2000ms clamp + Wave-0 use-replay test
 - [ ] 02-04-PLAN.md — HeroUI 2.7 toast upgrade + ToastProvider at root + toast helper + full-suite React Aria regression gate (human smoke checkpoint)

@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-06-14T09:01:49.925Z"
-last_activity: 2026-06-14 -- Phase 02 planning complete
+last_updated: "2026-06-14T09:08:39.820Z"
+last_activity: 2026-06-14 -- Phase 02 Plan 01 complete
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 15
-  completed_plans: 15
-  percent: 20
+  total_plans: 23
+  completed_plans: 16
+  percent: 23
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-11)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Phase 01 — foundation-production-readiness
+**Current focus:** Phase 02 — user-value-visualization
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-14 -- Phase 02 planning complete
+Phase: 02 (user-value-visualization) — EXECUTING
+Plan: 2 of 8
+Status: Executing Phase 02
+Last activity: 2026-06-14 -- Phase 02 Plan 01 complete
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
 
@@ -62,6 +62,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 01 P13 | ~7 min | 2 tasks | 5 files |
 | Phase 01 P14 | ~10 min | 3 tasks | 10 files |
 | Phase 01 P15 | ~14min | 3 tasks | 5 files |
+| Phase 02 P01 | ~18min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 1, Plan 14]: SessionDetails.test.tsx mocks apiClient (not the hook) and renders the real ThreadTimeline so the UAT-gap-1 integration test exercises the genuine wire-shape pipeline
 - [Phase 1]: [Phase 1, Plan 15]: SSE first-connect fix is two-sided: backend ': connected' comment frame flushes headers on 0-event sessions; frontend retries fatal (readyState=2) EventSource errors with bounded backoff (1s,2s,4s,8s,8s; 5 retries, budget reset on open) plus maxSeqRef replay dedup so WR-01 full-history replay never duplicates the live view
 - [Phase 1]: [Phase 1, Plan 15]: Ktor testApplication live-stream reads must run under withContext(Dispatchers.Default) — the virtual-time dispatcher fires withTimeout before the wall-clock server writes bytes (MetricsWiringTest convention)
+- [Phase 2, Plan 01]: Compare endpoint renamed to GET /api/sessions/compare?a=&b= (D-09); SessionComparison gained distinctThreadsDiff (CMPR-01 thread metric) derived from distinct ThreadAssigned.threadId via store.all(); strict 404 on unknown id retained (D-12, no getOrCreate)
+- [Phase 2, Plan 01]: Static path /api/sessions/compare coexists safely with /api/sessions/{id} — Ktor prioritizes constant segments over parameterized ones (confirmed by passing integration test)
+- [Phase 2, Plan 01]: shared/api-types/openapi.json synced surgically (compare path + SessionComparison/CoroutineComparison/ErrorResponse) not full YAML->JSON regen — JSON copy is stale (22 vs 55 paths); full regen remains a pending todo
 
 ### Pending Todos
 
@@ -116,6 +120,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-12T20:20:24.084Z
-Stopped at: Phase 2 UI-SPEC approved
-Resume file: .planning/phases/02-user-value-visualization/02-UI-SPEC.md
+Last session: 2026-06-14
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
