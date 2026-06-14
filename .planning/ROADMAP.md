@@ -100,7 +100,7 @@ Plans:
 **Wave 2** *(frontend features, parallel)*
 
 - [x] 02-05-PLAN.md — Export menu: PNG info header (EXPT-01/D-08) + standalone style-inlined SVG with `<svg>`-root auto-detect (EXPT-02/D-21) + JSON event export (D-22) + ExportMenu dropdown with toasts *(depends on 02-04)*
-- [ ] 02-06-PLAN.md — `/compare` route with shareable `?a=&b=` + ComparisonView controlled selection + SyncedTreePair (two synced trees, delta badges, selection sync) + Compare nav + session-not-found state (CMPR-02, D-10/11/19/20) *(depends on 02-01)*
+- [x] 02-06-PLAN.md — `/compare` route with shareable `?a=&b=` + ComparisonView controlled selection + SyncedTreePair (two synced trees, delta badges, selection sync) + Compare nav + session-not-found state (CMPR-02, D-10/11/19/20) *(depends on 02-01)*
 
 **Wave 3** *(replay integration)*
 

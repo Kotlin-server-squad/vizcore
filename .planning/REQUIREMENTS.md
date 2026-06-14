@@ -67,7 +67,7 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 ### Session Comparison
 
 - [x] **CMPR-01**: `ComparisonService.compare(a, b)` returns event-count, duration, and thread-utilization deltas via `GET /api/sessions/compare?a=&b=`. _(Phase 2 Plan 01)_
-- [ ] **CMPR-02**: A developer can view two sessions side-by-side with delta highlights.
+- [x] **CMPR-02**: A developer can view two sessions side-by-side with delta highlights.
 
 ### SDK & CI/CD
 
@@ -155,7 +155,7 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | EXPT-01 | Phase 2 | Complete |
 | EXPT-02 | Phase 2 | Complete |
 | CMPR-01 | Phase 2 | Complete (P01) |
-| CMPR-02 | Phase 2 | Pending |
+| CMPR-02 | Phase 2 | Complete (P06) |
 | PERS-01 | Phase 3 | Pending |
 | PERS-02 | Phase 3 | Pending |
 | PERS-03 | Phase 3 | Pending |
