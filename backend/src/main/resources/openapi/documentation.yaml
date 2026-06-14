@@ -1469,24 +1469,25 @@ paths:
   # ==========================================================================
   # COMPARISON
   # ==========================================================================
-  /api/compare:
+  /api/sessions/compare:
     get:
       tags: [Comparison]
       summary: Compare two sessions
       description: >
         Produces a structured diff between two visualization sessions. The
         comparison includes aggregate differences (coroutine count, event
-        count, duration), coroutines unique to each session, and per-coroutine
-        state and event count comparisons for shared coroutines.
+        count, duration, thread utilization), coroutines unique to each
+        session, and per-coroutine state and event count comparisons for
+        shared coroutines.
       operationId: compareSessions
       parameters:
-        - name: sessionA
+        - name: a
           in: query
           required: true
           description: ID of the first (baseline) session
           schema:
             type: string
-        - name: sessionB
+        - name: b
           in: query
           required: true
           description: ID of the second (comparison) session
@@ -1965,6 +1966,7 @@ components:
         - coroutineCountDiff
         - eventCountDiff
         - totalDurationDiffNanos
+        - distinctThreadsDiff
         - coroutinesOnlyInA
         - coroutinesOnlyInB
         - commonCoroutines
@@ -1985,6 +1987,11 @@ components:
           type: integer
           format: int64
           description: Difference in total session duration in nanoseconds (B minus A)
+        distinctThreadsDiff:
+          type: integer
+          description: >
+            Difference in distinct-thread (thread-utilization) count between the
+            two sessions (B minus A), derived from ThreadAssigned events.
         coroutinesOnlyInA:
           type: array
           description: Coroutine IDs present only in session A

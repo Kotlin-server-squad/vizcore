@@ -380,6 +380,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare two sessions
+         * @description Produces a structured diff between two visualization sessions. The comparison includes aggregate differences (coroutine count, event count, duration, thread utilization), coroutines unique to each session, and per-coroutine state and event count comparisons for shared coroutines.
+         */
+        get: operations["compareSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -579,6 +599,45 @@ export interface components {
             /** Format: int64 */
             tsNanos: number;
             kind: string;
+        };
+        /** @description Structured diff between two visualization sessions, including aggregate metrics and per-coroutine breakdowns. */
+        SessionComparison: {
+            /** @description ID of the first (baseline) session */
+            sessionA: string;
+            /** @description ID of the second (comparison) session */
+            sessionB: string;
+            /** @description Difference in coroutine count (B minus A) */
+            coroutineCountDiff: number;
+            /** @description Difference in event count (B minus A) */
+            eventCountDiff: number;
+            /**
+             * Format: int64
+             * @description Difference in total session duration in nanoseconds (B minus A)
+             */
+            totalDurationDiffNanos: number;
+            /** @description Difference in distinct-thread (thread-utilization) count between the two sessions (B minus A), derived from ThreadAssigned events. */
+            distinctThreadsDiff: number;
+            /** @description Coroutine IDs present only in session A */
+            coroutinesOnlyInA: string[];
+            /** @description Coroutine IDs present only in session B */
+            coroutinesOnlyInB: string[];
+            /** @description Per-coroutine comparison for coroutines in both sessions */
+            commonCoroutines: components["schemas"]["CoroutineComparison"][];
+        };
+        /** @description Comparison of a single coroutine that exists in both sessions. */
+        CoroutineComparison: {
+            /** @description Shared coroutine identifier */
+            coroutineId: string;
+            /** @description Coroutine label (taken from session A if available) */
+            label?: string | null;
+            /** @description Coroutine state in session A */
+            stateA: string;
+            /** @description Coroutine state in session B */
+            stateB: string;
+            /** @description Number of events for this coroutine in session A */
+            eventCountA: number;
+            /** @description Number of events for this coroutine in session B */
+            eventCountB: number;
         };
     };
     responses: never;
@@ -1321,6 +1380,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationRule"][];
+                };
+            };
+        };
+    };
+    compareSessions: {
+        parameters: {
+            query: {
+                /** @description ID of the first (baseline) session */
+                a: string;
+                /** @description ID of the second (comparison) session */
+                b: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session comparison results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionComparison"];
+                };
+            };
+            /** @description Missing required query parameters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description One or both sessions not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

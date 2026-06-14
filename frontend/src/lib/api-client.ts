@@ -131,9 +131,9 @@ class ApiClient {
   }
 
   // Comparison
-  async compareSessions(sessionA: string, sessionB: string): Promise<SessionComparison> {
+  async compareSessions(a: string, b: string): Promise<SessionComparison> {
     return this.fetchJson<SessionComparison>(
-      `/compare?sessionA=${encodeURIComponent(sessionA)}&sessionB=${encodeURIComponent(sessionB)}`,
+      `/sessions/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
     )
   }
 }

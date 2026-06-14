@@ -627,7 +627,7 @@ export interface BackendTimingReport {
 }
 
 // ---------------------------------------------------------------------------
-// Session Comparison (from GET /api/compare)
+// Session Comparison (from GET /api/sessions/compare)
 // ---------------------------------------------------------------------------
 
 /** Result of comparing two visualization sessions */
@@ -637,6 +637,8 @@ export interface SessionComparison {
   coroutineCountDiff: number
   eventCountDiff: number
   totalDurationDiffNanos: number
+  /** Difference in distinct-thread (thread-utilization) count (B minus A) */
+  distinctThreadsDiff: number
   coroutinesOnlyInA: string[]
   coroutinesOnlyInB: string[]
   commonCoroutines: CoroutineComparison[]
