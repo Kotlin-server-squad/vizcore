@@ -51,17 +51,41 @@ vi.mock('@/hooks/use-event-categories', () => ({
   })),
 }))
 
-// Mock child components to isolate SessionDetails
+// Mock child components to isolate SessionDetails. The graph/list/events mocks
+// expose the props they receive so replay-vs-live data-source tests can assert
+// what was fed to them.
 vi.mock('./CoroutineTree', () => ({
-  CoroutineTree: () => <div data-testid="coroutine-tree">CoroutineTree</div>,
+  CoroutineTree: ({ coroutines }: { coroutines: { id: string }[] }) => (
+    <div data-testid="coroutine-tree" data-count={coroutines.length}>
+      CoroutineTree
+    </div>
+  ),
 }))
 
 vi.mock('./CoroutineTreeGraph', () => ({
-  CoroutineTreeGraph: () => <div data-testid="coroutine-tree-graph">CoroutineTreeGraph</div>,
+  CoroutineTreeGraph: ({ coroutines }: { coroutines: { id: string }[] }) => (
+    <div
+      data-testid="coroutine-tree-graph"
+      data-count={coroutines.length}
+      data-ids={coroutines.map((c) => c.id).join(',')}
+    >
+      CoroutineTreeGraph
+    </div>
+  ),
 }))
 
 vi.mock('./EventsList', () => ({
-  EventsList: () => <div data-testid="events-list">EventsList</div>,
+  EventsList: ({ events }: { events: { seq: number }[] }) => (
+    <div data-testid="events-list" data-count={events.length}>
+      EventsList
+    </div>
+  ),
+}))
+
+// ExportMenu mocked to a simple trigger so we can assert it is mounted without
+// pulling in html2canvas / toast plumbing.
+vi.mock('./export/ExportMenu', () => ({
+  ExportMenu: () => <div data-testid="export-menu">ExportMenu</div>,
 }))
 
 vi.mock('./StructuredConcurrencyInfo', () => ({
@@ -90,6 +114,15 @@ vi.mock('./jobs/JobPanel', () => ({
 
 vi.mock('./validation/ValidationPanel', () => ({
   ValidationPanel: () => <div data-testid="validation-panel" />,
+}))
+
+// ReplayController mocked to a thin shim exposing whether replay is active and
+// the toggle target index, so SessionDetails replay wiring can be tested
+// without the real framer-motion MotionValue loop.
+vi.mock('./replay/ReplayController', () => ({
+  ReplayController: ({ replay }: { replay: { totalEvents: number } }) => (
+    <div data-testid="replay-controller" data-total={replay.totalEvents} />
+  ),
 }))
 
 vi.mock('framer-motion', () => ({
@@ -514,5 +547,179 @@ describe('SessionDetails - Threads tab wire shape (UAT gap 1)', () => {
 
     // 1. The UAT-observed permanent empty state is gone
     expect(screen.queryByText('No thread activity data available yet')).toBeNull()
+  })
+})
+
+describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedUseEventStream.mockImplementation(() => ({
+      events: [],
+      isConnected: false,
+      error: null,
+      clearEvents: vi.fn(),
+    }) as unknown as ReturnType<typeof useEventStream>)
+  })
+
+  // A small captured session: two coroutines created+started, one completed.
+  // Fed through the stored-events path so replay folds them via projections.
+  const replayEvents = [
+    {
+      kind: 'coroutine.created',
+      sessionId: 'session-1',
+      seq: 1,
+      tsNanos: 1000,
+      coroutineId: 'c1',
+      jobId: 'j1',
+      parentCoroutineId: null,
+      scopeId: 's1',
+      label: 'root',
+    },
+    {
+      kind: 'coroutine.started',
+      sessionId: 'session-1',
+      seq: 2,
+      tsNanos: 2000,
+      coroutineId: 'c1',
+      jobId: 'j1',
+      parentCoroutineId: null,
+      scopeId: 's1',
+      label: 'root',
+    },
+    {
+      kind: 'coroutine.created',
+      sessionId: 'session-1',
+      seq: 3,
+      tsNanos: 3000,
+      coroutineId: 'c2',
+      jobId: 'j2',
+      parentCoroutineId: 'c1',
+      scopeId: 's1',
+      label: 'child',
+    },
+  ]
+
+  function mountWithStoredEvents() {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 2 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    return render(<SessionDetails sessionId="session-1" />, {
+      wrapper: createWrapper(),
+    })
+  }
+
+  it('shows a Replay toggle button always (D-01)', () => {
+    mountWithStoredEvents()
+    expect(screen.getByRole('button', { name: /^replay$/i })).toBeInTheDocument()
+  })
+
+  it('mounts the ExportMenu in the toolbar', () => {
+    mountWithStoredEvents()
+    expect(screen.getByTestId('export-menu')).toBeInTheDocument()
+  })
+
+  it('entering replay seeks to end + shows REPLAY chip + sticky controller (D-03/D-13/D-15)', async () => {
+    // Provide stored events so totalEvents > 0
+    vi.doMock('@/hooks/use-sessions')
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 2 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: replayEvents } as unknown as ReturnType<
+      typeof useSessionEvents
+    >)
+
+    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+
+    expect(screen.getByText('REPLAY')).toBeInTheDocument()
+    const controller = screen.getByTestId('replay-controller')
+    expect(controller).toBeInTheDocument()
+    // Seeked to end → totalEvents reflects all captured events
+    expect(controller).toHaveAttribute('data-total', String(replayEvents.length))
+    // Exit toggle now present
+    expect(screen.getByRole('button', { name: /exit replay/i })).toBeInTheDocument()
+  })
+
+  it('in replay, the Coroutines graph renders projected coroutines from visibleEvents (D-17)', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 2 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: replayEvents } as unknown as ReturnType<
+      typeof useSessionEvents
+    >)
+
+    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+
+    // At end: both c1 and c2 projected from the events (not session.coroutines,
+    // which has only c-root from makeSession).
+    const graph = screen.getByTestId('coroutine-tree-graph')
+    expect(graph).toHaveAttribute('data-ids', 'c1,c2')
+  })
+
+  it('shows LiveDataNotice on a projection-backed tab while replaying (D-17)', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 2 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: replayEvents } as unknown as ReturnType<
+      typeof useSessionEvents
+    >)
+
+    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+
+    // Validation tab is projection-backed and always present.
+    await userEvent.click(screen.getByRole('tab', { name: 'Validation' }))
+    expect(screen.getByTestId('live-data-notice')).toBeInTheDocument()
+  })
+
+  it('shows a clickable new-events badge for events buffered during replay; clicking exits (D-02/D-04)', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 2 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: replayEvents } as unknown as ReturnType<
+      typeof useSessionEvents
+    >)
+
+    // Live stream returns more events than the frozen replay snapshot.
+    mockedUseEventStream.mockImplementation(() => ({
+      events: [
+        ...replayEvents,
+        { ...replayEvents[2], seq: 4, coroutineId: 'c3', label: 'late' },
+        { ...replayEvents[2], seq: 5, coroutineId: 'c4', label: 'later' },
+      ],
+      isConnected: true,
+      error: null,
+      clearEvents: vi.fn(),
+    }) as unknown as ReturnType<typeof useEventStream>)
+
+    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+
+    // 2 events arrived after the frozen snapshot of 3.
+    const badge = await screen.findByRole('button', {
+      name: /exit replay and jump to live/i,
+    })
+    expect(badge).toHaveTextContent('2 new events')
+
+    await userEvent.click(badge)
+    // Back to live: REPLAY chip gone, Replay toggle shown again.
+    expect(screen.queryByText('REPLAY')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^replay$/i })).toBeInTheDocument()
   })
 })

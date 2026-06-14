@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Card, CardBody, CardHeader, Chip, Tabs, Tab, Spinner, Button } from '@heroui/react'
 import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiRotateCcw, FiTrash2 } from 'react-icons/fi'
 import { useSession, useSessionEvents, useDeleteSession } from '@/hooks/use-sessions'
@@ -6,6 +6,9 @@ import { useEventStream } from '@/hooks/use-event-stream'
 import { useRunScenario } from '@/hooks/use-scenarios'
 import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
+import { useReplay } from '@/hooks/use-replay'
+import { projectCoroutines } from '@/lib/projections/project-coroutines'
+import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { CoroutineTree } from './CoroutineTree'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
 import { EventsList } from './EventsList'
@@ -17,11 +20,14 @@ import { FlowPanel } from './flow/FlowPanel'
 import { SyncPanel } from './sync/SyncPanel'
 import { JobPanel } from './jobs/JobPanel'
 import { ValidationPanel } from './validation/ValidationPanel'
+import { ReplayController } from './replay/ReplayController'
+import { LiveDataNotice } from './replay/LiveDataNotice'
+import { ExportMenu } from './export/ExportMenu'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
-import type { JobStateChangedEvent } from '@/types/api'
+import type { JobStateChangedEvent, ThreadActivity, VizEvent } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 
 /** Terminal coroutine states — no further transitions expected. */
@@ -53,7 +59,18 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
-  const { events: liveEvents, isConnected, clearEvents } = useEventStream(sessionId, streamEnabled)
+  // Replay mode (D-01): when active, panels render from the frozen snapshot's
+  // replay cursor instead of the live/stored events. The snapshot is captured
+  // at replay entry so live SSE events do not mutate the frozen view (D-02).
+  const [replayActive, setReplayActive] = useState(false)
+  const [replaySnapshot, setReplaySnapshot] = useState<VizEvent[]>([])
+  const { events: liveEvents, isConnected, clearEvents } = useEventStream(
+    sessionId,
+    streamEnabled,
+    replayActive,
+  )
+  // Panel ref for ExportMenu (captures the active visualization region lazily).
+  const panelRef = useRef<HTMLDivElement | null>(null)
   // Pass isLive=streamEnabled so thread-activity does not poll every 2s while
   // SSE is driving updates; SSE-triggered cache invalidations handle refreshes.
   const { data: threadActivity } = useThreadActivity(sessionId, streamEnabled)
@@ -69,6 +86,63 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
   const hasScenario = !!scenarioId
+
+  // Replay drives over the FROZEN snapshot taken at entry (never the live
+  // `allEvents`), so live SSE events buffer for the badge without re-rendering
+  // the replay panels (D-02).
+  const replay = useReplay(replaySnapshot)
+  const { seekTo: replaySeekTo } = replay
+
+  // Number of live events appended since replay entry — drives the "● N new
+  // events" badge (D-02). The SSE stream stays connected during replay (the
+  // gate only suppresses invalidation, not the EventSource), so any live
+  // events beyond the frozen snapshot are buffered and counted here.
+  const newEventsCount = replayActive
+    ? Math.max(liveEvents.length - replaySnapshot.length, 0)
+    : 0
+
+  // Enter replay: freeze the current events and activate replay. The seek to
+  // the end (D-03) is performed by the effect below once useReplay has applied
+  // the new snapshot (it resets to index 0 on events-identity change, so the
+  // seek must follow that reset).
+  const enterReplay = useCallback(() => {
+    const snapshot = streamEnabled ? liveEvents : storedEvents || []
+    setReplaySnapshot(snapshot)
+    setReplayActive(true)
+  }, [streamEnabled, liveEvents, storedEvents])
+
+  // Exit replay: drop the cursor and apply buffered events (the gated
+  // useEventStream flush re-validates the live panels) — D-04.
+  const exitReplay = useCallback(() => {
+    setReplayActive(false)
+    setReplaySnapshot([])
+  }, [])
+
+  // On entering replay (snapshot applied), jump to the end and stay paused
+  // (D-03). Keyed on the snapshot identity so re-entry re-seeks; useReplay's
+  // own reset-to-0 effect runs first on the same identity change.
+  const seekedSnapshotRef = useRef<VizEvent[] | null>(null)
+  useEffect(() => {
+    if (!replayActive) {
+      seekedSnapshotRef.current = null
+      return
+    }
+    if (replaySnapshot.length === 0) return
+    if (seekedSnapshotRef.current === replaySnapshot) return
+    seekedSnapshotRef.current = replaySnapshot
+    replaySeekTo(replaySnapshot.length - 1)
+  }, [replayActive, replaySnapshot, replaySeekTo])
+
+  // Panel data source: replay cursor view-models vs. live snapshot (D-17).
+  const panelEvents = replayActive ? replay.visibleEvents : allEvents
+  const panelCoroutines = useMemo(
+    () => (replayActive ? projectCoroutines(replay.visibleEvents) : session?.coroutines ?? []),
+    [replayActive, replay.visibleEvents, session?.coroutines],
+  )
+  const panelThreadActivity: ThreadActivity | undefined = useMemo(
+    () => (replayActive ? projectThreadActivity(replay.visibleEvents) : threadActivity),
+    [replayActive, replay.visibleEvents, threadActivity],
+  )
 
   // Three-state scenario derivation:
   //   notStarted — coroutineCount === 0 (no coroutines seen yet)
@@ -99,7 +173,10 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
   // with a max-wait cap so a sustained stream still refetches at least once
   // per SESSION_REFETCH_MAX_WAIT_MS (the trailing edge can never be starved).
   useEffect(() => {
-    if (!streamEnabled || liveEvents.length === 0) return
+    // D-02: while replay is active the frozen panels must not be refetched out
+    // from under the cursor. The buffered events apply on exit (useEventStream
+    // exit flush).
+    if (!streamEnabled || replayActive || liveEvents.length === 0) return
 
     const flushRefetch = () => {
       sessionRefetchTimerRef.current = null
@@ -135,7 +212,7 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
         sessionRefetchTimerRef.current = null
       }
     }
-  }, [streamEnabled, liveEvents.length, refetch])
+  }, [streamEnabled, replayActive, liveEvents.length, refetch])
 
   // Teardown for the max-wait window: reset the debounce refs only when the
   // stream toggles or the component unmounts (not between individual events).
@@ -236,13 +313,32 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
             <p className="font-mono text-sm text-default-500">{sessionId}</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Chip color="primary" variant="flat">
                 {session.coroutineCount} coroutines
               </Chip>
               <Chip color="secondary" variant="flat">
                 {session.eventCount} events
               </Chip>
+              {/* REPLAY mode chip (D-15) — only solid-primary chip in the app. */}
+              {replayActive && (
+                <Chip size="sm" color="primary" variant="solid">
+                  REPLAY
+                </Chip>
+              )}
+              {/* New-events badge (D-02/D-04): clickable, exits replay + applies
+                  buffered events. Hidden when N = 0. */}
+              {replayActive && newEventsCount > 0 && (
+                <button
+                  type="button"
+                  aria-label="Exit replay and jump to live"
+                  onClick={exitReplay}
+                >
+                  <Chip size="sm" color="warning" variant="dot">
+                    {newEventsCount === 1 ? '1 new event' : `${newEventsCount} new events`}
+                  </Chip>
+                </button>
+              )}
             </div>
             <Button
               isIconOnly
@@ -286,10 +382,30 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
                   </motion.div>
                 </AnimatePresence>
               )}
+
+              {/* Replay toggle (D-01) — always visible. */}
+              <Button
+                size="sm"
+                color={replayActive ? 'primary' : 'default'}
+                variant={replayActive ? 'flat' : 'bordered'}
+                startContent={<FiPlay />}
+                onPress={replayActive ? exitReplay : enterReplay}
+              >
+                {replayActive ? 'Exit Replay' : 'Replay'}
+              </Button>
             </div>
 
-            {/* View Mode Toggle */}
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {/* Export menu (ADR-018 / EXPT-01/02 / D-22). */}
+              <ExportMenu
+                getPanelEl={() => panelRef.current}
+                sessionId={sessionId}
+                sessionName={scenarioName ?? sessionId}
+                events={panelEvents}
+                panel={viewMode === 'graph' ? 'graph' : 'tree'}
+              />
+
+              {/* View Mode Toggle */}
               <Button
                 size="sm"
                 variant={viewMode === 'graph' ? 'flat' : 'light'}
@@ -312,6 +428,13 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
           </div>
         </CardBody>
       </Card>
+
+      {/* Sticky ReplayController bar (D-13) — directly above the tabs. */}
+      {replayActive && (
+        <div className="sticky top-16 z-30">
+          <ReplayController replay={replay} />
+        </div>
+      )}
 
       {/* Scenario Control Panel */}
       {hasScenario && (
@@ -387,16 +510,19 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
 
       {/* Main Tabs */}
       <Tabs aria-label="Session tabs" variant="bordered" fullWidth>
-        {/* Coroutines tab - Graph/List view toggle */}
+        {/* Coroutines tab - Graph/List view toggle. In replay, renders the
+            projected snapshot from the replay cursor (D-17). */}
         <Tab key="coroutines" title="Coroutines">
           <div className="space-y-4 pt-2">
             <Card>
               <CardBody className="overflow-auto">
-                {viewMode === 'graph' ? (
-                  <CoroutineTreeGraph coroutines={session.coroutines} />
-                ) : (
-                  <CoroutineTree coroutines={session.coroutines} />
-                )}
+                <div ref={panelRef}>
+                  {viewMode === 'graph' ? (
+                    <CoroutineTreeGraph coroutines={panelCoroutines} />
+                  ) : (
+                    <CoroutineTree coroutines={panelCoroutines} />
+                  )}
+                </div>
               </CardBody>
             </Card>
           </div>
@@ -407,17 +533,18 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
           <div className="pt-2">
             <Card>
               <CardBody>
-                <EventsList events={allEvents} />
+                <EventsList events={panelEvents} />
               </CardBody>
             </Card>
           </div>
         </Tab>
 
-        {/* Threads tab - thread activity and dispatcher overview */}
+        {/* Threads tab - thread activity and dispatcher overview. In replay,
+            derive lanes from the replay cursor via projectThreadActivity. */}
         <Tab key="threads" title="Threads">
           <div className="space-y-4 pt-2">
-            {threadActivity ? (
-              <ThreadTimeline threadActivity={threadActivity} />
+            {panelThreadActivity ? (
+              <ThreadTimeline threadActivity={panelThreadActivity} />
             ) : (
               <Card>
                 <CardBody>
@@ -438,34 +565,49 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
         {/* Channels tab - shown when channel events are present */}
         {eventCategories.hasChannels && (
           <Tab key="channels" title="Channels">
-            <ChannelPanel sessionId={sessionId} />
+            <div className="space-y-2 pt-2">
+              {replayActive && <LiveDataNotice />}
+              <ChannelPanel sessionId={sessionId} />
+            </div>
           </Tab>
         )}
 
         {/* Flow tab - shown when flow events are present */}
         {eventCategories.hasFlowOps && (
           <Tab key="flow" title="Flow">
-            <FlowPanel sessionId={sessionId} />
+            <div className="space-y-2 pt-2">
+              {replayActive && <LiveDataNotice />}
+              <FlowPanel sessionId={sessionId} />
+            </div>
           </Tab>
         )}
 
         {/* Sync tab - shown when sync primitive events are present */}
         {eventCategories.hasSyncPrimitives && (
           <Tab key="sync" title="Sync">
-            <SyncPanel sessionId={sessionId} />
+            <div className="space-y-2 pt-2">
+              {replayActive && <LiveDataNotice />}
+              <SyncPanel sessionId={sessionId} />
+            </div>
           </Tab>
         )}
 
         {/* Jobs tab - shown when job events are present */}
         {eventCategories.hasJobs && (
           <Tab key="jobs" title={`Jobs (${jobStates.size})`}>
-            <JobPanel sessionId={sessionId} />
+            <div className="space-y-2 pt-2">
+              {replayActive && <LiveDataNotice />}
+              <JobPanel sessionId={sessionId} />
+            </div>
           </Tab>
         )}
 
         {/* Validation tab - always shown */}
         <Tab key="validation" title="Validation">
-          <ValidationPanel sessionId={sessionId} />
+          <div className="space-y-2 pt-2">
+            {replayActive && <LiveDataNotice />}
+            <ValidationPanel sessionId={sessionId} />
+          </div>
         </Tab>
       </Tabs>
     </div>
