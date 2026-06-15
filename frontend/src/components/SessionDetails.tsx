@@ -103,15 +103,32 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
     ? Math.max(liveEvents.length - replaySnapshot.length, 0)
     : 0
 
-  // Enter replay: freeze the current events and activate replay. The seek to
+  // Enter replay: freeze the given snapshot and activate replay. The seek to
   // the end (D-03) is performed by the effect below once useReplay has applied
   // the new snapshot (it resets to index 0 on events-identity change, so the
   // seek must follow that reset).
-  const enterReplay = useCallback(() => {
-    const snapshot = streamEnabled ? liveEvents : storedEvents || []
-    setReplaySnapshot(snapshot)
-    setReplayActive(true)
-  }, [streamEnabled, liveEvents, storedEvents])
+  //
+  // The snapshot is passed EXPLICITLY (WR-08): the replay-toggle button computes
+  // it inline from the latest closure, while the recorder computes it ONCE from
+  // a ref at click time and passes the SAME list here — so the frozen view and
+  // the recorder's auto-stop boundary can never diverge.
+  const enterReplay = useCallback(
+    (snapshot?: readonly VizEvent[]) => {
+      // Defensive: only honor an explicit array snapshot (a stray PressEvent
+      // from an onPress handler must fall through to the closure source). The
+      // explicit snapshot is copied into a mutable array — it is frozen on
+      // entry and never mutated, but `replaySnapshot`/`useReplay` are typed
+      // mutable, so a defensive copy keeps the readonly hook contract intact.
+      const frozen: VizEvent[] = Array.isArray(snapshot)
+        ? [...snapshot]
+        : streamEnabled
+          ? liveEvents
+          : storedEvents || []
+      setReplaySnapshot(frozen)
+      setReplayActive(true)
+    },
+    [streamEnabled, liveEvents, storedEvents],
+  )
 
   // Exit replay: drop the cursor and apply buffered events (the gated
   // useEventStream flush re-validates the live panels) — D-04.
@@ -126,14 +143,20 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
   // The estimate + auto-stop read whichever events will be frozen on entry: the
   // live snapshot if already replaying, otherwise the source the toggle would
   // freeze (so a one-click record from the live view records the full timeline).
+  //
+  // WR-08: keep the snapshot source behind a ref so the hook reads it ONCE at
+  // click time and freezes exactly that list (rather than two independently
+  // closed-over sources that can drift apart by any events arriving in between).
   const recordEvents = replayActive
     ? replaySnapshot
     : streamEnabled
       ? liveEvents
       : storedEvents || []
+  const recordEventsRef = useRef<VizEvent[]>(recordEvents)
+  recordEventsRef.current = recordEvents
   const recordReplay = useRecordReplay({
     getPanelEl: () => panelRef.current,
-    events: recordEvents,
+    getRecordSnapshot: () => recordEventsRef.current,
     replay,
     enterReplay,
     sessionId,
@@ -142,17 +165,31 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
   // On entering replay (snapshot applied), jump to the end and stay paused
   // (D-03). Keyed on the snapshot identity so re-entry re-seeks; useReplay's
   // own reset-to-0 effect runs first on the same identity change.
+  //
+  // CR-01: this auto-seek-to-end MUST be suppressed while a recording is being
+  // armed or is active. The record flow freezes the SAME snapshot and then
+  // seeks to 0 to record the full timeline; if this effect also fired it would
+  // clobber the cursor to the LAST index and the recorder would capture only
+  // the final frame (a ~0-duration video). Gating on isArming/isRecording lets
+  // the record run own the post-enter seek.
   const seekedSnapshotRef = useRef<VizEvent[] | null>(null)
   useEffect(() => {
     if (!replayActive) {
       seekedSnapshotRef.current = null
       return
     }
+    if (recordReplay.isArming || recordReplay.isRecording) return
     if (replaySnapshot.length === 0) return
     if (seekedSnapshotRef.current === replaySnapshot) return
     seekedSnapshotRef.current = replaySnapshot
     replaySeekTo(replaySnapshot.length - 1)
-  }, [replayActive, replaySnapshot, replaySeekTo])
+  }, [
+    replayActive,
+    replaySnapshot,
+    replaySeekTo,
+    recordReplay.isArming,
+    recordReplay.isRecording,
+  ])
 
   // Panel data source: replay cursor view-models vs. live snapshot (D-17).
   const panelEvents = replayActive ? replay.visibleEvents : allEvents
@@ -410,7 +447,7 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
                 color={replayActive ? 'primary' : 'default'}
                 variant={replayActive ? 'flat' : 'bordered'}
                 startContent={<FiPlay />}
-                onPress={replayActive ? exitReplay : enterReplay}
+                onPress={replayActive ? exitReplay : () => enterReplay()}
               >
                 {replayActive ? 'Exit Replay' : 'Replay'}
               </Button>

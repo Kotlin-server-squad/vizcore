@@ -46,12 +46,20 @@ interface TimedEvent {
 export interface UseRecordReplayOptions<E extends TimedEvent> {
   /** Getter for the active visualization panel element (captured lazily). */
   getPanelEl: () => HTMLElement | null
-  /** The frozen replay event list (sorted by seq ascending). */
-  events: readonly E[]
+  /**
+   * Snapshot the events to freeze + record, read ONCE at click time (WR-08).
+   * Returning from a ref (not a closure value) guarantees the frozen
+   * `replaySnapshot` and the recorder's auto-stop boundary see the same list.
+   */
+  getRecordSnapshot: () => readonly E[]
   /** The mounted replay controls (seekTo/play + currentIndex/total). */
   replay: UseReplayReturn
-  /** Enter replay mode (freezes the snapshot) before recording begins. */
-  enterReplay: () => void
+  /**
+   * Enter replay mode by freezing the EXPLICIT snapshot (WR-08). Passing the
+   * snapshot — rather than letting the caller re-derive it from a stale closure
+   * — keeps `replaySnapshot` and `recordEvents` from diverging.
+   */
+  enterReplay: (snapshot: readonly E[]) => void
   /** Session id used to build the `{id}-replay-{ts}.webm` filename. */
   sessionId: string
 }
@@ -77,6 +85,12 @@ export interface UseRecordReplayResult {
   confirmRecord: () => void
   /** Dismiss the confirm modal without recording. */
   cancelConfirm: () => void
+  /**
+   * True from the moment a recording is requested until the recorder has been
+   * armed and playback started (CR-01). SessionDetails suppresses its D-03
+   * auto-seek-to-end while this is set so the record run starts from index 0.
+   */
+  isArming: boolean
 }
 
 /**
@@ -87,7 +101,7 @@ export interface UseRecordReplayResult {
 export function useRecordReplay<E extends TimedEvent>(
   {
     getPanelEl,
-    events,
+    getRecordSnapshot,
     replay,
     enterReplay,
     sessionId,
@@ -98,6 +112,7 @@ export function useRecordReplay<E extends TimedEvent>(
   const canRecord = mimeType !== null
 
   const [isRecording, setIsRecording] = useState(false)
+  const [isArming, setIsArming] = useState(false)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmEstimateMs, setConfirmEstimateMs] = useState(0)
@@ -105,6 +120,14 @@ export function useRecordReplay<E extends TimedEvent>(
   const recorderRef = useRef<ReplayRecorder | null>(null)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef<number>(0)
+  // Idempotency guard for the terminal stop/discard paths (CR-02 / WR-07): once
+  // set, the auto-stop branch and discardRecording become no-ops so stop() can
+  // never fire twice and a hidden-tab abort cannot race the in-flight download.
+  const stoppingRef = useRef(false)
+  // Pending arm request: the snapshot length + recorder config captured at click
+  // time. The arm effect (below) fires once replay.totalEvents settles to this
+  // length, then seeks to 0, builds the recorder, and starts playback (CR-01).
+  const pendingArmRef = useRef<{ length: number; mimeType: string } | null>(null)
   // Mirror current values for the visibilitychange listener (registered once).
   const isRecordingRef = useRef(false)
   isRecordingRef.current = isRecording
@@ -112,8 +135,8 @@ export function useRecordReplay<E extends TimedEvent>(
   // Keep live references the scripted flow reads without re-subscribing.
   const replayRef = useRef(replay)
   replayRef.current = replay
-  const eventsRef = useRef(events)
-  eventsRef.current = events
+  const getRecordSnapshotRef = useRef(getRecordSnapshot)
+  getRecordSnapshotRef.current = getRecordSnapshot
   const getPanelElRef = useRef(getPanelEl)
   getPanelElRef.current = getPanelEl
 
@@ -130,15 +153,27 @@ export function useRecordReplay<E extends TimedEvent>(
   const resetRecordingState = useCallback(() => {
     stopElapsedTimer()
     recorderRef.current = null
+    pendingArmRef.current = null
+    stoppingRef.current = false
     setIsRecording(false)
+    setIsArming(false)
     setElapsedMs(0)
   }, [stopElapsedTimer])
 
   /** Abort + discard the partial recording (shared by hidden-tab + manual Stop). */
   const discardRecording = useCallback(
     (copy: string) => {
+      // WR-07: once the auto-stop path has begun (stop() awaiting + download in
+      // flight), discard MUST be a no-op so it cannot cancel the download or
+      // race the recorder teardown. The stoppingRef guard provides that mutual
+      // exclusion; the auto-stop branch sets it before awaiting stop().
+      if (stoppingRef.current) return
       const recorder = recorderRef.current
       if (!recorder) return
+      // Claim the terminal path synchronously and clear recorderRef before any
+      // async work so a second discard / a late auto-stop cannot re-enter.
+      stoppingRef.current = true
+      recorderRef.current = null
       recorder.discard()
       resetRecordingState()
       toastError(copy)
@@ -150,42 +185,34 @@ export function useRecordReplay<E extends TimedEvent>(
     discardRecording(DISCARD_COPY)
   }, [discardRecording])
 
-  /** The actual scripted record run (post-confirm or sub-threshold). */
+  /**
+   * Arm a scripted record run (post-confirm or sub-threshold). CR-01/WR-08:
+   * compute the snapshot ONCE here, freeze it via enterReplay(snapshot), and
+   * record a pending-arm request. The actual seekTo(0) → recorder.start() →
+   * play() is driven from the arm effect below, once replay.totalEvents has
+   * settled to the snapshot length — so the record run can never be clobbered
+   * by SessionDetails' D-03 auto-seek-to-end (which is suppressed while arming).
+   */
   const beginRecording = useCallback(() => {
     if (!canRecord || !mimeType) return
     const panelEl = getPanelElRef.current()
     if (!panelEl) return
-    const currentReplay = replayRef.current
-    const evts = eventsRef.current
-    if (evts.length < 2) return
+    // WR-08: read the snapshot ONCE from the ref so the frozen view and the
+    // recorder boundary are computed from the same list.
+    const snapshot = getRecordSnapshotRef.current()
+    if (snapshot.length < 2) return
 
-    enterReplay()
-    currentReplay.seekTo(0)
-
-    const recorder = createReplayRecorder({
-      panelEl,
-      speed: currentReplay.speed,
-      mimeType,
-      sessionId,
-    })
-    recorderRef.current = recorder
-    recorder.start()
-
-    startedAtRef.current = Date.now()
-    setElapsedMs(0)
-    setIsRecording(true)
-    elapsedTimerRef.current = setInterval(() => {
-      setElapsedMs(Date.now() - startedAtRef.current)
-    }, ELAPSED_TICK_MS)
-
-    // Drive playback; the per-frame capture + auto-stop run from the effect that
-    // watches currentIndex while recording (below).
-    currentReplay.play()
-  }, [canRecord, mimeType, enterReplay, sessionId])
+    setIsArming(true)
+    pendingArmRef.current = { length: snapshot.length, mimeType }
+    enterReplay(snapshot)
+  }, [canRecord, mimeType, enterReplay])
 
   const startRecording = useCallback(() => {
     if (!canRecord) return
-    const estimate = estimateDurationMs(eventsRef.current, replayRef.current.speed)
+    const estimate = estimateDurationMs(
+      getRecordSnapshotRef.current(),
+      replayRef.current.speed,
+    )
     if (estimate > CONFIRM_THRESHOLD_MS) {
       setConfirmEstimateMs(estimate)
       setConfirmOpen(true)
@@ -203,13 +230,60 @@ export function useRecordReplay<E extends TimedEvent>(
     setConfirmOpen(false)
   }, [])
 
-  // Per-frame capture + auto-stop. While recording, every currentIndex change
-  // (the scripted play() advancing one event) renders + pushes one mirror-canvas
-  // frame; on reaching the last event we stop() → download + success toast.
+  // Arm effect (CR-01): once enterReplay has applied the frozen snapshot AND
+  // useReplay's own reset-to-0 effect has run (so totalEvents reflects the new
+  // snapshot), seek to 0, build + start the recorder, and begin playback. This
+  // runs AFTER the SessionDetails D-03 effect is suppressed (isArming gates it),
+  // so the record run is guaranteed to start at index 0 rather than the end.
   const currentIndex = replay.currentIndex
   const totalEvents = replay.totalEvents
   useEffect(() => {
+    const pending = pendingArmRef.current
+    if (!pending || isRecording) return
+    // Wait until the frozen snapshot is the one we armed against.
+    if (totalEvents !== pending.length) return
+    const panelEl = getPanelElRef.current()
+    if (!panelEl) {
+      // Panel vanished between click and arm — abandon cleanly.
+      resetRecordingState()
+      return
+    }
+    pendingArmRef.current = null
+    const currentReplay = replayRef.current
+
+    currentReplay.seekTo(0)
+
+    const recorder = createReplayRecorder({
+      panelEl,
+      speed: currentReplay.speed,
+      mimeType: pending.mimeType,
+      sessionId,
+    })
+    recorderRef.current = recorder
+    stoppingRef.current = false
+    recorder.start()
+
+    startedAtRef.current = Date.now()
+    setElapsedMs(0)
+    setIsArming(false)
+    setIsRecording(true)
+    elapsedTimerRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - startedAtRef.current)
+    }, ELAPSED_TICK_MS)
+
+    // Drive playback; the per-frame capture + auto-stop run from the effect that
+    // watches currentIndex while recording (below).
+    currentReplay.play()
+  }, [isArming, isRecording, totalEvents, sessionId, resetRecordingState])
+
+  // Per-frame capture + auto-stop. While recording, every currentIndex change
+  // (the scripted play() advancing one event) renders + pushes one mirror-canvas
+  // frame; on reaching the last event we stop() → download + success toast.
+  useEffect(() => {
     if (!isRecording) return
+    // CR-02: capture the recorder handle ONCE; the auto-stop branch uses the
+    // stoppingRef guard so stop() fires exactly once even if a trailing
+    // currentIndex/totalEvents change re-runs this effect mid-stop.
     const recorder = recorderRef.current
     if (!recorder) return
 
@@ -217,10 +291,18 @@ export function useRecordReplay<E extends TimedEvent>(
     void (async () => {
       await recorder.captureFrame()
       if (cancelled) return
-      // Auto-stop at the last event (D-06).
-      if (totalEvents > 0 && currentIndex >= totalEvents - 1) {
+      // Auto-stop at the last event (D-06) — guarded so it runs exactly once.
+      if (
+        totalEvents > 0 &&
+        currentIndex >= totalEvents - 1 &&
+        !stoppingRef.current
+      ) {
+        // Claim the terminal path synchronously BEFORE awaiting stop() so a
+        // hidden-tab discard (WR-07) or a re-run of this effect (CR-02) cannot
+        // re-enter and double-stop.
+        stoppingRef.current = true
+        recorderRef.current = null
         const filename = await recorder.stop()
-        if (cancelled) return
         resetRecordingState()
         toastSuccess(`Saved ${filename}`)
       }
@@ -257,5 +339,6 @@ export function useRecordReplay<E extends TimedEvent>(
     confirmSpeed: speed,
     confirmRecord,
     cancelConfirm,
+    isArming,
   }
 }

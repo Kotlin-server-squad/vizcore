@@ -120,27 +120,39 @@ vi.mock('./validation/ValidationPanel', () => ({
 // the toggle target index, so SessionDetails replay wiring can be tested
 // without the real framer-motion MotionValue loop.
 vi.mock('./replay/ReplayController', () => ({
-  ReplayController: ({ replay }: { replay: { totalEvents: number } }) => (
-    <div data-testid="replay-controller" data-total={replay.totalEvents} />
+  ReplayController: ({
+    replay,
+  }: {
+    replay: { totalEvents: number; currentIndex: number }
+  }) => (
+    <div
+      data-testid="replay-controller"
+      data-total={replay.totalEvents}
+      data-index={replay.currentIndex}
+    />
   ),
 }))
 
 // useRecordReplay mocked to an inert shim — the scripted WebM pipeline is unit-
 // tested in use-record-replay.test.ts; here we only need SessionDetails to mount
-// without touching MediaRecorder/captureStream (absent in jsdom).
+// without touching MediaRecorder/captureStream (absent in jsdom). The shim's
+// isArming/isRecording flags are overridable per-test so the CR-01 D-03 gate
+// (suppress the auto-seek-to-end while a recording is arming) can be exercised.
+const recordReplayShim = {
+  canRecord: false,
+  isRecording: false,
+  isArming: false,
+  elapsedMs: 0,
+  startRecording: vi.fn(),
+  stopRecording: vi.fn(),
+  confirmOpen: false,
+  confirmEstimateMs: 0,
+  confirmSpeed: 1,
+  confirmRecord: vi.fn(),
+  cancelConfirm: vi.fn(),
+}
 vi.mock('@/hooks/use-record-replay', () => ({
-  useRecordReplay: () => ({
-    canRecord: false,
-    isRecording: false,
-    elapsedMs: 0,
-    startRecording: vi.fn(),
-    stopRecording: vi.fn(),
-    confirmOpen: false,
-    confirmEstimateMs: 0,
-    confirmSpeed: 1,
-    confirmRecord: vi.fn(),
-    cancelConfirm: vi.fn(),
-  }),
+  useRecordReplay: () => recordReplayShim,
 }))
 
 // RecordConfirmModal mocked to a no-op so SessionDetails mounts without HeroUI
