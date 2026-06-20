@@ -1,10 +1,11 @@
 ---
 phase: 3
 slug: persistence-auth-sharing
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-06-20
+reviewed_at: 2026-06-20
 ---
 
 # Phase 3 — UI Design Contract
@@ -189,11 +190,18 @@ No shadcn registry is configured for this project and none is introduced this ph
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: FLAG — focal point not declared per surface (non-blocking; recommendation folded in below)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved (2026-06-20)
+
+### Focal point per surface (folds in Dimension 2 recommendation)
+
+- `/login` — the centered login `Card` with the **Sign in** CTA is the single focal element; nothing else competes.
+- **Share dialog** — before a link exists, the expiry picker; once generated, the link field + **Copy link** action becomes the focal element.
+- `/shared/:token` — the visualization canvas (tree / graph / timeline / thread-lanes) is the dominant focal region; the "Read-only shared view" chip is explicitly subordinate.
+- **Manage-shares list** — the share-rows table is the focal element; the **Revoke** action is subordinate until invoked.
