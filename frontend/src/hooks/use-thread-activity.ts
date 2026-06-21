@@ -24,17 +24,25 @@ import type { ThreadActivityResponse, ThreadLaneData } from '@/types/api'
  *                    with a slow 5s fallback poll as defense-in-depth.
  *                    Defaults to false (legacy 2s poll behaviour).
  */
-export function useThreadActivity(sessionId: string | undefined, isLive = false) {
+export function useThreadActivity(
+  sessionId: string | undefined,
+  isLive = false,
+  // Read-only shared view (Plan 06): the thread snapshot is fed from the public
+  // `getSharedSession` payload (derived from events client-side), so the
+  // protected `GET /sessions/{id}/threads` fetch + poll must be disabled — the
+  // shared shell carries no Bearer and would otherwise 404/poll noisily.
+  enabled = true,
+) {
   return useQuery({
     queryKey: ['thread-activity', sessionId],
     queryFn: () => apiClient.getThreadActivity(sessionId!),
-    enabled: !!sessionId,
+    enabled: !!sessionId && enabled,
     // While the live SSE stream is active, refreshes are primarily driven by
     // SSE-triggered invalidation of ['thread-activity', sessionId]; keep a
     // slow 5s fallback poll so the Threads view can never freeze if an
     // invalidation is missed. When SSE is not active, use the original
-    // 2-second background refresh.
-    refetchInterval: isLive ? 5000 : 2000,
+    // 2-second background refresh. Disabled entirely in the read-only view.
+    refetchInterval: enabled ? (isLive ? 5000 : 2000) : false,
     staleTime: 1000, // Consider data stale after 1 second
   })
 }
@@ -52,8 +60,12 @@ export function useThreadActivity(sessionId: string | undefined, isLive = false)
  * observers and the legacy 2s poll silently defeats the 5s live-mode
  * fallback.
  */
-export function useThreadLanesByDispatcher(sessionId: string | undefined, isLive = false) {
-  const { data: activity, ...query } = useThreadActivity(sessionId, isLive)
+export function useThreadLanesByDispatcher(
+  sessionId: string | undefined,
+  isLive = false,
+  enabled = true,
+) {
+  const { data: activity, ...query } = useThreadActivity(sessionId, isLive, enabled)
 
   const lanes = useMemo(
     () => (activity ? buildThreadLanes(activity) : undefined),

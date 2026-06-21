@@ -15,6 +15,7 @@ import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as ScenariosIndexRouteImport } from './routes/scenarios/index'
 import { Route as GalleryIndexRouteImport } from './routes/gallery/index'
 import { Route as CompareIndexRouteImport } from './routes/compare/index'
+import { Route as SharedTokenRouteImport } from './routes/shared.$token'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
 import { Route as ScenariosBuilderRouteImport } from './routes/scenarios/builder'
 
@@ -48,6 +49,11 @@ const CompareIndexRoute = CompareIndexRouteImport.update({
   path: '/compare/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SharedTokenRoute = SharedTokenRouteImport.update({
+  id: '/shared/$token',
+  path: '/shared/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
   id: '/sessions/$sessionId',
   path: '/sessions/$sessionId',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/shared/$token': typeof SharedTokenRoute
   '/compare': typeof CompareIndexRoute
   '/gallery': typeof GalleryIndexRoute
   '/scenarios': typeof ScenariosIndexRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/shared/$token': typeof SharedTokenRoute
   '/compare': typeof CompareIndexRoute
   '/gallery': typeof GalleryIndexRoute
   '/scenarios': typeof ScenariosIndexRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/shared/$token': typeof SharedTokenRoute
   '/compare/': typeof CompareIndexRoute
   '/gallery/': typeof GalleryIndexRoute
   '/scenarios/': typeof ScenariosIndexRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/shared/$token'
     | '/compare'
     | '/gallery'
     | '/scenarios'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/shared/$token'
     | '/compare'
     | '/gallery'
     | '/scenarios'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/shared/$token'
     | '/compare/'
     | '/gallery/'
     | '/scenarios/'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ScenariosBuilderRoute: typeof ScenariosBuilderRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
+  SharedTokenRoute: typeof SharedTokenRoute
   CompareIndexRoute: typeof CompareIndexRoute
   GalleryIndexRoute: typeof GalleryIndexRoute
   ScenariosIndexRoute: typeof ScenariosIndexRoute
@@ -178,6 +191,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CompareIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/shared/$token': {
+      id: '/shared/$token'
+      path: '/shared/$token'
+      fullPath: '/shared/$token'
+      preLoaderRoute: typeof SharedTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/$sessionId': {
       id: '/sessions/$sessionId'
       path: '/sessions/$sessionId'
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ScenariosBuilderRoute: ScenariosBuilderRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
+  SharedTokenRoute: SharedTokenRoute,
   CompareIndexRoute: CompareIndexRoute,
   GalleryIndexRoute: GalleryIndexRoute,
   ScenariosIndexRoute: ScenariosIndexRoute,

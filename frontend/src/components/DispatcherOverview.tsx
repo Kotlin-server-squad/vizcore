@@ -11,10 +11,19 @@ interface DispatcherOverviewProps {
    * interval instead of re-arming the legacy 2s poll on the shared key.
    */
   isLive?: boolean
+  /**
+   * Read-only shared view (Plan 06): disables the protected thread-activity
+   * fetch/poll. The shared shell carries no Bearer, so this query would 404.
+   */
+  enabled?: boolean
 }
 
-export function DispatcherOverview({ sessionId, isLive = false }: DispatcherOverviewProps) {
-  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId, isLive)
+export function DispatcherOverview({
+  sessionId,
+  isLive = false,
+  enabled = true,
+}: DispatcherOverviewProps) {
+  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId, isLive, enabled)
 
   if (isLoading) {
     return (

@@ -54,9 +54,26 @@ interface SessionDetailsProps {
   sessionId: string
   scenarioId?: string
   scenarioName?: string
+  /**
+   * Read-only shared view (Plan 06, D-09/D-10). When true, every mutation/nav
+   * affordance is gated OFF — the live-stream toggle, the scenario controls
+   * (Run/Reset/Clear), and the Share/Manage-shares trigger — while the
+   * tree/graph/timeline/thread-lanes panels, the ReplayController (play/scrub/
+   * speed) and the ExportMenu (PNG/SVG/WebM/JSON) stay, since those are pure
+   * read operations. The shared `/shared/$token` route feeds the session +
+   * events via the React Query cache (seeded from the public getSharedSession
+   * payload) so the same hooks render without any protected fetch (T-03-22/25).
+   * The component is REUSED, never forked (D-10).
+   */
+  readOnly?: boolean
 }
 
-export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionDetailsProps) {
+export function SessionDetails({
+  sessionId,
+  scenarioId,
+  scenarioName,
+  readOnly = false,
+}: SessionDetailsProps) {
   const { data: session, isLoading, refetch } = useSession(sessionId)
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
@@ -75,7 +92,9 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
   const panelRef = useRef<HTMLDivElement | null>(null)
   // Pass isLive=streamEnabled so thread-activity does not poll every 2s while
   // SSE is driving updates; SSE-triggered cache invalidations handle refreshes.
-  const { data: threadActivity } = useThreadActivity(sessionId, streamEnabled)
+  // In read-only mode the protected /threads fetch is disabled — the shared
+  // shell has no Bearer; thread lanes are derived from the shared events below.
+  const { data: threadActivity } = useThreadActivity(sessionId, streamEnabled, !readOnly)
   const eventCategories = useEventCategories(sessionId)
   const runScenario = useRunScenario()
   const deleteSession = useDeleteSession()
@@ -197,10 +216,14 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
     () => (replayActive ? projectCoroutines(replay.visibleEvents) : session?.coroutines ?? []),
     [replayActive, replay.visibleEvents, session?.coroutines],
   )
-  const panelThreadActivity: ThreadActivity | undefined = useMemo(
-    () => (replayActive ? projectThreadActivity(replay.visibleEvents) : threadActivity),
-    [replayActive, replay.visibleEvents, threadActivity],
-  )
+  const panelThreadActivity: ThreadActivity | undefined = useMemo(() => {
+    if (replayActive) return projectThreadActivity(replay.visibleEvents)
+    // Read-only shared view: the protected /threads fetch is disabled, so derive
+    // the lanes from the shared event history (same client-side projection used
+    // for replay) rather than the server snapshot.
+    if (readOnly) return projectThreadActivity(allEvents)
+    return threadActivity
+  }, [replayActive, readOnly, replay.visibleEvents, allEvents, threadActivity])
 
   // Three-state scenario derivation:
   //   notStarted — coroutineCount === 0 (no coroutines seen yet)
@@ -410,20 +433,25 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
         <CardBody>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button
-                color={streamEnabled ? 'success' : 'default'}
-                variant={streamEnabled ? 'flat' : 'bordered'}
-                startContent={<FiRadio />}
-                onPress={() => {
-                  if (streamEnabled) {
-                    clearEvents()
-                  }
-                  setStreamEnabled(!streamEnabled)
-                }}
-              >
-                {streamEnabled ? 'Live Stream Active' : 'Enable Live Stream'}
-              </Button>
-              {streamEnabled && (
+              {/* Live-stream toggle — a shared session is a frozen capture, so
+                  it is gated OFF in read-only mode (T-03-22). The "Read-only
+                  shared view" banner is rendered by the /shared/$token shell. */}
+              {!readOnly && (
+                <Button
+                  color={streamEnabled ? 'success' : 'default'}
+                  variant={streamEnabled ? 'flat' : 'bordered'}
+                  startContent={<FiRadio />}
+                  onPress={() => {
+                    if (streamEnabled) {
+                      clearEvents()
+                    }
+                    setStreamEnabled(!streamEnabled)
+                  }}
+                >
+                  {streamEnabled ? 'Live Stream Active' : 'Enable Live Stream'}
+                </Button>
+              )}
+              {!readOnly && streamEnabled && (
                 <AnimatePresence>
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -511,8 +539,9 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
         onCancel={recordReplay.cancelConfirm}
       />
 
-      {/* Scenario Control Panel */}
-      {hasScenario && (
+      {/* Scenario Control Panel — Run/Reset/Clear are mutations, gated OFF in
+          the read-only shared view (T-03-22). */}
+      {hasScenario && !readOnly && (
         <Card>
           <CardBody>
             <div className="flex items-center justify-between">
@@ -632,7 +661,11 @@ export function SessionDetails({ sessionId, scenarioId, scenarioName }: SessionD
             )}
 
             <div className="py-2">
-              <DispatcherOverview sessionId={sessionId} isLive={streamEnabled} />
+              <DispatcherOverview
+                sessionId={sessionId}
+                isLive={streamEnabled}
+                enabled={!readOnly}
+              />
             </div>
           </div>
         </Tab>
