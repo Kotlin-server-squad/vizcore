@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: completed
 stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-06-21T09:00:47.892Z"
+last_updated: "2026-06-21T09:15:11.987Z"
 last_activity: 2026-06-21 -- Completed 03-05 (AUTH-03 frontend auth loop)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 29
-  completed_plans: 28
-  percent: 40
+  completed_plans: 29
+  percent: 60
 ---
 
 # Project State
@@ -76,6 +76,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 03 P03 | ~14min | 2 tasks | 8 files |
 | Phase 03 P04 | 30min | 2 tasks | 11 files |
 | Phase 03 P05 | ~8min | 2 tasks | 10 files |
+| Phase 03 P06 | ~12min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3, Plan 02]: Dual-provider fail-open auth — authDisabled computed once (no keys AND no usable jwt) makes authenticatedApi() a pure pass-through (D-04a); else authenticate(api-key, jwt) so EITHER credential satisfies (D-08). SSE auth uses ?token= query param (param name 'token', SSE_TOKEN_QUERY_PARAM) via jwt authHeader{} fallback — LOCKED contract Plan 05 binds to. currentPrincipal() resolves ApiKeyPrincipal|UserPrincipal for Plan 03 tenancy. Refresh tokens deferred. configListOrEmpty guards MapApplicationConfig missing-list crash.
 - [Phase 3, Plan 05]: Frontend auth loop (AUTH-03) at the single api-client choke point — fetchJson attaches Authorization: Bearer only when getToken() is non-null (no header when auth off, D-07/D-08); a 401 calls clearToken()+navigateToLogin() then rethrows (D-05); createEventSource appends ?token= (locked SSE contract) when a token exists. auth-store = localStorage `vizcore.jwt` + in-memory source of truth rehydrated at module init (D-06). Router-navigate indirection (lib/navigation.ts registerNavigator/navigateToLogin, wired to router.navigate in main.tsx) keeps the api-client testable + avoids a circular router import. login() is a dedicated method (NOT fetchJson) so the token-endpoint 401 = wrong-creds (typed LoginAuthError) never fires the global interception. /login route is OUTSIDE Layout with exact UI-SPEC copy; redirect-back via ?redirect= search param (default /). Share methods (createShare/listShares/revokeShare/getSharedSession) + types/share.ts DTOs added now so Plan 06 needn't re-open the client; getSharedSession returns a typed SharedSessionResult (ok|expired|not-found|rate-limited) for the 200/410/404/429 matrix and attaches no Bearer (the share token is the credential).
 - [Phase 3, Plan 03]: Tenancy (AUTH-04/D-03) via a backend-only TenantScopedSessionStore interface (the core SessionStoreInterface is untouched, SDK stays DB/auth-free). TenantContext sealed: Scoped(tenantId)|Admin|Unscoped; resolve(principal) → UserPrincipal.userId / ApiKeyPrincipal.name / ADMIN-bypass / null→Unscoped (auth-off global, D-04b). Filter lives in the store as tenantPredicate(): Op<Boolean> (tenant_id eq for Scoped, Op.TRUE for Admin/Unscoped) on every read/delete; Scoped creation stamps tenant_id (null for Unscoped/global → not visible to scoped tenants). Routes narrow SessionManager.backingStore() and fall back to unscoped SessionManager in memory mode. DbRetentionPolicy (PERS-03, sibling to in-memory RetentionPolicy, ADR-015 30d/100000/60min): max-age DELETE guarded by NOT EXISTS active-share subquery (expires_at IS NULL = never-expires = always active; Pitfall 6/ADR-019) + per-session event-trim by seq watermark; wired in Application.module only when storage.type=database, app-scope launch (no global scope), stop on ApplicationStopping.
+- [Phase ?]: Sharing UI reuses SessionDetails behind a readOnly prop via React Query cache-seeding (no fork, D-10); /shared/$token is a standalone shell with no Layout chrome
 
 ### Pending Todos
 
@@ -147,6 +149,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-21T08:49:16.396Z
+Last session: 2026-06-21T09:15:07.616Z
 Stopped at: Phase 3 UI-SPEC approved
 Resume file: .planning/phases/03-persistence-auth-sharing/03-UI-SPEC.md
