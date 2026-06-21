@@ -1,218 +1,178 @@
 ---
 phase: 03-persistence-auth-sharing
-verified: 2026-06-21T00:00:00Z
-status: gaps_found
-score: 7/10 must-haves verified
+verified: 2026-06-21T15:30:00Z
+status: passed
+score: 10/10 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Sessions are tenant-isolated — no cross-tenant reads (AUTH-04, success criterion #2)"
-    status: failed
-    reason: >-
-      Tenant isolation is enforced ONLY on the four top-level CRUD routes. Every
-      per-session sub-resource read and the SSE stream call the UNSCOPED
-      SessionManager.getSession(sessionId), which resolves with
-      TenantContext.Unscoped (Op.TRUE — no filter). Tenant A can read tenant B's
-      events, hierarchy, threads, coroutine timeline, and live stream by knowing
-      the session id. Confirmed against live code, not just the review.
-    artifacts:
-      - path: "backend/src/main/kotlin/com/jh/proj/coroutineviz/routes/SessionRoutes.kt"
-        issue: >-
-          Lines 144 (/events), 161 (/hierarchy), 180 (/threads), 204
-          (/coroutines/{id}/timeline), 231 (sse /stream) all call
-          SessionManager.getSession(sessionId) WITHOUT call.resolveTenant().
-          Only lines 42, 63, 75, 115 (POST/GET/GET-one/DELETE /api/sessions)
-          route through tenantScopedStore() + call.resolveTenant().
-      - path: "backend/src/main/kotlin/com/jh/proj/coroutineviz/persistence/ExposedSessionStore.kt"
-        issue: >-
-          Line 46: getSession(sessionId) delegates to getSession(sessionId,
-          TenantContext.Unscoped). Line 148: tenantPredicate(Unscoped) returns
-          Op.TRUE — no tenant filter, so the unscoped fallback serves any
-          tenant's session.
-    missing:
-      - "Route /events, /hierarchy, /threads, /coroutines/{id}/timeline, and the sse /stream handler through tenantScopedStore().getSession(sessionId, call.resolveTenant()); respond 404 (pre-stream for SSE) on null."
-      - "Do not call the unscoped SessionManager.getSession from any authenticated session-bound route."
-  - truth: "A developer can mint/list/revoke shares only on sessions they own (ownership enforcement for AUTH-04 / success criterion #2)"
-    status: failed
-    reason: >-
-      Share owner routes verify only session EXISTENCE (also unscoped) and never
-      ownership. Any authenticated user can mint a public, never-expiring share
-      link for another tenant's session (exfiltrating its full event history via
-      the public /api/shared/{token} route), and can list/revoke any other
-      user's shares. The created_by column is recorded but never enforced.
-    artifacts:
-      - path: "backend/src/main/kotlin/com/jh/proj/coroutineviz/share/ShareRoutes.kt"
-        issue: >-
-          Line 60: POST /api/sessions/{id}/share checks SessionManager.getSession
-          (unscoped) for existence, no ownership/tenant check. Line 96:
-          listForSession(sessionId) filters on session_id only. Line 118:
-          revoke(sessionId, token) — no created_by/principal scoping.
-      - path: "backend/src/main/kotlin/com/jh/proj/coroutineviz/share/ShareService.kt"
-        issue: "revoke/listForSession query by session_id/token only; created_by recorded but never used as an authorization predicate."
-    missing:
-      - "Verify session ownership via the tenant-scoped store (store.getSession(sessionId, call.resolveTenant()) != null) before minting a share; return 404 otherwise."
-      - "Scope listForSession and revoke by created_by (or verified session ownership) so a principal can only see/revoke shares it owns."
-  - truth: "End-to-end tests cover tenant isolation on all session-bound read paths (AUTH-05 coverage of the isolation promise)"
-    status: partial
-    reason: >-
-      TenantIsolationTest exercises only top-level list/read/delete and the
-      principal-to-tenant resolution logic. It does NOT test cross-tenant access
-      on /events, /hierarchy, /threads, /timeline, /stream, or the share owner
-      routes — which is exactly why the suite is green despite the CR-01/CR-02
-      data-leak gaps. AUTH-05 tests exist and pass, but the coverage does not
-      guard the central tenant-isolation invariant of the phase.
-    artifacts:
-      - path: "backend/src/test/kotlin/com/jh/proj/coroutineviz/auth/TenantIsolationTest.kt"
-        issue: "No test for cross-tenant access of session sub-resources or share owner routes; sub-resource isolation is unverified."
-    missing:
-      - "Add e2e tests asserting tenant B gets 404 on tenant A's /events, /hierarchy, /threads, /coroutines/{id}/timeline, /stream."
-      - "Add e2e tests asserting a non-owner cannot mint/list/revoke shares on another tenant's session."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 7/10
+  gaps_closed:
+    - "AUTH-04 / CR-01: tenant isolation on session sub-resources (/events, /hierarchy, /threads, /coroutines/{id}/timeline) and the SSE /stream"
+    - "AUTH-04 / CR-02: share mint/list/revoke ownership enforcement (created_by predicate + scoped session ownership on mint)"
+    - "AUTH-05 coverage: TenantIsolationE2ETest now guards the cross-tenant invariant on every session-bound read path and the share-owner routes"
+  gaps_remaining: []
+  regressions: []
+gaps: []
 human_verification: []
 ---
 
-# Phase 3: Persistence, Auth & Sharing Verification Report
+# Phase 3: Persistence, Auth & Sharing Verification Report (re-verification after gap closure 03-07)
 
 **Phase Goal:** vizcore is safe to deploy for multiple users — sessions can persist across restarts, every non-public route enforces authentication with tenant isolation, and sessions can be shared as read-only links.
-**Verified:** 2026-06-21
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-06-21T15:30:00Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure plan 03-07 (CR-01 / CR-02 / AUTH-05)
 
 ## Goal Achievement
 
-The goal has three pillars. Two are delivered; the third — the central security
-promise, **tenant isolation** — is NOT enforced on most read paths, so the phase
-is NOT safe to deploy for multiple users.
+The prior verification (2026-06-21, 7/10) found the two non-security pillars
+(persistence, authentication) delivered but the **central security invariant —
+tenant isolation (AUTH-04)** — broken in two confirmed live-code ways (CR-01:
+unscoped session sub-resource + SSE reads; CR-02: unscoped share owner routes),
+with the AUTH-05 test coverage unable to catch them.
 
-1. **Persistence across restarts** — DELIVERED. Exposed + HikariCP + Flyway,
-   selectable via `storage.type=database`, events persisted and read back through
-   the same `PolymorphicSerializer(VizEvent::class)`, retention policy runs in the
-   background with an active-share guard. (One sub-criterion deviation: events are
-   stored as CLOB/TEXT, not JSONB — see WARNING below.)
-2. **Authentication on non-public routes** — DELIVERED. SHA-256 constant-time key
-   compare, Argon2id password verify, JWT with VIEWER/RUNNER/ADMIN roles, explicit
-   algorithm (no `none`), `/health` `/openapi.json` `/api/auth/token` stay public,
-   covered by e2e tests.
-3. **Tenant isolation + read-only sharing** — PARTIALLY DELIVERED. Sharing UX,
-   token lifecycle, rate-limiting, and public read view work. But tenant isolation
-   leaks on every session sub-resource and the entire share-owner surface
-   (CR-01/CR-02, confirmed in live code). Success criterion #2's "sessions are
-   tenant-isolated" is **not** met.
+Gap-closure plan 03-07 has been executed and is verified here against the **live
+codebase and a freshly-executed full backend test suite** (261 tests, 0 failures,
+0 errors — run by the verifier, not trusted from SUMMARY). All three gaps are
+closed. The phase goal is now achieved: vizcore is safe to deploy for multiple
+users.
+
+1. **Persistence across restarts** — DELIVERED (unchanged, regression-checked).
+   `PersistenceRestartTest` 2/2 pass; Exposed + HikariCP + Flyway wiring intact.
+2. **Authentication on non-public routes** — DELIVERED (unchanged,
+   regression-checked). `AuthTest` 12/12, `JwtAuthTest` 9/9 pass.
+3. **Tenant isolation + read-only sharing** — NOW DELIVERED. Every authenticated
+   session-bound read and the share-owner surface route through the tenant filter;
+   `TenantIsolationE2ETest` (6/6) asserts a cross-tenant caller gets 404 / no
+   replay on all five session-bound paths and on share mint/list/revoke, while the
+   owner's access still works (proving the guard is a real isolation filter, not a
+   blanket deny).
 
 ### Observable Truths
 
-| # | Truth | Status | Evidence |
-|---|-------|--------|----------|
-| 1 | PERS-01: JDBC store (Exposed+HikariCP, H2/PG) behind the Session/Event store seam, selectable via `storage.type=database` | ✓ VERIFIED | `DatabaseFactory.kt` (Hikari+Flyway+Database.connect); `ExposedSessionStore`/`ExposedEventStore` implement the interfaces; `Application.kt:93-96` storage.type branch wires it. |
-| 2 | PERS-02: Sessions + events survive a backend restart (Flyway schema, persisted payload) | ✓ VERIFIED | `V1__core_schema.sql` sessions/events tables; `ExposedEventStore` round-trips via `appJson`+`PolymorphicSerializer`; `PersistenceRestartTest.kt` exists. NOTE: payload is CLOB/TEXT not JSONB (WARNING). |
-| 3 | PERS-03: Retention (max-age TTL + max-events trim) runs as a background process, never deletes a session with an active share | ✓ VERIFIED | `DbRetentionPolicy.kt` max-age delete with `NOT EXISTS` active-share subquery + per-session event trim; launched from `Application.kt:121-135`. (CR-04 correctness edge on duplicate `seq` noted as INFO — schema lacks unique `(session_id, seq)`.) |
-| 4 | AUTH-01: Non-public routes wrapped in `authenticatedApi()`; with API key set, no/wrong X-API-Key → 401; `/health` `/openapi.json` `/api/auth/token` stay open | ✓ VERIFIED | `Auth.kt` `authenticatedApi {}`; `Routing.kt:59` wraps protected routes; public routes registered outside; `AuthTest.kt` exists. |
-| 5 | AUTH-02: API keys compared as SHA-256 hashes via constant-time `MessageDigest.isEqual`, never plaintext | ✓ VERIFIED | `ApiKeyStore.kt` SHA-256 hex compare via `MessageDigest.isEqual`. (WR-05 timing-claim nuance is INFO, not a functional fail.) |
-| 6 | AUTH-03: JWT (`/api/auth/token`, HMAC dev/RS256 prod) issues a `UserPrincipal` with VIEWER/RUNNER/ADMIN | ✓ VERIFIED | `JwtConfig.kt` HMAC256/RS256, explicit alg (no `none`); `Principals.kt` role enum; `AuthRoutes.kt:38-53` token endpoint + Argon2id verify; `JwtAuthTest.kt` exists. Frontend: Bearer injection, 401→/login, SSE `?token=`. |
-| 7 | AUTH-04: Sessions filtered by authenticated user — no cross-tenant reads | ✗ FAILED | Tenant filter only on 4 top-level routes. `SessionRoutes.kt:144,161,180,204,231` call unscoped `SessionManager.getSession` → `ExposedSessionStore.kt:46`→`tenantPredicate(Unscoped)=Op.TRUE`. Cross-tenant read of events/hierarchy/threads/timeline/stream. ShareRoutes owner paths also unscoped (no ownership). |
-| 8 | AUTH-05: Route-level auth enforcement covered by e2e tests (reject-without-key, allow-with-key) | ✓ VERIFIED (with gap) | `AuthTest.kt`, `JwtAuthTest.kt`, `TenantIsolationTest.kt` exist and pass. BUT isolation coverage is top-level-only — does not guard the sub-resource/share leak (see partial-gap truth). |
-| 9 | SHAR-01: Create a revocable, expiring share token (1d/7d/30d/never) via `POST /api/sessions/:id/share` | ✓ VERIFIED | `ShareService.create` (UUID token, expiry), `ShareRoutes.kt:52-87` returns `{token,url,expiresAt}`; frontend `ShareDialog.tsx` expiry picker + copy-link. (Owner-authorization gap is the CR-02 failed truth above, not a SHAR-01 functional miss.) |
-| 10 | SHAR-02: Anyone with a valid token opens a read-only, rate-limited shared view via `GET /api/shared/:token`; tokens revocable | ✓ VERIFIED | `ShareRoutes.kt:132-159` public route (Valid/Expired-410/NotFound-404), access_count + last_accessed tracking; `Routing.kt` rateLimit wrap; `RateLimitTest.kt`; frontend `shared.$token.tsx` reuses `SessionDetails readOnly`. |
+| #   | Truth | Status | Evidence |
+| --- | ----- | ------ | -------- |
+| 1 | PERS-01: JDBC store behind the seam, selectable via `storage.type=database` | ✓ VERIFIED | Unchanged from prior pass; `DatabaseFactory`/`ExposedSessionStore`/`ExposedEventStore` + Application wiring. Regression-checked: full suite green. |
+| 2 | PERS-02: Sessions + events survive restart (Flyway schema, persisted payload) | ✓ VERIFIED | `PersistenceRestartTest` 2/2 pass in this run. (CLOB-not-JSONB literal deviation remains a documented WARNING, not a goal blocker.) |
+| 3 | PERS-03: Retention background process, never deletes a session with an active share | ✓ VERIFIED | Unchanged; `DbRetentionPolicy` active-share `NOT EXISTS` guard, launched at startup. |
+| 4 | AUTH-01: Non-public routes wrapped in `authenticatedApi()`; public routes stay open | ✓ VERIFIED | `AuthTest` 12/12 pass. |
+| 5 | AUTH-02: API keys compared as SHA-256 via constant-time `MessageDigest.isEqual` | ✓ VERIFIED | Unchanged; `ApiKeyStore` hex compare. |
+| 6 | AUTH-03: JWT token endpoint + VIEWER/RUNNER/ADMIN, explicit alg (no `none`) | ✓ VERIFIED | `JwtAuthTest` 9/9 pass; `JwtConfig.sign`/`verifier` used by the new e2e test to mint real tenant tokens. |
+| 7 | AUTH-04: Sessions tenant-isolated — no cross-tenant reads (CR-01 + CR-02) | ✓ VERIFIED (was FAILED) | `SessionRoutes.kt`: all five handlers (events:164, hierarchy:181, threads:200, timeline:224, SSE:256) now call `call.resolveScopedSession(sessionId)`; SSE resolves PRE-stream (before connected frame / gauge / bus / replay). `grep SessionManager.getSession` returns only the two `store==null` fallback branches (lines 57, 107) + 2 KDoc refs — none on a sub-resource/SSE happy path. `ShareRoutes.kt`: mint (74-84) does a scoped ownership check; list (119)/revoke (142) pass `shareCreatorId()`. `ShareService.kt`: `listForSession(sessionId, createdBy)` (164) and `revoke(sessionId, token, createdBy)` (201) add a parameter-bound `createdBy eq` predicate. `TenantIsolationE2ETest` 6/6 pass asserting bob→404 on every path, no SSE replay, alice→200/replay. |
+| 8 | AUTH-05: Route-level auth + tenant isolation covered by e2e tests | ✓ VERIFIED (was PARTIAL) | New `TenantIsolationE2ETest` (398 lines) wires real routes behind a real `authenticate("jwt")` block over H2 `ExposedSessionStore`; 6/6 green in this run. Covers /events, /hierarchy, /threads, /timeline, /stream, share mint, share list, share revoke — the exact paths the old green suite missed. Existing `AuthTest`/`JwtAuthTest`/`TenantIsolationTest` still pass (no regression). |
+| 9 | SHAR-01: Create a revocable, expiring share token (1d/7d/30d/never) | ✓ VERIFIED | `ShareService.create` + `ShareRoutes` POST; `ShareRoutesTest` 10/10 pass. Owner-authorization now enforced (CR-02), strengthening this. |
+| 10 | SHAR-02: Read-only, rate-limited, revocable shared view via `GET /api/shared/:token`; tokens revocable | ✓ VERIFIED | Public route + `RateLimitTest` 3/3; e2e test confirms a revoked share 404s on the public route and a non-owner's failed revoke leaves it resolvable. |
 
-**Score:** 7/10 truths verified
+**Score:** 10/10 truths verified
 
-### Required Artifacts
+### Required Artifacts (gap-closure plan 03-07)
 
 | Artifact | Expected | Status | Details |
-|----------|----------|--------|---------|
-| `persistence/DatabaseFactory.kt` | Hikari+Exposed+Flyway | ✓ VERIFIED | Flyway.migrate + HikariDataSource + Database.connect present. |
-| `persistence/ExposedSessionStore.kt` | SessionStoreInterface + tenant scope | ⚠️ HOLLOW (scope unused on read paths) | Implements TenantScopedSessionStore correctly, but unscoped `getSession(sessionId)` fallback (line 46) is the path sub-resource routes actually call. |
-| `persistence/ExposedEventStore.kt` | EventStoreInterface, PolymorphicSerializer | ✓ VERIFIED | Reuses `appJson`+`PolymorphicSerializer(VizEvent::class)`. |
-| `db/migration/common/V1__core_schema.sql` | sessions/events/shares tables | ⚠️ DEVIATION | Tables present; `payload`/`metadata` are CLOB not JSONB; no unique `(session_id,seq)`. |
-| `Auth.kt` | authenticatedApi + dual provider | ✓ VERIFIED | `authenticatedApi {}` + fail-open `authDisabled`. |
-| `auth/ApiKeyStore.kt` | SHA-256 store | ✓ VERIFIED | `MessageDigest.isEqual`. |
-| `auth/Tenancy.kt` | principal→tenant + scoped store contract | ✓ VERIFIED | Resolution correct; but contract only wired into 4 routes. |
-| `routes/AuthRoutes.kt` | POST /api/auth/token | ✓ VERIFIED | Argon2id `Password.check`. |
-| `share/ShareService.kt` | token lifecycle | ⚠️ HOLLOW (ownership) | Lifecycle correct; `created_by` recorded but never enforced. |
-| `share/ShareRoutes.kt` | 4 share endpoints | ⚠️ HOLLOW (ownership) | Endpoints present; owner routes lack tenant/ownership check (CR-02). |
-| `routes/SessionRoutes.kt` | session CRUD + sub-resources | ✗ STUB (isolation) | Sub-resource + SSE handlers bypass tenant scope (CR-01). |
-| frontend `routes/shared.$token.tsx`, `share/ShareDialog.tsx`, `share/ManageShares.tsx`, `lib/auth-store.ts`, `routes/login.tsx` | share/auth UI | ✓ VERIFIED | readOnly reuse, expiry picker+copy, revoke confirm, Bearer/401/token=. |
+| -------- | -------- | ------ | ------- |
+| `routes/SessionRoutes.kt` | Tenant-scoped resolution on the 4 sub-resources + SSE | ✓ VERIFIED | `resolveScopedSession` helper (52-59); all five handlers wired; SSE pre-stream (256). `call.resolveTenant` present via helper. |
+| `share/ShareRoutes.kt` | Ownership-checked mint/list/revoke | ✓ VERIFIED | `call.resolveTenant()` in mint (77); list/revoke pass `shareCreatorId()`. |
+| `share/ShareService.kt` | `created_by`-scoped list/revoke overloads | ✓ VERIFIED | `createdBy eq` predicate, parameter-bound, in both overloads (171, 211). Existing 2-arg overloads retained for the public path. |
+| `test/.../auth/TenantIsolationE2ETest.kt` | e2e cross-tenant 404 coverage (min 120 lines) | ✓ VERIFIED | 398 lines, 6 tests, all 8 required paths covered; 6/6 green in the verifier's run. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
-|------|----|----|--------|---------|
-| `Application.kt` | `DatabaseFactory`+`ExposedSessionStore` | storage.type branch | ✓ WIRED | Lines 93-96. |
-| `ExposedEventStore` | `appJson`+PolymorphicSerializer | shared SSE serializer | ✓ WIRED | encode/decode via `serializer`. |
-| `Routing.kt` | `authenticatedApi {}` | protected wrap | ✓ WIRED | Line 59. |
-| `AuthRoutes` | password4j `Password.check` | KDF verify | ✓ WIRED | Argon2id. |
-| `SessionRoutes` sub-resources | `Tenancy.resolveTenant` + scoped store | tenant filter on reads | ✗ NOT_WIRED | Sub-resources call unscoped `SessionManager.getSession` (CR-01). |
-| `ShareRoutes` owner routes | session ownership / created_by | authorization | ✗ NOT_WIRED | Existence-only check; created_by unused (CR-02). |
-| `DbRetentionPolicy` delete | shares table | NOT EXISTS active-share guard | ✓ WIRED | active-share subquery present. |
-| `ShareRoutes /api/shared/{token}` | RateLimit per-IP | rateLimit scope | ✓ WIRED | `Routing.kt` rateLimit wrap. |
-| frontend `api-client` | auth-store getToken + 401→/login | Bearer + interception | ✓ WIRED | Lines 48-71. |
-| frontend `createEventSource` | `?token=` query param | SSE JWT | ✓ WIRED | Line 144. |
-| frontend `shared.$token` | `SessionDetails readOnly` | reuse not fork | ✓ WIRED | Line 106. |
+| ---- | -- | --- | ------ | ------- |
+| `SessionRoutes` sub-resource + SSE handlers | `TenantScopedSessionStore.getSession(id, tenant)` | `tenantScopedStore() + resolveTenant()` via `resolveScopedSession` | ✓ WIRED (was NOT_WIRED) | Helper resolves scoped store; cross-tenant id → null → 404 / pre-stream 404. |
+| `ShareRoutes` owner routes | session ownership + `created_by` predicate | scoped `getSession` + `ShareService` scoped overloads | ✓ WIRED (was NOT_WIRED) | Mint gated by scoped existence; list/revoke scoped by `created_by`. |
+| `TenantIsolationE2ETest` | real routes behind real JWT auth | `authenticate("jwt")` + `JwtConfig.sign` + H2 `ExposedSessionStore` | ✓ WIRED | `resolveTenant()` resolves from the verified JWT `sub`; tests pass. |
+
+### Behavioral Spot-Checks
+
+The behavioral guarantees are exercised by the freshly-run test suite rather than
+ad-hoc commands (the relevant behaviors require the route + auth + DB stack).
+
+| Behavior | Command | Result | Status |
+| -------- | ------- | ------ | ------ |
+| Full backend suite green | `cd backend && ./gradlew test -x detekt` | BUILD SUCCESSFUL; 261 tests, 0 failures, 0 errors, 0 skipped (`:test` executed, not UP-TO-DATE) | ✓ PASS |
+| Cross-tenant isolation e2e | `TenantIsolationE2ETest` result XML | tests=6 failures=0 errors=0 (regenerated 15:25 by this run) | ✓ PASS |
+| Share owner routes regression | `ShareRoutesTest` result XML | tests=10 failures=0 errors=0 | ✓ PASS |
+| Store-level isolation regression | `TenantIsolationTest` result XML | tests=10 failures=0 errors=0 | ✓ PASS |
+| SSE regression | `SseStreamTest` result XML | tests=7 failures=0 errors=0 | ✓ PASS |
+| Persistence restart | `PersistenceRestartTest` result XML | tests=2 failures=0 errors=0 | ✓ PASS |
+| Source audit: no unscoped getSession on hot paths | `grep -n SessionManager.getSession routes/SessionRoutes.kt` | only lines 57, 107 (fallback) + 48, 50 (KDoc) | ✓ PASS |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
-|-------------|-------------|-------------|--------|----------|
-| PERS-01 | 03-01 | JDBC store behind seam, storage.type toggle | ✓ SATISFIED | DatabaseFactory/ExposedSessionStore/ExposedEventStore + Application wiring. |
-| PERS-02 | 03-01 | Survive restart, Flyway schema | ✓ SATISFIED | V1 schema + serializer round-trip + PersistenceRestartTest. JSONB literal deviation (WARNING). |
-| PERS-03 | 03-03 | Retention background process | ✓ SATISFIED | DbRetentionPolicy + active-share guard, launched at startup. |
-| AUTH-01 | 03-02 | authenticatedApi, public routes open | ✓ SATISFIED | Auth.kt/Routing.kt. |
+| ----------- | ----------- | ----------- | ------ | -------- |
+| PERS-01 | 03-01 | JDBC store behind seam, storage.type toggle | ✓ SATISFIED | DatabaseFactory/Exposed stores + Application wiring; suite green. |
+| PERS-02 | 03-01 | Survive restart, Flyway schema | ✓ SATISFIED | PersistenceRestartTest 2/2. (CLOB/JSONB literal deviation = WARNING.) |
+| PERS-03 | 03-03 | Retention background process | ✓ SATISFIED | DbRetentionPolicy + active-share guard. |
+| AUTH-01 | 03-02 | authenticatedApi, public routes open | ✓ SATISFIED | AuthTest 12/12. |
 | AUTH-02 | 03-02 | SHA-256 key compare | ✓ SATISFIED | ApiKeyStore MessageDigest.isEqual. |
-| AUTH-03 | 03-02, 03-05 | JWT roles + token endpoint + FE | ✓ SATISFIED | JwtConfig/AuthRoutes + FE Bearer/login. |
-| AUTH-04 | 03-03 | Tenant isolation, no cross-tenant reads | ✗ BLOCKED | Sub-resource + share read/owner paths unscoped (CR-01/CR-02). |
-| AUTH-05 | 03-02 | Route-level auth e2e tests | ✓ SATISFIED (partial) | AuthTest/JwtAuthTest/TenantIsolationTest exist; isolation coverage top-level only. |
-| SHAR-01 | 03-04, 03-06 | Create revocable expiring share token | ✓ SATISFIED | ShareService.create + ShareDialog. Ownership gap tracked under AUTH-04. |
-| SHAR-02 | 03-04, 03-06 | Read-only, rate-limited, revocable shared view | ✓ SATISFIED | Public route + rate limit + readOnly view. |
+| AUTH-03 | 03-02, 03-05 | JWT roles + token endpoint + FE | ✓ SATISFIED | JwtAuthTest 9/9 + FE Bearer/login. |
+| AUTH-04 | 03-03, **03-07** | Tenant isolation, no cross-tenant reads | ✓ SATISFIED (was BLOCKED) | CR-01 + CR-02 closed in live code; TenantIsolationE2ETest 6/6. |
+| AUTH-05 | 03-02, **03-07** | Route-level auth e2e tests | ✓ SATISFIED (was partial) | New e2e test now guards the central isolation invariant on all session-bound + share-owner paths. |
+| SHAR-01 | 03-04, 03-06 | Create revocable expiring share token | ✓ SATISFIED | ShareService.create + ShareRoutesTest 10/10; now ownership-enforced. |
+| SHAR-02 | 03-04, 03-06 | Read-only, rate-limited, revocable shared view | ✓ SATISFIED | Public route + RateLimitTest 3/3; revoke→404 confirmed e2e. |
 
 All 10 declared requirement IDs (PERS-01/02/03, AUTH-01/02/03/04/05, SHAR-01/02)
-are accounted for across the six plans' frontmatter and matched against
-REQUIREMENTS.md. No orphaned requirements. AUTH-04 is BLOCKED.
+are accounted for across the seven plans' frontmatter and matched against
+REQUIREMENTS.md (lines 159-168, all marked Phase 3). No orphaned requirements; no
+gap remaining on AUTH-04 or AUTH-05.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| `routes/SessionRoutes.kt` | 144,161,180,204,231 | Unscoped `SessionManager.getSession` on authenticated session-bound routes | 🛑 Blocker | Cross-tenant data leak (CR-01) — nullifies AUTH-04. |
-| `share/ShareRoutes.kt` | 60,96,118 | Existence-only / unscoped owner authorization | 🛑 Blocker | Cross-tenant share mint/list/revoke (CR-02). |
-| `persistence/ExposedSessionStore.kt` | 59-61 | `System.currentTimeMillis()` session ids (low entropy) | ⚠️ Warning | Guessable ids amplify CR-01/CR-02 (CR-03). |
-| `persistence/DbRetentionPolicy.kt` | 132-152 | Event-trim assumes unique `seq`; schema has only an index | ⚠️ Warning | Cap not reliably enforced on duplicate seq (CR-04). |
-| `V1__core_schema.sql` | payload/metadata | CLOB instead of JSONB | ⚠️ Warning | Success criterion #1 says "JSONB events"; literal column type deviates (documented as intentional in schema comment). |
-| `Auth.kt` | 58-75 | Auth fails open by default even with `storage.type=database` | ⚠️ Warning | Persisted multi-tenant data can silently go public on misconfig (WR-01). |
+| ---- | ---- | ------- | -------- | ------ |
+| `routes/SessionRoutes.kt` | 305-307 | SSE live collector `launch{}` without `finally{ liveBuffer.close() }` | ⚠️ Warning (WR-04) | Drain loop relies on client disconnect / bus never completing normally. Not a leak; brittle assumption. Human accept-or-fix. |
+| `routes/SessionRoutes.kt` | 256-266 | Cross-tenant SSE returns HTTP 200 + error frame (not 404) | ⚠️ Warning (WR-01) | Status asymmetry vs the 404 sub-resources. No data leak (e2e asserts no replay / no "connected"). Human accept-or-fix; not a goal blocker. |
+| `share/ShareRoutes.kt` + `ShareService.kt` | mint 74-98 / list-revoke scope | ADMIN can mint a tenant-invisible, tenant-unrevocable public share | ⚠️ Warning (WR-02) | Only an ADMIN principal (D-03 grants ADMIN the `Op.TRUE` tenant bypass by design). Non-admin tenant isolation holds and is test-guarded. Human accept-or-document. |
+| `share/ShareService.kt` | 149-157, 181-193 | Unscoped 2-arg `listForSession`/`revoke` overloads remain | ℹ️ Info (IN-01) | Footgun if a future caller uses them; required today by the public path. |
+| `V1__core_schema.sql` | payload/metadata | CLOB instead of JSONB | ⚠️ Warning | Success criterion #1 literal "JSONB"; documented intentional deviation. Human accept-or-fix. |
+| `Auth.kt` | fail-open default | Auth off by default even with `storage.type=database` | ⚠️ Warning | Intentional per D-04a/D-04b (open-source default-off + auth-off+persistence = global). Documented decision, not a defect. |
+
+None of the above is a 🛑 BLOCKER. No `TBD`/`FIXME`/`XXX` debt markers in the
+gap-closure files. The two prior 🛑 Blocker anti-patterns (CR-01 unscoped
+sub-resource/SSE reads; CR-02 unscoped share owner routes) are RESOLVED.
+
+### Human Verification Required
+
+None. The phase goal is verifiable programmatically (route + auth + DB e2e tests
+that the verifier executed). The frontend share/auth UX was already verified in the
+prior pass and is unchanged by 03-07 (backend-only gap closure). The WARNING items
+above are accept-or-fix maintenance decisions, not goal-gating human tests, so they
+do not force `human_needed` status.
 
 ### Gaps Summary
 
-The phase goal states vizcore must be "safe to deploy for multiple users" with
-"tenant isolation". It is not. Persistence (PERS-01/02/03) and authentication
-(AUTH-01/02/03/05) are genuinely delivered and well-built. Sharing (SHAR-01/02)
-works functionally. But the central multi-tenant security invariant is broken in
-two confirmed, live-code ways:
+No gaps. The three confirmed gaps from the prior verification are closed and
+verified against live code plus a freshly-executed test suite:
 
-1. **CR-01 (AUTH-04):** Five authenticated session-bound handlers — `/events`,
-   `/hierarchy`, `/threads`, `/coroutines/{id}/timeline`, and the SSE `/stream` —
-   resolve the session through the UNSCOPED `SessionManager.getSession`, which
-   maps to `tenantPredicate(Unscoped) = Op.TRUE`. Any authenticated tenant can
-   read another tenant's full session content. The top-level `GET /{id}` is
-   correctly scoped, masking the leak at the entry point while the heavy payloads
-   leak underneath.
+1. **CR-01 (AUTH-04)** — All five authenticated session-bound handlers
+   (`/events`, `/hierarchy`, `/threads`, `/coroutines/{id}/timeline`, SSE
+   `/stream`) now resolve through `resolveScopedSession` →
+   `store.getSession(sessionId, resolveTenant())`. SSE scoping is pre-stream.
+   `SessionManager.getSession` survives only in the `store==null` (auth-off /
+   memory, D-04b) fallback branches.
 
-2. **CR-02 (AUTH-04):** The share-owner routes check session existence (also
-   unscoped) but never ownership, so any authenticated user can mint a public,
-   never-expiring share for another tenant's session and list/revoke others'
-   shares. `created_by` is stored but never enforced.
+2. **CR-02 (AUTH-04)** — Share mint is gated by a scoped session-ownership check;
+   list/revoke are scoped by `created_by` via parameter-bound Exposed predicates.
+   A non-owner cannot mint, enumerate, or revoke another tenant's shares.
 
-3. **AUTH-05 coverage gap:** `TenantIsolationTest` only covers top-level CRUD and
-   resolution logic, which is precisely why the green suite did not catch CR-01/
-   CR-02. New tests must guard the sub-resource and share-owner paths.
+3. **AUTH-05 coverage** — `TenantIsolationE2ETest` exercises the real route + JWT
+   auth stack and asserts cross-tenant 404 (no replay, no leaked content) on every
+   session-bound read path and on all three share-owner routes, with owner-positive
+   assertions proving the guard is a true isolation filter rather than a blanket
+   deny. 6/6 green; full suite 261/261 green with no regression.
 
-These gaps are NOT deferred to a later phase — Phase 4 (PERF/OTEL/SDK) and Phase 5
-(IDE/FETEST) do not address tenant isolation. They block the phase goal and must
-be closed before proceeding.
+The remaining items are WARNING/INFO-tier accept-or-fix decisions (WR-01 SSE
+status asymmetry, WR-02 admin-mint semantics, WR-04 SSE buffer close, CLOB/JSONB,
+fail-open default). None blocks the phase goal, and none is deferred to a later
+phase that addresses tenant isolation (Phase 4 = PERF/OTEL/SDK, Phase 5 =
+IDE/FETEST — neither touches AUTH-04). They are surfaced for human visibility but
+do not change the verdict.
 
-Recommended next step: `/gsd-plan-phase --gaps` to scope a focused fix plan that
-(a) routes every session-bound read through the tenant-scoped store, (b) enforces
-session ownership on share mint/list/revoke, and (c) extends TenantIsolationTest
-to cover those paths. The JSONB/CLOB and fail-open warnings should be reviewed by
-a human as accept-or-fix decisions but are not, on their own, phase-goal blockers.
+**Verdict:** Phase 3 goal achieved — vizcore is safe to deploy for multiple users.
 
 ---
 
-_Verified: 2026-06-21_
+_Verified: 2026-06-21T15:30:00Z_
 _Verifier: Claude (gsd-verifier)_
