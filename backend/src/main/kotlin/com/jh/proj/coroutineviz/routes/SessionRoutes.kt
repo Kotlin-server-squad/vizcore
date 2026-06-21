@@ -1,6 +1,8 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
+import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.sseClientsGauge
@@ -28,10 +30,24 @@ private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
  */
 private const val SSE_LIVE_BUFFER_CAPACITY = 4096
 
+/**
+ * The active tenant-scoped backing store, if persistence is on AND the store
+ * implements [TenantScopedSessionStore]. In memory mode (or when persistence is
+ * off) this is null and routes fall back to the unscoped [SessionManager] calls
+ * — i.e. global visibility (D-04b).
+ */
+private fun tenantScopedStore(): TenantScopedSessionStore? = SessionManager.backingStore() as? TenantScopedSessionStore
+
 fun Route.registerSessionRoutes() {
     post("/api/sessions") {
         val name = call.request.queryParameters["name"]
-        val session = SessionManager.createSession(name)
+        val store = tenantScopedStore()
+        val session =
+            if (store != null) {
+                store.createSession(name, call.resolveTenant())
+            } else {
+                SessionManager.createSession(name)
+            }
 
         logger.info("Created new session via API: ${session.sessionId}")
 
@@ -45,7 +61,13 @@ fun Route.registerSessionRoutes() {
     }
 
     get("/api/sessions") {
-        val sessions = SessionManager.listSessions()
+        val store = tenantScopedStore()
+        val sessions =
+            if (store != null) {
+                store.listSessions(call.resolveTenant())
+            } else {
+                SessionManager.listSessions()
+            }
         logger.debug("Listing sessions: ${sessions.size} active")
         call.respond(HttpStatusCode.OK, sessions)
     }
@@ -57,7 +79,13 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
-        val session = SessionManager.getSession(sessionId)
+        val store = tenantScopedStore()
+        val session =
+            if (store != null) {
+                store.getSession(sessionId, call.resolveTenant())
+            } else {
+                SessionManager.getSession(sessionId)
+            }
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@get
@@ -91,7 +119,14 @@ fun Route.registerSessionRoutes() {
                 return@delete
             }
 
-        val success = SessionManager.closeSession(sessionId)
+        val store = tenantScopedStore()
+        val success =
+            if (store != null) {
+                // Tenant-filtered delete: a cross-tenant id is a no-op (NotFound).
+                store.deleteSession(sessionId, call.resolveTenant())
+            } else {
+                SessionManager.closeSession(sessionId)
+            }
         if (success) {
             call.respond(HttpStatusCode.OK, mapOf("message" to "Session closed"))
         } else {

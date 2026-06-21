@@ -63,6 +63,16 @@ object SessionManager : SessionStoreInterface {
     }
 
     /**
+     * Expose the installed backing store (or null for the in-memory default).
+     *
+     * Used by the route layer to detect a tenant-scoped store and apply the
+     * tenant filter on reads/creation. Kept as the abstract
+     * [SessionStoreInterface] so no backend/tenancy types leak into the SDK;
+     * callers narrow with `as?`.
+     */
+    fun backingStore(): SessionStoreInterface? = backingStore
+
+    /**
      * Create a new visualization session.
      *
      * Satisfies the [SessionStoreInterface.createSession] contract.
