@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz
 
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
+import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.server.application.*
@@ -20,8 +21,9 @@ fun Application.module() {
     configureSerialization()
 
     // Configure bounded EventStore before any sessions are created (FND-02)
-    val maxEvents = environment.config.propertyOrNull("session.maxEvents")
-        ?.getString()?.toIntOrNull() ?: 10_000
+    val maxEvents =
+        environment.config.propertyOrNull("session.maxEvents")
+            ?.getString()?.toIntOrNull() ?: 10_000
     SessionManager.configure(maxEventsPerSession = maxEvents)
 
     configureStorage(maxEvents)
@@ -43,6 +45,12 @@ private fun Application.configureStorage(maxEvents: Int) {
         SessionManager.useStore(ExposedSessionStore(db, maxEvents = maxEvents))
         moduleLogger.info("Persistence enabled (storage.type=database)")
 
+        // PERS-03: DB-aware retention runs ONLY when persistence is on (the in-memory
+        // RetentionPolicy covers memory mode separately — do not double-wire). The loop
+        // launches in the application coroutine scope (NEVER GlobalScope; CLAUDE.md) and
+        // is stopped on ApplicationStopping.
+        startDbRetention(db)
+
         val apiKey = environment.config.propertyOrNull("auth.apiKey")?.getString()
         if (apiKey.isNullOrBlank()) {
             // D-04b: surface the open-access risk, but do not auto-enable auth.
@@ -54,4 +62,35 @@ private fun Application.configureStorage(maxEvents: Int) {
     } else {
         moduleLogger.info("Persistence disabled (storage.type=memory, in-memory ephemeral)")
     }
+}
+
+/**
+ * Construct and start the [DbRetentionPolicy] using the ADR-015 retention config
+ * keys (`storage.retention.*`, with ADR-015 defaults), launching in the
+ * application coroutine scope and stopping it on `ApplicationStopping`.
+ */
+private fun Application.startDbRetention(db: org.jetbrains.exposed.v1.jdbc.Database) {
+    val cfg = environment.config
+    val maxAgeDays =
+        cfg.propertyOrNull("storage.retention.maxAgeDays")?.getString()?.toIntOrNull() ?: 30
+    val maxEventsPerSession =
+        cfg.propertyOrNull("storage.retention.maxEventsPerSession")?.getString()?.toIntOrNull() ?: 100_000
+    val cleanupIntervalMinutes =
+        cfg.propertyOrNull("storage.retention.cleanupIntervalMinutes")?.getString()?.toLongOrNull() ?: 60
+
+    val policy =
+        DbRetentionPolicy(
+            db = db,
+            maxAgeDays = maxAgeDays,
+            maxEventsPerSession = maxEventsPerSession,
+            cleanupIntervalMinutes = cleanupIntervalMinutes,
+        )
+    policy.start(this)
+    monitor.subscribe(ApplicationStopping) { policy.stop() }
+    moduleLogger.info(
+        "DB retention wired (maxAgeDays={}, maxEventsPerSession={}, intervalMin={})",
+        maxAgeDays,
+        maxEventsPerSession,
+        cleanupIntervalMinutes,
+    )
 }
