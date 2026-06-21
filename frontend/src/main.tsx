@@ -4,6 +4,7 @@ import { HeroUIProvider, ToastProvider } from '@heroui/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
+import { registerNavigator } from '@/lib/navigation'
 import { routeTree } from './routeTree.gen'
 import './index.css'
 
@@ -15,6 +16,12 @@ const router = createRouter({
   },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
+})
+
+// Wire the api-client's framework-agnostic navigate indirection to the real
+// router so a 401 can redirect to /login (D-05) from outside React.
+registerNavigator((path) => {
+  void router.navigate({ to: path })
 })
 
 // Register router for type safety

@@ -13,21 +13,47 @@ import type {
   ValidationResponse,
   SessionComparison,
 } from '@/types/api'
+import type {
+  CreateShareResponse,
+  ShareExpiry,
+  ShareSummary,
+  SharedSessionResult,
+} from '@/types/share'
 import { normalizeEvents } from './utils'
+import { getToken, clearToken } from './auth-store'
+import { navigateToLogin } from './navigation'
 
 const API_BASE_URL = '/api'
 
 class ApiClient {
   private async fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+    // Attach the JWT Bearer only when a token exists. When auth is off the
+    // token is null and NO Authorization header is added — the request looks
+    // exactly like today's anonymous call (auth-off invisibility, D-07/D-08).
+    const token = getToken()
+    const authHeaders: Record<string, string> = token
+      ? { Authorization: `Bearer ${token}` }
+      : {}
+
     const response = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders,
         ...options?.headers,
       },
     })
 
     if (!response.ok) {
+      // A 401 means the JWT is missing/expired/invalid on a configured server.
+      // Clear the stale token and route to /login (D-05); the error still
+      // propagates so callers' error states render. When auth is off the
+      // backend fails open and never returns 401, so this branch never fires
+      // and /login is never reached (D-07).
+      if (response.status === 401) {
+        clearToken()
+        navigateToLogin()
+      }
       const error = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(error.error || `HTTP ${response.status}`)
     }
@@ -64,8 +90,17 @@ class ApiClient {
   }
 
   // SSE Stream
+  //
+  // The browser EventSource cannot set an Authorization header (Pitfall 2), so
+  // the authenticated live stream carries the JWT as a `?token=<jwt>` query
+  // param — the LOCKED cross-plan contract the backend jwt provider reads
+  // (SSE_TOKEN_QUERY_PARAM, Plan 02). When no token is set the URL is
+  // unchanged (auth-off).
   createEventSource(sessionId: string): EventSource {
-    return new EventSource(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/stream`)
+    const base = `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/stream`
+    const token = getToken()
+    const url = token ? `${base}?token=${encodeURIComponent(token)}` : base
+    return new EventSource(url)
   }
 
   // Scenarios
@@ -135,6 +170,53 @@ class ApiClient {
     return this.fetchJson<SessionComparison>(
       `/sessions/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
     )
+  }
+
+  // Sharing (typed surface consumed by Plan 06's sharing UI — the api-client is
+  // the single /api choke point, so the share methods live here too).
+
+  // Mint a read-only share link for a session (owner only). `expiresIn` is the
+  // ADR-019 code 1d/7d/30d/never (D-11). Backend returns {token, url, expiresAt}.
+  async createShare(sessionId: string, expiresIn: ShareExpiry): Promise<CreateShareResponse> {
+    return this.fetchJson<CreateShareResponse>(
+      `/sessions/${encodeURIComponent(sessionId)}/share`,
+      { method: 'POST', body: JSON.stringify({ expiresIn }) },
+    )
+  }
+
+  // List the active share links for a session (owner only).
+  async listShares(sessionId: string): Promise<ShareSummary[]> {
+    return this.fetchJson<ShareSummary[]>(`/sessions/${encodeURIComponent(sessionId)}/shares`)
+  }
+
+  // Revoke a share link by token (owner only). Revoke deletes the row, so a
+  // revoked token is thereafter indistinguishable from an unknown one (404).
+  async revokeShare(sessionId: string, token: string): Promise<void> {
+    await this.fetchJson<unknown>(
+      `/sessions/${encodeURIComponent(sessionId)}/shares/${encodeURIComponent(token)}`,
+      { method: 'DELETE' },
+    )
+  }
+
+  // PUBLIC shared-session read — the token IS the credential, so NO Bearer is
+  // attached (a raw fetch, not fetchJson, so a 401-clear never fires here).
+  // The 410/404/429 status matrix (D-12, ADR-019) is mapped to a typed result
+  // the shared view (Plan 06) branches on instead of catching raw errors.
+  async getSharedSession(token: string): Promise<SharedSessionResult> {
+    const response = await fetch(
+      `${API_BASE_URL}/shared/${encodeURIComponent(token)}`,
+      { headers: { 'Content-Type': 'application/json' } },
+    )
+
+    if (response.ok) {
+      const data = await response.json()
+      return { status: 'ok', data }
+    }
+    if (response.status === 410) return { status: 'expired' }
+    if (response.status === 429) return { status: 'rate-limited' }
+    // 404 (unknown OR revoked) and any other non-ok status fall through to
+    // not-found — the public view has no credential to retry with.
+    return { status: 'not-found' }
   }
 }
 
