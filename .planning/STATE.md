@@ -129,7 +129,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None captured yet. (Existing repo todo: retire standalone-repo — see git log 2491764.)
+11 pending in `.planning/todos/pending/` — review with `/gsd-capture --list`. Includes 4 captured from the 2026-06-21 runtime audit: WR-02 admin cross-tenant share mint, share-UI silent no-op in memory mode, cors quoted-default config fragility, and DB-mode empty coroutine projection.
 
 ### Blockers/Concerns
 
