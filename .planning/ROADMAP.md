@@ -132,7 +132,7 @@ Plans:
 
 **Wave 2** *(auth backend — depends on 03-01: shares build.gradle/yaml/Application.kt)*
 
-- [ ] 03-02-PLAN.md — Dual-provider auth: SHA-256 multi-key + config-seeded-user JWT + token endpoint, fail-open when unconfigured, routes wrapped, SSE query-param token, E2E enforcement (AUTH-01, AUTH-02, AUTH-03, AUTH-05)
+- [x] 03-02-PLAN.md — Dual-provider auth: SHA-256 multi-key + config-seeded-user JWT + token endpoint, fail-open when unconfigured, routes wrapped, SSE query-param token, E2E enforcement (AUTH-01, AUTH-02, AUTH-03, AUTH-05)
 
 **Wave 3** *(tenancy/retention + sharing backend — parallel, no file overlap; both depend on 03-01 + 03-02)*
 
@@ -185,6 +185,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation & Production Readiness | 15/15 | Complete    | 2026-06-12 |
 | 2. User-Value Visualization | 8/8 | Complete    | 2026-06-20 |
-| 3. Persistence, Auth & Sharing | 1/6 | In Progress|  |
+| 3. Persistence, Auth & Sharing | 2/6 | In Progress|  |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Not started | - |

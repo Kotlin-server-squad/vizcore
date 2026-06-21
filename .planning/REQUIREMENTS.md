@@ -51,11 +51,11 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 
 ### Authentication & Multi-tenancy
 
-- [ ] **AUTH-01**: Non-public routes are wrapped in `authenticatedApi()`; with `API_KEY` set, requests without a valid `X-API-Key` are rejected, while `/health`, `/openapi.json`, and the token endpoint stay open.
-- [ ] **AUTH-02**: API keys are compared as SHA-256 hashes (not plaintext), per ADR-016.
-- [ ] **AUTH-03**: JWT auth (`/api/auth/token`, HMAC dev / RS256 prod, refresh) issues a `UserPrincipal` with VIEWER/RUNNER/ADMIN roles.
+- [x] **AUTH-01**: Non-public routes are wrapped in `authenticatedApi()`; with `API_KEY` set, requests without a valid `X-API-Key` are rejected, while `/health`, `/openapi.json`, and the token endpoint stay open.
+- [x] **AUTH-02**: API keys are compared as SHA-256 hashes (not plaintext), per ADR-016.
+- [x] **AUTH-03**: JWT auth (`/api/auth/token`, HMAC dev / RS256 prod, refresh) issues a `UserPrincipal` with VIEWER/RUNNER/ADMIN roles.
 - [ ] **AUTH-04**: Sessions are filtered by authenticated user (tenant isolation) — no cross-tenant reads.
-- [ ] **AUTH-05**: Route-level auth enforcement is covered by end-to-end tests (reject-without-key, allow-with-key).
+- [x] **AUTH-05**: Route-level auth enforcement is covered by end-to-end tests (reject-without-key, allow-with-key).
 
 ### Performance & Scaling
 
@@ -159,11 +159,11 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | PERS-01 | Phase 3 | Complete |
 | PERS-02 | Phase 3 | Complete |
 | PERS-03 | Phase 3 | Pending |
-| AUTH-01 | Phase 3 | Pending |
-| AUTH-02 | Phase 3 | Pending |
-| AUTH-03 | Phase 3 | Pending |
+| AUTH-01 | Phase 3 | Complete |
+| AUTH-02 | Phase 3 | Complete |
+| AUTH-03 | Phase 3 | Complete |
 | AUTH-04 | Phase 3 | Pending |
-| AUTH-05 | Phase 3 | Pending |
+| AUTH-05 | Phase 3 | Complete |
 | SHAR-01 | Phase 3 | Pending |
 | SHAR-02 | Phase 3 | Pending |
 | PERF-01 | Phase 4 | Pending |
