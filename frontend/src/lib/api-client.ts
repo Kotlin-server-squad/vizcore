@@ -25,6 +25,24 @@ import { navigateToLogin } from './navigation'
 
 const API_BASE_URL = '/api'
 
+/**
+ * Thrown by `login()` when the token endpoint returns 401 (wrong credentials).
+ * The `/login` form branches on this type to show the "Incorrect username or
+ * password." copy, vs. the network/server copy for any other failure.
+ */
+export class LoginAuthError extends Error {
+  constructor() {
+    super('Invalid credentials')
+    this.name = 'LoginAuthError'
+  }
+}
+
+/** `POST /api/auth/token` 200 response (Plan 02: {token, expiresAt}). */
+export interface LoginResponse {
+  token: string
+  expiresAt: string
+}
+
 class ApiClient {
   private async fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     // Attach the JWT Bearer only when a token exists. When auth is off the
@@ -58,6 +76,30 @@ class ApiClient {
       throw new Error(error.error || `HTTP ${response.status}`)
     }
 
+    return response.json()
+  }
+
+  // Auth
+  //
+  // Posts credentials to the ALWAYS-public token endpoint (Plan 02). This does
+  // NOT go through fetchJson because a 401 here means "wrong credentials" — it
+  // must NOT trigger the global clearToken + navigateToLogin interception (the
+  // user is already on /login). A 401 throws a typed LoginAuthError; any other
+  // failure throws a generic Error so the form shows the network/server copy.
+  // Credentials are never logged.
+  async login(username: string, password: string): Promise<LoginResponse> {
+    const response = await fetch(`${API_BASE_URL}/auth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+
+    if (response.status === 401) {
+      throw new LoginAuthError()
+    }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
     return response.json()
   }
 
