@@ -5,6 +5,7 @@ import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.SessionManager
+import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
@@ -37,6 +38,25 @@ private const val SSE_LIVE_BUFFER_CAPACITY = 4096
  * — i.e. global visibility (D-04b).
  */
 private fun tenantScopedStore(): TenantScopedSessionStore? = SessionManager.backingStore() as? TenantScopedSessionStore
+
+/**
+ * Resolve a session by [sessionId] using the SAME tenant scoping the top-level
+ * GET /api/sessions/{id} applies (CR-01 / D-03): when the tenant-scoped store is
+ * active, resolve via `store.getSession(sessionId, resolveTenant())` so a
+ * cross-tenant id returns null (→ 404, never leaking another tenant's content);
+ * when null (memory / auth-off mode) fall back to the unscoped
+ * [SessionManager.getSession] (preserves D-04b global visibility). Every
+ * authenticated session-bound read path (events/hierarchy/threads/timeline/SSE)
+ * MUST go through this helper, NOT the bare [SessionManager.getSession].
+ */
+private fun ApplicationCall.resolveScopedSession(sessionId: String): VizSession? {
+    val store = tenantScopedStore()
+    return if (store != null) {
+        store.getSession(sessionId, resolveTenant())
+    } else {
+        SessionManager.getSession(sessionId)
+    }
+}
 
 fun Route.registerSessionRoutes() {
     post("/api/sessions") {
@@ -141,7 +161,7 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
-        val session = SessionManager.getSession(sessionId)
+        val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@get
@@ -158,7 +178,7 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
-        val session = SessionManager.getSession(sessionId)
+        val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@get
@@ -177,7 +197,7 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
-        val session = SessionManager.getSession(sessionId)
+        val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@get
@@ -201,7 +221,7 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
-        val session = SessionManager.getSession(sessionId)
+        val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@get
@@ -228,7 +248,12 @@ fun Route.registerSessionRoutes() {
                 return@sse
             }
 
-        val session = SessionManager.getSession(sessionId)
+        // PRE-STREAM tenant scoping (CR-01 / D-03): resolve the session through the
+        // tenant filter BEFORE the "connected" frame, the gauge increment, and any
+        // bus subscription/replay. A cross-tenant id is indistinguishable from a
+        // missing id (do not leak existence) and yields the SAME 404 error event —
+        // tenant B never opens a stream nor triggers a replay of tenant A's events.
+        val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             logger.warn("SSE connection attempted for non-existent session: $sessionId")
             send(
