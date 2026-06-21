@@ -1,6 +1,9 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.SessionManager
+import com.jh.proj.coroutineviz.sseClientsGauge
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -8,9 +11,6 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 import io.ktor.sse.*
-import com.jh.proj.coroutineviz.appJson
-import com.jh.proj.coroutineviz.events.VizEvent
-import com.jh.proj.coroutineviz.sseClientsGauge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
@@ -181,6 +181,11 @@ fun Route.registerSessionRoutes() {
         call.respond(HttpStatusCode.OK, timeline)
     }
 
+    // Authenticated SSE stream. This route is registered INSIDE authenticatedApi { } (see Routing.kt),
+    // so when auth is on it requires a credential. Browser EventSource cannot set an Authorization
+    // header (Pitfall 2), so the jwt provider also reads the JWT from the `?token=<jwt>` query param
+    // (SSE_TOKEN_QUERY_PARAM = "token"). No separate auth scheme here — the wrapper + jwt authHeader
+    // fallback handle it. When auth is off, this passes through publicly (D-04a).
     sse("/api/sessions/{id}/stream") {
         val sessionId =
             call.parameters["id"] ?: run {

@@ -21,7 +21,7 @@ class UserStore(private val users: List<UserEntry>) {
     companion object {
         fun fromConfig(config: ApplicationConfig): UserStore {
             val entries =
-                config.configList("auth.users").mapNotNull { userConfig ->
+                configListOrEmpty(config, "auth.users").mapNotNull { userConfig ->
                     val username = userConfig.propertyOrNull("username")?.getString()?.takeIf { it.isNotBlank() }
                     val passwordHash =
                         userConfig.propertyOrNull("passwordHash")?.getString()?.takeIf { it.isNotBlank() }

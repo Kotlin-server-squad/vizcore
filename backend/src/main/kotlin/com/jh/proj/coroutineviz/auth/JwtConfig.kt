@@ -52,7 +52,10 @@ class JwtConfig private constructor(
      * Mint a signed access token for [userId] with [role]. Throws [IllegalStateException]
      * if the config is inert (callers gate on [isConfigured] / a configured UserStore).
      */
-    fun sign(userId: String, role: Role): SignedToken {
+    fun sign(
+        userId: String,
+        role: Role,
+    ): SignedToken {
         val alg = checkNotNull(algorithm) { "JWT not configured: no secret or RS256 key pair" }
         val now = Instant.now()
         val expiresAt = now.plus(accessTtlMinutes, ChronoUnit.MINUTES)
@@ -72,7 +75,9 @@ class JwtConfig private constructor(
 
     companion object {
         fun fromConfig(config: ApplicationConfig): JwtConfig {
-            val jwt = config.config("auth.jwt")
+            val jwt =
+                runCatching { config.config("auth.jwt") }
+                    .getOrElse { io.ktor.server.config.MapApplicationConfig() }
             val secret = jwt.propertyOrNull("secret")?.getString()?.takeIf { it.isNotBlank() }
             val issuer = jwt.propertyOrNull("issuer")?.getString() ?: "coroutineviz"
             val audience = jwt.propertyOrNull("audience")?.getString() ?: "coroutineviz-api"

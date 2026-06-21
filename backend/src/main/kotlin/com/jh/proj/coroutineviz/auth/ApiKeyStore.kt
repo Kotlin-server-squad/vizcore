@@ -1,7 +1,25 @@
 package com.jh.proj.coroutineviz.auth
 
 import io.ktor.server.config.ApplicationConfig
+import io.ktor.server.config.ApplicationConfigurationException
 import java.security.MessageDigest
+
+/**
+ * Read a config list, returning an empty list when the list property is absent.
+ *
+ * The YAML config provider exposes `auth.keys: []` natively, but `MapApplicationConfig`
+ * (used in tests) throws `Property <name>.size not found` when the list key was never put.
+ * Treat "absent list" as "empty list" so a fresh/minimal config means "no entries" (D-04a),
+ * not a startup crash.
+ */
+internal fun configListOrEmpty(
+    config: ApplicationConfig,
+    path: String,
+): List<ApplicationConfig> =
+    runCatching { config.configList(path) }
+        .getOrElse { e ->
+            if (e is ApplicationConfigurationException) emptyList() else throw e
+        }
 
 /**
  * In-memory SHA-256 API-key store (AUTH-02, ADR-016 Phase A).
@@ -46,7 +64,7 @@ class ApiKeyStore(private val keys: List<KeyEntry>) {
         fun fromConfig(config: ApplicationConfig): ApiKeyStore {
             val entries = mutableListOf<KeyEntry>()
 
-            config.configList("auth.keys").forEach { keyConfig ->
+            configListOrEmpty(config, "auth.keys").forEach { keyConfig ->
                 val hash = keyConfig.propertyOrNull("hash")?.getString()?.takeIf { it.isNotBlank() }
                 val name = keyConfig.propertyOrNull("name")?.getString() ?: "key"
                 val role = Role.fromConfig(keyConfig.propertyOrNull("role")?.getString())

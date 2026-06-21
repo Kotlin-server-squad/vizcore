@@ -31,7 +31,10 @@ data class AuthErrorResponse(val error: String)
  * UNIFORM 401 `{"error":"Invalid credentials"}` so the endpoint does not leak whether a
  * username exists (T-03-07 user-enumeration mitigation). Credentials/tokens are never logged.
  */
-fun Route.registerAuthRoutes(userStore: UserStore, jwtConfig: JwtConfig) {
+fun Route.registerAuthRoutes(
+    userStore: UserStore,
+    jwtConfig: JwtConfig,
+) {
     post("/api/auth/token") {
         val creds =
             runCatching { call.receive<LoginRequest>() }.getOrNull()
