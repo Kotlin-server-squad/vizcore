@@ -45,7 +45,7 @@ share:
 storage:
   type: ${STORAGE_TYPE:memory}  # memory | database. Default memory = in-memory, ephemeral (D-04a)
   database:
-    url: ${DB_URL:"jdbc:h2:file:./data/coroutineviz;AUTO_SERVER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE"}
+    url: ${DB_URL:jdbc:h2:file:./data/coroutineviz;AUTO_SERVER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE}
     driver: ${DB_DRIVER:org.h2.Driver}
     username: ${DB_USER:sa}
     password: ${DB_PASSWORD:}
