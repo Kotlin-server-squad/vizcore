@@ -137,7 +137,7 @@ Plans:
 **Wave 3** *(tenancy/retention + sharing backend — parallel, no file overlap; both depend on 03-01 + 03-02)*
 
 - [x] 03-03-PLAN.md — Tenant isolation (forUser/tenantId filter, D-03) + DB-aware retention with active-share guard (AUTH-04, PERS-03)
-- [ ] 03-04-PLAN.md — DB-backed ShareService + 4 share endpoints + per-IP RateLimit 429 (SHAR-01, SHAR-02)
+- [x] 03-04-PLAN.md — DB-backed ShareService + 4 share endpoints + per-IP RateLimit 429 (SHAR-01, SHAR-02)
 
 **Wave 4** *(frontend auth — depends on 03-02)*
 
@@ -185,6 +185,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation & Production Readiness | 15/15 | Complete    | 2026-06-12 |
 | 2. User-Value Visualization | 8/8 | Complete    | 2026-06-20 |
-| 3. Persistence, Auth & Sharing | 2/6 | In Progress|  |
+| 3. Persistence, Auth & Sharing | 4/6 | In Progress|  |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Not started | - |
