@@ -5,9 +5,18 @@ import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.server.application.*
+import io.ktor.util.AttributeKey
+import org.jetbrains.exposed.v1.jdbc.Database
 import org.slf4j.LoggerFactory
 
 private val moduleLogger = LoggerFactory.getLogger("com.jh.proj.coroutineviz.ApplicationModule")
+
+/**
+ * Set when `storage.type=database`: the connected Exposed [Database] handle.
+ * `configureRouting()` reads it to build the DB-backed share service (Plan 04).
+ * Absent in memory mode (sharing requires persistence per ADR-019).
+ */
+val DatabaseKey = AttributeKey<Database>("Database")
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -43,6 +52,8 @@ private fun Application.configureStorage(maxEvents: Int) {
     if (storageType.equals("database", ignoreCase = true)) {
         val db = DatabaseFactory.init(environment.config)
         SessionManager.useStore(ExposedSessionStore(db, maxEvents = maxEvents))
+        // Expose the handle so configureRouting() can build the DB-backed ShareService (Plan 04).
+        attributes.put(DatabaseKey, db)
         moduleLogger.info("Persistence enabled (storage.type=database)")
 
         // PERS-03: DB-aware retention runs ONLY when persistence is on (the in-memory
