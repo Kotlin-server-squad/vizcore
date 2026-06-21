@@ -123,7 +123,30 @@ Plans:
   2. With `API_KEY` set, requests without a valid (SHA-256-compared) `X-API-Key` are rejected while `/health`, `/openapi.json`, and the token endpoint stay open; JWT issues role-bearing principals; sessions are tenant-isolated — all covered by end-to-end tests.
   3. A developer can mint a revocable, expiring share token and anyone with that token can open a rate-limited, read-only shared view.
 
-**Plans**: TBD
+**Plans**: 6 plans (5 waves)
+Plans:
+
+**Wave 1** *(persistence seam + migrations — foundation for everything else)*
+
+- [ ] 03-01-PLAN.md — Optional Exposed/HikariCP JDBC store behind the existing seam + Flyway V1 schema (sessions/events/shares) + restart-survival (PERS-01, PERS-02)
+
+**Wave 2** *(auth backend — depends on 03-01: shares build.gradle/yaml/Application.kt)*
+
+- [ ] 03-02-PLAN.md — Dual-provider auth: SHA-256 multi-key + config-seeded-user JWT + token endpoint, fail-open when unconfigured, routes wrapped, SSE query-param token, E2E enforcement (AUTH-01, AUTH-02, AUTH-03, AUTH-05)
+
+**Wave 3** *(tenancy/retention + sharing backend — parallel, no file overlap; both depend on 03-01 + 03-02)*
+
+- [ ] 03-03-PLAN.md — Tenant isolation (forUser/tenantId filter, D-03) + DB-aware retention with active-share guard (AUTH-04, PERS-03)
+- [ ] 03-04-PLAN.md — DB-backed ShareService + 4 share endpoints + per-IP RateLimit 429 (SHAR-01, SHAR-02)
+
+**Wave 4** *(frontend auth — depends on 03-02)*
+
+- [ ] 03-05-PLAN.md — auth-store + api-client Bearer/401 interception + token-aware SSE + /login route (AUTH-03; D-05/06/07/08)
+
+**Wave 5** *(frontend sharing UI — depends on 03-04 + 03-05 api-client)*
+
+- [ ] 03-06-PLAN.md — readOnly SessionDetails + /shared/:token shell + Share dialog + Manage-shares list (SHAR-01, SHAR-02; D-09/10/11/13)
+
 **UI hint**: yes
 
 ### Phase 4: Scale, Observability & SDK
@@ -162,6 +185,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation & Production Readiness | 15/15 | Complete    | 2026-06-12 |
 | 2. User-Value Visualization | 8/8 | Complete    | 2026-06-20 |
-| 3. Persistence, Auth & Sharing | 0/TBD | Not started | - |
+| 3. Persistence, Auth & Sharing | 0/6 | Not started | - |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Not started | - |
