@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-06-21T08:15:03.436Z"
-last_activity: 2026-06-21 -- Phase 03 execution started
+last_updated: "2026-06-21T08:31:00.000Z"
+last_activity: 2026-06-21 -- Completed 03-03 (tenancy + DB retention)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 29
-  completed_plans: 25
+  completed_plans: 27
   percent: 40
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 ## Current Position
 
 Phase: 03 (persistence-auth-sharing) — EXECUTING
-Plan: 3 of 6
-Status: Ready to execute
-Last activity: 2026-06-21 -- Phase 03 execution started
+Plan: 4 of 6
+Status: 03-03 complete (tenancy + DB retention); ready for 03-04
+Last activity: 2026-06-21 -- Completed 03-03 (AUTH-04, PERS-03)
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
 
@@ -73,6 +73,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 02 P08 | ~20 min | 2 tasks | 7 files |
 | Phase 03 P01 | ~40min | 2 tasks | 15 files |
 | Phase 03 P02 | ~13min | 2 tasks | 12 files |
+| Phase 03 P03 | ~14min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,7 @@ Recent decisions affecting current work:
 - [Phase 2, Plan 06]: CMPR-02 complete — /compare?a=&b= route (validateSearch normalizes/drops blank ids, T-02-10) drives controlled ComparisonView selection (shareable URL, D-10); SyncedTreePair renders its own clickable tree nodes (not CoroutineTree) for selection rings + delta badges, counterpart match by label then coroutineId (D-19/D-20); session-not-found EmptyState on 404 (D-12). Route component uses useSearch({strict:false}) so it mounts under a standalone test router (file-route re-parent duplicates __root__).
 - [Phase ?]: [Phase 3, Plan 01]: Persistence behind storage.type=database via SessionManager.useStore() facade + VizSession injectable eventStoreFactory (default in-memory); coroutine-viz-core stays DB-free. Payload as portable CLOB (de)serialized with the SSE PolymorphicSerializer; JSONB/GIN deferred. Exposed 1.3.0 needs top-level v1.core.{eq,greater,and}; H2 needs CASE_INSENSITIVE_IDENTIFIERS=TRUE to match Exposed's quoted lowercase columns.
 - [Phase ?]: [Phase 3, Plan 02]: Dual-provider fail-open auth — authDisabled computed once (no keys AND no usable jwt) makes authenticatedApi() a pure pass-through (D-04a); else authenticate(api-key, jwt) so EITHER credential satisfies (D-08). SSE auth uses ?token= query param (param name 'token', SSE_TOKEN_QUERY_PARAM) via jwt authHeader{} fallback — LOCKED contract Plan 05 binds to. currentPrincipal() resolves ApiKeyPrincipal|UserPrincipal for Plan 03 tenancy. Refresh tokens deferred. configListOrEmpty guards MapApplicationConfig missing-list crash.
+- [Phase 3, Plan 03]: Tenancy (AUTH-04/D-03) via a backend-only TenantScopedSessionStore interface (the core SessionStoreInterface is untouched, SDK stays DB/auth-free). TenantContext sealed: Scoped(tenantId)|Admin|Unscoped; resolve(principal) → UserPrincipal.userId / ApiKeyPrincipal.name / ADMIN-bypass / null→Unscoped (auth-off global, D-04b). Filter lives in the store as tenantPredicate(): Op<Boolean> (tenant_id eq for Scoped, Op.TRUE for Admin/Unscoped) on every read/delete; Scoped creation stamps tenant_id (null for Unscoped/global → not visible to scoped tenants). Routes narrow SessionManager.backingStore() and fall back to unscoped SessionManager in memory mode. DbRetentionPolicy (PERS-03, sibling to in-memory RetentionPolicy, ADR-015 30d/100000/60min): max-age DELETE guarded by NOT EXISTS active-share subquery (expires_at IS NULL = never-expires = always active; Pitfall 6/ADR-019) + per-session event-trim by seq watermark; wired in Application.module only when storage.type=database, app-scope launch (no global scope), stop on ApplicationStopping.
 
 ### Pending Todos
 

@@ -136,7 +136,7 @@ Plans:
 
 **Wave 3** *(tenancy/retention + sharing backend — parallel, no file overlap; both depend on 03-01 + 03-02)*
 
-- [ ] 03-03-PLAN.md — Tenant isolation (forUser/tenantId filter, D-03) + DB-aware retention with active-share guard (AUTH-04, PERS-03)
+- [x] 03-03-PLAN.md — Tenant isolation (forUser/tenantId filter, D-03) + DB-aware retention with active-share guard (AUTH-04, PERS-03)
 - [ ] 03-04-PLAN.md — DB-backed ShareService + 4 share endpoints + per-IP RateLimit 429 (SHAR-01, SHAR-02)
 
 **Wave 4** *(frontend auth — depends on 03-02)*
