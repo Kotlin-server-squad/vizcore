@@ -5,9 +5,12 @@ import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.server.application.*
+import io.ktor.server.plugins.ratelimit.RateLimit
+import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.util.AttributeKey
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.slf4j.LoggerFactory
+import kotlin.time.Duration.Companion.minutes
 
 private val moduleLogger = LoggerFactory.getLogger("com.jh.proj.coroutineviz.ApplicationModule")
 
@@ -17,6 +20,15 @@ private val moduleLogger = LoggerFactory.getLogger("com.jh.proj.coroutineviz.App
  * Absent in memory mode (sharing requires persistence per ADR-019).
  */
 val DatabaseKey = AttributeKey<Database>("Database")
+
+/**
+ * The [RateLimitName] scope for the public shared read (SHAR-02, D-12). The route
+ * `GET /api/shared/{token}` is wrapped in `rateLimit(RateLimitName(SHARED_RATE_LIMIT_NAME))`.
+ */
+const val SHARED_RATE_LIMIT_NAME = "shared"
+
+/** True when the shared-read [RateLimit] scope was installed (config-gated). */
+val SharedRateLimitEnabledKey = AttributeKey<Boolean>("SharedRateLimitEnabled")
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -37,7 +49,37 @@ fun Application.module() {
 
     configureStorage(maxEvents)
 
+    configureRateLimit()
+
     configureRouting()
+}
+
+/**
+ * Install the per-IP [RateLimit] scope for the public shared read (SHAR-02, D-12).
+ *
+ * The bucket is keyed on `origin.remoteHost` (the client IP). Behind a reverse
+ * proxy, install `XForwardedHeaders` so `remoteHost` is the real client and not
+ * the proxy — otherwise ALL viewers share one bucket. That is a DEPLOY config
+ * (not wired here). The limit value is read at install time; changing it requires
+ * a restart (consistent with the auth/storage toggles).
+ */
+private fun Application.configureRateLimit() {
+    val cfg = environment.config
+    val enabled = cfg.propertyOrNull("share.rateLimit.enabled")?.getString()?.toBoolean() ?: true
+    attributes.put(SharedRateLimitEnabledKey, enabled)
+    if (!enabled) {
+        moduleLogger.info("Shared-read rate limiting disabled (share.rateLimit.enabled=false)")
+        return
+    }
+    val rpm = cfg.propertyOrNull("share.rateLimit.requestsPerMinute")?.getString()?.toIntOrNull() ?: 60
+
+    install(RateLimit) {
+        register(RateLimitName(SHARED_RATE_LIMIT_NAME)) {
+            rateLimiter(limit = rpm, refillPeriod = 1.minutes)
+            requestKey { call -> call.request.local.remoteHost }
+        }
+    }
+    moduleLogger.info("Shared-read rate limiting enabled (perIp={}/min)", rpm)
 }
 
 /**

@@ -39,6 +39,8 @@ dependencies {
     implementation("io.ktor:ktor-server-swagger")
     implementation("io.ktor:ktor-server-openapi")
     implementation("io.ktor:ktor-server-sse")
+    // Per-IP rate limiting for the public shared read (SHAR-02, D-12) — version from the Ktor BOM.
+    implementation("io.ktor:ktor-server-rate-limit")
     implementation("io.ktor:ktor-server-metrics-micrometer")
     implementation("io.micrometer:micrometer-registry-prometheus:$prometheus_version")
     implementation("io.ktor:ktor-server-content-negotiation")

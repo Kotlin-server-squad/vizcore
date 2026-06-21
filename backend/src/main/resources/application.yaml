@@ -30,6 +30,18 @@ cors:
 session:
   maxEvents: ${SESSION_MAX_EVENTS:10000}
 
+app:
+  # Base URL the share link is built from (e.g. https://app.example.com). Empty =
+  # derive from the request origin (scheme + host[:port]). Used for {base}/shared/{token}.
+  publicBaseUrl: ${APP_PUBLIC_BASE_URL:}
+
+share:
+  rateLimit:
+    # Per-IP limit on GET /api/shared/{token} (D-12). Applied at install(RateLimit)
+    # time; changing it requires an application restart (consistent with auth/storage toggles).
+    enabled: ${SHARE_RATE_LIMIT_ENABLED:true}
+    requestsPerMinute: ${SHARE_RATE_LIMIT_RPM:60}
+
 storage:
   type: ${STORAGE_TYPE:memory}  # memory | database. Default memory = in-memory, ephemeral (D-04a)
   database:

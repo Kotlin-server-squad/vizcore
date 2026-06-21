@@ -18,6 +18,8 @@ import com.jh.proj.coroutineviz.share.ShareService
 import com.jh.proj.coroutineviz.share.registerShareOwnerRoutes
 import com.jh.proj.coroutineviz.share.registerSharedPublicRoute
 import io.ktor.server.application.*
+import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 import kotlin.time.ExperimentalTime
@@ -37,6 +39,7 @@ fun Application.configureRouting() {
     val db = attributes.getOrNull(DatabaseKey)
     val shareService = db?.let { ShareService(it) }
     val publicBaseUrl = environment.config.propertyOrNull("app.publicBaseUrl")?.getString()
+    val rateLimitShared = attributes.getOrNull(SharedRateLimitEnabledKey) ?: false
 
     routing {
         // Public routes — no auth required (AUTH-01 allowlist).
@@ -48,7 +51,7 @@ fun Application.configureRouting() {
         // this is registered OUTSIDE authenticatedApi. It is wrapped in the per-IP RateLimit
         // scope (Task 2) to bound brute-force/scraping (T-03-13). Present only when persistence
         // is on (ADR-019 requires the shares table).
-        shareService?.let { registerSharedRoute(it) }
+        shareService?.let { registerSharedRoute(it, rateLimitShared) }
 
         // Protected routes — wrapped so EITHER X-API-Key OR JWT satisfies (D-08); pass-through
         // when auth is fully unconfigured (D-04a). /openapi.json is served by the OpenAPI plugin
@@ -71,10 +74,21 @@ fun Application.configureRouting() {
 }
 
 /**
- * Register the public shared-read route. Task 2 wraps this in the per-IP
- * `rateLimit(RateLimitName("shared")) { }` scope (D-12); for now it registers
- * the route directly.
+ * Register the public shared-read route. When [rateLimited] (the
+ * `share.rateLimit.enabled` config), wrap it in the per-IP
+ * `rateLimit(RateLimitName("shared")) { }` scope so exceeding the bucket returns
+ * 429 + Retry-After automatically (D-12). When disabled (or the RateLimit plugin
+ * is not installed), register the route directly.
  */
-private fun Route.registerSharedRoute(shareService: ShareService) {
-    registerSharedPublicRoute(shareService)
+private fun Route.registerSharedRoute(
+    shareService: ShareService,
+    rateLimited: Boolean,
+) {
+    if (rateLimited) {
+        rateLimit(RateLimitName(SHARED_RATE_LIMIT_NAME)) {
+            registerSharedPublicRoute(shareService)
+        }
+    } else {
+        registerSharedPublicRoute(shareService)
+    }
 }
