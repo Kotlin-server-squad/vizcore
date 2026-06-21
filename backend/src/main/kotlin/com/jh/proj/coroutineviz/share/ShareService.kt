@@ -153,18 +153,24 @@ class ShareService(
                 .selectAll()
                 .where { SharesTable.sessionId eq sessionId }
                 .orderBy(SharesTable.createdAt)
-                .map { row ->
-                    ShareToken(
-                        token = row[SharesTable.token],
-                        sessionId = row[SharesTable.sessionId],
-                        createdBy = row[SharesTable.createdBy],
-                        createdAt = row[SharesTable.createdAt],
-                        expiresAt = row[SharesTable.expiresAt],
-                        permission = row[SharesTable.permission],
-                        accessCount = row[SharesTable.accessCount],
-                        lastAccessedAt = row[SharesTable.lastAccessedAt],
-                    )
-                }
+                .map { it.toShareToken() }
+        }
+
+    /**
+     * List shares for [sessionId] owned by [createdBy] (CR-02 ownership scope).
+     * A principal only sees the shares it minted on that session — never another
+     * tenant's shares. `created_by` is bound as an Exposed parameter (T-03-14).
+     */
+    fun listForSession(
+        sessionId: String,
+        createdBy: String,
+    ): List<ShareToken> =
+        transaction(db) {
+            SharesTable
+                .selectAll()
+                .where { (SharesTable.sessionId eq sessionId) and (SharesTable.createdBy eq createdBy) }
+                .orderBy(SharesTable.createdAt)
+                .map { it.toShareToken() }
         }
 
     /**
@@ -186,7 +192,44 @@ class ShareService(
         return removed > 0
     }
 
+    /**
+     * Revoke a share scoped to [sessionId], [token] AND [createdBy] (CR-02): a
+     * non-creator delete matches no row and is a no-op (false → 404), so a
+     * principal can only revoke a share it minted. `created_by` is bound as an
+     * Exposed parameter (T-03-14).
+     */
+    fun revoke(
+        sessionId: String,
+        token: String,
+        createdBy: String,
+    ): Boolean {
+        val removed =
+            transaction(db) {
+                SharesTable.deleteWhere {
+                    (SharesTable.sessionId eq sessionId) and
+                        (SharesTable.token eq token) and
+                        (SharesTable.createdBy eq createdBy)
+                }
+            }
+        if (removed > 0) logger.info("Revoked share {} for session {} by {}", token, sessionId, createdBy)
+        return removed > 0
+    }
+
     companion object {
         const val PERMISSION_READ_ONLY = "READ_ONLY"
     }
 }
+
+/** Map a [SharesTable] result row to a [ShareToken]. */
+@OptIn(ExperimentalTime::class)
+private fun org.jetbrains.exposed.v1.core.ResultRow.toShareToken(): ShareToken =
+    ShareToken(
+        token = this[SharesTable.token],
+        sessionId = this[SharesTable.sessionId],
+        createdBy = this[SharesTable.createdBy],
+        createdAt = this[SharesTable.createdAt],
+        expiresAt = this[SharesTable.expiresAt],
+        permission = this[SharesTable.permission],
+        accessCount = this[SharesTable.accessCount],
+        lastAccessedAt = this[SharesTable.lastAccessedAt],
+    )

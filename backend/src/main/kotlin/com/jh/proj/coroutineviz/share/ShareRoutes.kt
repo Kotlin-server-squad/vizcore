@@ -1,7 +1,9 @@
 package com.jh.proj.coroutineviz.share
 
 import com.jh.proj.coroutineviz.auth.ApiKeyPrincipal
+import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.UserPrincipal
+import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.currentPrincipal
 import com.jh.proj.coroutineviz.routes.CoroutineNodeDto
 import com.jh.proj.coroutineviz.routes.SessionSnapshotResponse
@@ -35,6 +37,14 @@ private fun ApplicationCall.shareCreatorId(): String =
     }
 
 /**
+ * The active tenant-scoped backing store, if persistence is on AND the store
+ * implements [TenantScopedSessionStore]; null in memory / auth-off mode (where
+ * ownership is enforced by the recorded `created_by` only, D-04b).
+ */
+private fun tenantScopedStore(): TenantScopedSessionStore? =
+    SessionManager.backingStore() as? TenantScopedSessionStore
+
+/**
  * Owner (authenticated) share-management routes. Registered INSIDE
  * `authenticatedApi { }` by Routing.kt so mint/list/revoke require a credential
  * when auth is on (T-03-16).
@@ -56,8 +66,19 @@ fun Route.registerShareOwnerRoutes(
                 return@post
             }
 
-        // 404 if the session does not exist (owner cannot share a phantom session).
-        if (SessionManager.getSession(sessionId) == null) {
+        // Ownership-checked existence (CR-02 / D-03): when the tenant-scoped store is
+        // active, the caller may only mint a share on a session it owns — a
+        // cross-tenant (or absent) id resolves to null → 404, indistinguishable so it
+        // never leaks another tenant's session. In memory / auth-off mode (store
+        // null) fall back to the unscoped existence check (D-04b global visibility).
+        val scopedStore = tenantScopedStore()
+        val ownsSession =
+            if (scopedStore != null) {
+                scopedStore.getSession(sessionId, call.resolveTenant()) != null
+            } else {
+                SessionManager.getSession(sessionId) != null
+            }
+        if (!ownsSession) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@post
         }
@@ -92,8 +113,10 @@ fun Route.registerShareOwnerRoutes(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing session ID"))
                 return@get
             }
+        // Owner-scoped list (CR-02): a principal only sees the shares it minted on
+        // this session — never another tenant's shares.
         val summaries =
-            service.listForSession(sessionId).map { s ->
+            service.listForSession(sessionId, call.shareCreatorId()).map { s ->
                 ShareSummary(
                     token = s.token,
                     expiresAt = s.expiresAt?.toString(),
@@ -115,7 +138,8 @@ fun Route.registerShareOwnerRoutes(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing token"))
                 return@delete
             }
-        if (service.revoke(sessionId, token)) {
+        // Owner-scoped revoke (CR-02): a non-creator delete matches no row → 404.
+        if (service.revoke(sessionId, token, call.shareCreatorId())) {
             call.respond(HttpStatusCode.NoContent)
         } else {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Share link not found"))
