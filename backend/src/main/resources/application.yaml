@@ -6,7 +6,22 @@ ktor:
     port: ${PORT:8080}
 
 auth:
+  # Legacy single-key var (back-compat). Empty = no legacy key. Prefer auth.keys below.
   apiKey: ${API_KEY:}  # Empty = auth disabled
+  # SHA-256-hashed API keys (AUTH-02). Each entry: {name, hash (hex), role}. Empty list = no api-key auth.
+  # Hashes are env-interpolated; never store plaintext keys. role ∈ {viewer, runner, admin}.
+  keys: []
+  # Config-seeded users (AUTH-03, D-01). Each entry: {username, passwordHash (Argon2id), role}.
+  # passwordHash is env-interpolated; pre-computed via Password.hash(plain).withArgon2().result. No registration/CRUD.
+  users: []
+  jwt:
+    secret: ${JWT_SECRET:}            # HMAC256 dev secret. Empty + no PEM paths = jwt provider inert.
+    issuer: ${JWT_ISSUER:coroutineviz}
+    audience: ${JWT_AUDIENCE:coroutineviz-api}
+    realm: ${JWT_REALM:coroutineviz}
+    accessTtlMinutes: ${JWT_ACCESS_TTL_MINUTES:60}
+    privateKeyPath: ${JWT_PRIVATE_KEY_PATH:}   # RS256 prod signing key (PEM). Unset = HMAC (dev).
+    publicKeyPath: ${JWT_PUBLIC_KEY_PATH:}     # RS256 prod verify key (PEM). Unset = HMAC (dev).
 
 cors:
   allowedOrigins: ${CORS_ALLOWED_ORIGINS:"http://localhost:3000,http://127.0.0.1:3000"}

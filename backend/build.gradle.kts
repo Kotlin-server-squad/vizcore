@@ -30,6 +30,10 @@ dependencies {
     implementation("org.openfolder:kotlin-asyncapi-ktor:3.1.3")
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-auth")
+    // JWT auth (AUTH-03) — version from the Ktor BOM (io.ktor.plugin) so it tracks ktor-server-auth.
+    implementation("io.ktor:ktor-server-auth-jwt")
+    // Argon2id password verification for the token endpoint (AUTH-03, D-02). Maven Central, vetted.
+    implementation("com.password4j:password4j:1.8.2")
     implementation("io.ktor:ktor-server-compression")
     implementation("io.ktor:ktor-server-cors")
     implementation("io.ktor:ktor-server-swagger")
