@@ -128,7 +128,7 @@ Plans:
 
 **Wave 1** *(persistence seam + migrations — foundation for everything else)*
 
-- [ ] 03-01-PLAN.md — Optional Exposed/HikariCP JDBC store behind the existing seam + Flyway V1 schema (sessions/events/shares) + restart-survival (PERS-01, PERS-02)
+- [x] 03-01-PLAN.md — Optional Exposed/HikariCP JDBC store behind the existing seam + Flyway V1 schema (sessions/events/shares) + restart-survival (PERS-01, PERS-02)
 
 **Wave 2** *(auth backend — depends on 03-01: shares build.gradle/yaml/Application.kt)*
 
@@ -185,6 +185,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation & Production Readiness | 15/15 | Complete    | 2026-06-12 |
 | 2. User-Value Visualization | 8/8 | Complete    | 2026-06-20 |
-| 3. Persistence, Auth & Sharing | 0/6 | Not started | - |
+| 3. Persistence, Auth & Sharing | 1/6 | In Progress|  |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Not started | - |

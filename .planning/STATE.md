@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-06-21T06:15:02.919Z"
-last_activity: 2026-06-21 -- Phase 03 planning complete
+last_updated: "2026-06-21T07:57:40.532Z"
+last_activity: 2026-06-21 -- Phase 03 execution started
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 23
-  completed_plans: 23
+  total_plans: 29
+  completed_plans: 24
   percent: 40
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-11)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Phase 03 — persistence, auth & sharing
+**Current focus:** Phase 03 — persistence-auth-sharing
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
+Phase: 03 (persistence-auth-sharing) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-06-21 -- Phase 03 planning complete
+Last activity: 2026-06-21 -- Phase 03 execution started
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
 
@@ -71,6 +71,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 02 P06 | ~14 min | 2 tasks | 7 files |
 | Phase 02 P07 | ~16 min | 3 tasks | 7 files |
 | Phase 02 P08 | ~20 min | 2 tasks | 7 files |
+| Phase 03 P01 | ~40min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,7 @@ Recent decisions affecting current work:
 - [Phase 2, Plan 07]: RPLY-01/02/03 complete — replay mounted in SessionDetails as a frozen-snapshot time-travel view (useReplay over an entry snapshot; panelEvents/panelCoroutines switch to projected visibleEvents). SSE invalidation gated via a replayActive ref so the EventSource stays open and events buffer for the clickable "N new events" badge, with exactly one flush on exit (D-04); both useEventStream and the local debounced refetch gated. Phase-1 dedup/backoff/max-wait untouched. Recording-state slot is props-driven for 02-08. Closeout (SUMMARY+tracking) done by a continuation agent after an executor API socket drop — no work lost, no new feat commits.
 - [Phase 2, Plan 08]: EXPT-02 WebM tier complete — pure record-replay.ts pipeline (pickMimeType vp9→vp8→webm cascade/D-25, estimateDurationMs 50–2000ms clamp÷speed/D-26, createReplayRecorder 2x mirror-canvas + captureStream(0)+requestFrame/D-27) + useRecordReplay scripted glue (enter replay→seek0→record→auto-stop at last event→download .webm, >120s confirm modal/D-26, visibilitychange→hidden abort/D-24, controller Stop discard/D-23) + RecordConfirmModal + SessionDetails wiring (ExportMenu onRecord→startRecording, ReplayController recording props). record-replay.ts stop() now resolves the .webm filename so the success toast shows the real name. Real-codec validation deferred to Phase 5 Playwright per VALIDATION.md. Continuation closeout: Task 1 (cd8fc20) committed by prior executor before an API socket drop; this agent finished Task 2 (236c255) + wrote SUMMARY/tracking — no Task 1 re-commit.
 - [Phase 2, Plan 06]: CMPR-02 complete — /compare?a=&b= route (validateSearch normalizes/drops blank ids, T-02-10) drives controlled ComparisonView selection (shareable URL, D-10); SyncedTreePair renders its own clickable tree nodes (not CoroutineTree) for selection rings + delta badges, counterpart match by label then coroutineId (D-19/D-20); session-not-found EmptyState on 404 (D-12). Route component uses useSearch({strict:false}) so it mounts under a standalone test router (file-route re-parent duplicates __root__).
+- [Phase ?]: [Phase 3, Plan 01]: Persistence behind storage.type=database via SessionManager.useStore() facade + VizSession injectable eventStoreFactory (default in-memory); coroutine-viz-core stays DB-free. Payload as portable CLOB (de)serialized with the SSE PolymorphicSerializer; JSONB/GIN deferred. Exposed 1.3.0 needs top-level v1.core.{eq,greater,and}; H2 needs CASE_INSENSITIVE_IDENTIFIERS=TRUE to match Exposed's quoted lowercase columns.
 
 ### Pending Todos
 
@@ -138,6 +140,6 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-20T19:07:07.186Z
+Last session: 2026-06-21T07:57:14.965Z
 Stopped at: Phase 3 UI-SPEC approved
 Resume file: .planning/phases/03-persistence-auth-sharing/03-UI-SPEC.md

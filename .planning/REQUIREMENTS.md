@@ -45,8 +45,8 @@ Remaining-scope requirements for the current milestone. Each maps to exactly one
 
 ### Persistence & Data
 
-- [ ] **PERS-01**: An optional JDBC store (Exposed + HikariCP, H2 dev / PostgreSQL prod) implements the `SessionStoreInterface`/`EventStoreInterface` seam, selectable via `storage.type=database`.
-- [ ] **PERS-02**: Sessions and events survive a backend restart when database storage is enabled (Flyway-migrated schema, events stored as JSONB).
+- [x] **PERS-01**: An optional JDBC store (Exposed + HikariCP, H2 dev / PostgreSQL prod) implements the `SessionStoreInterface`/`EventStoreInterface` seam, selectable via `storage.type=database`.
+- [x] **PERS-02**: Sessions and events survive a backend restart when database storage is enabled (Flyway-migrated schema, events stored as JSONB).
 - [ ] **PERS-03**: A retention policy (max-age TTL + max-events trim) runs as a background process when persistence is enabled.
 
 ### Authentication & Multi-tenancy
@@ -156,8 +156,8 @@ Preserved verbatim per ingest gate. BUSINESS_ANALYSIS_V2 (PRD-A) is the **workin
 | EXPT-02 | Phase 2 | Complete |
 | CMPR-01 | Phase 2 | Complete (P01) |
 | CMPR-02 | Phase 2 | Complete (P06) |
-| PERS-01 | Phase 3 | Pending |
-| PERS-02 | Phase 3 | Pending |
+| PERS-01 | Phase 3 | Complete |
+| PERS-02 | Phase 3 | Complete |
 | PERS-03 | Phase 3 | Pending |
 | AUTH-01 | Phase 3 | Pending |
 | AUTH-02 | Phase 3 | Pending |
