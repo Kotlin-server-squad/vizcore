@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
+status: executing
 stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-06-21T12:07:11.567Z"
-last_activity: "2026-06-21 -- Phase 3 verification: gaps found (AUTH-04)"
+last_updated: "2026-06-21T13:40:00.000Z"
+last_activity: 2026-06-21 -- Completed 03-07 tenant-isolation gap-closure (CR-01/CR-02/AUTH-05)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 29
+  total_plans: 30
   completed_plans: 29
-  percent: 60
+  percent: 40
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 
 ## Current Position
 
-Phase: 03 (persistence-auth-sharing) — GAPS FOUND (pending gap-closure)
-Plan: 6 of 6 executed
-Status: All 6 plans executed + tests green, BUT phase verification = gaps_found (7/10). AUTH-04 tenant isolation NOT enforced on session sub-resource routes (CR-01) and share owner routes lack ownership checks (CR-02). See 03-VERIFICATION.md / 03-REVIEW.md. Next: /gsd-plan-phase 3 --gaps
-Last activity: 2026-06-21 -- Phase 3 verification: gaps found (AUTH-04)
+Phase: 03 (persistence-auth-sharing) — EXECUTING
+Plan: 7 of 7 (gap-closure 03-07 complete)
+Status: Executing Phase 03
+Last activity: 2026-06-21 -- Completed 03-07-PLAN.md (tenant isolation CR-01/CR-02/AUTH-05)
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
 
@@ -77,6 +77,7 @@ Progress: [████░░░░░░] 40% (remaining-scope milestone; produ
 | Phase 03 P04 | 30min | 2 tasks | 11 files |
 | Phase 03 P05 | ~8min | 2 tasks | 10 files |
 | Phase 03 P06 | ~12min | 2 tasks | 10 files |
+| Phase 03 P07 | ~25min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,7 @@ Recent decisions affecting current work:
 - [Phase 3, Plan 05]: Frontend auth loop (AUTH-03) at the single api-client choke point — fetchJson attaches Authorization: Bearer only when getToken() is non-null (no header when auth off, D-07/D-08); a 401 calls clearToken()+navigateToLogin() then rethrows (D-05); createEventSource appends ?token= (locked SSE contract) when a token exists. auth-store = localStorage `vizcore.jwt` + in-memory source of truth rehydrated at module init (D-06). Router-navigate indirection (lib/navigation.ts registerNavigator/navigateToLogin, wired to router.navigate in main.tsx) keeps the api-client testable + avoids a circular router import. login() is a dedicated method (NOT fetchJson) so the token-endpoint 401 = wrong-creds (typed LoginAuthError) never fires the global interception. /login route is OUTSIDE Layout with exact UI-SPEC copy; redirect-back via ?redirect= search param (default /). Share methods (createShare/listShares/revokeShare/getSharedSession) + types/share.ts DTOs added now so Plan 06 needn't re-open the client; getSharedSession returns a typed SharedSessionResult (ok|expired|not-found|rate-limited) for the 200/410/404/429 matrix and attaches no Bearer (the share token is the credential).
 - [Phase 3, Plan 03]: Tenancy (AUTH-04/D-03) via a backend-only TenantScopedSessionStore interface (the core SessionStoreInterface is untouched, SDK stays DB/auth-free). TenantContext sealed: Scoped(tenantId)|Admin|Unscoped; resolve(principal) → UserPrincipal.userId / ApiKeyPrincipal.name / ADMIN-bypass / null→Unscoped (auth-off global, D-04b). Filter lives in the store as tenantPredicate(): Op<Boolean> (tenant_id eq for Scoped, Op.TRUE for Admin/Unscoped) on every read/delete; Scoped creation stamps tenant_id (null for Unscoped/global → not visible to scoped tenants). Routes narrow SessionManager.backingStore() and fall back to unscoped SessionManager in memory mode. DbRetentionPolicy (PERS-03, sibling to in-memory RetentionPolicy, ADR-015 30d/100000/60min): max-age DELETE guarded by NOT EXISTS active-share subquery (expires_at IS NULL = never-expires = always active; Pitfall 6/ADR-019) + per-session event-trim by seq watermark; wired in Application.module only when storage.type=database, app-scope launch (no global scope), stop on ApplicationStopping.
 - [Phase ?]: Sharing UI reuses SessionDetails behind a readOnly prop via React Query cache-seeding (no fork, D-10); /shared/$token is a standalone shell with no Layout chrome
+- [Phase 3, Plan 07]: Tenant-isolation gap-closure (CR-01/CR-02/AUTH-05). All five session sub-resource/SSE handlers now route through a shared `ApplicationCall.resolveScopedSession` helper (store!=null → getSession(id, resolveTenant()) → cross-tenant 404; else SessionManager.getSession D-04b fallback); SSE resolves PRE-stream (before connected frame/gauge/bus subscribe/replay) so a cross-tenant caller never opens a stream nor replays. Share routes enforce ownership: mint verifies session ownership via the scoped store (404 for non-owner), list/revoke use new `created_by`-scoped ShareService overloads (existing unscoped signatures kept for the public read path + ShareRoutesTest). New TenantIsolationE2ETest guards the invariant over the REAL routes + JWT auth (jwt provider mirrors Auth.kt incl. ?token= SSE fallback). Known limitation logged to deferred-items: a DB-rebuilt VizSession does NOT replay stored events into projectionService, so /timeline 404s even for the owner (hierarchy/threads return empty 200) — out of scope; isolation still proven via /events + SSE replay.
 
 ### Pending Todos
 

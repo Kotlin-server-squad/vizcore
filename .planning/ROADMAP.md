@@ -149,7 +149,7 @@ Plans:
 
 **Wave 6** *(gap closure — tenant-isolation fixes from 03-VERIFICATION; depends on the executed 03-01..03-06)*
 
-- [ ] 03-07-PLAN.md — Enforce tenant scope on session sub-resources + SSE stream (CR-01), share-owner ownership on mint/list/revoke (CR-02), and e2e tests guarding the isolation invariant (AUTH-04, AUTH-05)
+- [x] 03-07-PLAN.md — Enforce tenant scope on session sub-resources + SSE stream (CR-01), share-owner ownership on mint/list/revoke (CR-02), and e2e tests guarding the isolation invariant (AUTH-04, AUTH-05)
 
 **UI hint**: yes
 
