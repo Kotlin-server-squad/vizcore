@@ -1,6 +1,19 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Card, CardBody, CardHeader, Chip, Tabs, Tab, Spinner, Button } from '@heroui/react'
-import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiRotateCcw, FiTrash2 } from 'react-icons/fi'
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Chip,
+  Tabs,
+  Tab,
+  Spinner,
+  Button,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+} from '@heroui/react'
+import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiRotateCcw, FiTrash2, FiShare2 } from 'react-icons/fi'
 import { useSession, useSessionEvents, useDeleteSession } from '@/hooks/use-sessions'
 import { useEventStream } from '@/hooks/use-event-stream'
 import { useRunScenario } from '@/hooks/use-scenarios'
@@ -24,6 +37,7 @@ import { ReplayController } from './replay/ReplayController'
 import { LiveDataNotice } from './replay/LiveDataNotice'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
 import { ExportMenu } from './export/ExportMenu'
+import { ManageShares } from './share/ManageShares'
 import { useRecordReplay } from '@/hooks/use-record-replay'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
@@ -78,6 +92,9 @@ export function SessionDetails({
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
+  // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
+  // the read-only shared view (ADR-019: no re-sharing from a shared link).
+  const [sharesOpen, setSharesOpen] = useState(false)
   // Replay mode (D-01): when active, panels render from the frozen snapshot's
   // replay cursor instead of the live/stored events. The snapshot is captured
   // at replay entry so live SSE events do not mutate the frozen view (D-02).
@@ -482,6 +499,20 @@ export function SessionDetails({
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Share / Manage-shares trigger (D-11/D-13) — owner only, gated
+                  OFF in the read-only shared view so a shared link can never
+                  re-share (ADR-019, T-03-22). */}
+              {!readOnly && (
+                <Button
+                  size="sm"
+                  variant="bordered"
+                  startContent={<FiShare2 />}
+                  onPress={() => setSharesOpen(true)}
+                >
+                  Share
+                </Button>
+              )}
+
               {/* Export menu (ADR-018 / EXPT-01/02 / D-22). */}
               <ExportMenu
                 getPanelEl={() => panelRef.current}
@@ -528,6 +559,19 @@ export function SessionDetails({
             onStopRecording={recordReplay.stopRecording}
           />
         </div>
+      )}
+
+      {/* Manage-shares modal (D-11/D-13) — owner-only; never mounted in the
+          read-only shared view (the trigger is gated off there). */}
+      {!readOnly && (
+        <Modal isOpen={sharesOpen} onOpenChange={setSharesOpen} size="lg">
+          <ModalContent>
+            <ModalHeader>Manage shares</ModalHeader>
+            <ModalBody className="pb-6">
+              <ManageShares sessionId={sessionId} />
+            </ModalBody>
+          </ModalContent>
+        </Modal>
       )}
 
       {/* D-26 long-recording confirm (>120s estimate). */}
