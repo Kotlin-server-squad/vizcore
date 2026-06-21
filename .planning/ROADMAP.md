@@ -123,7 +123,7 @@ Plans:
   2. With `API_KEY` set, requests without a valid (SHA-256-compared) `X-API-Key` are rejected while `/health`, `/openapi.json`, and the token endpoint stay open; JWT issues role-bearing principals; sessions are tenant-isolated — all covered by end-to-end tests.
   3. A developer can mint a revocable, expiring share token and anyone with that token can open a rate-limited, read-only shared view.
 
-**Plans**: 6 plans (5 waves)
+**Plans**: 7 plans (6 waves)
 Plans:
 
 **Wave 1** *(persistence seam + migrations — foundation for everything else)*
@@ -146,6 +146,10 @@ Plans:
 **Wave 5** *(frontend sharing UI — depends on 03-04 + 03-05 api-client)*
 
 - [x] 03-06-PLAN.md — readOnly SessionDetails + /shared/:token shell + Share dialog + Manage-shares list (SHAR-01, SHAR-02; D-09/10/11/13)
+
+**Wave 6** *(gap closure — tenant-isolation fixes from 03-VERIFICATION; depends on the executed 03-01..03-06)*
+
+- [ ] 03-07-PLAN.md — Enforce tenant scope on session sub-resources + SSE stream (CR-01), share-owner ownership on mint/list/revoke (CR-02), and e2e tests guarding the isolation invariant (AUTH-04, AUTH-05)
 
 **UI hint**: yes
 
