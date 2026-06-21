@@ -23,6 +23,9 @@ A developer can SEE and UNDERSTAND coroutine, Flow, and structured-concurrency e
 - ✓ Animation system — framer-motion variants, state colors, replay-aware motion, viewport throttling (ADR-011, 024-027)
 - ✓ Core library extraction — `coroutine-viz-core` module (~11,045 LoC) separated from Ktor app (ADR-013)
 - ✓ Monorepo + CI/CD + shared OpenAPI types + Docker (ADR-001, 002, 004, 005, 023)
+- ✓ Persistence — optional JDBC/Exposed store (H2 dev / PostgreSQL prod), DB-aware retention policy, sessions survive restart (PERS-01/02/03, ADR-015). Validated in Phase 3: Persistence, Auth & Sharing.
+- ✓ Authentication & multi-tenancy — dual-provider auth (SHA-256 API keys + seeded-user JWT) enforced on non-public routes, fail-open when unconfigured, tenant-isolated session reads + ownership-enforced share routes (AUTH-01..05, ADR-016, D-03/D-04). Validated in Phase 3: Persistence, Auth & Sharing.
+- ✓ Sharing — revocable, expiring, rate-limited read-only share tokens + standalone `/shared/:token` view (SHAR-01/02, ADR-019). Validated in Phase 3: Persistence, Auth & Sharing.
 
 ### Active
 
@@ -31,9 +34,7 @@ A developer can SEE and UNDERSTAND coroutine, Flow, and structured-concurrency e
 - [ ] Production hardening — health endpoints, dev/prod logging profiles, config-driven CORS, OpenAPI polish, bounded event store wired into the running server, full Micrometer metrics (CON-production-readiness, ADR-020)
 - [ ] Structural consolidation — remove the duplicated `com.jh.proj.coroutineviz.session.*` fork in `backend/src/main/` so the stronger `coroutine-viz-core` versions run (root cause of the bounded-store and perf gaps)
 - [ ] Replay & time-travel — client-side replay controller, speed selector, step-through, scrubber (REQ-core-visualization replay; ADR-017)
-- [ ] Export & sharing — PNG/SVG/WebM export; share tokens + read-only shared views (REQ-export-and-sharing; ADR-018, ADR-019)
-- [ ] Persistence — optional JDBC/Exposed store (H2 dev / PostgreSQL prod), retention policy, sessions survive restart (ADR-015; unblocks sharing persistence)
-- [ ] Authentication & multi-tenancy — wire `authenticatedApi()` onto routes, API-key hashing, JWT, tenant isolation (ADR-016)
+- [ ] Export — PNG/SVG/WebM export of visualizations (REQ-export-and-sharing export half; ADR-018). Sharing half validated in Phase 3.
 - [ ] Performance & scaling — sampling, batching, SSE compression header, load-test harness (ADR-020)
 - [ ] Session comparison — `ComparisonService` + compare endpoint + side-by-side UI (CON-session-comparison)
 - [ ] SDK distribution — publish `coroutine-viz-core`, CLI tool, Gradle task wrapper (REQ-core-visualization SDK; ADR-021)
@@ -109,4 +110,4 @@ A developer can SEE and UNDERSTAND coroutine, Flow, and structured-concurrency e
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-11 after brownfield ingest + codebase audit*
+*Last updated: 2026-06-21 — Phase 3 (Persistence, Auth & Sharing) complete: optional JDBC persistence, route-level auth with tenant isolation, and revocable read-only share links validated.*
