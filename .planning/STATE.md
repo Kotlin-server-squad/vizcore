@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 
 Phase: 4
 Plan: Not started
-Status: Executing Phase 03
-Last activity: 2026-06-21
+Status: Phase 03 complete & verified; ready for Phase 4
+Last activity: 2026-06-21 - Completed quick task 260621-rgi: fix quoted DB_URL default (database mode boots)
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
 
@@ -140,6 +140,12 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 3. **Perf-scaling (ADR-020) not wired** — bounded EventStore/EventSampler/RetentionPolicy exist in core but are unused by the backend; only 2 of 7 Micrometer gauges present. (Phase 1 / PROD-05, FND-02; sampling/batching: Phase 4)
 4. **Auth (ADR-016) effectively off** — `Auth.kt` + `authenticatedApi()` exist but `Routing.kt` registers all routes without auth; every endpoint open. Write enforcement tests BEFORE wrapping routes. (Phase 3 / AUTH-*)
 5. **IntelliJ plugin (ADR-010)** mostly built but `RunWithVisualizerAction.actionPerformed` is a TODO stub (javaagent launch missing); zero plugin tests. (Phase 5 / IDE-*)
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260621-rgi | Fix quoted DB_URL default in application.yaml so STORAGE_TYPE=database boots | 2026-06-21 | a23496c | [260621-rgi-fix-quoted-db-url-default-in-application](./quick/260621-rgi-fix-quoted-db-url-default-in-application/) |
 
 ## Deferred Items
 
