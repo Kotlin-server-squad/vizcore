@@ -141,7 +141,7 @@ Plans:
 
 **Wave 4** *(frontend auth — depends on 03-02)*
 
-- [ ] 03-05-PLAN.md — auth-store + api-client Bearer/401 interception + token-aware SSE + /login route (AUTH-03; D-05/06/07/08)
+- [x] 03-05-PLAN.md — auth-store + api-client Bearer/401 interception + token-aware SSE + /login route (AUTH-03; D-05/06/07/08)
 
 **Wave 5** *(frontend sharing UI — depends on 03-04 + 03-05 api-client)*
 
@@ -185,6 +185,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation & Production Readiness | 15/15 | Complete    | 2026-06-12 |
 | 2. User-Value Visualization | 8/8 | Complete    | 2026-06-20 |
-| 3. Persistence, Auth & Sharing | 4/6 | In Progress|  |
+| 3. Persistence, Auth & Sharing | 5/6 | In Progress|  |
 | 4. Scale, Observability & SDK | 0/TBD | Not started | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Not started | - |
