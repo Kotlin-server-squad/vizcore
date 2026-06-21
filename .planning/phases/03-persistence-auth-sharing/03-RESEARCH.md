@@ -476,22 +476,25 @@ function SharedView() {
 | A6 | Argon2id (password4j) is the KDF over bcrypt | Pattern 6 | Both are vetted; if deploy constraints forbid Argon2 memory cost, bcrypt is the documented fallback |
 | A7 | Ktor `RateLimit` + `XForwardedHeaders` correctly yields per-client IP behind the project's Docker/proxy setup | Pattern 9 | Without XForwarded handling all shared viewers share one bucket; deploy-config concern, easily corrected |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Refresh-token persistence scope**
    - What we know: ADR-016 wants 7-day server-side refresh tokens.
    - What's unclear: whether refresh tokens must survive restart this phase (would need a `refresh_tokens` table) or an in-memory map is acceptable.
    - Recommendation: in-memory map this phase (config-seeded users, low volume); add a table later if needed. Confirm with planner/user.
+   - RESOLVED: in-memory this phase (Plan 03-02 — JwtConfig refresh-token map; `refresh_tokens` table deferred).
 
 2. **RS256 key provisioning for prod**
    - What we know: HMAC dev / RS256 prod per ADR-016.
    - What's unclear: where prod RS256 keys come from (mounted PEM files? env?).
    - Recommendation: load PEM path from config (`auth.jwt.privateKeyPath`/`publicKeyPath`); default to HMAC secret when unset (dev). Flag as deploy config.
+   - RESOLVED: config PEM path with HMAC dev fallback (Plan 03-02 — `auth.jwt.privateKeyPath`/`publicKeyPath`, defaults to HMAC `secret` when unset; PostgreSQL/RS256 prod verification captured under VALIDATION.md Manual-Only).
 
 3. **Per-session vs shared `ExposedEventStore`**
    - What we know: `EventStoreInterface` is per-`VizSession` today (each session owns an `EventStore`).
    - What's unclear: whether to keep that 1:1 model (construct `ExposedEventStore(sessionId)` per session) or introduce a single shared store scoping by sessionId.
    - Recommendation: keep the per-session model to minimize blast radius on `VizSession`; the Exposed store just scopes queries by its `sessionId`.
+   - RESOLVED: per-session, 1:1 with the in-memory store (Plan 03-01 Task 2 — `ExposedEventStore(sessionId)` constructed per `VizSession`, scopes queries by its own `sessionId`).
 
 ## Environment Availability
 
