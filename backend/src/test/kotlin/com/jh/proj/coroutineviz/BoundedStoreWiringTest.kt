@@ -81,7 +81,7 @@ class BoundedStoreWiringTest {
         // Append more events than the cap
         val moreThanMax = testMaxEvents + 5
         repeat(moreThanMax) { i ->
-            session.store.append(
+            session.store.record(
                 com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated(
                     sessionId = session.sessionId,
                     seq = i.toLong(),

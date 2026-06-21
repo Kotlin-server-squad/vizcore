@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz
 
+import com.jh.proj.coroutineviz.session.EventStore
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Gauge
@@ -60,8 +61,10 @@ fun wireMetrics(registry: PrometheusMeterRegistry) {
         // events.emitted: increment each time send() successfully completes
         session.onEventEmitted = { eventsEmittedCounter.increment() }
 
-        // events.dropped: increment each time EventStore evicts an event
-        session.store.onEvict = { eventsDroppedCounter.increment() }
+        // events.dropped: increment each time the bounded in-memory EventStore
+        // evicts an event. Eviction is an in-memory-store concern only; the
+        // DB-backed store has no capacity bound, so this is a no-op there.
+        (session.store as? EventStore)?.onEvict = { eventsDroppedCounter.increment() }
 
         // events.buffer.size: per-session gauge tagged by sessionId
         val bufferGauge =

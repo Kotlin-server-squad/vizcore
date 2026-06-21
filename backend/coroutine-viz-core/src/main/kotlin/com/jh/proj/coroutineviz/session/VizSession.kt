@@ -43,13 +43,21 @@ class VizSession(
     val sessionId: String,
     maxEvents: Int = 100_000,
     val createdAtMs: Long = System.currentTimeMillis(),
+    /**
+     * Event-store factory seam. Defaults to the in-memory bounded [EventStore]
+     * so the SDK default is byte-for-byte unchanged (D-04a). The persistence
+     * layer (`:backend`) injects a factory that returns a DB-backed
+     * `EventStoreInterface` scoped to this session — without adding any DB
+     * dependency to coroutine-viz-core (SDK purity preserved).
+     */
+    eventStoreFactory: (sessionId: String) -> EventStoreInterface = { EventStore(maxEvents) },
 ) {
     // Session-scoped coroutine scope for async operations
     val sessionScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     val eventBus = EventBus()
     val bus = eventBus // Alias for backwards compatibility
-    val store = EventStore(maxEvents)
+    val store: EventStoreInterface = eventStoreFactory(sessionId)
     val snapshot = RuntimeSnapshot()
     val jobMonitor = JobStatusMonitor(session = this, 100)
 
@@ -118,7 +126,7 @@ class VizSession(
                 event.seq = seqGenerator.incrementAndGet()
             }
             lastSentSeq = event.seq
-            store.append(event)
+            store.record(event)
             applier.apply(event)
             eventBus.send(event)
         }
