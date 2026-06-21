@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 3 UI-SPEC approved
+status: gaps_found
+stopped_at: Phase 3 verification — gaps found (AUTH-04 tenant isolation not enforced)
 last_updated: "2026-06-21T09:15:11.987Z"
-last_activity: 2026-06-21 -- Completed 03-05 (AUTH-03 frontend auth loop)
+last_activity: 2026-06-21 -- Phase 3 executed (6/6 plans); verification GAPS FOUND (7/10) — AUTH-04
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 2
   total_plans: 29
   completed_plans: 29
   percent: 60
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-11)
 
 ## Current Position
 
-Phase: 03 (persistence-auth-sharing) — EXECUTING
-Plan: 6 of 6
-Status: 03-05 complete (frontend auth: Bearer/401/SSE token + /login); ready for 03-06 (sharing UI)
-Last activity: 2026-06-21 -- Completed 03-05 (AUTH-03 frontend auth loop)
+Phase: 03 (persistence-auth-sharing) — GAPS FOUND (pending gap-closure)
+Plan: 6 of 6 executed
+Status: All 6 plans executed + tests green, BUT phase verification = gaps_found (7/10). AUTH-04 tenant isolation NOT enforced on session sub-resource routes (CR-01) and share owner routes lack ownership checks (CR-02). See 03-VERIFICATION.md / 03-REVIEW.md. Next: /gsd-plan-phase 3 --gaps
+Last activity: 2026-06-21 -- Phase 3 verification: gaps found (AUTH-04)
 
 Progress: [████░░░░░░] 40% (remaining-scope milestone; product itself ~92% built)
 
