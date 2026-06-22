@@ -1,7 +1,7 @@
 val kotlin_version: String by project
 
 plugins {
-    kotlin("jvm") version "2.2.20"
+    kotlin("jvm") version "2.3.21"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
     id("maven-publish")
     id("jacoco")
