@@ -17,8 +17,10 @@ import com.jh.proj.coroutineviz.session.coroutineSuspended
 import com.jh.proj.coroutineviz.session.jobStateChanged
 import com.jh.proj.coroutineviz.session.waitingForChildren
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -36,6 +38,8 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * VizScope creates an independent coroutine hierarchy for visualization.
@@ -66,6 +70,12 @@ class VizScope(
     override val coroutineContext: CoroutineContext =
         session.sessionScope.coroutineContext + context +
             Job(session.sessionScope.coroutineContext[Job]) + CoroutineName("VizScope-$scopeId")
+
+    // B1 (F8): per-coroutine "terminal event emitted" signals + a parent->children index, so a
+    // parent's terminal event can be ordered AFTER all of its children's terminal events in the
+    // emitted stream (structured concurrency), even when children finish via cancel-based teardown.
+    private val terminalEmitted = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
+    private val childIndex = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
 
     /**
      * Launch a coroutine with visualization tracking while maintaining structured concurrency.
@@ -128,8 +138,21 @@ class VizScope(
         // Launch with the viz element in context
         // scopeDispatcher is applied first, then overridden by explicit context if provided
         val mergedContext = (scopeDispatcher ?: EmptyCoroutineContext) + context + vizElement
+
+        // B1: register this coroutine's terminal-emission signal and link it under its parent
+        // BEFORE it starts, so a parent can defer its own terminal event until every child has
+        // emitted its terminal (correct structured-concurrency ordering in the event stream).
+        val terminalSignal = CompletableDeferred<Unit>()
+        terminalEmitted[coroutineId] = terminalSignal
+        if (parentCoroutineId != null) {
+            childIndex.computeIfAbsent(parentCoroutineId) { CopyOnWriteArrayList() }.add(coroutineId)
+        }
+
+        // A: start LAZY so CoroutineCreated can be emitted at launch time (below) — before the
+        // child's first dispatch — guaranteeing it precedes the parent's BodyCompleted and that
+        // sibling Created events order by launch, not by whichever child dispatches first.
         val job =
-            targetScope.launch(mergedContext) {
+            targetScope.launch(mergedContext, start = CoroutineStart.LAZY) {
                 val currentJob = coroutineContext[Job] ?: throw IllegalArgumentException("Missing job")
                 // ✨ NEW: Register job for tracking
                 session.snapshot.registerJob(currentJob, coroutineId)
@@ -139,10 +162,8 @@ class VizScope(
 
                 // register currentJob with coroutineId
                 session.snapshot.registerJob(currentJob, coroutineId)
-                // ✅ EMIT: CoroutineCreated
-                session.send(ctx.coroutineCreated())
 
-                // ✅ EMIT: CoroutineStarted
+                // ✅ EMIT: CoroutineStarted (CoroutineCreated was emitted synchronously at launch)
                 session.send(ctx.coroutineStarted())
 
                 // EMIT: ThreadAssigned
@@ -171,75 +192,83 @@ class VizScope(
                 session.sent(ctx.coroutineBodyCompleted())
             }
 
-        // Register completion handler - this fires AFTER the job and all children complete
-        // This is crucial for detecting the FINAL state of the Job:
-        // 1. cause == null -> Normal completion
-        // 2. cause is CancellationException -> Cancelled (child failed, explicit cancellation, etc.)
-        // 3. cause is other Throwable -> Failed (but in practice, this is rare for jobs)
+        // A: emit CoroutineCreated synchronously at launch, before the job is dispatched, so it
+        // precedes the launching coroutine's BodyCompleted and orders by launch among siblings.
+        session.send(ctx.coroutineCreated())
+
+        // B1: emit this coroutine's terminal event only AFTER all of its children have emitted
+        // theirs. This fires AFTER the job and all children complete; cause classifies the outcome
+        // (null = completed, CancellationException = cancelled, else = failed).
+        //
+        // Fast path (the common case — children already finished, e.g. a joined child): emit
+        // synchronously here, preserving prior timing and the existing terminal-ordering guarantees.
+        // Racy path (a child's terminal event has not been emitted yet — e.g. cancel-based teardown
+        // of fire-and-forget children that outlive the parent body): defer to an awaiter on the
+        // session scope (NOT a tracked child) that waits for each child's terminal signal first, so
+        // the parent's terminal can never receive a lower seq than a child's.
         job.invokeOnCompletion { cause ->
-            // invokeOnCompletion is NOT a suspend function, but session.send() is also NOT suspend!
-            // We can call it directly without launching a coroutine
-            // Only emit terminal event if we haven't already emitted one
-            when {
-                cause == null -> {
-                    // Normal completion - body finished and all children completed successfully
-                    session.send(
-                        ctx.coroutineCompleted(),
-                    )
-                }
-
-                cause !is CancellationException -> {
-                    // Failure — coroutine threw a non-cancellation exception.
-                    // Previously the condition also checked cause.message.contains(ctx.label),
-                    // which was always false (the label is not in the exception message) and
-                    // caused this branch to be unreachable (FIX-03).
-                    //
-                    // Emit JobStateChanged BEFORE the terminal event so that CoroutineFailed
-                    // receives the higher seq (VizSession.send finalizes seq atomically with the
-                    // store append, so send order == seq order). This ensures the terminal event
-                    // is always the highest-seq event for this coroutineId, satisfying
-                    // NoEventsAfterTerminalRule.
-                    session.send(
-                        ctx.jobStateChanged(
-                            isActive = false,
-                            isCompleted = false,
-                            isCancelled = false,
-                            // The completed coroutine's own job — NOT the scope's context Job.
-                            // In this non-suspend lambda, a bare coroutineContext resolves to
-                            // this@VizScope.coroutineContext, which now carries the scope Job
-                            // and would count unrelated still-active coroutines.
-                            childrenCount = job.children.count(),
-                        ),
-                    )
-                    session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
-                }
-
-                else -> {
-                    // Cancellation — cause is CancellationException (explicit cancel, parent cancel,
-                    // or structured concurrency propagation from a failed child).
-                    //
-                    // Emit JobStateChanged BEFORE the terminal event so that CoroutineCancelled
-                    // receives the higher seq (VizSession.send finalizes seq atomically with the
-                    // store append, so send order == seq order). This ensures the terminal event
-                    // is always the highest-seq event for this coroutineId, satisfying
-                    // NoEventsAfterTerminalRule.
-                    session.send(
-                        ctx.jobStateChanged(
-                            isActive = false,
-                            isCompleted = false,
-                            isCancelled = true,
-                            // The completed coroutine's own job — NOT the scope's context Job.
-                            // In this non-suspend lambda, a bare coroutineContext resolves to
-                            // this@VizScope.coroutineContext, which now carries the scope Job
-                            // and would count unrelated still-active coroutines.
-                            childrenCount = job.children.count(),
-                        ),
-                    )
-                    session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
+            val children = childIndex[coroutineId].orEmpty()
+            if (children.all { terminalEmitted[it]?.isCompleted ?: true }) {
+                emitTerminalEvents(ctx, job, cause)
+                terminalSignal.complete(Unit)
+            } else {
+                session.sessionScope.launch {
+                    children.forEach { childId -> terminalEmitted[childId]?.await() }
+                    emitTerminalEvents(ctx, job, cause)
+                    terminalSignal.complete(Unit)
                 }
             }
         }
+
+        // Now that Created is emitted and the completion handler is registered, dispatch the body.
+        job.start()
         return job
+    }
+
+    /**
+     * Emit a coroutine's terminal lifecycle event from its completion handler. For Failed/Cancelled,
+     * JobStateChanged is sent BEFORE the terminal event so the terminal event receives the higher seq
+     * (VizSession.send finalizes seq atomically with the store append, so send order == seq order),
+     * keeping the terminal event the highest-seq event for this coroutineId (NoEventsAfterTerminalRule).
+     * childrenCount uses the completed coroutine's OWN job, not the scope's context Job.
+     */
+    private fun emitTerminalEvents(
+        ctx: EventContext,
+        job: Job,
+        cause: Throwable?,
+    ) {
+        when {
+            cause == null -> {
+                // Normal completion - body finished and all children completed successfully
+                session.send(ctx.coroutineCompleted())
+            }
+
+            cause !is CancellationException -> {
+                // Failure — coroutine threw a non-cancellation exception.
+                session.send(
+                    ctx.jobStateChanged(
+                        isActive = false,
+                        isCompleted = false,
+                        isCancelled = false,
+                        childrenCount = job.children.count(),
+                    ),
+                )
+                session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
+            }
+
+            else -> {
+                // Cancellation — explicit cancel, parent cancel, or propagation from a failed child.
+                session.send(
+                    ctx.jobStateChanged(
+                        isActive = false,
+                        isCompleted = false,
+                        isCancelled = true,
+                        childrenCount = job.children.count(),
+                    ),
+                )
+                session.send(ctx.coroutineCancelled(cause.message ?: "CancellationException"))
+            }
+        }
     }
 
     /**
