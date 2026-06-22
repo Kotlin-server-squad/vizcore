@@ -44,6 +44,12 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+// The dialog ignores the backend's absolute `url` (which carries the request
+// origin → :8080 in split-port dev, F3) and builds the link from the frontend
+// origin that actually serves /shared/:token. The mock `url` below is a DIFFERENT
+// host on purpose, so these assertions prove the override.
+const EXPECTED_URL = `${window.location.origin}/shared/tok-abc`
+
 describe('ShareDialog', () => {
   it('creates a link with the default expiry mapping and shows the URL', async () => {
     const user = userEvent.setup()
@@ -62,7 +68,7 @@ describe('ShareDialog', () => {
       expect(createShare).toHaveBeenCalledWith('sess-1', '7d')
     })
     expect(
-      await screen.findByDisplayValue('https://viz.example/shared/tok-abc'),
+      await screen.findByDisplayValue(EXPECTED_URL),
     ).toBeInTheDocument()
   })
 
@@ -78,12 +84,12 @@ describe('ShareDialog', () => {
     render(<ShareDialog isOpen sessionId="sess-1" onClose={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: 'Create link' }))
-    await screen.findByDisplayValue('https://viz.example/shared/tok-abc')
+    await screen.findByDisplayValue(EXPECTED_URL)
 
     await user.click(screen.getByRole('button', { name: 'Copy link' }))
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('https://viz.example/shared/tok-abc')
+      expect(writeText).toHaveBeenCalledWith(EXPECTED_URL)
       expect(toastSuccess).toHaveBeenCalledWith('Link copied')
     })
   })
@@ -100,14 +106,14 @@ describe('ShareDialog', () => {
 
     render(<ShareDialog isOpen sessionId="sess-1" onClose={vi.fn()} />)
     await user.click(screen.getByRole('button', { name: 'Create link' }))
-    await screen.findByDisplayValue('https://viz.example/shared/tok-abc')
+    await screen.findByDisplayValue(EXPECTED_URL)
 
     await user.click(screen.getByRole('button', { name: 'Copy link' }))
 
     await waitFor(() => expect(toastError).toHaveBeenCalled())
     // URL still shown for manual copy.
     expect(
-      screen.getByDisplayValue('https://viz.example/shared/tok-abc'),
+      screen.getByDisplayValue(EXPECTED_URL),
     ).toBeInTheDocument()
   })
 

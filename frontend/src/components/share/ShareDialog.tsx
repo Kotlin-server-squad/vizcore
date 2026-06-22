@@ -61,6 +61,16 @@ export function ShareDialog({ isOpen, sessionId, onClose }: ShareDialogProps) {
   const [created, setCreated] = useState<CreateShareResponse | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
+  // The recipient opens the link in a browser, so it must point at the FRONTEND
+  // origin that serves the /shared/:token SPA route — NOT the origin the
+  // api-client's request reached. In the documented split-port dev setup the
+  // backend derives its own origin (:8080) and returns http://localhost:8080/...,
+  // which 404s for the recipient (only :3000 serves /shared/:token). Build the
+  // link from where the app is actually served (F3).
+  const shareUrl = created
+    ? new URL(`/shared/${created.token}`, window.location.origin).toString()
+    : ''
+
   const handleCreate = async () => {
     setIsCreating(true)
     try {
@@ -76,7 +86,7 @@ export function ShareDialog({ isOpen, sessionId, onClose }: ShareDialogProps) {
   const handleCopy = async () => {
     if (!created) return
     try {
-      await navigator.clipboard.writeText(created.url)
+      await navigator.clipboard.writeText(shareUrl)
       toastSuccess(COPY.copySuccess)
     } catch {
       // Leave the URL field selectable for manual copy.
@@ -120,7 +130,7 @@ export function ShareDialog({ isOpen, sessionId, onClose }: ShareDialogProps) {
             <div className="flex flex-col gap-2">
               <Input
                 label={COPY.fieldLabel}
-                value={created.url}
+                value={shareUrl}
                 isReadOnly
                 onFocus={(e) => e.currentTarget.select()}
               />
