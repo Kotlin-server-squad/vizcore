@@ -1,9 +1,9 @@
 package com.jh.proj.coroutineviz.share
 
 import com.jh.proj.coroutineviz.auth.ApiKeyPrincipal
+import com.jh.proj.coroutineviz.auth.TenantContext
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.UserPrincipal
-import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.currentPrincipal
 import com.jh.proj.coroutineviz.routes.CoroutineNodeDto
 import com.jh.proj.coroutineviz.routes.SessionSnapshotResponse
@@ -45,6 +45,24 @@ private fun tenantScopedStore(): TenantScopedSessionStore? =
     SessionManager.backingStore() as? TenantScopedSessionStore
 
 /**
+ * Strict ownership tenant used for MINTING a share (WR-02). Unlike the general
+ * `resolveTenant()`, an ADMIN principal does NOT receive the [TenantContext.Admin]
+ * `Op.TRUE` filter bypass here: minting is authorized only when the caller
+ * actually OWNS the session (tenant match), never merely because an admin can
+ * *see* it. Without this, an ADMIN could mint a durable public share on another
+ * tenant's session that the owning tenant can neither list (list is
+ * `created_by`-scoped) nor revoke (`revoke` requires a `created_by` match) — a
+ * tenant-invisible, tenant-unrevocable link. Admins resolve to their own id as a
+ * concrete scope, so they may mint only on sessions they themselves own.
+ */
+private fun ApplicationCall.mintOwnershipTenant(): TenantContext =
+    when (val p = currentPrincipal()) {
+        is UserPrincipal -> TenantContext.Scoped(p.userId)
+        is ApiKeyPrincipal -> TenantContext.Scoped(p.name)
+        else -> TenantContext.Unscoped
+    }
+
+/**
  * Owner (authenticated) share-management routes. Registered INSIDE
  * `authenticatedApi { }` by Routing.kt so mint/list/revoke require a credential
  * when auth is on (T-03-16).
@@ -66,15 +84,17 @@ fun Route.registerShareOwnerRoutes(
                 return@post
             }
 
-        // Ownership-checked existence (CR-02 / D-03): when the tenant-scoped store is
-        // active, the caller may only mint a share on a session it owns — a
+        // Ownership-checked existence (CR-02 / D-03 / WR-02): when the tenant-scoped
+        // store is active, the caller may only mint a share on a session it OWNS — a
         // cross-tenant (or absent) id resolves to null → 404, indistinguishable so it
-        // never leaks another tenant's session. In memory / auth-off mode (store
-        // null) fall back to the unscoped existence check (D-04b global visibility).
+        // never leaks another tenant's session. Minting uses the STRICT ownership
+        // tenant (no ADMIN bypass) so a privileged actor cannot mint a tenant-invisible
+        // share on another tenant's session. In memory / auth-off mode (store null)
+        // fall back to the unscoped existence check (D-04b global visibility).
         val scopedStore = tenantScopedStore()
         val ownsSession =
             if (scopedStore != null) {
-                scopedStore.getSession(sessionId, call.resolveTenant()) != null
+                scopedStore.getSession(sessionId, call.mintOwnershipTenant()) != null
             } else {
                 SessionManager.getSession(sessionId) != null
             }

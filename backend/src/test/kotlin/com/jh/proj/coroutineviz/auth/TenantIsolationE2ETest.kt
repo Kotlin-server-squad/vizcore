@@ -426,6 +426,30 @@ class TenantIsolationE2ETest {
         }
 
     @Test
+    fun `ADMIN cannot mint a tenant-invisible share on another tenant's session (WR-02)`() =
+        testApplication {
+            installAuthedApp()
+            val client = jsonClient()
+            val (aId, _) = seedOwnedSessionWithEvent("alice")
+            val admin = token("root", Role.ADMIN)
+
+            // An ADMIN can SEE every session (Op.TRUE bypass), but minting must be
+            // owner-scoped: an admin-minted share on alice's session would be
+            // invisible (list is created_by-scoped) and unrevocable to alice.
+            val adminMint =
+                client.post("/api/sessions/$aId/share") {
+                    header("Authorization", "Bearer $admin")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"expiresIn":"7d"}""")
+                }
+            assertEquals(
+                HttpStatusCode.NotFound,
+                adminMint.status,
+                "an ADMIN must not mint a share on a session it does not own",
+            )
+        }
+
+    @Test
     fun `tenant B's share list does not contain tenant A's shares while A sees its own`() =
         testApplication {
             installAuthedApp()
