@@ -12,25 +12,28 @@ import com.jh.proj.coroutineviz.routes.registerTestRoutes
 import com.jh.proj.coroutineviz.routes.registerValidationRoutes
 import com.jh.proj.coroutineviz.routes.registerVizScenarioRoutes
 import io.ktor.server.application.*
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 
 fun Application.configureRouting() {
     install(SSE)
     routing {
-        // Public routes — no auth required
+        // Public routes — no auth, no rate limit
         registerRootRoutes()
         registerHealthRoutes()
 
-        // API routes
-        registerVizScenarioRoutes()
-        registerSyncScenarioRoutes()
-        registerTestRoutes()
-        registerSessionRoutes()
-        registerValidationRoutes()
-        registerScenarioRunnerRoutes()
-        registerFlowScenarioRoutes()
-        registerPatternRoutes()
-        registerComparisonRoutes()
+        // API routes — rate limited
+        rateLimit(RateLimitName("api")) {
+            registerVizScenarioRoutes()
+            registerSyncScenarioRoutes()
+            registerTestRoutes()
+            registerSessionRoutes()
+            registerValidationRoutes()
+            registerScenarioRunnerRoutes()
+            registerFlowScenarioRoutes()
+            registerPatternRoutes()
+            registerComparisonRoutes()
+        }
     }
 }

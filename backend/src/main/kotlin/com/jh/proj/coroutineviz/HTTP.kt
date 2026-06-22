@@ -8,7 +8,9 @@ import io.ktor.server.application.*
 import io.ktor.server.metrics.micrometer.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.plugins.defaultheaders.*
 import io.ktor.server.plugins.openapi.*
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.plugins.swagger.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -16,13 +18,57 @@ import io.ktor.server.sse.*
 import io.ktor.sse.*
 import io.micrometer.prometheus.*
 import org.slf4j.LoggerFactory
+import kotlin.time.Duration.Companion.minutes
 
 private val logger = LoggerFactory.getLogger("HTTP")
 
 fun Application.configureHTTP() {
-    val config = environment.config
+    configureCors()
 
-    // CORS Configuration — origins and methods come from application.yaml / env vars
+    install(DefaultHeaders) {
+        header("X-Content-Type-Options", "nosniff")
+        header("X-Frame-Options", "DENY")
+        header("X-XSS-Protection", "1; mode=block")
+        header("Referrer-Policy", "strict-origin-when-cross-origin")
+        header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    }
+
+    install(RateLimit) {
+        register(RateLimitName("api")) {
+            rateLimiter(limit = 60, refillPeriod = 1.minutes)
+            requestKey { call ->
+                call.request.local.remoteAddress
+            }
+        }
+        register(RateLimitName("session-create")) {
+            rateLimiter(limit = 10, refillPeriod = 1.minutes)
+            requestKey { call ->
+                call.request.local.remoteAddress
+            }
+        }
+    }
+
+    install(AsyncApiPlugin) {
+        extension =
+            AsyncApiExtension.builder {
+                info {
+                    title("Coroutine Visualizer API")
+                    version("1.0.0")
+                }
+            }
+    }
+    routing {
+        swaggerUI(path = "openapi")
+    }
+    routing {
+        openAPI(path = "openapi")
+    }
+}
+
+// CORS configuration — origins and methods come from application.yaml / env vars. Extracted from
+// configureHTTP so each stays within the LongMethod limit.
+private fun Application.configureCors() {
+    val config = environment.config
     install(CORS) {
         val originsRaw =
             config.propertyOrNull("cors.allowedOrigins")?.getString()
@@ -62,21 +108,5 @@ fun Application.configureHTTP() {
 
         // Set max age for preflight requests cache
         maxAgeInSeconds = 3600
-    }
-
-    install(AsyncApiPlugin) {
-        extension =
-            AsyncApiExtension.builder {
-                info {
-                    title("Coroutine Visualizer API")
-                    version("1.0.0")
-                }
-            }
-    }
-    routing {
-        swaggerUI(path = "openapi")
-    }
-    routing {
-        openAPI(path = "openapi")
     }
 }

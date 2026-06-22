@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.routes
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -15,19 +16,21 @@ import org.slf4j.LoggerFactory
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
 
 fun Route.registerSessionRoutes() {
-    post("/api/sessions") {
-        val name = call.request.queryParameters["name"]
-        val session = SessionManager.createSession(name)
+    rateLimit(RateLimitName("session-create")) {
+        post("/api/sessions") {
+            val name = call.request.queryParameters["name"]
+            val session = SessionManager.createSession(name)
 
-        logger.info("Created new session via API: ${session.sessionId}")
+            logger.info("Created new session via API: ${session.sessionId}")
 
-        call.respond(
-            HttpStatusCode.Created,
-            mapOf(
-                "sessionId" to session.sessionId,
-                "message" to "Session created successfully",
-            ),
-        )
+            call.respond(
+                HttpStatusCode.Created,
+                mapOf(
+                    "sessionId" to session.sessionId,
+                    "message" to "Session created successfully",
+                ),
+            )
+        }
     }
 
     get("/api/sessions") {
