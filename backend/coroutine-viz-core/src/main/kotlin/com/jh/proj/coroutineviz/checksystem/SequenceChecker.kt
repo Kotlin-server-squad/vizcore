@@ -57,6 +57,59 @@ object SequenceChecker {
     }
 
     /**
+     * Check that events were recorded in EXACT sequential order: as they appear in the stream
+     * (store/append order), each event's sequence number is strictly greater than the previous
+     * one — i.e. no reordering and no duplicate sequence numbers.
+     *
+     * Sequence numbers are intentionally NOT required to be contiguous: [VizSession.nextSeq] also
+     * mints coroutine / scope / semaphore ids, so some sequence values are deliberately not events.
+     * This validates "events were sent in exact order" (the recorded order matches the sequence the
+     * session assigned), as opposed to [checkOrdering] which checks against a caller-supplied
+     * expected sequence of event kinds.
+     *
+     * @param events The event list to check, in stream (store) order
+     * @return [ValidationResult.Pass] if strictly increasing, [ValidationResult.Fail] otherwise
+     */
+    fun checkEventsInExactOrder(events: List<VizEvent>): ValidationResult {
+        val ruleName = "EventsInExactOrder"
+
+        if (events.size < 2) {
+            return ValidationResult.Pass(
+                ruleName,
+                "Fewer than 2 events; exact ordering trivially holds (${events.size} event(s))",
+            )
+        }
+
+        val violations = mutableListOf<String>()
+        for (i in 1 until events.size) {
+            val prev = events[i - 1]
+            val cur = events[i]
+            if (cur.seq <= prev.seq) {
+                violations.add(
+                    "position $i: ${cur.kind}(seq=${cur.seq}) does not strictly follow " +
+                        "${prev.kind}(seq=${prev.seq})",
+                )
+            }
+        }
+
+        return if (violations.isEmpty()) {
+            ValidationResult.Pass(
+                ruleName,
+                "All ${events.size} events are recorded in exact sequential order " +
+                    "(strictly increasing sequence numbers, no reordering or duplicates)",
+            )
+        } else {
+            ValidationResult.Fail(
+                ruleName,
+                "Events are not in exact sequential order",
+                "Found ${violations.size} ordering violation(s): " +
+                    violations.take(10).joinToString("; ") +
+                    if (violations.size > 10) " …(+${violations.size - 10} more)" else "",
+            )
+        }
+    }
+
+    /**
      * Check that no two events share the same sequence number.
      *
      * Duplicate sequence numbers indicate a bug in the event emission logic,

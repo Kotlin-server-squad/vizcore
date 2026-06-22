@@ -50,6 +50,7 @@ fun Route.registerValidationRoutes() {
         results += HierarchyValidator.validate(events)
         results += StructuredConcurrencyValidator.validate(events)
         results += SequenceChecker.checkNoDuplicateSequenceNumbers(events)
+        results += SequenceChecker.checkEventsInExactOrder(events)
 
         // Run timing analysis
         val timingReport = TimingAnalyzer.analyze(events)
@@ -100,8 +101,9 @@ fun Route.registerValidationRoutes() {
                     "No two events should share the same sequence number",
                 ),
                 ValidationRule(
-                    "EventOrdering",
-                    "Event types should appear in the expected order",
+                    "EventsInExactOrder",
+                    "Events must be recorded in exact sequential order — strictly increasing " +
+                        "sequence numbers with no reordering or duplicates",
                 ),
             )
 

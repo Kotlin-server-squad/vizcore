@@ -110,4 +110,42 @@ class SequenceCheckerTest {
         val result = SequenceChecker.checkNoDuplicateSequenceNumbers(events)
         assertTrue(result is ValidationResult.Pass, "Unique sequence numbers should pass")
     }
+
+    // --- EventsInExactOrder (the "events sent in exact order" rule) -----------------------
+
+    @Test
+    fun `exact order passes for strictly increasing non-contiguous sequences`() {
+        // Gaps are EXPECTED — VizSession.nextSeq() also mints ids — so non-contiguous but
+        // strictly increasing must still PASS.
+        val events: List<VizEvent> = listOf(created(3), started(4), completed(8))
+
+        val result = SequenceChecker.checkEventsInExactOrder(events)
+        assertTrue(result is ValidationResult.Pass, "Strictly increasing (with gaps) must pass: $result")
+    }
+
+    @Test
+    fun `exact order fails when an event is out of sequence`() {
+        val events: List<VizEvent> = listOf(created(1), completed(5), started(3))
+
+        val result = SequenceChecker.checkEventsInExactOrder(events)
+        assertTrue(result is ValidationResult.Fail, "Out-of-order sequence must fail")
+        assertTrue(
+            (result as ValidationResult.Fail).details.contains("seq=3"),
+            "Details should point at the offending event: ${result.details}",
+        )
+    }
+
+    @Test
+    fun `exact order fails on a duplicate sequence number (not strictly increasing)`() {
+        val events: List<VizEvent> = listOf(created(1), started(2), completed(2))
+
+        val result = SequenceChecker.checkEventsInExactOrder(events)
+        assertTrue(result is ValidationResult.Fail, "A repeated seq is not strictly increasing")
+    }
+
+    @Test
+    fun `exact order trivially passes for fewer than two events`() {
+        assertTrue(SequenceChecker.checkEventsInExactOrder(emptyList()) is ValidationResult.Pass)
+        assertTrue(SequenceChecker.checkEventsInExactOrder(listOf(created(1))) is ValidationResult.Pass)
+    }
 }
