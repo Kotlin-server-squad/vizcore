@@ -76,6 +76,15 @@ class ApiClient {
       throw new Error(error.error || `HTTP ${response.status}`)
     }
 
+    // 204 No Content has no body — calling response.json() on it throws
+    // "Unexpected end of JSON input", which made a successful empty-body mutation
+    // (DELETE /shares/{token} → 204) reject. That surfaced revoke as a false
+    // failure: an error toast plus a stale row, even though the backend revoked
+    // the link (F4). Treat No Content as an undefined result.
+    if (response.status === 204) {
+      return undefined as T
+    }
+
     return response.json()
   }
 

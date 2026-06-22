@@ -323,4 +323,23 @@ describe('ApiClient', () => {
       expect(headers.Authorization).toBeUndefined()
     })
   })
+
+  describe('revokeShare (204 No Content)', () => {
+    it('resolves on a 204 instead of throwing on the empty body (F4)', async () => {
+      // A real 204 has no body, so response.json() rejects with
+      // "Unexpected end of JSON input". Before the fix that rejection turned a
+      // successful revoke into a false failure (error toast + stale row).
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 204,
+        json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+      })
+
+      await expect(apiClient.revokeShare('session-1', 'tok-1')).resolves.toBeUndefined()
+      expect(mockFetch).toHaveBeenCalledWith('/api/sessions/session-1/shares/tok-1', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+  })
 })
