@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarios.SyncScenarios
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.wrappers.VizScope
@@ -174,8 +175,19 @@ private suspend fun ApplicationCall.runSyncScenario(
     logger.info("└─────────────────────────────────────────┘")
 
     try {
-        // Create session
-        val session = SessionManager.createSession("sync-${scenarioName.lowercase().replace(" ", "-")}")
+        // F9: create the session through the SAME tenant-scoped store the read/validate paths use
+        // (mirrors the F5 fix on the scenario-runner/flow/pattern routes, which this file was missed
+        // from). In DB+auth mode the unscoped SessionManager.createSession produced a session that
+        // was orphaned from the authenticated tenant — invisible to /events, /validate and the
+        // session list (all 404 / absent) despite the run reporting success.
+        val name = "sync-${scenarioName.lowercase().replace(" ", "-")}"
+        val store = tenantScopedStore()
+        val session =
+            if (store != null) {
+                store.createSession(name, resolveTenant())
+            } else {
+                SessionManager.createSession(name)
+            }
 
         // Create VizScope
         val scope = VizScope(session)

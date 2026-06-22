@@ -37,7 +37,7 @@ fun Route.registerPatternRoutes() {
 
     post("/api/scenarios/patterns/retry") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId, "pattern")
+        val session = call.getOrCreateSession(sessionId, "pattern")
 
         logger.info("Running retry with exponential backoff scenario in session: ${session.sessionId}")
 
@@ -48,7 +48,7 @@ fun Route.registerPatternRoutes() {
 
     post("/api/scenarios/patterns/producer-consumer") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId, "pattern")
+        val session = call.getOrCreateSession(sessionId, "pattern")
 
         logger.info("Running producer-consumer scenario in session: ${session.sessionId}")
 
@@ -59,7 +59,7 @@ fun Route.registerPatternRoutes() {
 
     post("/api/scenarios/patterns/fan-out-fan-in") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId, "pattern")
+        val session = call.getOrCreateSession(sessionId, "pattern")
 
         logger.info("Running fan-out/fan-in scenario in session: ${session.sessionId}")
 
@@ -70,7 +70,7 @@ fun Route.registerPatternRoutes() {
 
     post("/api/scenarios/patterns/supervisor") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId, "pattern")
+        val session = call.getOrCreateSession(sessionId, "pattern")
 
         logger.info("Running supervisor pattern scenario in session: ${session.sessionId}")
 
@@ -81,7 +81,7 @@ fun Route.registerPatternRoutes() {
 
     post("/api/scenarios/patterns/circuit-breaker") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId, "pattern")
+        val session = call.getOrCreateSession(sessionId, "pattern")
 
         logger.info("Running circuit breaker scenario in session: ${session.sessionId}")
 

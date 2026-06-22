@@ -6,7 +6,10 @@ import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.routes.registerScenarioRunnerRoutes
 import com.jh.proj.coroutineviz.routes.registerSessionRoutes
+import com.jh.proj.coroutineviz.routes.registerSyncScenarioRoutes
+import com.jh.proj.coroutineviz.routes.registerValidationRoutes
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.share.ShareService
@@ -37,6 +40,7 @@ import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -151,6 +155,9 @@ class TenantIsolationE2ETest {
                 registerSharedPublicRoute(service)
                 authenticate("jwt") {
                     registerSessionRoutes()
+                    registerScenarioRunnerRoutes()
+                    registerValidationRoutes()
+                    registerSyncScenarioRoutes()
                     registerShareOwnerRoutes(service, publicBaseUrl = "https://app.example.com")
                 }
             }
@@ -227,6 +234,113 @@ class TenantIsolationE2ETest {
             assertTrue(aliceEvents.bodyAsText().contains("c1"), "alice must see her own event content on /events")
             val bobEvents = client.get("/api/sessions/$aId/events") { header("Authorization", "Bearer $bob") }
             assertFalse(bobEvents.bodyAsText().contains("\"c1\""), "404 body must not leak alice's coroutine id")
+        }
+
+    // -- AUTH-04 write path: cross-tenant scenario-run cannot mutate another's session --
+
+    @Test
+    fun `tenant B running a scenario with tenant A's sessionId does NOT write into A's session`() =
+        testApplication {
+            installAuthedApp()
+            val client = jsonClient()
+            val (aId, _) = seedOwnedSessionWithEvent("alice")
+            val bob = token("bob")
+
+            // bob targets alice's session id on a mutating scenario-run route.
+            val resp =
+                client.post("/api/scenarios/nested?sessionId=$aId") {
+                    header("Authorization", "Bearer $bob")
+                }
+            assertEquals(HttpStatusCode.OK, resp.status)
+
+            // The scoped get-or-create must NOT resolve alice's id for bob: the run is
+            // redirected to a fresh, bob-owned session (never a write into alice's).
+            val returnedId =
+                Json.parseToJsonElement(resp.bodyAsText()).jsonObject["sessionId"]?.jsonPrimitive?.content
+            assertFalse(returnedId == aId, "bob's scenario must NOT target alice's session id; got $returnedId")
+
+            // Drain bob's scenario to FULL completion so all async coroutine writes —
+            // including the terminal CoroutineCompleted events — land BEFORE @AfterEach
+            // closes the datasource. Otherwise a late background write races into a
+            // subsequent test as an uncaught completion exception (flaky contamination).
+            var drainAttempts = 0
+            while (drainAttempts < 100) {
+                val body = client.get("/api/sessions/$returnedId/events") { header("Authorization", "Bearer $bob") }.bodyAsText()
+                val completed = Regex("CoroutineCompleted").findAll(body).count()
+                if (completed >= 4) break // nested = parent + 3 children, all terminal
+                delay(100)
+                drainAttempts++
+            }
+            delay(300) // grace for any completion handlers to flush their final write
+
+            // alice's session is untouched: still exactly the one seeded event (c1), no
+            // coroutines/events injected by bob.
+            val aliceView = client.get("/api/sessions/$aId/events") { header("Authorization", "Bearer ${token("alice")}") }
+            val aliceEvents = Json.parseToJsonElement(aliceView.bodyAsText()).jsonArray
+            assertEquals(1, aliceEvents.size, "alice's session must keep only her seeded event; got ${aliceEvents.size}")
+        }
+
+    // -- F7: validation route must resolve via the tenant-scoped store ---------
+
+    @Test
+    fun `validate session works in DB mode for the owner and stays 404 cross-tenant`() =
+        testApplication {
+            installAuthedApp()
+            val client = jsonClient()
+            val (aId, _) = seedOwnedSessionWithEvent("alice")
+            val alice = token("alice")
+            val bob = token("bob")
+
+            // F7 regression: in DB mode the session lives in the Exposed store, NOT the
+            // in-memory SessionManager. The old route looked it up via SessionManager and
+            // 404'd for EVERY real session. The owner must now get 200 with validator results.
+            val ownerResp = client.post("/api/validate/session/$aId") { header("Authorization", "Bearer $alice") }
+            assertEquals(HttpStatusCode.OK, ownerResp.status, "owner validation must succeed in DB mode (F7)")
+            val body = Json.parseToJsonElement(ownerResp.bodyAsText()).jsonObject
+            assertEquals(aId, body["sessionId"]?.jsonPrimitive?.content, "must echo the validated session id")
+            assertTrue(body.containsKey("results"), "validation response must contain results")
+            assertTrue(body.containsKey("timing"), "validation response must contain a timing report")
+
+            // Tenant scoping is preserved: bob validating alice's session is a cross-tenant 404.
+            val crossResp = client.post("/api/validate/session/$aId") { header("Authorization", "Bearer $bob") }
+            assertEquals(HttpStatusCode.NotFound, crossResp.status, "cross-tenant validation must 404 (no leak)")
+            assertFalse(crossResp.bodyAsText().contains("\"c1\""), "404 body must not leak alice's coroutine id")
+        }
+
+    // -- F9: sync-scenario routes must create the session in the tenant-scoped store ----
+
+    @Test
+    fun `sync scenario session is tenant-scoped — owner can read and validate, cross-tenant cannot`() =
+        testApplication {
+            installAuthedApp()
+            val client = jsonClient()
+            val alice = token("alice")
+            val bob = token("bob")
+
+            // F9 regression: the sync routes used the unscoped SessionManager.createSession, so in
+            // DB+auth mode the resulting session was orphaned from the tenant — 404 on /events and
+            // /validate, and absent from the session list — despite the run reporting success.
+            // bank-transfer is a light mutex scenario (~37 events). Run it as alice.
+            val run = client.get("/api/sync/mutex/bank-transfer") { header("Authorization", "Bearer $alice") }
+            assertEquals(HttpStatusCode.OK, run.status, "sync scenario should run")
+            val sid = Json.parseToJsonElement(run.bodyAsText()).jsonObject["sessionId"]!!.jsonPrimitive.content
+            assertTrue(sid.isNotBlank(), "run must return a session id")
+
+            // Owner: the session is now visible (events 200) and validatable (200) — the F9 fix.
+            val ownerEvents = client.get("/api/sessions/$sid/events") { header("Authorization", "Bearer $alice") }
+            assertEquals(HttpStatusCode.OK, ownerEvents.status, "owner must read the sync session's events (F9)")
+            val ownerValidate = client.post("/api/validate/session/$sid") { header("Authorization", "Bearer $alice") }
+            assertEquals(HttpStatusCode.OK, ownerValidate.status, "owner must validate the sync session (F9)")
+
+            // The session appears in alice's list (tenant-scoped membership).
+            val aliceList = client.get("/api/sessions") { header("Authorization", "Bearer $alice") }
+            assertTrue(aliceList.bodyAsText().contains(sid), "sync session must appear in the owner's session list")
+
+            // Cross-tenant: bob can neither read nor validate alice's sync session.
+            val bobEvents = client.get("/api/sessions/$sid/events") { header("Authorization", "Bearer $bob") }
+            assertEquals(HttpStatusCode.NotFound, bobEvents.status, "cross-tenant read of sync session must 404")
+            val bobValidate = client.post("/api/validate/session/$sid") { header("Authorization", "Bearer $bob") }
+            assertEquals(HttpStatusCode.NotFound, bobValidate.status, "cross-tenant validate of sync session must 404")
         }
 
     // -- CR-01: cross-tenant SSE is a pre-stream 404 with NO replay ------------

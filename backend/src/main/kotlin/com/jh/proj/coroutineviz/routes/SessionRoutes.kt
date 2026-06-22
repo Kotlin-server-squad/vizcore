@@ -37,7 +37,7 @@ private const val SSE_LIVE_BUFFER_CAPACITY = 4096
  * off) this is null and routes fall back to the unscoped [SessionManager] calls
  * — i.e. global visibility (D-04b).
  */
-private fun tenantScopedStore(): TenantScopedSessionStore? = SessionManager.backingStore() as? TenantScopedSessionStore
+internal fun tenantScopedStore(): TenantScopedSessionStore? = SessionManager.backingStore() as? TenantScopedSessionStore
 
 /**
  * Resolve a session by [sessionId] using the SAME tenant scoping the top-level
@@ -49,7 +49,7 @@ private fun tenantScopedStore(): TenantScopedSessionStore? = SessionManager.back
  * authenticated session-bound read path (events/hierarchy/threads/timeline/SSE)
  * MUST go through this helper, NOT the bare [SessionManager.getSession].
  */
-private fun ApplicationCall.resolveScopedSession(sessionId: String): VizSession? {
+internal fun ApplicationCall.resolveScopedSession(sessionId: String): VizSession? {
     val store = tenantScopedStore()
     return if (store != null) {
         store.getSession(sessionId, resolveTenant())
