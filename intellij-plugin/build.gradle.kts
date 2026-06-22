@@ -1,7 +1,7 @@
 plugins {
     kotlin("jvm") version "2.3.21"
     id("org.jetbrains.intellij.platform") version "2.5.0"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
     id("org.jlleitschuh.gradle.ktlint") version "12.2.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
@@ -41,7 +41,7 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.2.20")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.0")
 }
 
 intellijPlatform {

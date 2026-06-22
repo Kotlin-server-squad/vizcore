@@ -5,7 +5,7 @@ val prometheus_version: String by project
 plugins {
     kotlin("jvm") version "2.3.21"
     id("io.ktor.plugin") version "3.3.2"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
     id("org.jlleitschuh.gradle.ktlint") version "12.2.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
@@ -52,7 +52,7 @@ dependencies {
     // JUnit 5 (Jupiter) for new dispatcher tests
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 
 tasks.named<Test>("test") {
