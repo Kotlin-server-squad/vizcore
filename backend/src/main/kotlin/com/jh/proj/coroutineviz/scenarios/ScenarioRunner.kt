@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.scenarios
 
 import com.jh.proj.coroutineviz.session.VizSession
+import com.jh.proj.coroutineviz.wrappers.VizDispatchers
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -78,6 +79,49 @@ object ScenarioRunner {
                 }
 
             logger.info("Waiting for parallel execution to complete...")
+            job
+        }
+
+    /**
+     * Dispatcher scenario: runs work across the Default and IO dispatchers via
+     * [VizDispatchers] so the dispatcher-tracking events (DispatcherSelected /
+     * ThreadAssigned) populate the DispatcherOverview view. Unlike the
+     * `/api/examples/dispatcher-scenario` demo (which uses a throwaway session),
+     * this runs against the managed [session] so the result is a navigable,
+     * persisted session (F11 discoverability fix).
+     */
+    suspend fun runDispatcherScenario(session: VizSession): Job =
+        coroutineScope {
+            logger.info("Starting dispatcher scenario in session: ${session.sessionId}")
+
+            val dispatchers = VizDispatchers(session, scopeId = "dispatcher")
+            val viz = VizScope(session, context = dispatchers.default)
+
+            val job =
+                viz.vizLaunch("coordinator") {
+                    // CPU-bound work stays on the Default dispatcher.
+                    vizLaunch("cpu-task") {
+                        vizDelay(150)
+                    }
+
+                    // IO-bound work runs on the IO dispatcher.
+                    vizLaunch("io-read", context = dispatchers.io) {
+                        vizDelay(200)
+                    }
+
+                    // Mixed pipeline: a Default-dispatched parent with one child
+                    // staying on Default and one switching to IO (thread reassignment).
+                    vizLaunch("pipeline") {
+                        vizLaunch("stage-compute") {
+                            vizDelay(120)
+                        }
+                        vizLaunch("stage-fetch", context = dispatchers.io) {
+                            vizDelay(120)
+                        }
+                    }
+                }
+
+            logger.info("Waiting for dispatcher scenario to complete...")
             job
         }
 

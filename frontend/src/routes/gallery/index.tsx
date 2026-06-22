@@ -89,6 +89,12 @@ const GALLERY_SCENARIOS: GalleryScenario[] = [
     category: 'basic', difficulty: 'intermediate', scenarioId: 'mixed',
     tags: ['sequential', 'parallel', 'mixed'],
   },
+  {
+    id: 'gallery-dispatcher', name: 'Dispatcher Switching',
+    description: 'Work across Dispatchers.Default and Dispatchers.IO. Feeds the Dispatcher Overview — see dispatcher selection and thread assignment.',
+    category: 'basic', difficulty: 'intermediate', scenarioId: 'dispatcher',
+    tags: ['dispatcher', 'threads', 'io', 'default'],
+  },
 
   // ===================== PATTERNS =====================
   {

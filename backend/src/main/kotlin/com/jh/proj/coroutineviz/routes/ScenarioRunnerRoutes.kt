@@ -131,6 +131,24 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
+    post("/api/scenarios/dispatcher") {
+        val sessionId = call.request.queryParameters["sessionId"]
+        val session = call.getOrCreateSession(sessionId)
+
+        logger.info("Running dispatcher scenario in session: ${session.sessionId}")
+
+        call.runScenarioWithResponse(session) {
+            ScenarioRunner.runDispatcherScenario(session).join()
+            ScenarioCompletionResponse(
+                success = true,
+                sessionId = session.sessionId,
+                message = "Dispatcher scenario completed",
+                coroutineCount = session.snapshot.coroutines.size,
+                eventCount = session.store.all().size,
+            )
+        }
+    }
+
     // ============================================================================
     // CHANNEL SCENARIOS - Channel communication patterns
     // ============================================================================
@@ -448,6 +466,17 @@ fun Route.registerScenarioRunnerRoutes() {
                             "name" to "Exception Handling",
                             "description" to "Demonstrates exception tracking and failure states",
                             "endpoint" to "/api/scenarios/exception",
+                            "category" to "basic",
+                        ),
+                        mapOf(
+                            "id" to "dispatcher",
+                            "name" to "Dispatcher Switching",
+                            "description" to
+                                (
+                                    "Runs work across Dispatchers.Default and Dispatchers.IO via VizDispatchers. " +
+                                        "Feeds the Dispatcher Overview: see dispatcher selection and thread assignment."
+                                ),
+                            "endpoint" to "/api/scenarios/dispatcher",
                             "category" to "basic",
                         ),
                     ),

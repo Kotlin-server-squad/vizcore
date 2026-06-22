@@ -100,6 +100,51 @@ class ScenarioRoutesTest {
         }
 
     @Test
+    fun `GET scenarios includes dispatcher scenario wired to its endpoint (F11)`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val response = client.get("/api/scenarios")
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val scenarios = body["scenarios"]!!.jsonArray
+
+            val dispatcher =
+                scenarios.firstOrNull {
+                    it.jsonObject["id"]?.jsonPrimitive?.content == "dispatcher"
+                }
+            assertNotNull(dispatcher, "Scenarios should include 'dispatcher' (was implemented but undiscoverable)")
+            assertEquals(
+                "/api/scenarios/dispatcher",
+                dispatcher.jsonObject["endpoint"]?.jsonPrimitive?.content,
+            )
+        }
+
+    @Test
+    fun `POST scenarios dispatcher runs against the managed session (F11)`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val response = client.post("/api/scenarios/dispatcher")
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+
+            if (response.status == HttpStatusCode.OK) {
+                assertEquals(true, body["success"]?.jsonPrimitive?.boolean)
+                val sessionId = body["sessionId"]?.jsonPrimitive?.content
+                assertNotNull(sessionId, "dispatcher run should return a navigable sessionId")
+                // The scenario joined to completion, so coroutines are present.
+                assertTrue(
+                    (body["coroutineCount"]?.jsonPrimitive?.int ?: 0) > 0,
+                    "dispatcher run should have produced coroutines",
+                )
+            } else {
+                assertEquals(HttpStatusCode.InternalServerError, response.status)
+                assertNotNull(body["error"], "Error response should contain error field")
+            }
+        }
+
+    @Test
     fun `POST scenarios nested returns valid response`() =
         testApplication {
             application { module() }
