@@ -108,6 +108,49 @@ class ExposedSessionStoreTest {
     }
 
     @Test
+    fun `getSession rehydrates the snapshot and hierarchy from persisted events`() {
+        // Regression for the DB-mode blank-visualization defect (2026-06-22): a
+        // session reconstructed from the DB starts with empty read models, so
+        // without rehydration the coroutine tree / threads render empty even
+        // though events are persisted.
+        val store = ExposedSessionStore(db)
+        val session = runBlocking { store.createSession("delta") }
+        session.send(
+            CoroutineCreated(
+                sessionId = session.sessionId,
+                seq = 1,
+                tsNanos = 1_000,
+                coroutineId = "parent",
+                jobId = "jp",
+                parentCoroutineId = null,
+                scopeId = "s1",
+                label = "parent",
+            ),
+        )
+        session.send(
+            CoroutineCreated(
+                sessionId = session.sessionId,
+                seq = 2,
+                tsNanos = 2_000,
+                coroutineId = "child",
+                jobId = "jc",
+                parentCoroutineId = "parent",
+                scopeId = "s1",
+                label = "child",
+            ),
+        )
+
+        // A FRESH instance (the read path) must project the persisted events.
+        val loaded = store.getSession(session.sessionId)
+        assertNotNull(loaded)
+        assertEquals(2, loaded.snapshot.coroutines.size)
+        assertTrue(loaded.snapshot.coroutines.containsKey("parent"))
+        assertTrue(loaded.snapshot.coroutines.containsKey("child"))
+        // The hierarchy projection (threads/tree read model) is rebuilt too.
+        assertTrue(loaded.projectionService.getHierarchyTree().isNotEmpty())
+    }
+
+    @Test
     fun `deleteSession removes the row and cascades events`() {
         val store = ExposedSessionStore(db)
         val session = runBlocking { store.createSession("gamma") }

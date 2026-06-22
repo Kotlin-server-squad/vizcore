@@ -158,7 +158,12 @@ class ExposedSessionStore(
             sessionId = sessionId,
             maxEvents = maxEvents,
             eventStoreFactory = { id -> ExposedEventStore(db, id) },
-        )
+        ).also {
+            // A DB-backed session is reconstructed fresh on every read with empty
+            // in-memory read models — replay the persisted events so the coroutine
+            // tree / threads / timeline projections are populated (PERS visualization).
+            it.rehydrateFromStore()
+        }
 
     /** Distinct coroutine ids present in a session's stored events. */
     private fun buildSessionEventStoreCoroutineCount(sessionId: String): Int =

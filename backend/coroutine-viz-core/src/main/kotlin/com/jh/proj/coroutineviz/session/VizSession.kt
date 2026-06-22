@@ -135,6 +135,33 @@ class VizSession(
     }
 
     /**
+     * Rebuild both read models — the [snapshot] and the [projectionService] — by
+     * replaying every event currently in [store].
+     *
+     * A VizSession reconstructed from a DB-backed store (ADR-015) starts with
+     * empty read models: the events were persisted by a previous instance and
+     * never flow through [send] again, so the coroutine tree, thread lanes, and
+     * timeline projections render empty even though the events exist in the store.
+     * Persistence stores call this right after construction. It deliberately does
+     * NOT re-[store.record] or re-[eventBus.send] the events (no DB duplication,
+     * no spurious SSE delivery); it only repopulates the in-memory views and
+     * advances the seq watermark so any subsequent live [send] keeps ordering.
+     */
+    fun rehydrateFromStore() {
+        val events = store.all() // ExposedEventStore returns these ordered by seq
+        if (events.isEmpty()) return
+        synchronized(sendLock) {
+            events.forEach { applier.apply(it) }
+            val maxSeq = events.maxOf { it.seq }
+            if (maxSeq > lastSentSeq) {
+                lastSentSeq = maxSeq
+                seqGenerator.set(maxSeq)
+            }
+        }
+        projectionService.rebuildFrom(events)
+    }
+
+    /**
      * Async event send - for non-coroutine contexts.
      * Launches on session scope to emit event asynchronously.
      */
