@@ -24,6 +24,13 @@ data class HealthStatus(
     val uptimeMs: Long,
     val memory: MemoryInfo,
     val components: Map<String, String> = emptyMap(),
+    /**
+     * Whether sharing is available — true only when persistence is on
+     * (storage.type=database), since the share routes require the shares table
+     * (ADR-019). The frontend uses this to gate the Share affordance instead of
+     * offering an action that 404s in memory mode.
+     */
+    val sharingEnabled: Boolean = false,
 )
 
 private val startTime = System.currentTimeMillis()
@@ -59,6 +66,8 @@ private suspend fun ApplicationCall.respondHealth() {
                     "sessionManager" to "UP",
                     "memory" to if (healthy) "UP" else "DEGRADED",
                 ),
+            // Sharing requires the DB-backed (tenant-scoped) store; absent in memory mode.
+            sharingEnabled = tenantScopedStore() != null,
         )
 
     val httpStatus = if (healthy) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable

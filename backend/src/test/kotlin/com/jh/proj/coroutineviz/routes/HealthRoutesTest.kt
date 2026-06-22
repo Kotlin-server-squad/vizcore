@@ -11,6 +11,7 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
@@ -151,6 +152,22 @@ class HealthRoutesTest {
             assertNotNull(components, "components field must be present")
             assertTrue(components!!.containsKey("sessionManager"), "components must include sessionManager")
             assertTrue(components.containsKey("memory"), "components must include memory")
+        }
+
+    @Test
+    fun `GET health reports sharingEnabled false in memory mode`() =
+        testApplication {
+            // The default test module() runs in memory mode (no DB attribute), so
+            // the share routes are absent — the frontend gates the Share affordance
+            // on this flag instead of offering an action that 404s (share-ui no-op).
+            application { module() }
+            val client = jsonClient()
+
+            val response = client.get("/api/health")
+            assertHealthReachable(response.status)
+
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals(false, body["sharingEnabled"]?.jsonPrimitive?.boolean)
         }
 
     @Test

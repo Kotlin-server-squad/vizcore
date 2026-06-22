@@ -12,9 +12,11 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
+  Tooltip,
 } from '@heroui/react'
 import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiRotateCcw, FiTrash2, FiShare2 } from 'react-icons/fi'
 import { useSession, useSessionEvents, useDeleteSession } from '@/hooks/use-sessions'
+import { useCapabilities } from '@/hooks/use-capabilities'
 import { useEventStream } from '@/hooks/use-event-stream'
 import { useRunScenario } from '@/hooks/use-scenarios'
 import { useThreadActivity } from '@/hooks/use-thread-activity'
@@ -95,6 +97,11 @@ export function SessionDetails({
   // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
   // the read-only shared view (ADR-019: no re-sharing from a shared link).
   const [sharesOpen, setSharesOpen] = useState(false)
+  // Sharing is DB-backed (ADR-019); in memory mode the share routes are absent.
+  // Gate the Share affordance on the server capability so we never offer an
+  // action that 404s (explicit false only — stay enabled while still loading).
+  const { data: capabilities } = useCapabilities()
+  const sharingDisabled = capabilities?.sharingEnabled === false
   // Replay mode (D-01): when active, panels render from the frozen snapshot's
   // replay cursor instead of the live/stored events. The snapshot is captured
   // at replay entry so live SSE events do not mutate the frozen view (D-02).
@@ -503,14 +510,23 @@ export function SessionDetails({
                   OFF in the read-only shared view so a shared link can never
                   re-share (ADR-019, T-03-22). */}
               {!readOnly && (
-                <Button
-                  size="sm"
-                  variant="bordered"
-                  startContent={<FiShare2 />}
-                  onPress={() => setSharesOpen(true)}
+                <Tooltip
+                  content="Sharing requires storage.type=database"
+                  isDisabled={!sharingDisabled}
                 >
-                  Share
-                </Button>
+                  {/* Span wrapper so the Tooltip still shows over a disabled button. */}
+                  <span className="inline-flex">
+                    <Button
+                      size="sm"
+                      variant="bordered"
+                      startContent={<FiShare2 />}
+                      onPress={() => setSharesOpen(true)}
+                      isDisabled={sharingDisabled}
+                    >
+                      Share
+                    </Button>
+                  </span>
+                </Tooltip>
               )}
 
               {/* Export menu (ADR-018 / EXPT-01/02 / D-22). */}

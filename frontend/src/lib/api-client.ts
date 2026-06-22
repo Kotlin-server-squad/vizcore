@@ -249,6 +249,17 @@ class ApiClient {
     )
   }
 
+  /**
+   * Server capability flags read from /health. `sharingEnabled` is false in
+   * memory mode (storage.type=memory), where the share routes are absent — the
+   * UI uses it to gate the Share affordance rather than offering an action that
+   * 404s.
+   */
+  async getCapabilities(): Promise<{ sharingEnabled: boolean }> {
+    const health = await this.fetchJson<{ sharingEnabled?: boolean }>('/health')
+    return { sharingEnabled: health.sharingEnabled ?? false }
+  }
+
   // PUBLIC shared-session read — the token IS the credential, so NO Bearer is
   // attached (a raw fetch, not fetchJson, so a 401-clear never fires here).
   // The 410/404/429 status matrix (D-12, ADR-019) is mapped to a typed result
