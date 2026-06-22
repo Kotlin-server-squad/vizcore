@@ -10,6 +10,11 @@ import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("Application")
 
+// Session-lifecycle defaults (used when not overridden via application.yaml / env).
+private const val DEFAULT_SESSION_MAX_AGE_MS = 3_600_000L // 1 hour
+private const val DEFAULT_SESSION_MAX_COUNT = 100
+private const val DEFAULT_SESSION_CHECK_INTERVAL_MS = 60_000L // 1 minute
+
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
 }
@@ -28,16 +33,21 @@ fun Application.module() {
 fun Application.configureSessionLifecycle() {
     val config = environment.config
 
-    val maxAgeMs = config.propertyOrNull("session.maxAgeMs")?.getString()?.toLongOrNull() ?: 3_600_000L
-    val maxCount = config.propertyOrNull("session.maxCount")?.getString()?.toIntOrNull() ?: 100
-    val checkIntervalMs = config.propertyOrNull("session.checkIntervalMs")?.getString()?.toLongOrNull() ?: 60_000L
+    val maxAgeMs =
+        config.propertyOrNull("session.maxAgeMs")?.getString()?.toLongOrNull() ?: DEFAULT_SESSION_MAX_AGE_MS
+    val maxCount =
+        config.propertyOrNull("session.maxCount")?.getString()?.toIntOrNull() ?: DEFAULT_SESSION_MAX_COUNT
+    val checkIntervalMs =
+        config.propertyOrNull("session.checkIntervalMs")?.getString()?.toLongOrNull()
+            ?: DEFAULT_SESSION_CHECK_INTERVAL_MS
 
     val retentionScope = CoroutineScope(SupervisorJob())
-    val retentionPolicy = RetentionPolicy(
-        maxSessionAgeMs = maxAgeMs,
-        maxSessions = maxCount,
-        checkIntervalMs = checkIntervalMs,
-    )
+    val retentionPolicy =
+        RetentionPolicy(
+            maxSessionAgeMs = maxAgeMs,
+            maxSessions = maxCount,
+            checkIntervalMs = checkIntervalMs,
+        )
 
     retentionPolicy.start(retentionScope, SessionManager)
     logger.info("Session lifecycle configured: maxAge={}ms, maxCount={}, checkInterval={}ms", maxAgeMs, maxCount, checkIntervalMs)

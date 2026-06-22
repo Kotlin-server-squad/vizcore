@@ -23,9 +23,52 @@ import kotlin.time.Duration.Companion.minutes
 private val logger = LoggerFactory.getLogger("HTTP")
 
 fun Application.configureHTTP() {
-    val config = environment.config
+    configureCors()
 
-    // CORS Configuration — origins and methods come from application.yaml / env vars
+    install(DefaultHeaders) {
+        header("X-Content-Type-Options", "nosniff")
+        header("X-Frame-Options", "DENY")
+        header("X-XSS-Protection", "1; mode=block")
+        header("Referrer-Policy", "strict-origin-when-cross-origin")
+        header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    }
+
+    install(RateLimit) {
+        register(RateLimitName("api")) {
+            rateLimiter(limit = 60, refillPeriod = 1.minutes)
+            requestKey { call ->
+                call.request.local.remoteAddress
+            }
+        }
+        register(RateLimitName("session-create")) {
+            rateLimiter(limit = 10, refillPeriod = 1.minutes)
+            requestKey { call ->
+                call.request.local.remoteAddress
+            }
+        }
+    }
+
+    install(AsyncApiPlugin) {
+        extension =
+            AsyncApiExtension.builder {
+                info {
+                    title("Coroutine Visualizer API")
+                    version("1.0.0")
+                }
+            }
+    }
+    routing {
+        swaggerUI(path = "openapi")
+    }
+    routing {
+        openAPI(path = "openapi")
+    }
+}
+
+// CORS configuration — origins and methods come from application.yaml / env vars. Extracted from
+// configureHTTP so each stays within the LongMethod limit.
+private fun Application.configureCors() {
+    val config = environment.config
     install(CORS) {
         val originsRaw =
             config.propertyOrNull("cors.allowedOrigins")?.getString()
@@ -65,44 +108,5 @@ fun Application.configureHTTP() {
 
         // Set max age for preflight requests cache
         maxAgeInSeconds = 3600
-    }
-
-    install(DefaultHeaders) {
-        header("X-Content-Type-Options", "nosniff")
-        header("X-Frame-Options", "DENY")
-        header("X-XSS-Protection", "1; mode=block")
-        header("Referrer-Policy", "strict-origin-when-cross-origin")
-        header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    }
-
-    install(RateLimit) {
-        register(RateLimitName("api")) {
-            rateLimiter(limit = 60, refillPeriod = 1.minutes)
-            requestKey { call ->
-                call.request.local.remoteAddress
-            }
-        }
-        register(RateLimitName("session-create")) {
-            rateLimiter(limit = 10, refillPeriod = 1.minutes)
-            requestKey { call ->
-                call.request.local.remoteAddress
-            }
-        }
-    }
-
-    install(AsyncApiPlugin) {
-        extension =
-            AsyncApiExtension.builder {
-                info {
-                    title("Coroutine Visualizer API")
-                    version("1.0.0")
-                }
-            }
-    }
-    routing {
-        swaggerUI(path = "openapi")
-    }
-    routing {
-        openAPI(path = "openapi")
     }
 }
