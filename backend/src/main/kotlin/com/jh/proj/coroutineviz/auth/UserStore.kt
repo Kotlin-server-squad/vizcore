@@ -23,8 +23,7 @@ class UserStore(private val users: List<UserEntry>) {
             val entries =
                 configListOrEmpty(config, "auth.users").mapNotNull { userConfig ->
                     val username = userConfig.propertyOrNull("username")?.getString()?.takeIf { it.isNotBlank() }
-                    val passwordHash =
-                        userConfig.propertyOrNull("passwordHash")?.getString()?.takeIf { it.isNotBlank() }
+                    val passwordHash = resolvePasswordHash(userConfig)
                     val role = Role.fromConfig(userConfig.propertyOrNull("role")?.getString())
                     if (username != null && passwordHash != null) {
                         UserEntry(username = username, passwordHash = passwordHash, role = role)
@@ -33,6 +32,26 @@ class UserStore(private val users: List<UserEntry>) {
                     }
                 }
             return UserStore(entries)
+        }
+
+        /**
+         * Resolve a user's Argon2id hash from config. Prefers the raw [passwordHash]
+         * (programmatic/test config), and falls back to [passwordHashB64] — a Base64
+         * encoding of the same PHC string.
+         *
+         * The Base64 form exists because an Argon2id PHC hash starts with `$argon2…`,
+         * and Ktor's YAML config loader treats any value starting with `$` as an
+         * environment-variable reference (with no escape), making the raw hash
+         * impossible to supply via `application.yaml` / env interpolation. Base64
+         * contains no `$`, so it round-trips cleanly; we decode it back to the PHC
+         * string here for `Password.check(...).withArgon2()`.
+         */
+        private fun resolvePasswordHash(userConfig: ApplicationConfig): String? {
+            userConfig.propertyOrNull("passwordHash")?.getString()?.takeIf { it.isNotBlank() }?.let { return it }
+            val b64 = userConfig.propertyOrNull("passwordHashB64")?.getString()?.takeIf { it.isNotBlank() } ?: return null
+            return runCatching { String(java.util.Base64.getDecoder().decode(b64), Charsets.UTF_8) }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
         }
     }
 }

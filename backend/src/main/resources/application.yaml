@@ -11,9 +11,14 @@ auth:
   # SHA-256-hashed API keys (AUTH-02). Each entry: {name, hash (hex), role}. Empty list = no api-key auth.
   # Hashes are env-interpolated; never store plaintext keys. role ∈ {viewer, runner, admin}.
   keys: []
-  # Config-seeded users (AUTH-03, D-01). Each entry: {username, passwordHash (Argon2id), role}.
-  # passwordHash is env-interpolated; pre-computed via Password.hash(plain).withArgon2().result. No registration/CRUD.
-  users: []
+  # Config-seeded users (AUTH-03, D-01). Each entry: {username, passwordHashB64, role}.
+  # passwordHashB64 is the BASE64 of an Argon2id PHC string (Password.hash(plain).withArgon2().result).
+  # Base64 is required because the raw PHC starts with `$argon2…` and Ktor's YAML loader treats any
+  # `$`-leading value as an env-var reference (no escape). Inert when SEED_USER is unset. No CRUD.
+  users:
+    - username: ${SEED_USER:}
+      passwordHashB64: ${SEED_HASH_B64:}
+      role: ${SEED_ROLE:viewer}
   jwt:
     secret: ${JWT_SECRET:}            # HMAC256 dev secret. Empty + no PEM paths = jwt provider inert.
     issuer: ${JWT_ISSUER:coroutineviz}
