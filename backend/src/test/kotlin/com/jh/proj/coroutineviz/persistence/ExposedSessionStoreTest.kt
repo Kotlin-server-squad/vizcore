@@ -151,6 +151,81 @@ class ExposedSessionStoreTest {
     }
 
     @Test
+    fun `appending across two stale session instances keeps seq unique and contiguous (F6)`() {
+        // Regression for F6: in DB mode every read rebuilds the VizSession with a
+        // fresh in-memory seqGenerator. Two instances of the SAME session id that
+        // each start from a stale (empty) watermark would otherwise re-stamp
+        // overlapping seqs (1,2 / 1,2) and produce duplicates. The store now owns
+        // seq (MAX+1 under a per-session lock), so persisted seqs stay unique.
+        val store = ExposedSessionStore(db)
+        val id = runBlocking { store.createSession("multi") }.sessionId
+
+        // Build BOTH instances before either appends → both rehydrate from seq 0.
+        val a = store.getSession(id)!!
+        val b = store.getSession(id)!!
+
+        fun created(n: Int) =
+            CoroutineCreated(
+                sessionId = id,
+                seq = 0, // provisional; the store reassigns it
+                tsNanos = n.toLong() * 1_000,
+                coroutineId = "c$n",
+                jobId = "j$n",
+                parentCoroutineId = null,
+                scopeId = "s1",
+                label = "c$n",
+            )
+
+        // Interleave appends across the two instances.
+        a.send(created(1))
+        b.send(created(2))
+        a.send(created(3))
+        b.send(created(4))
+
+        val seqs = ExposedEventStore(db, id).all().map { it.seq }
+        assertEquals(4, seqs.size)
+        assertEquals(seqs.size, seqs.distinct().size, "expected no duplicate seqs, got $seqs")
+        assertEquals(listOf(1L, 2L, 3L, 4L), seqs.sorted(), "expected contiguous seqs")
+    }
+
+    @Test
+    fun `concurrent appends to one DB session produce no duplicate seqs (F6)`() {
+        val store = ExposedSessionStore(db)
+        val id = runBlocking { store.createSession("concurrent") }.sessionId
+
+        val threads = 4
+        val perThread = 10
+        val workers =
+            (0 until threads).map { t ->
+                Thread {
+                    val inst = store.getSession(id)!!
+                    repeat(perThread) { i ->
+                        val n = t * perThread + i
+                        inst.send(
+                            CoroutineCreated(
+                                sessionId = id,
+                                seq = 0,
+                                tsNanos = n.toLong() * 1_000,
+                                coroutineId = "c$n",
+                                jobId = "j$n",
+                                parentCoroutineId = null,
+                                scopeId = "s1",
+                                label = "c$n",
+                            ),
+                        )
+                    }
+                }
+            }
+        workers.forEach { it.start() }
+        workers.forEach { it.join() }
+
+        val seqs = ExposedEventStore(db, id).all().map { it.seq }
+        assertEquals(threads * perThread, seqs.size)
+        assertEquals(seqs.size, seqs.distinct().size, "expected no duplicate seqs under concurrency")
+        assertEquals((1L..(threads * perThread).toLong()).toList(), seqs.sorted(), "expected contiguous seqs")
+    }
+
+    @Test
     fun `deleteSession removes the row and cascades events`() {
         val store = ExposedSessionStore(db)
         val session = runBlocking { store.createSession("gamma") }
