@@ -45,8 +45,8 @@ data class ScenarioExecutionResponse(
 /**
  * Convert DTO to internal configuration model
  */
-fun ActionDTO.toAction(): CoroutineAction {
-    return when (type.lowercase()) {
+fun ActionDTO.toAction(): CoroutineAction =
+    when (type.lowercase()) {
         "delay" -> {
             val duration =
                 params["durationMs"]?.toLongOrNull()
@@ -69,22 +69,19 @@ fun ActionDTO.toAction(): CoroutineAction {
         }
         else -> throw IllegalArgumentException("Unknown action type: $type")
     }
-}
 
-fun CoroutineConfigDTO.toConfig(): CoroutineConfig {
-    return CoroutineConfig(
+fun CoroutineConfigDTO.toConfig(): CoroutineConfig =
+    CoroutineConfig(
         id = id,
         label = label,
         parentId = parentId,
         actions = actions.map { it.toAction() },
         children = children.map { it.toConfig() },
     )
-}
 
-fun ScenarioConfigRequest.toScenarioConfig(): ScenarioConfig {
-    return ScenarioConfig(
+fun ScenarioConfigRequest.toScenarioConfig(): ScenarioConfig =
+    ScenarioConfig(
         name = name,
         description = description,
         root = root.toConfig(),
     )
-}

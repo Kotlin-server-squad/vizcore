@@ -26,7 +26,9 @@ class RunWithVisualizerAction : AnAction() {
         PluginSessionManager.getOrCreateSession(project)
 
         // Open tool window
-        val toolWindowManager = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+        val toolWindowManager =
+            com.intellij.openapi.wm.ToolWindowManager
+                .getInstance(project)
         toolWindowManager.getToolWindow("Coroutine Visualizer")?.show()
 
         // TODO: Execute the current run configuration with -javaagent or classpath modifications

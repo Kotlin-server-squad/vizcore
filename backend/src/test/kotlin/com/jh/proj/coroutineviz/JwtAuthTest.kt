@@ -73,7 +73,10 @@ class JwtAuthTest {
                 realm = jwtConfig.realm
                 verifier(jwtConfig.verifier()!!)
                 validate { cred ->
-                    cred.payload.subject?.let { io.ktor.server.auth.jwt.JWTPrincipal(cred.payload) }
+                    cred.payload.subject?.let {
+                        io.ktor.server.auth.jwt
+                            .JWTPrincipal(cred.payload)
+                    }
                 }
             }
         }
@@ -148,8 +151,10 @@ class JwtAuthTest {
                     setBody(LoginRequest("alice", "correct-horse"))
                 }
             val token =
-                Json.parseToJsonElement(tokenResponse.bodyAsText())
-                    .jsonObject["token"]!!.jsonPrimitive.content
+                Json
+                    .parseToJsonElement(tokenResponse.bodyAsText())
+                    .jsonObject["token"]!!
+                    .jsonPrimitive.content
 
             val ok =
                 client.get("/api/protected") {

@@ -26,7 +26,9 @@ import io.ktor.server.auth.Principal
  */
 sealed interface TenantContext {
     /** A concrete tenant; reads/creation are filtered to [tenantId]. */
-    data class Scoped(val tenantId: String) : TenantContext
+    data class Scoped(
+        val tenantId: String,
+    ) : TenantContext
 
     /** An ADMIN principal — sees ALL sessions, bypassing the tenant filter (D-03). */
     data object Admin : TenantContext

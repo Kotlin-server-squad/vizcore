@@ -52,7 +52,9 @@ class TimelinePanel(
 /**
  * Canvas that renders the timeline visualization.
  */
-private class TimelineCanvas(private val session: VizSession) : JPanel() {
+private class TimelineCanvas(
+    private val session: VizSession,
+) : JPanel() {
     companion object {
         const val LANE_HEIGHT = 30
         const val LANE_GAP = 4
@@ -65,7 +67,9 @@ private class TimelineCanvas(private val session: VizSession) : JPanel() {
         val g2 = g as Graphics2D
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
 
-        val coroutines = session.snapshot.coroutines.values.toList()
+        val coroutines =
+            session.snapshot.coroutines.values
+                .toList()
         if (coroutines.isEmpty()) {
             g2.color = Color.GRAY
             g2.drawString("No coroutines yet — run a scenario to see the timeline", PADDING, 30)

@@ -29,8 +29,14 @@ internal fun configListOrEmpty(
  * constant-time compares (via [MessageDigest.isEqual]) against every stored hash,
  * defeating timing side-channels. Multiple keys are supported for zero-downtime rotation.
  */
-class ApiKeyStore(private val keys: List<KeyEntry>) {
-    data class KeyEntry(val name: String, val sha256Hash: String, val role: Role)
+class ApiKeyStore(
+    private val keys: List<KeyEntry>,
+) {
+    data class KeyEntry(
+        val name: String,
+        val sha256Hash: String,
+        val role: Role,
+    )
 
     /** True when no keys are configured — used by the fail-open auth toggle (D-04a). */
     val isEmpty: Boolean get() = keys.isEmpty()
@@ -52,7 +58,8 @@ class ApiKeyStore(private val keys: List<KeyEntry>) {
 
     companion object {
         fun sha256Hex(raw: String): String =
-            MessageDigest.getInstance("SHA-256")
+            MessageDigest
+                .getInstance("SHA-256")
                 .digest(raw.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }
 

@@ -39,11 +39,12 @@ suspend fun dispatcherExampleScenario() =
         println("\n🟢 Example 1: Default Dispatcher")
 
         val scope1 = VizScope(session, context = dispatchers.default)
-        scope1.vizLaunch(label = "cpu-work") {
-            println("   [cpu-work] Running on: ${Thread.currentThread().name}")
-            vizDelay(100)
-            println("   [cpu-work] Completed")
-        }.join()
+        scope1
+            .vizLaunch(label = "cpu-work") {
+                println("   [cpu-work] Running on: ${Thread.currentThread().name}")
+                vizDelay(100)
+                println("   [cpu-work] Completed")
+            }.join()
 
         // ========================================
         // Example 2: Use IO dispatcher
@@ -51,13 +52,14 @@ suspend fun dispatcherExampleScenario() =
         println("\n🔵 Example 2: IO Dispatcher")
 
         val scope2 = VizScope(session, context = dispatchers.io)
-        scope2.vizLaunch(label = "file-reader") {
-            println("   [file-reader] Running on: ${Thread.currentThread().name}")
-            vizDelay(100)
-            println("   [file-reader] Simulating file read")
-            vizDelay(100)
-            println("   [file-reader] Completed")
-        }.join()
+        scope2
+            .vizLaunch(label = "file-reader") {
+                println("   [file-reader] Running on: ${Thread.currentThread().name}")
+                vizDelay(100)
+                println("   [file-reader] Simulating file read")
+                vizDelay(100)
+                println("   [file-reader] Completed")
+            }.join()
 
         // ========================================
         // Example 3: Mix dispatchers in same scope
@@ -65,23 +67,24 @@ suspend fun dispatcherExampleScenario() =
         println("\n🟡 Example 3: Mixed Dispatchers")
 
         val scope3 = VizScope(session, context = dispatchers.default)
-        scope3.vizLaunch(label = "parent") {
-            println("   [parent] Running on: ${Thread.currentThread().name}")
+        scope3
+            .vizLaunch(label = "parent") {
+                println("   [parent] Running on: ${Thread.currentThread().name}")
 
-            // Child 1: Stays on Default
-            vizLaunch(label = "child-default") {
-                println("   [child-default] Running on: ${Thread.currentThread().name}")
-                vizDelay(100)
-            }
+                // Child 1: Stays on Default
+                vizLaunch(label = "child-default") {
+                    println("   [child-default] Running on: ${Thread.currentThread().name}")
+                    vizDelay(100)
+                }
 
-            // Child 2: Switches to IO
-            vizLaunch(label = "child-io", context = dispatchers.io) {
-                println("   [child-io] Running on: ${Thread.currentThread().name}")
-                vizDelay(100)
-            }
+                // Child 2: Switches to IO
+                vizLaunch(label = "child-io", context = dispatchers.io) {
+                    println("   [child-io] Running on: ${Thread.currentThread().name}")
+                    vizDelay(100)
+                }
 
-            println("   [parent] Waiting for children...")
-        }.join()
+                println("   [parent] Waiting for children...")
+            }.join()
 
         // ========================================
         // Verify Events

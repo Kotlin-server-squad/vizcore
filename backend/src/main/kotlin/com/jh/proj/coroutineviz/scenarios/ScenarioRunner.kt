@@ -185,8 +185,8 @@ object ScenarioRunner {
 
             val viz = VizScope(session)
 
-            suspend fun VizScope.createNested(level: Int): Job {
-                return if (level >= depth) {
+            suspend fun VizScope.createNested(level: Int): Job =
+                if (level >= depth) {
                     vizLaunch("leaf-$level") {
                         vizDelay(5000)
                         logger.debug("Leaf at level $level completed")
@@ -199,7 +199,6 @@ object ScenarioRunner {
                         logger.debug("Level $level completed")
                     }
                 }
-            }
 
             val job = viz.createNested(0)
 

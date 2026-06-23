@@ -10,7 +10,10 @@ import kotlinx.serialization.Serializable
  * `expires_at` (the share never expires — and is therefore always "active" for
  * the retention guard, see [com.jh.proj.coroutineviz.persistence.DbRetentionPolicy]).
  */
-enum class ShareExpiry(val code: String, val days: Long?) {
+enum class ShareExpiry(
+    val code: String,
+    val days: Long?,
+) {
     ONE_DAY("1d", 1),
     SEVEN_DAYS("7d", 7),
     THIRTY_DAYS("30d", 30),

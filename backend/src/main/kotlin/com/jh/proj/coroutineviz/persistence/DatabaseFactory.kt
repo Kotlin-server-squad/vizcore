@@ -72,7 +72,8 @@ object DatabaseFactory {
     }
 
     private fun migrate(dataSource: DataSource) {
-        Flyway.configure()
+        Flyway
+            .configure()
             .dataSource(dataSource)
             .locations("classpath:db/migration/common")
             .baselineOnMigrate(true)

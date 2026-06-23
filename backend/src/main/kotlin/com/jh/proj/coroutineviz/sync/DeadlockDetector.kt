@@ -60,7 +60,11 @@ class DeadlockDetector(
     ) {
         waitingFor[coroutineId] =
             MutexWait(
-                coroutineId, coroutineLabel, mutexId, mutexLabel, System.nanoTime(),
+                coroutineId,
+                coroutineLabel,
+                mutexId,
+                mutexLabel,
+                System.nanoTime(),
             )
 
         // Check for deadlock after recording
@@ -81,7 +85,8 @@ class DeadlockDetector(
         waitingFor.remove(coroutineId)
 
         // Add to holding
-        holding.getOrPut(coroutineId) { mutableSetOf() }
+        holding
+            .getOrPut(coroutineId) { mutableSetOf() }
             .add(MutexHold(mutexId, mutexLabel, System.nanoTime()))
 
         // Update ownership

@@ -136,12 +136,16 @@ class TenantIsolationE2ETest {
                     authHeader { call ->
                         call.request.headers["Authorization"]?.let { raw ->
                             return@authHeader runCatching {
-                                io.ktor.http.auth.parseAuthorizationHeader(raw)
+                                io.ktor.http.auth
+                                    .parseAuthorizationHeader(raw)
                             }.getOrNull()
                         }
                         call.request.queryParameters[com.jh.proj.coroutineviz.SSE_TOKEN_QUERY_PARAM]
                             ?.takeIf { it.isNotBlank() }
-                            ?.let { io.ktor.http.auth.HttpAuthHeader.Single("Bearer", it) }
+                            ?.let {
+                                io.ktor.http.auth.HttpAuthHeader
+                                    .Single("Bearer", it)
+                            }
                     }
                     verifier(jwtConfig.verifier()!!)
                     validate { cred ->
@@ -154,10 +158,16 @@ class TenantIsolationE2ETest {
             // registerSessionRoutes wraps creation in rateLimit("session-create"); the
             // plugin must be installed (generous limits so the test isn't throttled).
             install(io.ktor.server.plugins.ratelimit.RateLimit) {
-                register(io.ktor.server.plugins.ratelimit.RateLimitName("api")) {
+                register(
+                    io.ktor.server.plugins.ratelimit
+                        .RateLimitName("api"),
+                ) {
                     rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
                 }
-                register(io.ktor.server.plugins.ratelimit.RateLimitName("session-create")) {
+                register(
+                    io.ktor.server.plugins.ratelimit
+                        .RateLimitName("session-create"),
+                ) {
                     rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
                 }
             }
@@ -269,7 +279,11 @@ class TenantIsolationE2ETest {
             // The scoped get-or-create must NOT resolve alice's id for bob: the run is
             // redirected to a fresh, bob-owned session (never a write into alice's).
             val returnedId =
-                Json.parseToJsonElement(resp.bodyAsText()).jsonObject["sessionId"]?.jsonPrimitive?.content
+                Json
+                    .parseToJsonElement(resp.bodyAsText())
+                    .jsonObject["sessionId"]
+                    ?.jsonPrimitive
+                    ?.content
             assertFalse(returnedId == aId, "bob's scenario must NOT target alice's session id; got $returnedId")
 
             // Drain bob's scenario to FULL completion so all async coroutine writes —
@@ -336,7 +350,11 @@ class TenantIsolationE2ETest {
             // bank-transfer is a light mutex scenario (~37 events). Run it as alice.
             val run = client.get("/api/sync/mutex/bank-transfer") { header("Authorization", "Bearer $alice") }
             assertEquals(HttpStatusCode.OK, run.status, "sync scenario should run")
-            val sid = Json.parseToJsonElement(run.bodyAsText()).jsonObject["sessionId"]!!.jsonPrimitive.content
+            val sid =
+                Json
+                    .parseToJsonElement(run.bodyAsText())
+                    .jsonObject["sessionId"]!!
+                    .jsonPrimitive.content
             assertTrue(sid.isNotBlank(), "run must return a session id")
 
             // Owner: the session is now visible (events 200) and validatable (200) — the F9 fix.
@@ -531,7 +549,10 @@ class TenantIsolationE2ETest {
                 setBody("""{"expiresIn":"7d"}""")
             }
         assertEquals(HttpStatusCode.Created, resp.status, "mint should succeed for the owner")
-        return Json.parseToJsonElement(resp.bodyAsText()).jsonObject["token"]!!.jsonPrimitive.content
+        return Json
+            .parseToJsonElement(resp.bodyAsText())
+            .jsonObject["token"]!!
+            .jsonPrimitive.content
     }
 
     private fun h2DataSource(url: String): HikariDataSource {

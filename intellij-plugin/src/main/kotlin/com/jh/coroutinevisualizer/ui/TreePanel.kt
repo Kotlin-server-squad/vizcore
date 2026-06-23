@@ -56,7 +56,9 @@ class TreePanel(
     private fun refreshTree() {
         rootNode.removeAllChildren()
 
-        val coroutines = session.snapshot.coroutines.values.toList()
+        val coroutines =
+            session.snapshot.coroutines.values
+                .toList()
         val roots = coroutines.filter { it.parentId == null }
 
         for (root in roots) {

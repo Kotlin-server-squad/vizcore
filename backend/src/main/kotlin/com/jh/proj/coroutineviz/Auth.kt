@@ -105,7 +105,10 @@ fun Application.configureAuth() {
 /** Build an [HttpAuthHeader] from the Bearer header if present, else from the `?token=` query param. */
 private fun resolveJwtAuthHeader(call: ApplicationCall): HttpAuthHeader? {
     call.request.headers["Authorization"]?.let { raw ->
-        return runCatching { io.ktor.http.auth.parseAuthorizationHeader(raw) }.getOrNull()
+        return runCatching {
+            io.ktor.http.auth
+                .parseAuthorizationHeader(raw)
+        }.getOrNull()
     }
     val queryToken = call.request.queryParameters[SSE_TOKEN_QUERY_PARAM]?.takeIf { it.isNotBlank() }
     return queryToken?.let { HttpAuthHeader.Single("Bearer", it) }

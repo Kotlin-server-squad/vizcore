@@ -276,7 +276,8 @@ class MetricsWiringTest {
      */
     private fun parseSseClientsActiveValue(metricsBody: String): Double {
         val line =
-            metricsBody.lines()
+            metricsBody
+                .lines()
                 .firstOrNull { it.startsWith("viz_sse_clients_active ") }
                 ?: return 0.0
         return line.substringAfterLast(" ").trim().toDoubleOrNull() ?: 0.0

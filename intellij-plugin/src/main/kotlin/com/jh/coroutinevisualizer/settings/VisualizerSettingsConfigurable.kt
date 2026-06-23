@@ -47,9 +47,7 @@ class VisualizerSettings : PersistentStateComponent<VisualizerSettings.State> {
     }
 
     companion object {
-        fun getInstance(): VisualizerSettings {
-            return ApplicationManager.getApplication().getService(VisualizerSettings::class.java)
-        }
+        fun getInstance(): VisualizerSettings = ApplicationManager.getApplication().getService(VisualizerSettings::class.java)
     }
 }
 
@@ -77,23 +75,26 @@ class VisualizerSettingsConfigurable : Configurable {
                 add(Box.createVerticalStrut(8))
 
                 add(
-                    createLabeledField("Event receiver port:", settings.state.receiverPort.toString()).also {
-                        portField = it.second
-                    }.first,
+                    createLabeledField("Event receiver port:", settings.state.receiverPort.toString())
+                        .also {
+                            portField = it.second
+                        }.first,
                 )
                 add(Box.createVerticalStrut(4))
 
                 add(
-                    createLabeledField("Max event retention:", settings.state.maxEventRetention.toString()).also {
-                        retentionField = it.second
-                    }.first,
+                    createLabeledField("Max event retention:", settings.state.maxEventRetention.toString())
+                        .also {
+                            retentionField = it.second
+                        }.first,
                 )
                 add(Box.createVerticalStrut(4))
 
                 add(
-                    createLabeledField("Refresh rate (ms):", settings.state.refreshRateMs.toString()).also {
-                        refreshField = it.second
-                    }.first,
+                    createLabeledField("Refresh rate (ms):", settings.state.refreshRateMs.toString())
+                        .also {
+                            refreshField = it.second
+                        }.first,
                 )
             }
 

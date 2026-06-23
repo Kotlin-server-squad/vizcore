@@ -230,7 +230,9 @@ class InstrumentedChannelTest {
         runBlocking {
             val scope = VizScope(session)
             val channel = scope.vizChannel<Int>(Channel.BUFFERED, "fan-out")
-            val received = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+            val received =
+                java.util.concurrent.ConcurrentHashMap
+                    .newKeySet<Int>()
 
             // Launch receivers
             val receivers =
@@ -277,9 +279,13 @@ class InstrumentedChannelTest {
             val allEvents = session.store.all()
             val channelEvents =
                 allEvents.filter { event ->
-                    event is ChannelCreated || event is ChannelSendStarted || event is ChannelSendCompleted ||
-                        event is ChannelReceiveStarted || event is ChannelReceiveCompleted ||
-                        event is ChannelClosed || event is ChannelBufferStateChanged
+                    event is ChannelCreated ||
+                        event is ChannelSendStarted ||
+                        event is ChannelSendCompleted ||
+                        event is ChannelReceiveStarted ||
+                        event is ChannelReceiveCompleted ||
+                        event is ChannelClosed ||
+                        event is ChannelBufferStateChanged
                 }
 
             // First event should be ChannelCreated

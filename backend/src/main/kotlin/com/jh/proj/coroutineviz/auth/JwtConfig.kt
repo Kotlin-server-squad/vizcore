@@ -42,7 +42,8 @@ class JwtConfig private constructor(
     /** Build the verifier used by the Ktor jwt provider. Null when not configured. */
     fun verifier(): JWTVerifier? =
         algorithm?.let {
-            JWT.require(it)
+            JWT
+                .require(it)
                 .withIssuer(issuer)
                 .withAudience(audience)
                 .build()
@@ -60,7 +61,8 @@ class JwtConfig private constructor(
         val now = Instant.now()
         val expiresAt = now.plus(accessTtlMinutes, ChronoUnit.MINUTES)
         val token =
-            JWT.create()
+            JWT
+                .create()
                 .withIssuer(issuer)
                 .withAudience(audience)
                 .withSubject(userId)
@@ -71,13 +73,19 @@ class JwtConfig private constructor(
         return SignedToken(token = token, expiresAt = expiresAt)
     }
 
-    data class SignedToken(val token: String, val expiresAt: Instant)
+    data class SignedToken(
+        val token: String,
+        val expiresAt: Instant,
+    )
 
     companion object {
         fun fromConfig(config: ApplicationConfig): JwtConfig {
             val jwt =
                 runCatching { config.config("auth.jwt") }
-                    .getOrElse { io.ktor.server.config.MapApplicationConfig() }
+                    .getOrElse {
+                        io.ktor.server.config
+                            .MapApplicationConfig()
+                    }
             val secret = jwt.propertyOrNull("secret")?.getString()?.takeIf { it.isNotBlank() }
             val issuer = jwt.propertyOrNull("issuer")?.getString() ?: "coroutineviz"
             val audience = jwt.propertyOrNull("audience")?.getString() ?: "coroutineviz-api"
@@ -108,7 +116,8 @@ class JwtConfig private constructor(
 
         private fun stripPem(pem: String): ByteArray {
             val base64 =
-                pem.lineSequence()
+                pem
+                    .lineSequence()
                     .filterNot { it.startsWith("-----") }
                     .joinToString("")
                     .replace("\\s".toRegex(), "")
@@ -117,13 +126,15 @@ class JwtConfig private constructor(
 
         private fun readRsaPrivateKey(path: String): RSAPrivateKey {
             val der = stripPem(File(path).readText())
-            return KeyFactory.getInstance("RSA")
+            return KeyFactory
+                .getInstance("RSA")
                 .generatePrivate(PKCS8EncodedKeySpec(der)) as RSAPrivateKey
         }
 
         private fun readRsaPublicKey(path: String): RSAPublicKey {
             val der = stripPem(File(path).readText())
-            return KeyFactory.getInstance("RSA")
+            return KeyFactory
+                .getInstance("RSA")
                 .generatePublic(X509EncodedKeySpec(der)) as RSAPublicKey
         }
     }

@@ -50,13 +50,12 @@ class CoroutineNodeRenderer : DefaultTreeCellRenderer() {
             CoroutineState.FAILED -> AllIcons.General.Error
         }
 
-    private fun buildTooltip(coroutine: CoroutineNode): String {
-        return """
-            ID: ${coroutine.id}
-            Job: ${coroutine.jobId}
-            Parent: ${coroutine.parentId ?: "none"}
-            Scope: ${coroutine.scopeId}
-            State: ${coroutine.state}
-            """.trimIndent()
-    }
+    private fun buildTooltip(coroutine: CoroutineNode): String =
+        """
+        ID: ${coroutine.id}
+        Job: ${coroutine.jobId}
+        Parent: ${coroutine.parentId ?: "none"}
+        Scope: ${coroutine.scopeId}
+        State: ${coroutine.state}
+        """.trimIndent()
 }
