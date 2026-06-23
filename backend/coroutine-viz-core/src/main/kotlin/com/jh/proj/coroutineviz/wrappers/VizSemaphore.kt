@@ -271,8 +271,12 @@ class VizSemaphore(
     }
 
     private fun emitStateChanged() {
-        val holders = activeHolders.values.toList()
-        val waiters = waitQueue.toList()
+        // Atomic snapshots: Collection.toList() has a size==1 fast path that calls
+        // iterator().next(), which races a concurrent remove() on these concurrent
+        // collections and throws NoSuchElementException. toMutableList() copies via
+        // ArrayList(this) → toArray(), which is a race-safe snapshot.
+        val holders = activeHolders.values.toMutableList()
+        val waiters = waitQueue.toMutableList()
 
         session.send(
             SemaphoreStateChanged(
