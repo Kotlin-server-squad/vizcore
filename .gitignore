@@ -29,9 +29,10 @@ backend/.intellijPlatform/
 .DS_Store
 Thumbs.db
 
-# Claude (keep skills, ignore the rest)
-.claude/*
-!.claude/skills/
+# AI tooling — kept locally, never committed
+.claude/
+.planning/
+/CLAUDE.md
 
 # Git backups
 .git-backup/
