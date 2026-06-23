@@ -19,7 +19,9 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        // Default 8080; override with VITE_PROXY_TARGET when the backend runs elsewhere
+        // (e.g. VITE_PROXY_TARGET=http://localhost:8090 pnpm dev when 8080 is taken).
+        target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8080',
         changeOrigin: true,
       },
     },
