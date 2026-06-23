@@ -72,7 +72,21 @@ publishing {
     }
 }
 
+// Target JVM 17. This shared library is consumed by BOTH the JVM-21 backend and
+// the intellij-plugin module, which must produce JVM 17 bytecode for IntelliJ
+// 2024.1 (241). IntelliJ Platform Gradle Plugin 2.16.0 strictly enforces the
+// org.gradle.jvm.version variant attribute, so a 21-targeted core is rejected by
+// the plugin's 17 classpath. A 17 lib runs fine on the JVM-21 backend, so 17 is
+// the lowest common denominator that satisfies both consumers.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 // Generate sources JAR
 java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
     withSourcesJar()
 }

@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.3.21"
-    id("org.jetbrains.intellij.platform") version "2.5.0"
+    id("org.jetbrains.intellij.platform") version "2.16.0"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
@@ -36,7 +36,8 @@ dependencies {
         intellijIdeaCommunity("2024.1")
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.kotlin")
-        instrumentationTools()
+        // instrumentationTools() removed in IntelliJ Platform Gradle Plugin 2.x —
+        // code instrumentation tools are now added automatically.
     }
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
