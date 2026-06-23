@@ -145,6 +145,35 @@ class ScenarioRoutesTest {
         }
 
     @Test
+    fun `POST scenarios sync runs into the given session (Gallery sync routing)`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            // Pre-create a session, then run a sync scenario INTO it — the Gallery's
+            // create-then-run contract. Previously the Gallery's sync cards pointed at
+            // a non-existent route (_sync_/...) and 404'd; sync was GET-only and
+            // self-creating. This POST alias runs in the passed session.
+            val createBody =
+                Json.parseToJsonElement(client.post("/api/sessions?name=sync-route-test").bodyAsText()).jsonObject
+            val sessionId = createBody["sessionId"]!!.jsonPrimitive.content
+
+            val response = client.post("/api/scenarios/sync/mutex/bank-transfer?sessionId=$sessionId")
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals(true, body["success"]?.jsonPrimitive?.boolean)
+            assertEquals(
+                sessionId,
+                body["sessionId"]?.jsonPrimitive?.content,
+                "sync scenario must run into the supplied session, not a fresh one",
+            )
+            assertTrue(
+                (body["eventCount"]?.jsonPrimitive?.int ?: 0) > 0,
+                "sync run should have produced events",
+            )
+        }
+
+    @Test
     fun `POST scenarios nested returns valid response`() =
         testApplication {
             application { module() }
