@@ -510,7 +510,7 @@ private suspend fun ApplicationCall.runScenarioWithResponse(
     }
 }
 
-private suspend fun ApplicationCall.getOrCreateSession(sessionId: String?): VizSession {
+internal suspend fun ApplicationCall.getOrCreateSession(sessionId: String?): VizSession {
     val store = tenantScopedStore()
     if (store == null) {
         // Memory / auth-off: preserve legacy unscoped behavior (D-04b global visibility).

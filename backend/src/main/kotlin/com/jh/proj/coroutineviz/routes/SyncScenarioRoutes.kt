@@ -152,6 +152,46 @@ fun Route.registerSyncScenarioRoutes() {
             ),
         )
     }
+
+    // ========================================================================
+    // SESSION-AWARE POST VARIANTS (Gallery / catalog run contract)
+    //
+    // The GET /api/sync/* routes above self-create a session and return a result.
+    // The Gallery (and the unified scenario-run contract used by patterns/flow)
+    // expects POST /api/scenarios/<id>?sessionId=<id> to run a scenario INTO an
+    // existing session. These POST aliases provide that for sync scenarios so the
+    // Gallery's Sync cards work like every other card.
+    // ========================================================================
+    post("/api/scenarios/sync/mutex/counter") {
+        call.runSyncScenarioInSession("Thread-Safe Counter") { SyncScenarios.threadSafeCounter(it) }
+    }
+    post("/api/scenarios/sync/mutex/bank-transfer") {
+        call.runSyncScenarioInSession("Bank Account Transfer") { SyncScenarios.bankAccountTransfer(it) }
+    }
+    post("/api/scenarios/sync/mutex/cache") {
+        call.runSyncScenarioInSession("Cache Read-Through") { SyncScenarios.cacheWithReadThrough(it) }
+    }
+    post("/api/scenarios/sync/mutex/deadlock-demo") {
+        call.runSyncScenarioInSession("Deadlock Demo") { SyncScenarios.deadlockDemonstration(it) }
+    }
+    post("/api/scenarios/sync/semaphore/connection-pool") {
+        call.runSyncScenarioInSession("Connection Pool") { SyncScenarios.databaseConnectionPool(it) }
+    }
+    post("/api/scenarios/sync/semaphore/rate-limiter") {
+        call.runSyncScenarioInSession("API Rate Limiter") { SyncScenarios.apiRateLimiter(it) }
+    }
+    post("/api/scenarios/sync/semaphore/file-processor") {
+        call.runSyncScenarioInSession("File Processor") { SyncScenarios.parallelFileProcessor(it) }
+    }
+    post("/api/scenarios/sync/semaphore/resource-timeout") {
+        call.runSyncScenarioInSession("Resource Timeout") { SyncScenarios.resourcePoolWithTimeout(it) }
+    }
+    post("/api/scenarios/sync/semaphore/producer-consumer") {
+        call.runSyncScenarioInSession("Producer-Consumer") { SyncScenarios.producerConsumerBuffer(it) }
+    }
+    post("/api/scenarios/sync/combined/ecommerce") {
+        call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.ecommerceOrderProcessing(it) }
+    }
 }
 
 @Serializable
@@ -202,6 +242,49 @@ private suspend fun ApplicationCall.runSyncScenario(
 
         logger.info("✅ Sync scenario '$scenarioName' completed | Events: $eventCount")
 
+        respond(
+            HttpStatusCode.OK,
+            SyncScenarioResponse(
+                success = true,
+                sessionId = session.sessionId,
+                scenario = scenarioName,
+                message = "Scenario completed successfully",
+                eventCount = eventCount,
+            ),
+        )
+    } catch (e: Exception) {
+        logger.error("❌ Sync scenario '$scenarioName' failed", e)
+        respond(
+            HttpStatusCode.InternalServerError,
+            SyncScenarioResponse(
+                success = false,
+                sessionId = "",
+                scenario = scenarioName,
+                message = "Scenario failed: ${e.message}",
+            ),
+        )
+    }
+}
+
+/**
+ * Run a sync scenario INTO the session named by `?sessionId` (creating one if
+ * absent), via the same tenant-scoped [getOrCreateSession] the patterns/flow/basic
+ * scenario-runner routes use. This is the session-aware counterpart to
+ * [runSyncScenario] (which always creates a fresh session) and backs the
+ * `POST /api/scenarios/sync/...` Gallery routes.
+ */
+private suspend fun ApplicationCall.runSyncScenarioInSession(
+    scenarioName: String,
+    scenario: suspend (VizScope) -> Unit,
+) {
+    try {
+        val sessionId = request.queryParameters["sessionId"]
+        val session = getOrCreateSession(sessionId)
+        val scope = VizScope(session)
+        scenario(scope)
+        kotlinx.coroutines.delay(100)
+        val eventCount = session.store.all().size
+        logger.info("✅ Sync scenario '$scenarioName' completed in session ${session.sessionId} | Events: $eventCount")
         respond(
             HttpStatusCode.OK,
             SyncScenarioResponse(

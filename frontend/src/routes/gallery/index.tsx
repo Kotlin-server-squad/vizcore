@@ -51,7 +51,7 @@ const CATEGORIES: { key: GalleryCategory; label: string; icon: React.ReactNode }
   { key: 'channel', label: 'Channel', icon: <FiLayers className="h-4 w-4" /> },
 ]
 
-const GALLERY_SCENARIOS: GalleryScenario[] = [
+export const GALLERY_SCENARIOS: GalleryScenario[] = [
   // ===================== BASIC =====================
   {
     id: 'gallery-nested', name: 'Nested Coroutines',
@@ -100,31 +100,31 @@ const GALLERY_SCENARIOS: GalleryScenario[] = [
   {
     id: 'gallery-retry', name: 'Retry with Backoff',
     description: 'Retry a failing operation 3 times with exponential backoff (100ms, 200ms, 400ms).',
-    category: 'patterns', difficulty: 'intermediate', scenarioId: '_pattern_/retry',
+    category: 'patterns', difficulty: 'intermediate', scenarioId: 'patterns/retry',
     tags: ['retry', 'backoff', 'resilience'],
   },
   {
     id: 'gallery-producer-consumer', name: 'Producer-Consumer',
     description: 'Producer sends items to a buffered channel, consumer processes them with delay. Shows backpressure.',
-    category: 'patterns', difficulty: 'intermediate', scenarioId: '_pattern_/producer-consumer',
+    category: 'patterns', difficulty: 'intermediate', scenarioId: 'patterns/producer-consumer',
     tags: ['producer', 'consumer', 'channel'],
   },
   {
     id: 'gallery-fan-out-fan-in', name: 'Fan-Out / Fan-In',
     description: 'One producer, 3 workers processing in parallel, results collected via channel.',
-    category: 'patterns', difficulty: 'intermediate', scenarioId: '_pattern_/fan-out-fan-in',
+    category: 'patterns', difficulty: 'intermediate', scenarioId: 'patterns/fan-out-fan-in',
     tags: ['fan-out', 'fan-in', 'workers'],
   },
   {
     id: 'gallery-supervisor', name: 'Supervisor Pattern',
     description: 'One child fails but siblings continue. Shows error isolation with structured concurrency.',
-    category: 'patterns', difficulty: 'intermediate', scenarioId: '_pattern_/supervisor',
+    category: 'patterns', difficulty: 'intermediate', scenarioId: 'patterns/supervisor',
     tags: ['supervisor', 'error', 'isolation'],
   },
   {
     id: 'gallery-circuit-breaker', name: 'Circuit Breaker',
     description: 'After N consecutive failures, stop trying for a cooldown period. Resilience pattern.',
-    category: 'patterns', difficulty: 'advanced', scenarioId: '_pattern_/circuit-breaker',
+    category: 'patterns', difficulty: 'advanced', scenarioId: 'patterns/circuit-breaker',
     tags: ['circuit breaker', 'resilience', 'cooldown'],
   },
   {
@@ -150,37 +150,37 @@ const GALLERY_SCENARIOS: GalleryScenario[] = [
   {
     id: 'gallery-mutex-bank', name: 'Mutex: Bank Transfer',
     description: 'Two accounts with mutexes. Transfers require both locks in consistent order to prevent deadlock.',
-    category: 'sync', difficulty: 'intermediate', scenarioId: '_sync_/mutex/bank-transfer',
+    category: 'sync', difficulty: 'intermediate', scenarioId: 'sync/mutex/bank-transfer',
     tags: ['mutex', 'lock ordering', 'atomicity'],
   },
   {
     id: 'gallery-mutex-cache', name: 'Mutex: Read-Through Cache',
     description: 'Cache protected by mutex. Multiple coroutines read; cache miss triggers a write under lock.',
-    category: 'sync', difficulty: 'intermediate', scenarioId: '_sync_/mutex/cache',
+    category: 'sync', difficulty: 'intermediate', scenarioId: 'sync/mutex/cache',
     tags: ['mutex', 'cache', 'read-through'],
   },
   {
     id: 'gallery-semaphore-pool', name: 'Semaphore: Connection Pool',
     description: 'Limit concurrent DB connections using a Semaphore. Observe permits acquired and released.',
-    category: 'sync', difficulty: 'intermediate', scenarioId: '_sync_/semaphore/connection-pool',
+    category: 'sync', difficulty: 'intermediate', scenarioId: 'sync/semaphore/connection-pool',
     tags: ['semaphore', 'permits', 'pool'],
   },
   {
     id: 'gallery-semaphore-limiter', name: 'Semaphore: Rate Limiter',
     description: 'Limit concurrent API calls with a Semaphore. See how requests queue when limit is reached.',
-    category: 'sync', difficulty: 'intermediate', scenarioId: '_sync_/semaphore/rate-limiter',
+    category: 'sync', difficulty: 'intermediate', scenarioId: 'sync/semaphore/rate-limiter',
     tags: ['semaphore', 'rate limit', 'throttle'],
   },
   {
     id: 'gallery-ecommerce', name: 'Combined: E-Commerce',
     description: 'Full e-commerce order with mutex for inventory and semaphore for payment gateway.',
-    category: 'sync', difficulty: 'advanced', scenarioId: '_sync_/combined/ecommerce',
+    category: 'sync', difficulty: 'advanced', scenarioId: 'sync/combined/ecommerce',
     tags: ['mutex', 'semaphore', 'combined'],
   },
   {
     id: 'gallery-deadlock', name: 'Deadlock Detection',
     description: 'Two coroutines each hold a lock and wait for the other. Visualizer detects the deadlock.',
-    category: 'sync', difficulty: 'advanced', scenarioId: '_sync_/mutex/deadlock-demo',
+    category: 'sync', difficulty: 'advanced', scenarioId: 'sync/mutex/deadlock-demo',
     tags: ['deadlock', 'mutex', 'detection'],
   },
 
@@ -188,25 +188,25 @@ const GALLERY_SCENARIOS: GalleryScenario[] = [
   {
     id: 'gallery-flow-simple', name: 'Simple Flow',
     description: 'Emit 5 values from a cold Flow and collect them. See FlowCreated, FlowValueEmitted, FlowCollectionCompleted.',
-    category: 'flow', difficulty: 'beginner', scenarioId: '_flow_/simple',
+    category: 'flow', difficulty: 'beginner', scenarioId: 'flow/simple',
     tags: ['flow', 'emit', 'collect', 'cold'],
   },
   {
     id: 'gallery-flow-operators', name: 'Flow Operators',
     description: 'Chain map and filter operators. Watch values transform and get filtered through the pipeline.',
-    category: 'flow', difficulty: 'intermediate', scenarioId: '_flow_/operators',
+    category: 'flow', difficulty: 'intermediate', scenarioId: 'flow/operators',
     tags: ['flow', 'map', 'filter', 'operators'],
   },
   {
     id: 'gallery-stateflow', name: 'StateFlow',
     description: 'Mutable state with 2 observers. See StateFlowValueChanged events as the counter increments.',
-    category: 'flow', difficulty: 'intermediate', scenarioId: '_flow_/stateflow',
+    category: 'flow', difficulty: 'intermediate', scenarioId: 'flow/stateflow',
     tags: ['stateflow', 'state', 'observers'],
   },
   {
     id: 'gallery-sharedflow', name: 'SharedFlow',
     description: 'Broadcast events to 2 subscribers. See SharedFlowEmission and SharedFlowSubscription events.',
-    category: 'flow', difficulty: 'advanced', scenarioId: '_flow_/sharedflow',
+    category: 'flow', difficulty: 'advanced', scenarioId: 'flow/sharedflow',
     tags: ['sharedflow', 'broadcast', 'subscribers'],
   },
 
