@@ -231,7 +231,8 @@ class InstrumentedFlowTest {
     fun `empty flow emits collection with zero emissions`() =
         runTest {
             val flow =
-                kotlinx.coroutines.flow.emptyFlow<Int>()
+                kotlinx.coroutines.flow
+                    .emptyFlow<Int>()
                     .instrumented(session, "flow-empty", "Cold", "emptyFlow")
 
             flow.collect { }

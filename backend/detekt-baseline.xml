@@ -18,6 +18,7 @@
     <ID>LongMethod:ScenarioRunnerRoutes.kt$fun Route.registerScenarioRunnerRoutes()</ID>
     <ID>LongMethod:SessionRoutes.kt$fun Route.registerSessionRoutes()</ID>
     <ID>LongMethod:ShareRoutes.kt$@OptIn(ExperimentalTime::class) fun Route.registerShareOwnerRoutes( service: ShareService, publicBaseUrl: String?, )</ID>
+    <ID>LongMethod:StructuredConcurrencyTest.kt$StructuredConcurrencyTest$@Test fun `test basic structured concurrency - parent waits for children`()</ID>
     <ID>LongMethod:StructuredConcurrencyTest.kt$StructuredConcurrencyTest$@Test fun `test exception propagation - child fails, parent and siblings cancelled`()</ID>
     <ID>LongMethod:StructuredConcurrencyTest.kt$StructuredConcurrencyTest$@Test fun `test multiple awaiters on same deferred`()</ID>
     <ID>LongMethod:SyncScenarioRoutes.kt$fun Route.registerSyncScenarioRoutes()</ID>

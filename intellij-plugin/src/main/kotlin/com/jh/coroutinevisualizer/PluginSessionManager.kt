@@ -18,9 +18,7 @@ object PluginSessionManager {
         }
     }
 
-    fun getSession(project: Project): VizSession? {
-        return sessions[project.locationHash]
-    }
+    fun getSession(project: Project): VizSession? = sessions[project.locationHash]
 
     fun closeSession(project: Project) {
         val key = project.locationHash

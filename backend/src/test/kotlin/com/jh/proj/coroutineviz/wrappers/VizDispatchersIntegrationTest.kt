@@ -32,17 +32,19 @@ class VizDispatchersIntegrationTest {
                     vizDelay(50)
 
                     // Read from database (I/O)
-                    ioScope.vizLaunch(label = "db-read") {
-                        vizDelay(100)
-                    }.join()
+                    ioScope
+                        .vizLaunch(label = "db-read") {
+                            vizDelay(100)
+                        }.join()
 
                     // Process data (CPU)
                     vizDelay(50)
 
                     // Write to database (I/O)
-                    ioScope.vizLaunch(label = "db-write") {
-                        vizDelay(100)
-                    }.join()
+                    ioScope
+                        .vizLaunch(label = "db-write") {
+                            vizDelay(100)
+                        }.join()
                 }
 
             apiJob.join()
@@ -157,9 +159,10 @@ class VizDispatchersIntegrationTest {
 
             // Create custom thread pool
             val customPool =
-                Executors.newFixedThreadPool(4) { runnable ->
-                    Thread(runnable, "CustomWorker-${System.currentTimeMillis()}")
-                }.asCoroutineDispatcher()
+                Executors
+                    .newFixedThreadPool(4) { runnable ->
+                        Thread(runnable, "CustomWorker-${System.currentTimeMillis()}")
+                    }.asCoroutineDispatcher()
 
             try {
                 // Instrument it
@@ -214,24 +217,25 @@ class VizDispatchersIntegrationTest {
 
             val scope = VizScope(session, context = dispatchers.default)
 
-            scope.vizLaunch(label = "level-0") {
-                vizDelay(50)
-
-                // Level 1: Switch to IO
-                vizLaunch(label = "level-1", context = dispatchers.io) {
+            scope
+                .vizLaunch(label = "level-0") {
                     vizDelay(50)
 
-                    // Level 2: Switch back to Default
-                    vizLaunch(label = "level-2", context = dispatchers.default) {
+                    // Level 1: Switch to IO
+                    vizLaunch(label = "level-1", context = dispatchers.io) {
                         vizDelay(50)
 
-                        // Level 3: Switch to IO again
-                        vizLaunch(label = "level-3", context = dispatchers.io) {
+                        // Level 2: Switch back to Default
+                        vizLaunch(label = "level-2", context = dispatchers.default) {
                             vizDelay(50)
+
+                            // Level 3: Switch to IO again
+                            vizLaunch(label = "level-3", context = dispatchers.io) {
+                                vizDelay(50)
+                            }
                         }
                     }
-                }
-            }.join()
+                }.join()
 
             // Verify all levels were tracked
             val events = session.store.all()

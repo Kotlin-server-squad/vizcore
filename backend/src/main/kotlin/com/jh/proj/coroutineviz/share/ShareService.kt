@@ -40,7 +40,9 @@ data class ShareToken(
  * - [NotFound] → 404 (covers unknown AND revoked, which are indistinguishable by design)
  */
 sealed interface ShareResolution {
-    data class Valid(val share: ShareToken) : ShareResolution
+    data class Valid(
+        val share: ShareToken,
+    ) : ShareResolution
 
     data object Expired : ShareResolution
 

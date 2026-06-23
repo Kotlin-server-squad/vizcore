@@ -51,7 +51,10 @@ object SyncScenarios {
      * Must ensure balance checks and updates happen atomically.
      */
     suspend fun bankAccountTransfer(scope: VizScope) {
-        data class Account(var balance: Double, val mutex: VizMutex)
+        data class Account(
+            var balance: Double,
+            val mutex: VizMutex,
+        )
 
         val accountA = Account(1000.0, scope.vizMutex("account-A-lock"))
         val accountB = Account(500.0, scope.vizMutex("account-B-lock"))
@@ -256,7 +259,10 @@ object SyncScenarios {
     suspend fun parallelFileProcessor(scope: VizScope) {
         val ioSemaphore = scope.vizSemaphore("io-parallelism", permits = 4)
 
-        data class FileTask(val name: String, val sizeKb: Int)
+        data class FileTask(
+            val name: String,
+            val sizeKb: Int,
+        )
 
         val files =
             listOf(
@@ -412,7 +418,11 @@ object SyncScenarios {
         val inventoryLock = scope.vizMutex("inventory-lock")
         val paymentGateway = scope.vizSemaphore("payment-gateway", permits = 2)
 
-        data class Order(val id: Int, val product: String, val quantity: Int)
+        data class Order(
+            val id: Int,
+            val product: String,
+            val quantity: Int,
+        )
 
         suspend fun processOrder(order: Order): Boolean {
             // Check and reserve inventory (mutex)

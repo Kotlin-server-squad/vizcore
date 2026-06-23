@@ -80,10 +80,16 @@ class ShareRoutesTest {
             // registerSessionRoutes wraps creation in rateLimit("session-create"); the
             // plugin must be installed (generous limits so the test isn't throttled).
             install(io.ktor.server.plugins.ratelimit.RateLimit) {
-                register(io.ktor.server.plugins.ratelimit.RateLimitName("api")) {
+                register(
+                    io.ktor.server.plugins.ratelimit
+                        .RateLimitName("api"),
+                ) {
                     rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
                 }
-                register(io.ktor.server.plugins.ratelimit.RateLimitName("session-create")) {
+                register(
+                    io.ktor.server.plugins.ratelimit
+                        .RateLimitName("session-create"),
+                ) {
                     rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
                 }
             }
@@ -273,7 +279,10 @@ class ShareRoutesTest {
                 contentType(ContentType.Application.Json)
                 setBody("""{"expiresIn":"$expiresIn"}""")
             }
-        return Json.parseToJsonElement(resp.bodyAsText()).jsonObject["token"]!!.jsonPrimitive.content
+        return Json
+            .parseToJsonElement(resp.bodyAsText())
+            .jsonObject["token"]!!
+            .jsonPrimitive.content
     }
 
     private fun h2DataSource(url: String): HikariDataSource {

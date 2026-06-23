@@ -26,7 +26,5 @@ class RuntimeSnapshot {
         jobToCoroutineId[job] = coroutineId
     }
 
-    fun getCoroutineIdFromJob(job: Job): String? {
-        return jobToCoroutineId[job]
-    }
+    fun getCoroutineIdFromJob(job: Job): String? = jobToCoroutineId[job]
 }

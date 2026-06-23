@@ -36,7 +36,8 @@ import kotlin.time.ExperimentalTime
 class ExposedSessionStore(
     private val db: Database,
     private val maxEvents: Int = 100_000,
-) : SessionStoreInterface, TenantScopedSessionStore {
+) : SessionStoreInterface,
+    TenantScopedSessionStore {
     private val logger = LoggerFactory.getLogger(ExposedSessionStore::class.java)
 
     // -- SessionStoreInterface: unscoped (global) — the legacy / auth-off path -----

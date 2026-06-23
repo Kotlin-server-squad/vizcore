@@ -36,9 +36,10 @@ class VizDispatchersTest {
 
             val scope = VizScope(session, context = dispatchers.default)
 
-            scope.vizLaunch(label = "test-coroutine") {
-                vizDelay(100)
-            }.join()
+            scope
+                .vizLaunch(label = "test-coroutine") {
+                    vizDelay(100)
+                }.join()
 
             // Verify events
             val events = session.store.all()
@@ -61,9 +62,10 @@ class VizDispatchersTest {
 
             val scope = VizScope(session, context = dispatchers.io)
 
-            scope.vizLaunch(label = "io-coroutine") {
-                vizDelay(100)
-            }.join()
+            scope
+                .vizLaunch(label = "io-coroutine") {
+                    vizDelay(100)
+                }.join()
 
             // Verify events
             val events = session.store.all()
@@ -86,9 +88,10 @@ class VizDispatchersTest {
 
             val scope = VizScope(session, context = dispatchers.default)
 
-            scope.vizLaunch(label = "thread-test") {
-                vizDelay(100)
-            }.join()
+            scope
+                .vizLaunch(label = "thread-test") {
+                    vizDelay(100)
+                }.join()
 
             // Verify ThreadAssigned events have dispatcher names
             val events = session.store.all()
@@ -116,19 +119,20 @@ class VizDispatchersTest {
             // Parent uses Default
             val scope = VizScope(session, context = dispatchers.default)
 
-            scope.vizLaunch(label = "parent") {
-                // Parent on Default
+            scope
+                .vizLaunch(label = "parent") {
+                    // Parent on Default
 
-                // Child 1: stays on Default
-                vizLaunch(label = "child-default") {
-                    vizDelay(50)
-                }
+                    // Child 1: stays on Default
+                    vizLaunch(label = "child-default") {
+                        vizDelay(50)
+                    }
 
-                // Child 2: switches to IO
-                vizLaunch(label = "child-io", context = dispatchers.io) {
-                    vizDelay(50)
-                }
-            }.join()
+                    // Child 2: switches to IO
+                    vizLaunch(label = "child-io", context = dispatchers.io) {
+                        vizDelay(50)
+                    }
+                }.join()
 
             // Verify both dispatchers were used
             val events = session.store.all()
@@ -162,9 +166,10 @@ class VizDispatchersTest {
             // Use it
             val scope = VizScope(session, context = instrumentedCustom)
 
-            scope.vizLaunch(label = "custom-work") {
-                vizDelay(100)
-            }.join()
+            scope
+                .vizLaunch(label = "custom-work") {
+                    vizDelay(100)
+                }.join()
 
             // Verify custom dispatcher was tracked
             val events = session.store.all()
@@ -281,9 +286,10 @@ class VizDispatchersTest {
             // This test verifies that using unconfined dispatcher doesn't cause errors
             val scope = VizScope(session, context = dispatchers.unconfined)
 
-            scope.vizLaunch(label = "unconfined-work") {
-                delay(100)
-            }.join()
+            scope
+                .vizLaunch(label = "unconfined-work") {
+                    delay(100)
+                }.join()
 
             // Verify the scope was created and coroutine ran without errors
             val events = session.store.all()

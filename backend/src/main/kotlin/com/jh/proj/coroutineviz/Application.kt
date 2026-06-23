@@ -40,7 +40,8 @@ const val SHARED_RATE_LIMIT_NAME = "shared"
 val SharedRateLimitEnabledKey = AttributeKey<Boolean>("SharedRateLimitEnabled")
 
 fun main(args: Array<String>) {
-    io.ktor.server.netty.EngineMain.main(args)
+    io.ktor.server.netty.EngineMain
+        .main(args)
 }
 
 fun Application.module() {
@@ -52,8 +53,10 @@ fun Application.module() {
 
     // Configure bounded EventStore before any sessions are created (FND-02)
     val maxEvents =
-        environment.config.propertyOrNull("session.maxEvents")
-            ?.getString()?.toIntOrNull() ?: 10_000
+        environment.config
+            .propertyOrNull("session.maxEvents")
+            ?.getString()
+            ?.toIntOrNull() ?: 10_000
     SessionManager.configure(maxEventsPerSession = maxEvents)
 
     configureStorage(maxEvents)

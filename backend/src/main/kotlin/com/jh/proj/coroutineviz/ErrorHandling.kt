@@ -10,7 +10,10 @@ import org.slf4j.LoggerFactory
 private val logger = LoggerFactory.getLogger("ErrorHandling")
 
 @Serializable
-data class ErrorResponse(val error: String, val status: Int)
+data class ErrorResponse(
+    val error: String,
+    val status: Int,
+)
 
 fun Application.configureErrorHandling() {
     install(StatusPages) {

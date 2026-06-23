@@ -183,8 +183,12 @@ class SyncPrimitivesTest {
         runBlocking {
             val semaphore = VizSemaphore(session, permits = 2, label = "bounded-semaphore")
             val scope = VizScope(session)
-            val concurrentCount = java.util.concurrent.atomic.AtomicInteger(0)
-            val maxConcurrent = java.util.concurrent.atomic.AtomicInteger(0)
+            val concurrentCount =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
+            val maxConcurrent =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
 
             // Launch multiple coroutines
             val jobs =

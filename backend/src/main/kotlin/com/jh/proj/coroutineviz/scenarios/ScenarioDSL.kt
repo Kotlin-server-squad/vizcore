@@ -12,14 +12,23 @@ import kotlinx.coroutines.Job
  * Action types that can be performed in a coroutine:
  */
 sealed class CoroutineAction {
-    data class Delay(val durationMs: Long) : CoroutineAction()
+    data class Delay(
+        val durationMs: Long,
+    ) : CoroutineAction()
 
-    data class ThrowException(val exceptionType: String, val message: String) : CoroutineAction()
+    data class ThrowException(
+        val exceptionType: String,
+        val message: String,
+    ) : CoroutineAction()
 
-    data class Log(val message: String) : CoroutineAction()
+    data class Log(
+        val message: String,
+    ) : CoroutineAction()
 
     // For future extension
-    data class CustomCode(val code: String) : CoroutineAction()
+    data class CustomCode(
+        val code: String,
+    ) : CoroutineAction()
 }
 
 /**
@@ -81,15 +90,14 @@ class CoroutineBuilder(
         children.add(builder.build(id))
     }
 
-    fun build(parentId: String? = null): CoroutineConfig {
-        return CoroutineConfig(
+    fun build(parentId: String? = null): CoroutineConfig =
+        CoroutineConfig(
             id = id,
             label = label,
             parentId = parentId,
             actions = actions.toList(),
             children = children.toList(),
         )
-    }
 }
 
 @ScenarioDslMarker
@@ -109,13 +117,12 @@ class ScenarioBuilder(
         rootConfig = builder.build()
     }
 
-    fun build(): ScenarioConfig {
-        return ScenarioConfig(
+    fun build(): ScenarioConfig =
+        ScenarioConfig(
             name = name,
             description = description,
             root = rootConfig ?: throw IllegalStateException("Root coroutine not defined"),
         )
-    }
 }
 
 /**
@@ -133,8 +140,8 @@ fun scenario(
 /**
  * Execute a coroutine configuration recursively
  */
-suspend fun VizScope.executeCoroutineConfig(config: CoroutineConfig): Job {
-    return vizLaunch(config.label) {
+suspend fun VizScope.executeCoroutineConfig(config: CoroutineConfig): Job =
+    vizLaunch(config.label) {
         // Execute all actions in sequence
         for (action in config.actions) {
             when (action) {
@@ -155,7 +162,6 @@ suspend fun VizScope.executeCoroutineConfig(config: CoroutineConfig): Job {
             }
         }
     }
-}
 
 /**
  * Create an exception instance from a string type
@@ -163,8 +169,8 @@ suspend fun VizScope.executeCoroutineConfig(config: CoroutineConfig): Job {
 private fun createException(
     type: String,
     message: String,
-): Exception {
-    return when (type.lowercase()) {
+): Exception =
+    when (type.lowercase()) {
         "illegalstateexception", "illegalstate" -> IllegalStateException(message)
         "illegalargumentexception", "illegalargument" -> IllegalArgumentException(message)
         "nullpointerexception", "nullpointer" -> NullPointerException(message)
@@ -172,4 +178,3 @@ private fun createException(
         "indexoutofboundsexception", "indexoutofbounds" -> IndexOutOfBoundsException(message)
         else -> RuntimeException(message)
     }
-}

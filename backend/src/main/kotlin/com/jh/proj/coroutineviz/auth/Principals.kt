@@ -27,10 +27,16 @@ enum class Role {
  * Principal minted when a request authenticates with a valid `X-API-Key` (AUTH-02).
  * [name] identifies the key entry (used as the tenant id when api-key auth is on).
  */
-data class ApiKeyPrincipal(val name: String, val role: Role) : Principal
+data class ApiKeyPrincipal(
+    val name: String,
+    val role: Role,
+) : Principal
 
 /**
  * Principal minted when a request authenticates with a valid JWT (AUTH-03).
  * [userId] is the JWT `sub` claim (used as the tenant id when JWT auth is on).
  */
-data class UserPrincipal(val userId: String, val role: Role) : Principal
+data class UserPrincipal(
+    val userId: String,
+    val role: Role,
+) : Principal

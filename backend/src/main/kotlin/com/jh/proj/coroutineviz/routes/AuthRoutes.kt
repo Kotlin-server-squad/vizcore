@@ -14,13 +14,21 @@ import org.slf4j.LoggerFactory
 private val logger = LoggerFactory.getLogger("AuthRoutes")
 
 @Serializable
-data class LoginRequest(val username: String = "", val password: String = "")
+data class LoginRequest(
+    val username: String = "",
+    val password: String = "",
+)
 
 @Serializable
-data class TokenResponse(val token: String, val expiresAt: String)
+data class TokenResponse(
+    val token: String,
+    val expiresAt: String,
+)
 
 @Serializable
-data class AuthErrorResponse(val error: String)
+data class AuthErrorResponse(
+    val error: String,
+)
 
 /**
  * `POST /api/auth/token` — ALWAYS public login endpoint (AUTH-03, ADR-016).

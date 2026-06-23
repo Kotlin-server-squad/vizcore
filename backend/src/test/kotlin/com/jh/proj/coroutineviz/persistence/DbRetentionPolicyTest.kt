@@ -115,7 +115,11 @@ class DbRetentionPolicyTest {
 
     private fun eventCount(sessionId: String): Int =
         transaction(db) {
-            EventsTable.selectAll().where { EventsTable.sessionId eq sessionId }.count().toInt()
+            EventsTable
+                .selectAll()
+                .where { EventsTable.sessionId eq sessionId }
+                .count()
+                .toInt()
         }
 
     @Test
@@ -142,8 +146,11 @@ class DbRetentionPolicyTest {
         // The retained events are the newest (highest seq).
         val seqs =
             transaction(db) {
-                EventsTable.selectAll().where { EventsTable.sessionId eq "s" }
-                    .map { it[EventsTable.seq] }.sorted()
+                EventsTable
+                    .selectAll()
+                    .where { EventsTable.sessionId eq "s" }
+                    .map { it[EventsTable.seq] }
+                    .sorted()
             }
         assertEquals(listOf(7L, 8L, 9L, 10L), seqs)
     }

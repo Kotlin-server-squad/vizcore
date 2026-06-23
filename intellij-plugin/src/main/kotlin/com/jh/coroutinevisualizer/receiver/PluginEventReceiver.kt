@@ -40,7 +40,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * Default port: 8090 (configurable in settings)
  */
 @Service(Service.Level.PROJECT)
-class PluginEventReceiver(private val project: Project) : Disposable {
+class PluginEventReceiver(
+    private val project: Project,
+) : Disposable {
     private val logger = Logger.getInstance(PluginEventReceiver::class.java)
     private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -87,9 +89,10 @@ class PluginEventReceiver(private val project: Project) : Disposable {
                                 val events =
                                     when (jsonArray) {
                                         is kotlinx.serialization.json.JsonArray ->
-                                            jsonArray.map { element ->
-                                                parseEventFromJson(element, json)
-                                            }.filterNotNull()
+                                            jsonArray
+                                                .map { element ->
+                                                    parseEventFromJson(element, json)
+                                                }.filterNotNull()
                                         is kotlinx.serialization.json.JsonObject -> {
                                             // Single event sent as object
                                             listOfNotNull(parseEventFromJson(jsonArray, json))
@@ -182,9 +185,7 @@ class PluginEventReceiver(private val project: Project) : Disposable {
     }
 
     companion object {
-        fun getInstance(project: Project): PluginEventReceiver {
-            return project.getService(PluginEventReceiver::class.java)
-        }
+        fun getInstance(project: Project): PluginEventReceiver = project.getService(PluginEventReceiver::class.java)
     }
 }
 

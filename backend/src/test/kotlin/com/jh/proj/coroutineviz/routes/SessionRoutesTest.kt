@@ -191,8 +191,10 @@ class SessionRoutesTest {
             val createResponse = client.post("/api/sessions?name=lifecycle-test")
             assertEquals(HttpStatusCode.Created, createResponse.status)
             val sessionId =
-                Json.parseToJsonElement(createResponse.bodyAsText())
-                    .jsonObject["sessionId"]!!.jsonPrimitive.content
+                Json
+                    .parseToJsonElement(createResponse.bodyAsText())
+                    .jsonObject["sessionId"]!!
+                    .jsonPrimitive.content
 
             // 3. List sessions - should have one
             val oneList = client.get("/api/sessions")
@@ -203,7 +205,11 @@ class SessionRoutesTest {
             assertEquals(HttpStatusCode.OK, getResponse.status)
             assertEquals(
                 sessionId,
-                Json.parseToJsonElement(getResponse.bodyAsText()).jsonObject["sessionId"]?.jsonPrimitive?.content,
+                Json
+                    .parseToJsonElement(getResponse.bodyAsText())
+                    .jsonObject["sessionId"]
+                    ?.jsonPrimitive
+                    ?.content,
             )
 
             // 5. Delete session
@@ -228,8 +234,10 @@ class SessionRoutesTest {
             // Create a session
             val createResponse = client.post("/api/sessions?name=events-test")
             val sessionId =
-                Json.parseToJsonElement(createResponse.bodyAsText())
-                    .jsonObject["sessionId"]!!.jsonPrimitive.content
+                Json
+                    .parseToJsonElement(createResponse.bodyAsText())
+                    .jsonObject["sessionId"]!!
+                    .jsonPrimitive.content
 
             // Get events
             val eventsResponse = client.get("/api/sessions/$sessionId/events")

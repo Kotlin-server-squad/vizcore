@@ -105,10 +105,18 @@ class StructuredConcurrencyTest {
             eventLogger.cancel()
 
             // Verify all completed
-            val parent = session.snapshot.coroutines.values.find { it.label == "parent" }
-            val childFast = session.snapshot.coroutines.values.find { it.label == "child-fast-100ms" }
-            val childMedium = session.snapshot.coroutines.values.find { it.label == "child-medium-200ms" }
-            val childSlow = session.snapshot.coroutines.values.find { it.label == "child-slow-300ms" }
+            val parent =
+                session.snapshot.coroutines.values
+                    .find { it.label == "parent" }
+            val childFast =
+                session.snapshot.coroutines.values
+                    .find { it.label == "child-fast-100ms" }
+            val childMedium =
+                session.snapshot.coroutines.values
+                    .find { it.label == "child-medium-200ms" }
+            val childSlow =
+                session.snapshot.coroutines.values
+                    .find { it.label == "child-slow-300ms" }
 
             logger.info("\n🔍 VERIFICATION:")
             logger.info("  Parent: ${parent?.state}")
@@ -189,9 +197,15 @@ class StructuredConcurrencyTest {
             eventLogger.cancel()
 
             // Verify structured concurrency
-            val parent = session.snapshot.coroutines.values.find { it.label == "parent" }
-            val child1 = session.snapshot.coroutines.values.find { it.label == "child-1-long-running" }
-            val child2 = session.snapshot.coroutines.values.find { it.label == "child-2-will-fail" }
+            val parent =
+                session.snapshot.coroutines.values
+                    .find { it.label == "parent" }
+            val child1 =
+                session.snapshot.coroutines.values
+                    .find { it.label == "child-1-long-running" }
+            val child2 =
+                session.snapshot.coroutines.values
+                    .find { it.label == "child-2-will-fail" }
 
             logger.info("\nDEBUG - All coroutines in snapshot:")
             session.snapshot.coroutines.values.forEach {
@@ -288,9 +302,15 @@ class StructuredConcurrencyTest {
             delay(1000)
             eventLogger.cancel()
 
-            val parent = session.snapshot.coroutines.values.find { it.label == "parent" }
-            val child = session.snapshot.coroutines.values.find { it.label == "child" }
-            val grandchild = session.snapshot.coroutines.values.find { it.label == "grandchild-will-fail" }
+            val parent =
+                session.snapshot.coroutines.values
+                    .find { it.label == "parent" }
+            val child =
+                session.snapshot.coroutines.values
+                    .find { it.label == "child" }
+            val grandchild =
+                session.snapshot.coroutines.values
+                    .find { it.label == "grandchild-will-fail" }
 
             logger.info("\n🔍 VERIFICATION:")
             logger.info("  Grandchild (should be FAILED): ${grandchild?.state}")
@@ -367,8 +387,12 @@ class StructuredConcurrencyTest {
             delay(1000)
             eventLogger.cancel()
 
-            val parent = session.snapshot.coroutines.values.find { it.label == "parent" }
-            val asyncTask = session.snapshot.coroutines.values.find { it.label == "async-will-fail" }
+            val parent =
+                session.snapshot.coroutines.values
+                    .find { it.label == "parent" }
+            val asyncTask =
+                session.snapshot.coroutines.values
+                    .find { it.label == "async-will-fail" }
 
             logger.info("\n🔍 VERIFICATION:")
             logger.info("  Async task (should be FAILED): ${asyncTask?.state}")
@@ -440,9 +464,15 @@ class StructuredConcurrencyTest {
             delay(500)
             eventLogger.cancel()
 
-            val parent = session.snapshot.coroutines.values.find { it.label == "parent" }
-            val launchTask = session.snapshot.coroutines.values.find { it.label == "launch-task" }
-            val asyncTask = session.snapshot.coroutines.values.find { it.label == "async-task" }
+            val parent =
+                session.snapshot.coroutines.values
+                    .find { it.label == "parent" }
+            val launchTask =
+                session.snapshot.coroutines.values
+                    .find { it.label == "launch-task" }
+            val asyncTask =
+                session.snapshot.coroutines.values
+                    .find { it.label == "async-task" }
 
             logger.info("\n🔍 VERIFICATION:")
             logger.info("  Parent: ${parent?.state}")
@@ -531,7 +561,9 @@ class StructuredConcurrencyTest {
             delay(1000)
             eventLogger.cancel()
 
-            val parent = session.snapshot.coroutines.values.find { it.label == "parent" }
+            val parent =
+                session.snapshot.coroutines.values
+                    .find { it.label == "parent" }
             val awaiters =
                 session.snapshot.coroutines.values.filter {
                     it.label?.startsWith("awaiter") == true
@@ -592,7 +624,9 @@ class StructuredConcurrencyTest {
             delay(300)
             eventLogger.cancel()
 
-            val parent = session.snapshot.coroutines.values.find { it.label == "parent-no-children" }
+            val parent =
+                session.snapshot.coroutines.values
+                    .find { it.label == "parent-no-children" }
 
             logger.info("\n🔍 VERIFICATION:")
             logger.info("  Parent: ${parent?.state}")
