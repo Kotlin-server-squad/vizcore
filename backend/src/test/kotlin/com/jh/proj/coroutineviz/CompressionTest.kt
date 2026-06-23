@@ -8,6 +8,7 @@ import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CompressionTest {
     @Test
@@ -36,7 +37,14 @@ class CompressionTest {
                     header(HttpHeaders.AcceptEncoding, "gzip")
                 }
 
-            assertEquals(HttpStatusCode.OK, response.status)
+            // /health flips to 503/DEGRADED under shared-JVM heap pressure (WR-11),
+            // which depends on suite ordering. This test's subject is the absence of
+            // Content-Encoding on a small body, so accept either verdict (mirrors
+            // HealthRoutesTest.assertHealthReachable) instead of a strict 200 that flakes.
+            assertTrue(
+                response.status == HttpStatusCode.OK || response.status == HttpStatusCode.ServiceUnavailable,
+                "Unexpected /health status: ${response.status}",
+            )
             val encoding = response.headers[HttpHeaders.ContentEncoding]
             assertNull(encoding, "Small responses should not be compressed")
         }
