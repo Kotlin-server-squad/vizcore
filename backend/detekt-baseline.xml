@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:ProjectionService.kt$ProjectionService$private fun processEvent(event: VizEvent)</ID>
     <ID>CyclomaticComplexMethod:SessionRoutes.kt$fun Route.registerSessionRoutes()</ID>
     <ID>InstanceOfCheckForException:PatternScenarios.kt$PatternScenarios$e is CancellationException</ID>
     <ID>InvalidPackageDeclaration:ApplicationTest.kt$package com.jh.proj</ID>
@@ -11,28 +10,27 @@
     <ID>InvalidPackageDeclaration:VizLaunchTest.kt$package com.jh.proj</ID>
     <ID>LongMethod:DispatcherExample.kt$suspend fun dispatcherExampleScenario()</ID>
     <ID>LongMethod:FlowScenarioRoutes.kt$fun Route.registerFlowScenarioRoutes()</ID>
-    <ID>LongMethod:InstrumentedDeferred.kt$InstrumentedDeferred$override suspend fun await(): T</ID>
+    <ID>LongMethod:MetricsWiringTest.kt$MetricsWiringTest$@Test fun `viz sse clients active gauge increments while a stream is open and returns to zero after disconnect`()</ID>
     <ID>LongMethod:PatternRoutes.kt$fun Route.registerPatternRoutes()</ID>
-    <ID>LongMethod:ProjectionService.kt$ProjectionService$private fun processEvent(event: VizEvent)</ID>
     <ID>LongMethod:ScenarioRunner.kt$ScenarioRunner$suspend fun runOrderProcessingScenario( session: VizSession, shouldFail: Boolean = false, ): Job</ID>
     <ID>LongMethod:ScenarioRunner.kt$ScenarioRunner$suspend fun runReportGenerationScenario( session: VizSession, shouldTimeout: Boolean = false, ): Job</ID>
     <ID>LongMethod:ScenarioRunner.kt$ScenarioRunner$suspend fun runUserRegistrationScenario( session: VizSession, shouldFailEmail: Boolean = false, ): Job</ID>
     <ID>LongMethod:ScenarioRunnerRoutes.kt$fun Route.registerScenarioRunnerRoutes()</ID>
     <ID>LongMethod:SessionRoutes.kt$fun Route.registerSessionRoutes()</ID>
+    <ID>LongMethod:ShareRoutes.kt$@OptIn(ExperimentalTime::class) fun Route.registerShareOwnerRoutes( service: ShareService, publicBaseUrl: String?, )</ID>
     <ID>LongMethod:StructuredConcurrencyTest.kt$StructuredConcurrencyTest$@Test fun `test exception propagation - child fails, parent and siblings cancelled`()</ID>
     <ID>LongMethod:StructuredConcurrencyTest.kt$StructuredConcurrencyTest$@Test fun `test multiple awaiters on same deferred`()</ID>
     <ID>LongMethod:SyncScenarioRoutes.kt$fun Route.registerSyncScenarioRoutes()</ID>
     <ID>LongMethod:ValidationRoutes.kt$fun Route.registerValidationRoutes()</ID>
-    <ID>LongMethod:VizScope.kt$VizScope$suspend fun &lt;T> vizAsync( label: String? = null, context: CoroutineContext = EmptyCoroutineContext, block: suspend VizScope.() -> T, ): InstrumentedDeferred&lt;T></ID>
-    <ID>LongMethod:VizScope.kt$VizScope$suspend fun vizLaunch( label: String? = null, context: CoroutineContext = EmptyCoroutineContext, block: suspend VizScope.() -> Unit, ): Job</ID>
-    <ID>LongParameterList:InstrumentedDeferred.kt$InstrumentedDeferred$( private val delegate: Deferred&lt;T>, private val session: VizSession, private val deferredId: String, private val coroutineId: String, private val jobId: String, private val parentCoroutineId: String?, private val scopeId: String, private val label: String?, )</ID>
-    <ID>LoopWithTooManyJumpStatements:StructuredConcurrencyValidator.kt$StructuredConcurrencyValidator$for</ID>
+    <ID>LongMethod:VizEventSerializersModuleTest.kt$VizEventSerializersModuleTest$@Test fun `all VizEvent subclasses are registered in SerializersModule`()</ID>
+    <ID>MagicNumber:Application.kt$100_000</ID>
+    <ID>MagicNumber:Application.kt$10_000</ID>
+    <ID>MagicNumber:Application.kt$30</ID>
+    <ID>MagicNumber:Application.kt$60</ID>
     <ID>MagicNumber:Compression.kt$0.5</ID>
     <ID>MagicNumber:Compression.kt$1024</ID>
     <ID>MagicNumber:DispatcherExample.kt$100</ID>
     <ID>MagicNumber:DispatcherExample.kt$60</ID>
-    <ID>MagicNumber:FlowEventContext.kt$100</ID>
-    <ID>MagicNumber:FlowEventContext.kt$200</ID>
     <ID>MagicNumber:FlowScenarios.kt$FlowScenarios$10</ID>
     <ID>MagicNumber:FlowScenarios.kt$FlowScenarios$100</ID>
     <ID>MagicNumber:FlowScenarios.kt$FlowScenarios$20</ID>
@@ -51,13 +49,8 @@
     <ID>MagicNumber:HealthRoutes.kt$100</ID>
     <ID>MagicNumber:HealthRoutes.kt$1024</ID>
     <ID>MagicNumber:HealthRoutes.kt$90.0</ID>
-    <ID>MagicNumber:InstrumentedChannel.kt$InstrumentedChannel$200</ID>
-    <ID>MagicNumber:InstrumentedChannel.kt$InstrumentedChannel.&lt;no name provided>$200</ID>
-    <ID>MagicNumber:InstrumentedFlow.kt$InstrumentedFlow$200</ID>
-    <ID>MagicNumber:InstrumentedFlow.kt$InstrumentedFlow.&lt;no name provided>$200</ID>
-    <ID>MagicNumber:InstrumentedSharedFlow.kt$InstrumentedSharedFlow$100</ID>
-    <ID>MagicNumber:InstrumentedSharedFlow.kt$InstrumentedSharedFlow$200</ID>
-    <ID>MagicNumber:InstrumentedStateFlow.kt$InstrumentedStateFlow$200</ID>
+    <ID>MagicNumber:HealthRoutes.kt$95.0</ID>
+    <ID>MagicNumber:JwtConfig.kt$JwtConfig.Companion$60L</ID>
     <ID>MagicNumber:PatternScenarios.kt$PatternScenarios$100</ID>
     <ID>MagicNumber:PatternScenarios.kt$PatternScenarios$100L</ID>
     <ID>MagicNumber:PatternScenarios.kt$PatternScenarios$150</ID>
@@ -77,6 +70,7 @@
     <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$10</ID>
     <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$100</ID>
     <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$1000</ID>
+    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$120</ID>
     <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$150</ID>
     <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$1500</ID>
     <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$200</ID>
@@ -94,6 +88,8 @@
     <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$8000</ID>
     <ID>MagicNumber:ScenarioRunnerRoutes.kt$100</ID>
     <ID>MagicNumber:ScenarioRunnerRoutes.kt$5</ID>
+    <ID>MagicNumber:ShareRoutes.kt$443</ID>
+    <ID>MagicNumber:ShareRoutes.kt$80</ID>
     <ID>MagicNumber:SyncScenarioRoutes.kt$100</ID>
     <ID>MagicNumber:SyncScenarioRoutes.kt$42</ID>
     <ID>MagicNumber:SyncScenarios.kt$SyncScenarios$0.9</ID>
@@ -123,16 +119,12 @@
     <ID>MagicNumber:SyncScenarios.kt$SyncScenarios$800</ID>
     <ID>MagicNumber:VizScenarioRoutes.kt$100</ID>
     <ID>NestedBlockDepth:DeadlockDetector.kt$DeadlockDetector$private fun checkPotentialDeadlock(): DeadlockAnalysisResult</ID>
-    <ID>NestedBlockDepth:StructuredConcurrencyValidator.kt$StructuredConcurrencyValidator$private fun checkChildFailurePropagation( byCoroutine: Map&lt;String, List&lt;CoroutineEvent>>, parentToChildren: Map&lt;String, List&lt;String>>, ): List&lt;ValidationResult></ID>
-    <ID>NestedBlockDepth:StructuredConcurrencyValidator.kt$StructuredConcurrencyValidator$private fun checkParentCancellationPropagation( byCoroutine: Map&lt;String, List&lt;CoroutineEvent>>, parentToChildren: Map&lt;String, List&lt;String>>, ): List&lt;ValidationResult></ID>
-    <ID>NestedBlockDepth:TimingAnalyzer.kt$TimingAnalyzer$fun analyze(events: List&lt;VizEvent>): TimingReport</ID>
     <ID>ReturnCount:DeadlockDetector.kt$DeadlockDetector$private fun detectCycleDFS( node: String, graph: Map&lt;String, String>, visited: MutableSet&lt;String>, recursionStack: MutableSet&lt;String>, path: MutableList&lt;String>, ): List&lt;String>?</ID>
-    <ID>ReturnCount:HierarchyValidator.kt$HierarchyValidator$private fun checkParentNotCompletedBeforeChildren( childCreated: CoroutineCreated, parentId: String, byCoroutine: Map&lt;String, List&lt;CoroutineEvent>>, ): ValidationResult</ID>
     <ID>ReturnCount:SyncScenarios.kt$SyncScenarios$suspend fun processOrder(order: Order): Boolean</ID>
+    <ID>ReturnCount:UserStore.kt$UserStore.Companion$private fun resolvePasswordHash(userConfig: ApplicationConfig): String?</ID>
     <ID>SwallowedException:PatternScenarios.kt$PatternScenarios$e: Exception</ID>
     <ID>SwallowedException:SyncScenarios.kt$SyncScenarios$e: Exception</ID>
-    <ID>ThrowingExceptionsWithoutMessageOrCause:SuspensionPoint.kt$SuspensionPoint.Companion$Throwable()</ID>
-    <ID>ThrowsCount:SyncValidators.kt$SemaphoreValidator$fun verifyPermitBounds( semaphoreId: String, maxPermits: Int, )</ID>
+    <ID>TooGenericExceptionCaught:MetricsWiringTest.kt$MetricsWiringTest$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PatternRoutes.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PatternScenarios.kt$PatternScenarios$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ScenarioRunner.kt$ScenarioRunner$e: Exception</ID>
@@ -146,23 +138,28 @@
     <ID>TooGenericExceptionThrown:StructuredConcurrencyTest.kt$StructuredConcurrencyTest$throw RuntimeException("Grandchild failure!")</ID>
     <ID>TooGenericExceptionThrown:VizDispatchersIntegrationTest.kt$VizDispatchersIntegrationTest$throw RuntimeException("Simulated failure")</ID>
     <ID>TooManyFunctions:AuthTest.kt$AuthTest</ID>
-    <ID>TooManyFunctions:EventContext.kt$com.jh.proj.coroutineviz.session.EventContext.kt</ID>
+    <ID>TooManyFunctions:DbRetentionPolicyTest.kt$DbRetentionPolicyTest</ID>
     <ID>TooManyFunctions:EventSerializationTest.kt$EventSerializationTest</ID>
-    <ID>TooManyFunctions:FlowEventContext.kt$com.jh.proj.coroutineviz.session.FlowEventContext.kt</ID>
+    <ID>TooManyFunctions:ExposedSessionStore.kt$ExposedSessionStore : SessionStoreInterfaceTenantScopedSessionStore</ID>
+    <ID>TooManyFunctions:ExposedSessionStoreTest.kt$ExposedSessionStoreTest</ID>
+    <ID>TooManyFunctions:HealthRoutesTest.kt$HealthRoutesTest</ID>
+    <ID>TooManyFunctions:JwtAuthTest.kt$JwtAuthTest</ID>
     <ID>TooManyFunctions:LifecycleValidatorTest.kt$LifecycleValidatorTest</ID>
     <ID>TooManyFunctions:ScenarioRoutesTest.kt$ScenarioRoutesTest</ID>
     <ID>TooManyFunctions:SessionRoutesTest.kt$SessionRoutesTest</ID>
+    <ID>TooManyFunctions:ShareRoutesTest.kt$ShareRoutesTest</ID>
     <ID>TooManyFunctions:SyncPrimitivesTest.kt$SyncPrimitivesTest</ID>
     <ID>TooManyFunctions:SyncValidatorsTest.kt$SyncValidatorsTest</ID>
-    <ID>TooManyFunctions:VizSession.kt$VizSession</ID>
-    <ID>UnusedParameter:FlowEventContext.kt$FlowEventContext$operatorName: String</ID>
-    <ID>UnusedParameter:ProjectionService.kt$ProjectionService$roots: List&lt;HierarchyNode></ID>
+    <ID>TooManyFunctions:TenantIsolationE2ETest.kt$TenantIsolationE2ETest</ID>
+    <ID>TooManyFunctions:TenantIsolationTest.kt$TenantIsolationTest</ID>
+    <ID>TooManyFunctions:TimingAnalyzerTest.kt$TimingAnalyzerTest</ID>
     <ID>UnusedParameter:ScenarioRunnerRoutes.kt$session: VizSession</ID>
-    <ID>UnusedPrivateProperty:InstrumentedFlow.kt$InstrumentedFlow$val inputSeq = inputSequence++</ID>
+    <ID>UnusedPrivateProperty:MetricsWiringTest.kt$MetricsWiringTest$val requiredMetrics = listOf( "viz_sessions_active", "viz_sse_clients_active", "events_emitted", // Counter naming: may be _total or plain "events_dropped_total", "events_buffer_size", "scenario_duration", "event_processing_duration", )</ID>
     <ID>UseCheckOrError:ScenarioDSL.kt$ScenarioBuilder$throw IllegalStateException("Root coroutine not defined")</ID>
     <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("Analytics API timeout after 8s")</ID>
     <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("Intentional failure for demo")</ID>
     <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("Payment declined: Insufficient funds")</ID>
     <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("SMTP server timeout")</ID>
+    <ID>UseCheckOrError:VizScopeCompletionHandlerTest.kt$VizScopeCompletionHandlerTest$throw IllegalStateException("Intentional failure for regression test")</ID>
   </CurrentIssues>
 </SmellBaseline>
