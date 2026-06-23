@@ -2,10 +2,13 @@
 created: 2026-06-21T17:51:56.788Z
 title: WR-02 — ADMIN can mint tenant-invisible/unrevocable public share
 area: auth
+status: fixed
+fixed: 2026-06-23
 files:
   - backend/src/main/kotlin/com/jh/proj/coroutineviz/share/ShareRoutes.kt
   - backend/src/main/kotlin/com/jh/proj/coroutineviz/share/ShareService.kt
   - backend/src/main/kotlin/com/jh/proj/coroutineviz/auth/Tenancy.kt
+resolution: chose option (a) — mint now uses a strict ownership tenant (no ADMIN Op.TRUE bypass); e2e regression added
 ---
 
 ## Problem

@@ -2,9 +2,12 @@
 created: 2026-06-21T17:51:56.788Z
 title: DB mode shows 0 coroutines (projection not replayed from stored events)
 area: general
+status: fixed
+fixed: 2026-06-22
 files:
   - backend/src/main/kotlin/com/jh/proj/coroutineviz/persistence/ExposedSessionStore.kt
   - .planning/phases/03-persistence-auth-sharing/deferred-items.md
+resolution: fixed by the F2 commit (038bc2e) — VizSession.rehydrateFromStore replays stored events through ProjectionService.rebuildFrom; same root cause as the F2 ledger entry
 ---
 
 ## Problem

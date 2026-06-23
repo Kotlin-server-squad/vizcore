@@ -2,9 +2,12 @@
 created: 2026-06-21T17:51:56.788Z
 title: De-quote cors.* defaults in application.yaml (same latent bug as DB_URL)
 area: general
+status: fixed
+fixed: 2026-06-23
 files:
   - backend/src/main/resources/application.yaml
   - backend/src/main/kotlin/com/jh/proj/coroutineviz/HTTP.kt
+resolution: removed the surrounding quotes from cors.allowedOrigins/allowedMethods defaults; HTTP.kt trim kept as belt-and-suspenders
 ---
 
 ## Problem

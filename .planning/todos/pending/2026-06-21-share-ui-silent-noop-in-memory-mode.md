@@ -2,10 +2,13 @@
 created: 2026-06-21T17:51:56.788Z
 title: Share dialog silently no-ops in memory mode (no user feedback)
 area: ui
+status: fixed
+fixed: 2026-06-23
 files:
   - frontend/src/components/share/ShareDialog.tsx
   - frontend/src/components/share/ManageShares.tsx
   - backend/src/main/kotlin/com/jh/proj/coroutineviz/share/ShareRoutes.kt
+resolution: chose option (a) — /health now exposes sharingEnabled; the Share button is disabled with a tooltip when persistence is off
 ---
 
 ## Problem
