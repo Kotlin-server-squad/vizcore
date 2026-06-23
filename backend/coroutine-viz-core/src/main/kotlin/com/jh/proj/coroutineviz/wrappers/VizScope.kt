@@ -40,6 +40,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * VizScope creates an independent coroutine hierarchy for visualization.
@@ -148,6 +149,14 @@ class VizScope(
             childIndex.computeIfAbsent(parentCoroutineId) { CopyOnWriteArrayList() }.add(coroutineId)
         }
 
+        // wr-10: track whether the body emitted CoroutineStarted. CoroutineCreated is emitted
+        // synchronously at launch (below), but Started is emitted from inside the body — so a
+        // coroutine cancelled before its body is ever dispatched would have a Created with no
+        // Started, tripping LifecycleValidator.CreatedHasStarted. The completion handler emits a
+        // synthetic Started before the terminal event when this flag is still false, keeping the
+        // normal path unchanged and only repairing the cancel-before-start lifecycle.
+        val startedEmitted = AtomicBoolean(false)
+
         // A: start LAZY so CoroutineCreated can be emitted at launch time (below) — before the
         // child's first dispatch — guaranteeing it precedes the parent's BodyCompleted and that
         // sibling Created events order by launch, not by whichever child dispatches first.
@@ -164,6 +173,7 @@ class VizScope(
                 session.snapshot.registerJob(currentJob, coroutineId)
 
                 // ✅ EMIT: CoroutineStarted (CoroutineCreated was emitted synchronously at launch)
+                startedEmitted.set(true)
                 session.send(ctx.coroutineStarted())
 
                 // EMIT: ThreadAssigned
@@ -209,11 +219,13 @@ class VizScope(
         job.invokeOnCompletion { cause ->
             val children = childIndex[coroutineId].orEmpty()
             if (children.all { terminalEmitted[it]?.isCompleted ?: true }) {
+                emitStartedIfMissing(ctx, startedEmitted)
                 emitTerminalEvents(ctx, job, cause)
                 terminalSignal.complete(Unit)
             } else {
                 session.sessionScope.launch {
                     children.forEach { childId -> terminalEmitted[childId]?.await() }
+                    emitStartedIfMissing(ctx, startedEmitted)
                     emitTerminalEvents(ctx, job, cause)
                     terminalSignal.complete(Unit)
                 }
@@ -223,6 +235,22 @@ class VizScope(
         // Now that Created is emitted and the completion handler is registered, dispatch the body.
         job.start()
         return job
+    }
+
+    /**
+     * wr-10: emit a synthetic CoroutineStarted iff the body never emitted one (cancel-before-start).
+     * Called from the completion handler immediately before the terminal event, so the stream becomes
+     * Created -> Started -> (JobStateChanged) -> terminal — a well-formed lifecycle that does not trip
+     * LifecycleValidator.CreatedHasStarted. compareAndSet makes this idempotent and races-safe against
+     * the body's own emission. No-op on the normal path, where the body already set the flag.
+     */
+    private fun emitStartedIfMissing(
+        ctx: EventContext,
+        startedEmitted: AtomicBoolean,
+    ) {
+        if (startedEmitted.compareAndSet(false, true)) {
+            session.send(ctx.coroutineStarted())
+        }
     }
 
     /**
