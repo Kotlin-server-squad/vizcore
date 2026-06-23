@@ -1,0 +1,28 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/024-animation-color-system.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-024: Animation Color System",
+  "summary": "Centralized color configuration mapping 7 coroutine states to distinct colors with state-specific animations for visual consistency across all UI components.",
+  "scope": [
+    "CoroutineTree.tsx",
+    "CoroutineTreeGraph.tsx",
+    "EventsList.tsx",
+    "coroutine-state-colors.ts",
+    "animation-variants.ts",
+    "color mapping",
+    "animation variants",
+    "coroutine states"
+  ],
+  "cross_refs": [
+    "src/lib/coroutine-state-colors.ts",
+    "src/animation-variants.ts",
+    "src/components/CoroutineTree.tsx",
+    "src/components/CoroutineTreeGraph.tsx",
+    "src/components/EventsList.tsx"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

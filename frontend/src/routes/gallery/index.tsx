@@ -89,6 +89,12 @@ const GALLERY_SCENARIOS: GalleryScenario[] = [
     category: 'basic', difficulty: 'intermediate', scenarioId: 'mixed',
     tags: ['sequential', 'parallel', 'mixed'],
   },
+  {
+    id: 'gallery-dispatcher', name: 'Dispatcher Switching',
+    description: 'Work across Dispatchers.Default and Dispatchers.IO. Feeds the Dispatcher Overview — see dispatcher selection and thread assignment.',
+    category: 'basic', difficulty: 'intermediate', scenarioId: 'dispatcher',
+    tags: ['dispatcher', 'threads', 'io', 'default'],
+  },
 
   // ===================== PATTERNS =====================
   {
@@ -254,17 +260,20 @@ function GalleryPage() {
     try {
       // Create session, then navigate to session page with run params.
       // The session page shows "Run Scenario" button — user clicks to start.
-      const session = await createSession.mutateAsync(`gallery-${scenario.name}`)
+      const session = await createSession.mutateAsync(`gallery-${scenario.name.replace(/[/\\]/g, "-")}`)
 
       navigate({
         to: '/sessions/$sessionId',
         params: { sessionId: session.sessionId },
         search: {
+          scenarioId: scenario.scenarioId,
           scenarioName: scenario.name,
         },
       })
-    } catch {
-      // Errors surfaced via TanStack Query
+    } catch (error) {
+      // Session creation errors are surfaced via TanStack Query state;
+      // log navigation failures so a broken flow is not silent.
+      console.error('Gallery run failed:', error)
     } finally {
       setRunningId(null)
     }

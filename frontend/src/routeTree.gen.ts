@@ -9,13 +9,21 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as ScenariosIndexRouteImport } from './routes/scenarios/index'
 import { Route as GalleryIndexRouteImport } from './routes/gallery/index'
+import { Route as CompareIndexRouteImport } from './routes/compare/index'
+import { Route as SharedTokenRouteImport } from './routes/shared.$token'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
 import { Route as ScenariosBuilderRouteImport } from './routes/scenarios/builder'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -36,6 +44,16 @@ const GalleryIndexRoute = GalleryIndexRouteImport.update({
   path: '/gallery/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompareIndexRoute = CompareIndexRouteImport.update({
+  id: '/compare/',
+  path: '/compare/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SharedTokenRoute = SharedTokenRouteImport.update({
+  id: '/shared/$token',
+  path: '/shared/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
   id: '/sessions/$sessionId',
   path: '/sessions/$sessionId',
@@ -49,16 +67,22 @@ const ScenariosBuilderRoute = ScenariosBuilderRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/shared/$token': typeof SharedTokenRoute
+  '/compare': typeof CompareIndexRoute
   '/gallery': typeof GalleryIndexRoute
   '/scenarios': typeof ScenariosIndexRoute
   '/sessions': typeof SessionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/shared/$token': typeof SharedTokenRoute
+  '/compare': typeof CompareIndexRoute
   '/gallery': typeof GalleryIndexRoute
   '/scenarios': typeof ScenariosIndexRoute
   '/sessions': typeof SessionsIndexRoute
@@ -66,8 +90,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/shared/$token': typeof SharedTokenRoute
+  '/compare/': typeof CompareIndexRoute
   '/gallery/': typeof GalleryIndexRoute
   '/scenarios/': typeof ScenariosIndexRoute
   '/sessions/': typeof SessionsIndexRoute
@@ -76,24 +103,33 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/shared/$token'
+    | '/compare'
     | '/gallery'
     | '/scenarios'
     | '/sessions'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/shared/$token'
+    | '/compare'
     | '/gallery'
     | '/scenarios'
     | '/sessions'
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
+    | '/shared/$token'
+    | '/compare/'
     | '/gallery/'
     | '/scenarios/'
     | '/sessions/'
@@ -101,8 +137,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   ScenariosBuilderRoute: typeof ScenariosBuilderRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
+  SharedTokenRoute: typeof SharedTokenRoute
+  CompareIndexRoute: typeof CompareIndexRoute
   GalleryIndexRoute: typeof GalleryIndexRoute
   ScenariosIndexRoute: typeof ScenariosIndexRoute
   SessionsIndexRoute: typeof SessionsIndexRoute
@@ -110,6 +149,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -138,6 +184,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GalleryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/compare/': {
+      id: '/compare/'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof CompareIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shared/$token': {
+      id: '/shared/$token'
+      path: '/shared/$token'
+      fullPath: '/shared/$token'
+      preLoaderRoute: typeof SharedTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/$sessionId': {
       id: '/sessions/$sessionId'
       path: '/sessions/$sessionId'
@@ -157,8 +217,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   ScenariosBuilderRoute: ScenariosBuilderRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
+  SharedTokenRoute: SharedTokenRoute,
+  CompareIndexRoute: CompareIndexRoute,
   GalleryIndexRoute: GalleryIndexRoute,
   ScenariosIndexRoute: ScenariosIndexRoute,
   SessionsIndexRoute: SessionsIndexRoute,

@@ -14,7 +14,7 @@ import io.micrometer.prometheus.*
 
 fun Application.configureSerialization() {
     install(ContentNegotiation) {
-        json()
+        json(appJson)
     }
     routing {
         get("/json/kotlinx-serialization") {

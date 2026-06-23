@@ -1,0 +1,24 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/023-code-quality-tooling.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-023: Code Quality Tooling (ktlint + detekt)",
+  "summary": "Add ktlint v12.2.0 and detekt v1.23.7 to enforce formatting and static analysis in the Kotlin backend.",
+  "scope": [
+    "ktlint",
+    "detekt",
+    "backend module",
+    "code formatting",
+    "static analysis",
+    "Kotlin",
+    "CI gates"
+  ],
+  "cross_refs": [
+    "CLAUDE.md",
+    "ADR-004"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

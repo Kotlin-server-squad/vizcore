@@ -32,19 +32,32 @@ import java.util.concurrent.atomic.AtomicLong
  * 2. Event is applied to [snapshot] via [EventApplier] (state update)
  * 3. Event is broadcast via [eventBus] (real-time notifications)
  *
+ * All three steps run atomically under a single send lock, and the event's
+ * seq is finalized inside the same critical section. This guarantees that
+ * store order, seq order, and live-bus delivery order are identical — the
+ * invariant SSE replay deduplication (max-seq watermark) depends on.
+ *
  * @property sessionId Unique identifier for this session
  */
 class VizSession(
     val sessionId: String,
     maxEvents: Int = 100_000,
     val createdAtMs: Long = System.currentTimeMillis(),
+    /**
+     * Event-store factory seam. Defaults to the in-memory bounded [EventStore]
+     * so the SDK default is byte-for-byte unchanged (D-04a). The persistence
+     * layer (`:backend`) injects a factory that returns a DB-backed
+     * `EventStoreInterface` scoped to this session — without adding any DB
+     * dependency to coroutine-viz-core (SDK purity preserved).
+     */
+    eventStoreFactory: (sessionId: String) -> EventStoreInterface = { EventStore(maxEvents) },
 ) {
     // Session-scoped coroutine scope for async operations
     val sessionScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     val eventBus = EventBus()
     val bus = eventBus // Alias for backwards compatibility
-    val store = EventStore(maxEvents)
+    val store: EventStoreInterface = eventStoreFactory(sessionId)
     val snapshot = RuntimeSnapshot()
     val jobMonitor = JobStatusMonitor(session = this, 100)
 
@@ -54,7 +67,33 @@ class VizSession(
     // Sequence generator to keep events globally ordered in this session
     private val seqGenerator = AtomicLong(0)
 
+    // Serializes seq finalization + store append + snapshot apply + bus broadcast (WR-02/WR-12).
+    private val sendLock = Any()
+
+    // Highest seq appended so far; guarded by [sendLock].
+    private var lastSentSeq = 0L
+
     val projectionService = ProjectionService(this)
+
+    /**
+     * Optional callback invoked after each event is successfully emitted via [send].
+     * Used by the metrics layer to increment the events.emitted counter without
+     * adding a Micrometer dependency to coroutine-viz-core.
+     */
+    var onEventEmitted: (() -> Unit)? = null
+
+    /**
+     * Optional callback invoked each time an event is dropped due to the bounded
+     * EventStore capacity (mirrors EventStore.onEvict but at the session level).
+     * Used by the metrics layer to increment the events.dropped counter.
+     */
+    var onEventDropped: (() -> Unit)? = null
+
+    /**
+     * Optional callback invoked with the wall-clock nanos spent processing a single
+     * event inside [send] (store + applier + bus). Used for event.processing.duration.
+     */
+    var onEventProcessed: ((Long) -> Unit)? = null
 
     /**
      * Allocate next sequence number.
@@ -64,11 +103,62 @@ class VizSession(
     /**
      * Non-suspending event send - PREFERRED for most use cases.
      * Synchronously emits event to bus, stores it, and updates snapshot.
+     *
+     * Seq finalization, store append, snapshot apply, and bus broadcast run as one
+     * atomic critical section: with concurrent senders, thread A can construct
+     * seq=10, thread B construct seq=11 and reach send() first. Without the lock
+     * the store (and bus) would deliver 11 before 10, breaking the max-seq
+     * watermark dedup used by SSE replay (WR-02). Inside the lock, an event whose
+     * provisional seq is no longer the highest is re-stamped with a fresh seq, so
+     * store order == seq order always holds (WR-12).
      */
     fun send(event: VizEvent) {
-        store.append(event)
-        applier.apply(event)
-        eventBus.send(event)
+        // Capture the callback once: assigning onEventProcessed between a null
+        // check and the invocation must not produce a garbage `nanoTime - 0`
+        // duration sample (WR-12 check-then-act race).
+        val onProcessed = onEventProcessed
+        val startNanos = if (onProcessed != null) System.nanoTime() else 0L
+        synchronized(sendLock) {
+            if (event.seq <= lastSentSeq) {
+                // A concurrent sender appended a higher seq after this event was
+                // constructed (or the event carries a stale/placeholder seq):
+                // re-stamp so seq order matches append order.
+                event.seq = seqGenerator.incrementAndGet()
+            }
+            lastSentSeq = event.seq
+            store.record(event)
+            applier.apply(event)
+            eventBus.send(event)
+        }
+        onEventEmitted?.invoke()
+        onProcessed?.invoke(System.nanoTime() - startNanos)
+    }
+
+    /**
+     * Rebuild both read models — the [snapshot] and the [projectionService] — by
+     * replaying every event currently in [store].
+     *
+     * A VizSession reconstructed from a DB-backed store (ADR-015) starts with
+     * empty read models: the events were persisted by a previous instance and
+     * never flow through [send] again, so the coroutine tree, thread lanes, and
+     * timeline projections render empty even though the events exist in the store.
+     * Persistence stores call this right after construction. It deliberately does
+     * NOT re-[store.record] or re-[eventBus.send] the events (no DB duplication,
+     * no spurious SSE delivery); it only repopulates the in-memory views and
+     * advances the seq watermark so any subsequent live [send] keeps ordering.
+     */
+    fun rehydrateFromStore() {
+        val events = store.all() // ExposedEventStore returns these ordered by seq
+        if (events.isEmpty()) return
+        synchronized(sendLock) {
+            events.forEach { applier.apply(it) }
+            val maxSeq = events.maxOf { it.seq }
+            if (maxSeq > lastSentSeq) {
+                lastSentSeq = maxSeq
+                seqGenerator.set(maxSeq)
+            }
+        }
+        projectionService.rebuildFrom(events)
     }
 
     /**

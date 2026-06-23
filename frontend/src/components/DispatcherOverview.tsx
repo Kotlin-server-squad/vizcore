@@ -1,14 +1,29 @@
 import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
-import { useThreadActivity } from '@/hooks/use-thread-activity'
+import { useThreadLanesByDispatcher } from '@/hooks/use-thread-activity'
 import { FiCpu, FiLayers, FiZap, FiAlertCircle } from 'react-icons/fi'
 import type { DispatcherInfo } from '@/types/api'
 
 interface DispatcherOverviewProps {
   sessionId: string
+  /**
+   * Forwarded to the shared ['thread-activity', sessionId] query (WR-15):
+   * while the SSE stream drives updates, polling falls back to the slow 5s
+   * interval instead of re-arming the legacy 2s poll on the shared key.
+   */
+  isLive?: boolean
+  /**
+   * Read-only shared view (Plan 06): disables the protected thread-activity
+   * fetch/poll. The shared shell carries no Bearer, so this query would 404.
+   */
+  enabled?: boolean
 }
 
-export function DispatcherOverview({ sessionId }: DispatcherOverviewProps) {
-  const { data: activity, isLoading } = useThreadActivity(sessionId)
+export function DispatcherOverview({
+  sessionId,
+  isLive = false,
+  enabled = true,
+}: DispatcherOverviewProps) {
+  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId, isLive, enabled)
 
   if (isLoading) {
     return (
@@ -20,7 +35,7 @@ export function DispatcherOverview({ sessionId }: DispatcherOverviewProps) {
     )
   }
 
-  if (!activity?.dispatcherInfo || activity.dispatcherInfo.length === 0) {
+  if (dispatcherInfo.length === 0) {
     return (
       <Card>
         <CardBody>
@@ -32,11 +47,24 @@ export function DispatcherOverview({ sessionId }: DispatcherOverviewProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {activity.dispatcherInfo.map(dispatcher => (
+      {dispatcherInfo.map(dispatcher => (
         <DispatcherCard key={dispatcher.id} dispatcher={dispatcher} />
       ))}
     </div>
   )
+}
+
+/**
+ * Static literal class strings per dispatcher color (IN-12). Tailwind's JIT
+ * scanner only extracts COMPLETE literal class names — dynamically built
+ * strings like `bg-${color}/10` are never generated, so the tile silently
+ * rendered unstyled. Do not reintroduce template-constructed class names.
+ */
+const tileClasses: Record<DispatcherColor, string> = {
+  primary: 'bg-primary/10 text-primary',
+  secondary: 'bg-secondary/10 text-secondary',
+  success: 'bg-success/10 text-success',
+  warning: 'bg-warning/10 text-warning',
 }
 
 function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
@@ -49,7 +77,7 @@ function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
       <CardHeader>
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg bg-${color}/10 text-${color}`}>
+            <div className={`p-2 rounded-lg ${tileClasses[color]}`}>
               {icon}
             </div>
             <div>
@@ -119,8 +147,10 @@ function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
   )
 }
 
-function getDispatcherColor(name: string): 'primary' | 'secondary' | 'success' | 'warning' {
-  const colors: Record<string, 'primary' | 'secondary' | 'success' | 'warning'> = {
+type DispatcherColor = 'primary' | 'secondary' | 'success' | 'warning'
+
+function getDispatcherColor(name: string): DispatcherColor {
+  const colors: Record<string, DispatcherColor> = {
     'Default': 'primary',
     'IO': 'secondary',
     'Main': 'success',

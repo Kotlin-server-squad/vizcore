@@ -1,0 +1,25 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/012-validation-engine-architecture.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-012: Validation Engine Architecture",
+  "summary": "Introduce ValidationRule interface and ValidationRuleRegistry for auto-discovery and execution of coroutine correctness rules.",
+  "scope": [
+    "validation system",
+    "validation rules",
+    "rule registry",
+    "real-time validation",
+    "validation dashboard",
+    "event-sourced architecture"
+  ],
+  "cross_refs": [
+    "docs/adr/",
+    "ValidationRoutes.kt",
+    "RealTimeValidator",
+    "ValidationDashboard"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

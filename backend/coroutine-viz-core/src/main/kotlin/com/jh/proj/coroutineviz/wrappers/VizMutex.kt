@@ -256,7 +256,9 @@ class VizMutex(
     }
 
     private fun emitQueueChanged() {
-        val waiters = waitQueue.toList()
+        // Atomic snapshot — toList()'s size==1 fast path calls iterator().next(),
+        // which races a concurrent remove() on the CLQ (see VizSemaphore.emitStateChanged).
+        val waiters = waitQueue.toMutableList()
         session.send(
             MutexQueueChanged(
                 sessionId = session.sessionId,

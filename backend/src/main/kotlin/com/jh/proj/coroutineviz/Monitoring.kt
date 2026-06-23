@@ -17,7 +17,7 @@ fun Application.configureMonitoring() {
     wireMetrics(appMicrometerRegistry)
 
     routing {
-        get("/metrics-micrometer") {
+        get("/metrics") {
             call.respond(appMicrometerRegistry.scrape())
         }
     }

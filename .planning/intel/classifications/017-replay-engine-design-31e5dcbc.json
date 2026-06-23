@@ -1,0 +1,25 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/017-replay-engine-design.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-017: Replay Engine Design",
+  "summary": "Client-side replay engine for stepping through completed sessions with playback controls and speed modulation.",
+  "scope": [
+    "ReplayController component",
+    "useReplayEngine hook",
+    "SessionDetails",
+    "CoroutineTree",
+    "ThreadLanes",
+    "EventsList",
+    "DispatcherOverview",
+    "playback state machine",
+    "event reconstruction"
+  ],
+  "cross_refs": [
+    "ADR-011: Animation System Design"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

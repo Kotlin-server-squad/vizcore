@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.scenarios
 
 import com.jh.proj.coroutineviz.session.VizSession
+import com.jh.proj.coroutineviz.wrappers.VizDispatchers
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -82,6 +83,49 @@ object ScenarioRunner {
         }
 
     /**
+     * Dispatcher scenario: runs work across the Default and IO dispatchers via
+     * [VizDispatchers] so the dispatcher-tracking events (DispatcherSelected /
+     * ThreadAssigned) populate the DispatcherOverview view. Unlike the
+     * `/api/examples/dispatcher-scenario` demo (which uses a throwaway session),
+     * this runs against the managed [session] so the result is a navigable,
+     * persisted session (F11 discoverability fix).
+     */
+    suspend fun runDispatcherScenario(session: VizSession): Job =
+        coroutineScope {
+            logger.info("Starting dispatcher scenario in session: ${session.sessionId}")
+
+            val dispatchers = VizDispatchers(session, scopeId = "dispatcher")
+            val viz = VizScope(session, context = dispatchers.default)
+
+            val job =
+                viz.vizLaunch("coordinator") {
+                    // CPU-bound work stays on the Default dispatcher.
+                    vizLaunch("cpu-task") {
+                        vizDelay(150)
+                    }
+
+                    // IO-bound work runs on the IO dispatcher.
+                    vizLaunch("io-read", context = dispatchers.io) {
+                        vizDelay(200)
+                    }
+
+                    // Mixed pipeline: a Default-dispatched parent with one child
+                    // staying on Default and one switching to IO (thread reassignment).
+                    vizLaunch("pipeline") {
+                        vizLaunch("stage-compute") {
+                            vizDelay(120)
+                        }
+                        vizLaunch("stage-fetch", context = dispatchers.io) {
+                            vizDelay(120)
+                        }
+                    }
+                }
+
+            logger.info("Waiting for dispatcher scenario to complete...")
+            job
+        }
+
+    /**
      * Cancellation scenario demonstrating structured concurrency.
      */
     suspend fun runCancellationScenario(session: VizSession): Job =
@@ -112,16 +156,20 @@ object ScenarioRunner {
                             logger.debug("Normal child completed")
                         }
 
-                    // Cancel the long-running child
+                    // Cancel only the long-running child (targeted cancellation — FIX-04).
+                    // Previously child1.cancel() was commented out and the whole job was
+                    // cancelled externally, preventing normal-child from completing.
                     logger.debug("Cancelling long-running child...")
-//            child1.cancel()
+                    vizDelay(500)
+                    child1.cancel()
 
-                    logger.debug("Parent completed")
+                    // Wait for normal-child to finish on its own
+                    child2.join()
+
+                    logger.debug("Parent completed — normal-child finished, child1 was individually cancelled")
                 }
 
             logger.info("Waiting for cancellation scenario to complete...")
-            delay(1000)
-            job.cancel()
             job
         }
 
@@ -227,6 +275,10 @@ object ScenarioRunner {
                     try {
                         child1.join()
                         child2.join()
+                    } catch (e: CancellationException) {
+                        // Never swallow cancellation — rethrow to keep cooperative
+                        // cancellation (and structured concurrency) intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.debug("Parent caught exception: ${e.message}")
                     }
@@ -623,6 +675,10 @@ object ScenarioRunner {
 
                     try {
                         notificationJobs.forEach { it.join() }
+                    } catch (e: CancellationException) {
+                        // Never swallow cancellation — rethrow to keep cooperative
+                        // cancellation (and structured concurrency) intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.warn("⚠️ Some notifications failed: ${e.message}")
                         // Don't fail registration if notifications fail

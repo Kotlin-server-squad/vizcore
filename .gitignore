@@ -12,6 +12,15 @@ build/
 dist/
 frontend/dist/
 
+# Test coverage reports
+frontend/coverage/
+
+# IntelliJ Gradle plugin platform artifacts & locks
+backend/.intellijPlatform/
+
+# Memtrace local index
+.memdb/
+
 # Environment
 .env
 .env.local

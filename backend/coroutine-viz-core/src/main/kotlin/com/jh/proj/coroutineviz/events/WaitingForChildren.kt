@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 @SerialName("WaitingForChildren")
 data class WaitingForChildren(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val coroutineId: String,
     override val jobId: String,

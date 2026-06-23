@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
 @SerialName("ValidationFindingEmitted")
 data class ValidationFindingEmitted(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val finding: RuleFinding,
 ) : VizEvent {

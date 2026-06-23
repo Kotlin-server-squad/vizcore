@@ -93,9 +93,12 @@ export function useReplay(events: VizEvent[]): UseReplayReturn {
       return
     }
 
-    // Calculate delay from tsNanos difference, scaled by speed
-    const deltaNanos = next.tsNanos - current.tsNanos
-    const delayMs = Math.max(deltaNanos / 1_000_000 / speedRef.current, 10)
+    // ADR-017: clamp the BASE inter-event gap to [50, 2000] ms first, THEN
+    // divide by the speed multiplier. Clamping the base (not the post-speed
+    // delay) keeps playback within the readable 50ms–2s window regardless of
+    // raw timing, while still letting speed scale within that window.
+    const baseMs = Math.min(Math.max((next.tsNanos - current.tsNanos) / 1_000_000, 50), 2000)
+    const delayMs = baseMs / speedRef.current
 
     timerRef.current = setTimeout(() => {
       timerRef.current = null

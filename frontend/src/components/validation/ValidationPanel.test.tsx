@@ -6,11 +6,10 @@ import { ValidationPanel } from './ValidationPanel'
 import {
   ValidationPassCard,
   ValidationErrorCard,
-  ValidationWarningCard,
 } from './ValidationResultCard'
 import { TimingReportView } from './TimingReportView'
 import { apiClient } from '@/lib/api-client'
-import type { ValidationResult, ValidationError, ValidationWarning, TimingReport } from '@/types/api'
+import type { ValidationResponse, ValidationRuleResult, BackendTimingReport } from '@/types/api'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
@@ -58,18 +57,16 @@ describe('ValidationPanel', () => {
   })
 
   it('calls validation API when button is clicked', async () => {
-    const result: ValidationResult = {
+    const result: ValidationResponse = {
       sessionId: 'session-1',
-      valid: true,
-      errors: [],
-      warnings: [],
+      results: [
+        { type: 'Fail', ruleName: 'NO_ORPHAN_EVENTS', message: 'Event 5 has no parent' },
+        { type: 'Pass', ruleName: 'LIFECYCLE_ORDER', message: 'All lifecycle events in order' },
+      ],
       timing: {
-        totalDurationNanos: 1_000_000_000,
-        eventCount: 50,
-        coroutineCount: 5,
-        avgEventIntervalNanos: 20_000_000,
-        maxGapNanos: 100_000_000,
-        suspendResumeLatencies: [],
+        coroutineDurations: { 'main-coroutine': 150, 'child-1': 80 },
+        suspensionDurations: { 'main-coroutine': [10, 25, 5] },
+        totalDuration: 230,
       },
     }
 
@@ -86,11 +83,11 @@ describe('ValidationPanel', () => {
       expect(mockedApiClient.validateSession).toHaveBeenCalledWith('session-1')
     })
 
-    // Should show pass summary
+    // Should show summary
     await waitFor(() => {
       expect(screen.getByTestId('validation-summary')).toBeInTheDocument()
     })
-    expect(screen.getByText('Validation Passed')).toBeInTheDocument()
+    expect(screen.getByText(/1 Rule.*Failed/)).toBeInTheDocument()
   })
 
   it('shows error state when validation API fails', async () => {
@@ -107,77 +104,142 @@ describe('ValidationPanel', () => {
     })
     expect(screen.getByText(/Server error/)).toBeInTheDocument()
   })
+
+  it('renders Failures section for Fail results', async () => {
+    const result: ValidationResponse = {
+      sessionId: 'session-1',
+      results: [
+        { type: 'Fail', ruleName: 'NO_ORPHAN_EVENTS', message: 'Event 5 has no parent' },
+      ],
+      timing: {
+        coroutineDurations: { 'coroutine-1': 100 },
+        suspensionDurations: {},
+        totalDuration: 100,
+      },
+    }
+
+    mockedApiClient.validateSession.mockResolvedValue(result)
+
+    render(<ValidationPanel sessionId="session-1" />, {
+      wrapper: createWrapper(),
+    })
+
+    fireEvent.click(screen.getByTestId('run-validation-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-error-card')).toBeInTheDocument()
+    })
+    expect(screen.getByText('NO_ORPHAN_EVENTS')).toBeInTheDocument()
+  })
+
+  it('renders Passes section as compact list for Pass results', async () => {
+    const result: ValidationResponse = {
+      sessionId: 'session-1',
+      results: [
+        { type: 'Pass', ruleName: 'LIFECYCLE_ORDER', message: 'All lifecycle events in order' },
+      ],
+      timing: {
+        coroutineDurations: { 'coroutine-1': 100 },
+        suspensionDurations: {},
+        totalDuration: 100,
+      },
+    }
+
+    mockedApiClient.validateSession.mockResolvedValue(result)
+
+    render(<ValidationPanel sessionId="session-1" />, {
+      wrapper: createWrapper(),
+    })
+
+    fireEvent.click(screen.getByTestId('run-validation-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByText('All Rules Passed')).toBeInTheDocument()
+    })
+    expect(screen.getByText('LIFECYCLE_ORDER')).toBeInTheDocument()
+  })
 })
 
 describe('ValidationPassCard', () => {
-  it('renders pass state with green check', () => {
-    render(<ValidationPassCard valid={true} errorCount={0} warningCount={0} />)
+  it('renders pass state with green check when no failures', () => {
+    render(<ValidationPassCard failCount={0} totalCount={21} />)
     expect(screen.getByTestId('validation-summary')).toBeInTheDocument()
-    expect(screen.getByText('Validation Passed')).toBeInTheDocument()
+    expect(screen.getByText('All Rules Passed')).toBeInTheDocument()
+    expect(screen.getByText('21 rules checked')).toBeInTheDocument()
   })
 
-  it('renders fail state with error count', () => {
-    render(<ValidationPassCard valid={false} errorCount={3} warningCount={1} />)
+  it('renders fail state with failure count', () => {
+    render(<ValidationPassCard failCount={3} totalCount={21} />)
     expect(screen.getByTestId('validation-summary')).toBeInTheDocument()
-    expect(screen.getByText('Validation Failed')).toBeInTheDocument()
-    expect(screen.getByText(/3 errors/)).toBeInTheDocument()
+    expect(screen.getByText(/3 Rule.*Failed/)).toBeInTheDocument()
+    expect(screen.getByText(/3 of 21 rules failed/)).toBeInTheDocument()
   })
 })
 
 describe('ValidationErrorCard', () => {
-  it('renders error with code and message', () => {
-    const error: ValidationError = {
-      code: 'INVALID_ORDER',
-      message: 'Event 5 arrived before event 4',
-      eventSeq: 5,
-      coroutineId: 'c1',
+  it('renders fail result with ruleName and message', () => {
+    const result: ValidationRuleResult = {
+      type: 'Fail',
+      ruleName: 'NO_ORPHAN_EVENTS',
+      message: 'Event 5 has no parent',
     }
 
-    render(<ValidationErrorCard error={error} />)
+    render(<ValidationErrorCard error={result} />)
     expect(screen.getByTestId('validation-error-card')).toBeInTheDocument()
-    expect(screen.getByText('INVALID_ORDER')).toBeInTheDocument()
-    expect(screen.getByText('Event 5 arrived before event 4')).toBeInTheDocument()
+    expect(screen.getByText('NO_ORPHAN_EVENTS')).toBeInTheDocument()
+    expect(screen.getByText('Event 5 has no parent')).toBeInTheDocument()
   })
-})
 
-describe('ValidationWarningCard', () => {
-  it('renders warning with suggestion', () => {
-    const warning: ValidationWarning = {
-      code: 'SLOW_SUSPEND',
-      message: 'Coroutine c1 was suspended for over 5s',
-      suggestion: 'Consider adding a timeout',
-      coroutineId: 'c1',
+  it('renders details when present', () => {
+    const result: ValidationRuleResult = {
+      type: 'Fail',
+      ruleName: 'NO_ORPHAN_EVENTS',
+      message: 'Event 5 has no parent',
+      details: 'Expected parent event seq 4 but found none',
     }
 
-    render(<ValidationWarningCard warning={warning} />)
-    expect(screen.getByTestId('validation-warning-card')).toBeInTheDocument()
-    expect(screen.getByText('SLOW_SUSPEND')).toBeInTheDocument()
-    expect(screen.getByText('Consider adding a timeout')).toBeInTheDocument()
+    render(<ValidationErrorCard error={result} />)
+    expect(screen.getByText('Expected parent event seq 4 but found none')).toBeInTheDocument()
   })
 })
 
 describe('TimingReportView', () => {
-  it('renders timing metrics and latency buckets', () => {
-    const timing: TimingReport = {
-      totalDurationNanos: 2_500_000_000,
-      eventCount: 100,
-      coroutineCount: 10,
-      avgEventIntervalNanos: 25_000_000,
-      maxGapNanos: 500_000_000,
-      suspendResumeLatencies: [
-        { label: '0-1ms', minNanos: 0, maxNanos: 1_000_000, count: 30 },
-        { label: '1-10ms', minNanos: 1_000_000, maxNanos: 10_000_000, count: 50 },
-        { label: '10-100ms', minNanos: 10_000_000, maxNanos: 100_000_000, count: 15 },
-        { label: '100ms+', minNanos: 100_000_000, maxNanos: 999_000_000, count: 5 },
-      ],
+  it('renders timing metrics with coroutine duration rows', () => {
+    const timing: BackendTimingReport = {
+      coroutineDurations: { 'main-coroutine': 150, 'child-1': 80 },
+      suspensionDurations: { 'main-coroutine': [10, 25, 5] },
+      totalDuration: 230,
     }
 
     render(<TimingReportView timing={timing} />)
     expect(screen.getByTestId('timing-report')).toBeInTheDocument()
-    expect(screen.getByText('100')).toBeInTheDocument() // event count
-    expect(screen.getByText('10')).toBeInTheDocument() // coroutine count
-    // Latency buckets
-    const buckets = screen.getAllByTestId('latency-bucket')
-    expect(buckets).toHaveLength(4)
+    expect(screen.getByText('230ms')).toBeInTheDocument() // total duration
+    expect(screen.getByText('Total Duration')).toBeInTheDocument()
+    // Coroutine duration rows — one per entry in coroutineDurations
+    const rows = screen.getAllByTestId('timing-coroutine-row')
+    expect(rows).toHaveLength(2)
+  })
+
+  it('renders suspension durations section when data is present', () => {
+    const timing: BackendTimingReport = {
+      coroutineDurations: { 'coroutine-1': 1000 },
+      suspensionDurations: { 'coroutine-1': [500, 200] },
+      totalDuration: 1000,
+    }
+
+    render(<TimingReportView timing={timing} />)
+    expect(screen.getByText('Suspension Durations')).toBeInTheDocument()
+    expect(screen.getByText(/2 suspensions, max: 500ms/)).toBeInTheDocument()
+  })
+
+  it('formats duration >= 1000ms as seconds', () => {
+    const timing: BackendTimingReport = {
+      coroutineDurations: {},
+      suspensionDurations: {},
+      totalDuration: 2500,
+    }
+
+    render(<TimingReportView timing={timing} />)
+    expect(screen.getByText('2.50s')).toBeInTheDocument()
   })
 })

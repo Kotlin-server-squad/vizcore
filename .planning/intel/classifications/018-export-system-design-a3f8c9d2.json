@@ -1,0 +1,26 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/018-export-system-design.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-018: Export System Design",
+  "summary": "Implement a three-tier client-side export system (PNG, SVG, video) for sharing coroutine visualizations with per-panel and session-level export controls.",
+  "scope": [
+    "export system",
+    "PNG export",
+    "SVG export",
+    "video/GIF export",
+    "ExportMenu component",
+    "SessionDetails toolbar",
+    "html2canvas",
+    "MediaRecorder API",
+    "client-side rendering"
+  ],
+  "cross_refs": [
+    "ADR-017",
+    "ADR-011"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

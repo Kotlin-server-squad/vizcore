@@ -56,6 +56,8 @@ class ValidationRoutesTest {
             val ruleNames = body.map { it.jsonObject["name"]!!.jsonPrimitive.content }
             assertTrue("CreatedHasStarted" in ruleNames, "Should include CreatedHasStarted rule")
             assertTrue("NoDuplicateSequenceNumbers" in ruleNames, "Should include NoDuplicateSequenceNumbers rule")
+            assertTrue("EventsInExactOrder" in ruleNames, "Should advertise the EventsInExactOrder rule")
+            assertTrue("EventOrdering" !in ruleNames, "Dead EventOrdering catalog entry should be retired")
         }
 
     @Test
@@ -77,6 +79,11 @@ class ValidationRoutesTest {
             assertEquals(sessionId, body["sessionId"]?.jsonPrimitive?.content, "Should return correct session ID")
             assertTrue(body.containsKey("results"), "Response should contain results")
             assertTrue(body.containsKey("timing"), "Response should contain timing report")
+
+            // The EventsInExactOrder rule must actually run (not just be advertised).
+            val resultRules =
+                body["results"]!!.jsonArray.map { it.jsonObject["ruleName"]?.jsonPrimitive?.content }
+            assertTrue("EventsInExactOrder" in resultRules, "EventsInExactOrder must be among the run results")
 
             // Check timing report structure
             val timing = body["timing"]!!.jsonObject

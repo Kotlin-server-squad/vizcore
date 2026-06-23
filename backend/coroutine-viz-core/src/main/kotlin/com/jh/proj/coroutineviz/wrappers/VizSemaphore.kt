@@ -35,9 +35,14 @@ class VizSemaphore(
     private val session: VizSession,
     val permits: Int,
     val label: String? = null,
+    // F10: number of permits already held at construction. Lets a counting semaphore start with
+    // fewer-than-`permits` available (e.g. a producer-consumer "full slots" semaphore that starts
+    // empty: permits = capacity, acquiredPermits = capacity → 0 available). kotlinx requires
+    // permits >= 1, so `Semaphore(0)` is illegal — express "0 available" via acquiredPermits instead.
+    acquiredPermits: Int = 0,
 ) {
     val semaphoreId: String = "semaphore-${session.nextSeq()}"
-    private val delegate = Semaphore(permits)
+    private val delegate = Semaphore(permits, acquiredPermits)
     private val totalPermits = permits
 
     // Active holders tracking
@@ -266,8 +271,12 @@ class VizSemaphore(
     }
 
     private fun emitStateChanged() {
-        val holders = activeHolders.values.toList()
-        val waiters = waitQueue.toList()
+        // Atomic snapshots: Collection.toList() has a size==1 fast path that calls
+        // iterator().next(), which races a concurrent remove() on these concurrent
+        // collections and throws NoSuchElementException. toMutableList() copies via
+        // ArrayList(this) → toArray(), which is a race-safe snapshot.
+        val holders = activeHolders.values.toMutableList()
+        val waiters = waitQueue.toMutableList()
 
         session.send(
             SemaphoreStateChanged(
@@ -305,6 +314,7 @@ class VizSemaphore(
 fun VizScope.vizSemaphore(
     label: String? = null,
     permits: Int,
+    acquiredPermits: Int = 0,
 ): VizSemaphore {
-    return VizSemaphore(session, permits, label)
+    return VizSemaphore(session, permits, label, acquiredPermits)
 }

@@ -202,20 +202,14 @@ export const handlers = [
     return HttpResponse.json(timeline)
   }),
 
-  // Get session events (with optional filtering)
-  http.get('/api/sessions/:sessionId/events', ({ request }) => {
-    const url = new URL(request.url)
-    const sinceStep = url.searchParams.get('sinceStep')
-    const limit = url.searchParams.get('limit')
-
-    // For now, return empty events array
-    // In real implementation, this would return filtered/paginated events
-    return HttpResponse.json({
-      events: [],
-      nextStep: sinceStep ? parseInt(sinceStep) + (limit ? parseInt(limit) : 100) : null,
-      hasMore: false,
-      total: 0
-    })
+  // Get session events.
+  // Real wire shape (IN-11): the backend returns the FULL event list as a
+  // BARE JSON array (SessionRoutes.kt returns store.all() unconditionally) —
+  // no pagination wrapper, no query params. Keep this mock byte-compatible
+  // with production so apiClient.getSessionEvents behaves identically in
+  // dev-mode MSW and against the real backend.
+  http.get('/api/sessions/:sessionId/events', () => {
+    return HttpResponse.json([])
   }),
 ]
 

@@ -6,14 +6,19 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import kotlinx.serialization.Serializable
 
+private const val NANOS_PER_MILLI = 1_000_000L
+
 /**
  * Timing report containing duration and suspension analysis.
  *
- * @property coroutineDurations Map of coroutine ID to total duration in nanoseconds
+ * All duration values are in **milliseconds** (integer division from nanoseconds).
+ * Sub-millisecond precision is lost intentionally — these values are for display only.
+ *
+ * @property coroutineDurations Map of coroutine ID to total duration in milliseconds
  *                              (from first event to last event)
  * @property suspensionDurations Map of coroutine ID to list of individual suspension
- *                               durations in nanoseconds
- * @property totalDuration Overall duration of the event stream in nanoseconds
+ *                               durations in milliseconds
+ * @property totalDuration Overall duration of the event stream in milliseconds
  */
 @Serializable
 data class TimingReport(
@@ -29,13 +34,19 @@ data class TimingReport(
  * - Per-coroutine durations (first event to last event)
  * - Per-coroutine suspension durations (Suspended to Resumed pairs)
  * - Overall event stream duration
+ *
+ * All returned durations are in **milliseconds** (nanosecond timestamps divided by
+ * [NANOS_PER_MILLI] = 1,000,000). This matches the `BackendTimingReport` frontend
+ * contract where fields are documented as milliseconds.
  */
 object TimingAnalyzer {
     /**
      * Analyze the given events and produce a [TimingReport].
      *
+     * Duration values in the returned report are in **milliseconds**.
+     *
      * @param events Full event stream (may contain events for multiple coroutines)
-     * @return Timing analysis report
+     * @return Timing analysis report with all durations in milliseconds
      */
     fun analyze(events: List<VizEvent>): TimingReport {
         val coroutineEvents = events.filterIsInstance<CoroutineEvent>()
@@ -47,14 +58,15 @@ object TimingAnalyzer {
         for ((coroutineId, cEvents) in byCoroutine) {
             val sorted = cEvents.sortedBy { it.tsNanos }
 
-            // Total duration: first event to last event
+            // Total duration: first event to last event, converted ns → ms
             if (sorted.size >= 2) {
-                coroutineDurations[coroutineId] = sorted.last().tsNanos - sorted.first().tsNanos
+                val nsDelta = sorted.last().tsNanos - sorted.first().tsNanos
+                coroutineDurations[coroutineId] = nsDelta / NANOS_PER_MILLI
             } else if (sorted.size == 1) {
                 coroutineDurations[coroutineId] = 0L
             }
 
-            // Suspension durations: pair Suspended with the next Resumed
+            // Suspension durations: pair Suspended with the next Resumed, converted ns → ms
             val suspensions = mutableListOf<Long>()
             var lastSuspended: CoroutineSuspended? = null
 
@@ -65,7 +77,8 @@ object TimingAnalyzer {
                     }
                     is CoroutineResumed -> {
                         if (lastSuspended != null) {
-                            suspensions.add(event.tsNanos - lastSuspended.tsNanos)
+                            val nsSpan = event.tsNanos - lastSuspended.tsNanos
+                            suspensions.add(nsSpan / NANOS_PER_MILLI)
                             lastSuspended = null
                         }
                     }
@@ -76,11 +89,11 @@ object TimingAnalyzer {
             suspensionDurations[coroutineId] = suspensions
         }
 
-        // Total stream duration
+        // Total stream duration: min to max tsNanos across all events, converted ns → ms
         val totalDuration =
             if (events.size >= 2) {
                 val allTs = events.map { it.tsNanos }
-                allTs.max() - allTs.min()
+                (allTs.max() - allTs.min()) / NANOS_PER_MILLI
             } else {
                 0L
             }

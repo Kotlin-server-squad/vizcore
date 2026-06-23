@@ -16,7 +16,9 @@
       "get": {
         "operationId": "listSessions",
         "summary": "List all active sessions",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "responses": {
           "200": {
             "description": "List of active sessions",
@@ -36,7 +38,9 @@
       "post": {
         "operationId": "createSession",
         "summary": "Create a new visualization session",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "parameters": [
           {
             "name": "name",
@@ -66,7 +70,9 @@
       "get": {
         "operationId": "getSession",
         "summary": "Get session snapshot with coroutine state",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -113,7 +119,9 @@
       "delete": {
         "operationId": "deleteSession",
         "summary": "Close and delete a session",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -152,7 +160,9 @@
       "get": {
         "operationId": "getSessionEvents",
         "summary": "Get all events for a session",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -194,7 +204,9 @@
       "get": {
         "operationId": "getSessionHierarchy",
         "summary": "Get coroutine hierarchy tree for a session",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -245,7 +257,9 @@
       "get": {
         "operationId": "getSessionThreadActivity",
         "summary": "Get thread activity data for a session",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -290,7 +304,9 @@
       "get": {
         "operationId": "getCoroutineTimeline",
         "summary": "Get timeline for a specific coroutine",
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -337,7 +353,9 @@
       "get": {
         "operationId": "listScenarios",
         "summary": "List all available scenarios",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "responses": {
           "200": {
             "description": "List of available scenarios",
@@ -356,7 +374,9 @@
       "post": {
         "operationId": "runNestedScenario",
         "summary": "Run nested coroutines scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -395,7 +415,9 @@
       "post": {
         "operationId": "runParallelScenario",
         "summary": "Run parallel execution scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -434,7 +456,9 @@
       "post": {
         "operationId": "runCancellationScenario",
         "summary": "Run cancellation scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -473,7 +497,9 @@
       "post": {
         "operationId": "runDeepNestingScenario",
         "summary": "Run deep nesting scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -521,7 +547,9 @@
       "post": {
         "operationId": "runMixedScenario",
         "summary": "Run mixed sequential/parallel scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -560,7 +588,9 @@
       "post": {
         "operationId": "runExceptionScenario",
         "summary": "Run exception handling scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -599,7 +629,9 @@
       "post": {
         "operationId": "runChannelRendezvousScenario",
         "summary": "Run channel rendezvous scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -638,7 +670,9 @@
       "post": {
         "operationId": "runChannelBufferedScenario",
         "summary": "Run channel buffered scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -677,7 +711,9 @@
       "post": {
         "operationId": "runChannelFanOutScenario",
         "summary": "Run channel fan-out scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -716,7 +752,9 @@
       "post": {
         "operationId": "runOrderProcessingScenario",
         "summary": "Run order processing scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -765,7 +803,9 @@
       "post": {
         "operationId": "runUserRegistrationScenario",
         "summary": "Run user registration scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -814,7 +854,9 @@
       "post": {
         "operationId": "runReportGenerationScenario",
         "summary": "Run report generation scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "parameters": [
           {
             "name": "sessionId",
@@ -863,7 +905,9 @@
       "post": {
         "operationId": "runCustomScenario",
         "summary": "Run a custom user-defined scenario",
-        "tags": ["Scenarios"],
+        "tags": [
+          "Scenarios"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -912,7 +956,9 @@
       "post": {
         "operationId": "validateSession",
         "summary": "Run validation rules against a session's events",
-        "tags": ["Validation"],
+        "tags": [
+          "Validation"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -951,7 +997,9 @@
       "get": {
         "operationId": "listValidationRules",
         "summary": "List all available validation rules",
-        "tags": ["Validation"],
+        "tags": [
+          "Validation"
+        ],
         "responses": {
           "200": {
             "description": "List of validation rules",
@@ -968,13 +1016,79 @@
           }
         }
       }
+    },
+    "/api/sessions/compare": {
+      "get": {
+        "tags": [
+          "Comparison"
+        ],
+        "summary": "Compare two sessions",
+        "description": "Produces a structured diff between two visualization sessions. The comparison includes aggregate differences (coroutine count, event count, duration, thread utilization), coroutines unique to each session, and per-coroutine state and event count comparisons for shared coroutines.\n",
+        "operationId": "compareSessions",
+        "parameters": [
+          {
+            "name": "a",
+            "in": "query",
+            "required": true,
+            "description": "ID of the first (baseline) session",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "b",
+            "in": "query",
+            "required": true,
+            "description": "ID of the second (comparison) session",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session comparison results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionComparison"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required query parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "One or both sessions not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
       "SessionInfo": {
         "type": "object",
-        "required": ["sessionId", "coroutineCount", "eventCount"],
+        "required": [
+          "sessionId",
+          "coroutineCount",
+          "eventCount"
+        ],
         "properties": {
           "sessionId": {
             "type": "string"
@@ -989,7 +1103,10 @@
       },
       "CreateSessionResponse": {
         "type": "object",
-        "required": ["sessionId", "message"],
+        "required": [
+          "sessionId",
+          "message"
+        ],
         "properties": {
           "sessionId": {
             "type": "string"
@@ -1001,7 +1118,9 @@
       },
       "MessageResponse": {
         "type": "object",
-        "required": ["message"],
+        "required": [
+          "message"
+        ],
         "properties": {
           "message": {
             "type": "string"
@@ -1010,7 +1129,9 @@
       },
       "ErrorResponse": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "string"
@@ -1019,11 +1140,24 @@
       },
       "CoroutineState": {
         "type": "string",
-        "enum": ["CREATED", "ACTIVE", "SUSPENDED", "WAITING_FOR_CHILDREN", "COMPLETED", "CANCELLED", "FAILED"]
+        "enum": [
+          "CREATED",
+          "ACTIVE",
+          "SUSPENDED",
+          "WAITING_FOR_CHILDREN",
+          "COMPLETED",
+          "CANCELLED",
+          "FAILED"
+        ]
       },
       "CoroutineNodeDto": {
         "type": "object",
-        "required": ["id", "jobId", "scopeId", "state"],
+        "required": [
+          "id",
+          "jobId",
+          "scopeId",
+          "state"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1049,7 +1183,12 @@
       },
       "SessionSnapshotResponse": {
         "type": "object",
-        "required": ["sessionId", "coroutineCount", "eventCount", "coroutines"],
+        "required": [
+          "sessionId",
+          "coroutineCount",
+          "eventCount",
+          "coroutines"
+        ],
         "properties": {
           "sessionId": {
             "type": "string"
@@ -1070,7 +1209,14 @@
       },
       "HierarchyNode": {
         "type": "object",
-        "required": ["id", "name", "scopeId", "state", "createdAtNanos", "jobId"],
+        "required": [
+          "id",
+          "name",
+          "scopeId",
+          "state",
+          "createdAtNanos",
+          "jobId"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1147,7 +1293,11 @@
       },
       "CoroutineTimeline": {
         "type": "object",
-        "required": ["coroutineId", "name", "state"],
+        "required": [
+          "coroutineId",
+          "name",
+          "state"
+        ],
         "properties": {
           "coroutineId": {
             "type": "string"
@@ -1198,7 +1348,11 @@
       },
       "TimelineEventSummary": {
         "type": "object",
-        "required": ["seq", "tsNanos", "kind"],
+        "required": [
+          "seq",
+          "tsNanos",
+          "kind"
+        ],
         "properties": {
           "seq": {
             "type": "integer",
@@ -1228,7 +1382,13 @@
       },
       "ThreadEvent": {
         "type": "object",
-        "required": ["coroutineId", "threadId", "threadName", "timestamp", "eventType"],
+        "required": [
+          "coroutineId",
+          "threadId",
+          "threadName",
+          "timestamp",
+          "eventType"
+        ],
         "properties": {
           "coroutineId": {
             "type": "string"
@@ -1246,7 +1406,10 @@
           },
           "eventType": {
             "type": "string",
-            "enum": ["ASSIGNED", "RELEASED"]
+            "enum": [
+              "ASSIGNED",
+              "RELEASED"
+            ]
           },
           "dispatcherName": {
             "type": "string",
@@ -1256,7 +1419,12 @@
       },
       "Scenario": {
         "type": "object",
-        "required": ["id", "name", "description", "endpoint"],
+        "required": [
+          "id",
+          "name",
+          "description",
+          "endpoint"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1272,7 +1440,11 @@
           },
           "category": {
             "type": "string",
-            "enum": ["realistic", "channel", "basic"]
+            "enum": [
+              "realistic",
+              "channel",
+              "basic"
+            ]
           },
           "duration": {
             "type": "string",
@@ -1282,7 +1454,9 @@
       },
       "ScenarioListResponse": {
         "type": "object",
-        "required": ["scenarios"],
+        "required": [
+          "scenarios"
+        ],
         "properties": {
           "scenarios": {
             "type": "array",
@@ -1294,7 +1468,13 @@
       },
       "ScenarioCompletionResponse": {
         "type": "object",
-        "required": ["success", "sessionId", "message", "coroutineCount", "eventCount"],
+        "required": [
+          "success",
+          "sessionId",
+          "message",
+          "coroutineCount",
+          "eventCount"
+        ],
         "properties": {
           "success": {
             "type": "boolean"
@@ -1315,11 +1495,18 @@
       },
       "ActionDTO": {
         "type": "object",
-        "required": ["type"],
+        "required": [
+          "type"
+        ],
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["delay", "throw", "log", "custom"]
+            "enum": [
+              "delay",
+              "throw",
+              "log",
+              "custom"
+            ]
           },
           "params": {
             "type": "object",
@@ -1332,7 +1519,10 @@
       },
       "CoroutineConfigDTO": {
         "type": "object",
-        "required": ["id", "label"],
+        "required": [
+          "id",
+          "label"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1362,7 +1552,10 @@
       },
       "ScenarioConfigRequest": {
         "type": "object",
-        "required": ["name", "root"],
+        "required": [
+          "name",
+          "root"
+        ],
         "properties": {
           "name": {
             "type": "string"
@@ -1382,7 +1575,11 @@
       },
       "ScenarioExecutionResponse": {
         "type": "object",
-        "required": ["success", "sessionId", "message"],
+        "required": [
+          "success",
+          "sessionId",
+          "message"
+        ],
         "properties": {
           "success": {
             "type": "boolean"
@@ -1412,7 +1609,11 @@
       },
       "ValidationResponse": {
         "type": "object",
-        "required": ["sessionId", "results", "timing"],
+        "required": [
+          "sessionId",
+          "results",
+          "timing"
+        ],
         "properties": {
           "sessionId": {
             "type": "string"
@@ -1430,14 +1631,20 @@
       },
       "ValidationResult": {
         "type": "object",
-        "required": ["ruleName", "message"],
+        "required": [
+          "ruleName",
+          "message"
+        ],
         "discriminator": {
           "propertyName": "type"
         },
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["Pass", "Fail"]
+            "enum": [
+              "Pass",
+              "Fail"
+            ]
           },
           "ruleName": {
             "type": "string"
@@ -1453,7 +1660,11 @@
       },
       "TimingReport": {
         "type": "object",
-        "required": ["coroutineDurations", "suspensionDurations", "totalDuration"],
+        "required": [
+          "coroutineDurations",
+          "suspensionDurations",
+          "totalDuration"
+        ],
         "properties": {
           "coroutineDurations": {
             "type": "object",
@@ -1483,7 +1694,10 @@
       },
       "ValidationRule": {
         "type": "object",
-        "required": ["name", "description"],
+        "required": [
+          "name",
+          "description"
+        ],
         "properties": {
           "name": {
             "type": "string"
@@ -1496,7 +1710,12 @@
       "VizEvent": {
         "type": "object",
         "description": "Base event shape. Actual events are polymorphic and discriminated by the 'kind' field. See events.ts for full TypeScript types.",
-        "required": ["sessionId", "seq", "tsNanos", "kind"],
+        "required": [
+          "sessionId",
+          "seq",
+          "tsNanos",
+          "kind"
+        ],
         "properties": {
           "sessionId": {
             "type": "string"
@@ -1511,6 +1730,107 @@
           },
           "kind": {
             "type": "string"
+          }
+        }
+      },
+      "SessionComparison": {
+        "type": "object",
+        "description": "Structured diff between two visualization sessions, including aggregate metrics and per-coroutine breakdowns.\n",
+        "required": [
+          "sessionA",
+          "sessionB",
+          "coroutineCountDiff",
+          "eventCountDiff",
+          "totalDurationDiffNanos",
+          "distinctThreadsDiff",
+          "coroutinesOnlyInA",
+          "coroutinesOnlyInB",
+          "commonCoroutines"
+        ],
+        "properties": {
+          "sessionA": {
+            "type": "string",
+            "description": "ID of the first (baseline) session"
+          },
+          "sessionB": {
+            "type": "string",
+            "description": "ID of the second (comparison) session"
+          },
+          "coroutineCountDiff": {
+            "type": "integer",
+            "description": "Difference in coroutine count (B minus A)"
+          },
+          "eventCountDiff": {
+            "type": "integer",
+            "description": "Difference in event count (B minus A)"
+          },
+          "totalDurationDiffNanos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Difference in total session duration in nanoseconds (B minus A)"
+          },
+          "distinctThreadsDiff": {
+            "type": "integer",
+            "description": "Difference in distinct-thread (thread-utilization) count between the two sessions (B minus A), derived from ThreadAssigned events.\n"
+          },
+          "coroutinesOnlyInA": {
+            "type": "array",
+            "description": "Coroutine IDs present only in session A",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coroutinesOnlyInB": {
+            "type": "array",
+            "description": "Coroutine IDs present only in session B",
+            "items": {
+              "type": "string"
+            }
+          },
+          "commonCoroutines": {
+            "type": "array",
+            "description": "Per-coroutine comparison for coroutines in both sessions",
+            "items": {
+              "$ref": "#/components/schemas/CoroutineComparison"
+            }
+          }
+        }
+      },
+      "CoroutineComparison": {
+        "type": "object",
+        "description": "Comparison of a single coroutine that exists in both sessions.\n",
+        "required": [
+          "coroutineId",
+          "stateA",
+          "stateB",
+          "eventCountA",
+          "eventCountB"
+        ],
+        "properties": {
+          "coroutineId": {
+            "type": "string",
+            "description": "Shared coroutine identifier"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true,
+            "description": "Coroutine label (taken from session A if available)"
+          },
+          "stateA": {
+            "type": "string",
+            "description": "Coroutine state in session A"
+          },
+          "stateB": {
+            "type": "string",
+            "description": "Coroutine state in session B"
+          },
+          "eventCountA": {
+            "type": "integer",
+            "description": "Number of events for this coroutine in session A"
+          },
+          "eventCountB": {
+            "type": "integer",
+            "description": "Number of events for this coroutine in session B"
           }
         }
       }

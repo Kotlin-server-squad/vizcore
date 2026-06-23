@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.events.flow
 
 import com.jh.proj.coroutineviz.events.VizEvent
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -8,9 +9,10 @@ import kotlinx.serialization.Serializable
  * Tracks the operator chain for visualization.
  */
 @Serializable
+@SerialName("FlowOperatorApplied")
 data class FlowOperatorApplied(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val flowId: String,
     // The upstream flow this operator transforms

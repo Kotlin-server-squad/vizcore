@@ -1,5 +1,7 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.auth.resolveTenant
+import com.jh.proj.coroutineviz.scenarioDurationTimerRef
 import com.jh.proj.coroutineviz.scenarios.ScenarioConfigRequest
 import com.jh.proj.coroutineviz.scenarios.ScenarioExecutionResponse
 import com.jh.proj.coroutineviz.scenarios.ScenarioRunner
@@ -8,9 +10,12 @@ import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
+import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.micrometer.core.instrument.Timer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 
@@ -19,7 +24,7 @@ private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
 fun Route.registerScenarioRunnerRoutes() {
     post("/api/scenarios/nested") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running nested coroutines scenario in session: ${session.sessionId}")
 
@@ -37,7 +42,7 @@ fun Route.registerScenarioRunnerRoutes() {
 
     post("/api/scenarios/parallel") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running parallel execution scenario in session: ${session.sessionId}")
 
@@ -55,7 +60,7 @@ fun Route.registerScenarioRunnerRoutes() {
 
     post("/api/scenarios/cancellation") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running cancellation scenario in session: ${session.sessionId}")
 
@@ -74,7 +79,7 @@ fun Route.registerScenarioRunnerRoutes() {
     post("/api/scenarios/deep-nesting") {
         val sessionId = call.request.queryParameters["sessionId"]
         val depth = call.request.queryParameters["depth"]?.toIntOrNull() ?: 5
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running deep nesting scenario (depth=$depth) in session: ${session.sessionId}")
 
@@ -92,7 +97,7 @@ fun Route.registerScenarioRunnerRoutes() {
 
     post("/api/scenarios/mixed") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running mixed scenario in session: ${session.sessionId}")
 
@@ -110,7 +115,7 @@ fun Route.registerScenarioRunnerRoutes() {
 
     post("/api/scenarios/exception") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running exception scenario in session: ${session.sessionId}")
 
@@ -126,13 +131,31 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
+    post("/api/scenarios/dispatcher") {
+        val sessionId = call.request.queryParameters["sessionId"]
+        val session = call.getOrCreateSession(sessionId)
+
+        logger.info("Running dispatcher scenario in session: ${session.sessionId}")
+
+        call.runScenarioWithResponse(session) {
+            ScenarioRunner.runDispatcherScenario(session).join()
+            ScenarioCompletionResponse(
+                success = true,
+                sessionId = session.sessionId,
+                message = "Dispatcher scenario completed",
+                coroutineCount = session.snapshot.coroutines.size,
+                eventCount = session.store.all().size,
+            )
+        }
+    }
+
     // ============================================================================
     // CHANNEL SCENARIOS - Channel communication patterns
     // ============================================================================
 
     post("/api/scenarios/channel-rendezvous") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running channel rendezvous scenario in session: ${session.sessionId}")
 
@@ -150,7 +173,7 @@ fun Route.registerScenarioRunnerRoutes() {
 
     post("/api/scenarios/channel-buffered") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running channel buffered scenario in session: ${session.sessionId}")
 
@@ -168,7 +191,7 @@ fun Route.registerScenarioRunnerRoutes() {
 
     post("/api/scenarios/channel-fan-out") {
         val sessionId = call.request.queryParameters["sessionId"]
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running channel fan-out scenario in session: ${session.sessionId}")
 
@@ -191,7 +214,7 @@ fun Route.registerScenarioRunnerRoutes() {
     post("/api/scenarios/order-processing") {
         val sessionId = call.request.queryParameters["sessionId"]
         val shouldFail = call.request.queryParameters["fail"]?.toBoolean() ?: false
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running Order Processing scenario (fail=$shouldFail) in session: ${session.sessionId}")
 
@@ -210,7 +233,7 @@ fun Route.registerScenarioRunnerRoutes() {
     post("/api/scenarios/user-registration") {
         val sessionId = call.request.queryParameters["sessionId"]
         val shouldFailEmail = call.request.queryParameters["failEmail"]?.toBoolean() ?: false
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running User Registration scenario (failEmail=$shouldFailEmail) in session: ${session.sessionId}")
 
@@ -229,7 +252,7 @@ fun Route.registerScenarioRunnerRoutes() {
     post("/api/scenarios/report-generation") {
         val sessionId = call.request.queryParameters["sessionId"]
         val shouldTimeout = call.request.queryParameters["timeout"]?.toBoolean() ?: false
-        val session = getOrCreateSession(sessionId)
+        val session = call.getOrCreateSession(sessionId)
 
         logger.info("Running Report Generation scenario (timeout=$shouldTimeout) in session: ${session.sessionId}")
 
@@ -254,7 +277,7 @@ fun Route.registerScenarioRunnerRoutes() {
             logger.info("Custom scenario: ${request.name}")
             logger.debug("Description: ${request.description}")
 
-            val session = getOrCreateSession(request.sessionId)
+            val session = call.getOrCreateSession(request.sessionId)
             logger.info("Using session: ${session.sessionId}")
 
             val scenarioConfig = request.toScenarioConfig()
@@ -277,6 +300,19 @@ fun Route.registerScenarioRunnerRoutes() {
             )
 
             call.respond(HttpStatusCode.OK, response)
+        } catch (e: BadRequestException) {
+            // F12: a missing/malformed request body fails deserialization in call.receive(),
+            // which Ktor surfaces as BadRequestException. That is client error → 400, not 500.
+            logger.warn("Malformed custom scenario request body: ${e.message}")
+            call.respond(
+                HttpStatusCode.BadRequest,
+                ScenarioExecutionResponse(
+                    success = false,
+                    sessionId = "",
+                    message = "Malformed request body",
+                    errors = listOf(e.message ?: "Could not parse scenario configuration"),
+                ),
+            )
         } catch (e: IllegalArgumentException) {
             logger.error("Invalid scenario configuration", e)
             call.respond(
@@ -288,15 +324,20 @@ fun Route.registerScenarioRunnerRoutes() {
                     errors = listOf(e.message ?: "Unknown validation error"),
                 ),
             )
+        } catch (e: CancellationException) {
+            // Client disconnect cancels the handler — rethrow to honor cooperative
+            // cancellation instead of attempting respond() inside a cancelled coroutine.
+            throw e
         } catch (e: Exception) {
+            // Keep stack traces in server logs only; never disclose internals to clients.
             logger.error("Error running custom scenario", e)
             call.respond(
                 HttpStatusCode.InternalServerError,
                 ScenarioExecutionResponse(
                     success = false,
                     sessionId = "",
-                    message = "Error executing scenario: ${e.message}",
-                    errors = listOf(e.stackTraceToString()),
+                    message = "Error executing scenario",
+                    errors = listOf(e.message ?: "internal error"),
                 ),
             )
         }
@@ -427,6 +468,17 @@ fun Route.registerScenarioRunnerRoutes() {
                             "endpoint" to "/api/scenarios/exception",
                             "category" to "basic",
                         ),
+                        mapOf(
+                            "id" to "dispatcher",
+                            "name" to "Dispatcher Switching",
+                            "description" to
+                                (
+                                    "Runs work across Dispatchers.Default and Dispatchers.IO via VizDispatchers. " +
+                                        "Feeds the Dispatcher Overview: see dispatcher selection and thread assignment."
+                                ),
+                            "endpoint" to "/api/scenarios/dispatcher",
+                            "category" to "basic",
+                        ),
                     ),
             ),
         )
@@ -438,19 +490,37 @@ private suspend fun ApplicationCall.runScenarioWithResponse(
     block: suspend () -> ScenarioCompletionResponse,
 ) {
     try {
+        val sample = scenarioDurationTimerRef?.let { Timer.start() }
         val response = block()
+        sample?.stop(scenarioDurationTimerRef)
         delay(100)
         respond(HttpStatusCode.OK, response)
+    } catch (e: CancellationException) {
+        // Client disconnect cancels the handler (realistic scenarios block 15-35s on
+        // job.join()) — rethrow to honor cooperative cancellation instead of trying
+        // to respond inside a cancelled coroutine.
+        throw e
     } catch (e: Exception) {
+        // Sanitized body: message only; full stack trace stays in server logs.
         logger.error("Error running scenario", e)
         respond(
             HttpStatusCode.InternalServerError,
-            mapOf("error" to "Scenario failed: ${e.message}"),
+            mapOf("error" to "Scenario failed: ${e.message ?: "internal error"}"),
         )
     }
 }
 
-private suspend fun getOrCreateSession(sessionId: String?): VizSession {
-    return sessionId?.let { SessionManager.getSession(it) }
-        ?: SessionManager.createSession("auto-${System.currentTimeMillis()}")
+private suspend fun ApplicationCall.getOrCreateSession(sessionId: String?): VizSession {
+    val store = tenantScopedStore()
+    if (store == null) {
+        // Memory / auth-off: preserve legacy unscoped behavior (D-04b global visibility).
+        return sessionId?.let { SessionManager.getSession(it) }
+            ?: SessionManager.createSession("auto-${System.currentTimeMillis()}")
+    }
+    // Tenant-scoped (AUTH-04): a cross-tenant or unknown id resolves to null and falls
+    // through to a NEW session owned by the caller — never a write into another tenant's
+    // session. Created sessions are stamped with the caller's tenant (no orphans).
+    val tenant = resolveTenant()
+    return sessionId?.let { store.getSession(it, tenant) }
+        ?: store.createSession("auto-${System.currentTimeMillis()}", tenant)
 }

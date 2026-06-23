@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session
 
+import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 import kotlinx.serialization.Serializable
 
 /**
@@ -13,6 +14,7 @@ import kotlinx.serialization.Serializable
  * @property coroutineCountDiff Difference in coroutine count (B - A)
  * @property eventCountDiff Difference in event count (B - A)
  * @property totalDurationDiffNanos Difference in session duration (B - A) in nanoseconds
+ * @property distinctThreadsDiff Difference in distinct-thread (thread-utilization) count (B - A)
  * @property coroutinesOnlyInA Coroutine IDs present only in session A
  * @property coroutinesOnlyInB Coroutine IDs present only in session B
  * @property commonCoroutines Per-coroutine comparison for coroutines in both sessions
@@ -24,6 +26,7 @@ data class SessionComparison(
     val coroutineCountDiff: Int,
     val eventCountDiff: Int,
     val totalDurationDiffNanos: Long,
+    val distinctThreadsDiff: Int,
     val coroutinesOnlyInA: List<String>,
     val coroutinesOnlyInB: List<String>,
     val commonCoroutines: List<CoroutineComparison>,
@@ -106,11 +109,26 @@ object ComparisonService {
             coroutineCountDiff = coroutinesB.size - coroutinesA.size,
             eventCountDiff = eventsB.size - eventsA.size,
             totalDurationDiffNanos = durationB - durationA,
+            distinctThreadsDiff = distinctThreads(sessionB) - distinctThreads(sessionA),
             coroutinesOnlyInA = onlyInA,
             coroutinesOnlyInB = onlyInB,
             commonCoroutines = commonCoroutines,
         )
     }
+
+    /**
+     * Count the number of unique threads a session observed.
+     *
+     * Thread utilization is derived from [ThreadAssigned] events in the
+     * session's event log; each event carries the system thread id the
+     * coroutine actually ran on. Returns the number of distinct thread ids.
+     */
+    private fun distinctThreads(session: VizSession): Int =
+        session.store.all()
+            .filterIsInstance<ThreadAssigned>()
+            .map { it.threadId }
+            .distinct()
+            .size
 
     /**
      * Compute the duration spanned by a list of timestamps.

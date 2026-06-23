@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
 @SerialName("ActorCreated")
 data class ActorCreated(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val actorId: String,
     val coroutineId: String,
@@ -42,7 +42,7 @@ data class ActorCreated(
 @SerialName("ActorMessageSent")
 data class ActorMessageSent(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val actorId: String,
     val senderId: String,
@@ -65,7 +65,7 @@ data class ActorMessageSent(
 @SerialName("ActorMessageProcessing")
 data class ActorMessageProcessing(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val actorId: String,
     val messageType: String,
@@ -87,7 +87,7 @@ data class ActorMessageProcessing(
 @SerialName("ActorMessageProcessed")
 data class ActorMessageProcessed(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val actorId: String,
     val messageType: String,
@@ -109,7 +109,7 @@ data class ActorMessageProcessed(
 @SerialName("ActorStateChanged")
 data class ActorStateChanged(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val actorId: String,
     val oldStatePreview: String,
@@ -131,7 +131,7 @@ data class ActorStateChanged(
 @SerialName("ActorMailboxChanged")
 data class ActorMailboxChanged(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val actorId: String,
     val currentSize: Int,
@@ -152,7 +152,7 @@ data class ActorMailboxChanged(
 @SerialName("ActorClosed")
 data class ActorClosed(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val actorId: String,
     val reason: String?,

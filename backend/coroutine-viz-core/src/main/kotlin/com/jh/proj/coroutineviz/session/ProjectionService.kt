@@ -56,6 +56,21 @@ class ProjectionService(
         }
     }
 
+    /**
+     * Rebuild every projection by replaying [events] in order. A [VizSession]
+     * reconstructed from a DB-backed store (ADR-015) starts with empty
+     * projections because the events were persisted by a previous instance and
+     * never flow through the live [eventBus] again; without replay the hierarchy
+     * tree and thread-activity views are empty even though the events exist.
+     * Clears existing state first so the call is safe to invoke at reconstruction
+     * time. Does not touch the store or the bus.
+     */
+    fun rebuildFrom(events: List<VizEvent>) {
+        coroutines.clear()
+        threadActivity.clear()
+        events.forEach { processEvent(it) }
+    }
+
     private fun processEvent(event: VizEvent) {
         when (event) {
             is CoroutineCreated -> {

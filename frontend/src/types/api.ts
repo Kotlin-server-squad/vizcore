@@ -310,6 +310,8 @@ export type VizEventKind =
   | 'PotentialDeadlockWarning'
   // Actor event kinds
   | 'ActorCreated'
+  | 'ActorMessageSent'
+  | 'ActorMessageProcessing'
   | 'ActorMessageProcessed'
   | 'ActorStateChanged'
   | 'ActorMailboxChanged'
@@ -319,6 +321,8 @@ export type VizEventKind =
   | 'SelectClauseRegistered'
   | 'SelectClauseWon'
   | 'SelectCompleted'
+  // Anti-pattern detection
+  | 'AntiPatternDetected'
 
 export interface BaseVizEvent {
   sessionId: string
@@ -414,28 +418,10 @@ export type VizEvent =
   | DeferredAwaitStartedEvent
   | DeferredAwaitCompletedEvent
 
-// Event filtering and pagination
-export interface EventFilter {
-  coroutineId?: string
-  scopeId?: string
-  kind?: VizEventKind | VizEventKind[]
-  fromTimestamp?: number
-  toTimestamp?: number
-}
-
-export interface PaginatedEventsRequest {
-  sessionId: string
-  sinceStep?: number
-  limit?: number
-  filter?: EventFilter
-}
-
-export interface PaginatedEventsResponse {
-  events: VizEvent[]
-  nextStep?: number | null
-  hasMore: boolean
-  total: number
-}
+// NOTE: the former EventFilter / PaginatedEventsRequest / PaginatedEventsResponse
+// types were removed (REVIEW WR-09): GET /sessions/{id}/events supports neither
+// pagination nor filtering — it always returns the full event list as a bare
+// JSON array.
 
 // API Response types
 export interface CreateSessionResponse {
@@ -454,6 +440,7 @@ export interface ThreadEvent {
   threadName: string
   timestamp: number
   eventType: 'ASSIGNED' | 'RELEASED'
+  dispatcherName?: string | null
 }
 
 export interface ThreadActivity {
@@ -533,7 +520,12 @@ export interface TimelineEvent {
   duration?: number | null  // For computed durations (suspend -> resume)
 }
 
-// Thread Activity - Enhanced structure
+// Thread Activity - DERIVED view model.
+// This is NOT a wire shape: the backend's GET /sessions/{id}/threads endpoint
+// returns `ThreadActivity` (the Map<threadId, ThreadEvent[]> above).
+// ThreadActivityResponse is produced client-side by `buildThreadLanes` in
+// `src/lib/thread-lanes.ts`, which derives lanes, segments, utilization and
+// dispatcher grouping from the wire shape.
 export interface ThreadActivityResponse {
   threads: ThreadLaneData[]
   dispatcherInfo: DispatcherInfo[]
@@ -612,49 +604,30 @@ export type SyncEvent =
   | DeadlockDetected
   | PotentialDeadlockWarning
 
-/** Validation result from the backend validation API */
-export interface ValidationResult {
+/** Validation response from the backend validation API (POST /api/validate/session/{id}) */
+export interface ValidationResponse {
   sessionId: string
-  valid: boolean
-  errors: ValidationError[]
-  warnings: ValidationWarning[]
-  timing: TimingReport
+  results: ValidationRuleResult[]
+  timing: BackendTimingReport
 }
 
-export interface ValidationError {
-  code: string
+/** Individual rule result — type discriminator is 'Pass' | 'Fail' (no Warning variant) */
+export interface ValidationRuleResult {
+  type: 'Pass' | 'Fail'
+  ruleName: string
   message: string
-  eventSeq?: number
-  coroutineId?: string
+  details?: string  // present on Fail only
 }
 
-export interface ValidationWarning {
-  code: string
-  message: string
-  eventSeq?: number
-  coroutineId?: string
-  suggestion?: string
-}
-
-/** Timing report returned by the validation API */
-export interface TimingReport {
-  totalDurationNanos: number
-  eventCount: number
-  coroutineCount: number
-  avgEventIntervalNanos: number
-  maxGapNanos: number
-  suspendResumeLatencies: LatencyBucket[]
-}
-
-export interface LatencyBucket {
-  label: string
-  minNanos: number
-  maxNanos: number
-  count: number
+/** Timing report returned by the validation API — values are in milliseconds */
+export interface BackendTimingReport {
+  coroutineDurations: Record<string, number>       // Map<coroutineId, durationMs>
+  suspensionDurations: Record<string, number[]>    // Map<coroutineId, List<durationMs>>
+  totalDuration: number                            // milliseconds
 }
 
 // ---------------------------------------------------------------------------
-// Session Comparison (from GET /api/compare)
+// Session Comparison (from GET /api/sessions/compare)
 // ---------------------------------------------------------------------------
 
 /** Result of comparing two visualization sessions */
@@ -664,6 +637,8 @@ export interface SessionComparison {
   coroutineCountDiff: number
   eventCountDiff: number
   totalDurationDiffNanos: number
+  /** Difference in distinct-thread (thread-utilization) count (B minus A) */
+  distinctThreadsDiff: number
   coroutinesOnlyInA: string[]
   coroutinesOnlyInB: string[]
   commonCoroutines: CoroutineComparison[]
@@ -682,6 +657,31 @@ export interface CoroutineComparison {
 // ---------------------------------------------------------------------------
 // Event kind constants for category detection
 // ---------------------------------------------------------------------------
+
+/** Coroutine lifecycle event kinds (backend PascalCase wire names) */
+export const COROUTINE_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'CoroutineCreated',
+  'CoroutineStarted',
+  'CoroutineSuspended',
+  'CoroutineResumed',
+  'CoroutineBodyCompleted',
+  'CoroutineCompleted',
+  'CoroutineCancelled',
+  'CoroutineFailed',
+])
+
+/** Dispatcher event kinds */
+export const DISPATCHER_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'DispatcherSelected',
+  'ThreadAssigned',
+])
+
+/** Deferred/async event kinds */
+export const DEFERRED_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'DeferredValueAvailable',
+  'DeferredAwaitStarted',
+  'DeferredAwaitCompleted',
+])
 
 /** Channel event kinds for use in category detection */
 export const CHANNEL_EVENT_KINDS: ReadonlySet<string> = new Set([
@@ -786,6 +786,8 @@ export type ActorEvent = ActorCreated | ActorMessageProcessed | ActorStateChange
 
 export const ACTOR_EVENT_KINDS: ReadonlySet<string> = new Set([
   'ActorCreated',
+  'ActorMessageSent',
+  'ActorMessageProcessing',
   'ActorMessageProcessed',
   'ActorStateChanged',
   'ActorMailboxChanged',

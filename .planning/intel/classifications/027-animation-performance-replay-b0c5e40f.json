@@ -1,0 +1,20 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/027-animation-performance-replay.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-027: Animation Performance and Replay Integration",
+  "summary": "Implements viewport-aware animation rendering, adaptive frame-rate throttling, and smooth replay motion interpolation to improve performance on lower-end devices.",
+  "scope": [
+    "animation system",
+    "viewport visibility",
+    "frame-rate throttling",
+    "replay scrubbing",
+    "motion interpolation",
+    "performance optimization"
+  ],
+  "cross_refs": [],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

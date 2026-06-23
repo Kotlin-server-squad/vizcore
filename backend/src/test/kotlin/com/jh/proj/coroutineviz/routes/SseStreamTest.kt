@@ -1,15 +1,25 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import io.ktor.utils.io.readUTF8Line
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -20,6 +30,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -96,7 +107,7 @@ class SseStreamTest {
             assertEquals(2, storedEvents.size, "Session should have 2 stored events for SSE replay")
 
             // Verify first event fields (these are serialized as SSE data)
-            val first = storedEvents[0] as CoroutineCreated
+            val first = assertIs<CoroutineCreated>(storedEvents[0], "First stored event should be CoroutineCreated")
             assertEquals("CoroutineCreated", first.kind)
             assertEquals(sessionId, first.sessionId)
             assertEquals(1L, first.seq)
@@ -104,16 +115,16 @@ class SseStreamTest {
             assertEquals("first-coroutine", first.label)
 
             // Verify second event fields
-            val second = storedEvents[1] as CoroutineCreated
+            val second = assertIs<CoroutineCreated>(storedEvents[1], "Second stored event should be CoroutineCreated")
             assertEquals("CoroutineCreated", second.kind)
             assertEquals(2L, second.seq)
             assertEquals("c-2", second.coroutineId)
             assertEquals("c-1", second.parentCoroutineId)
             assertEquals("second-coroutine", second.label)
 
-            // Verify each event can be serialized to JSON (as the SSE route does)
+            // Verify each event can be serialized to JSON via the polymorphic path (as the SSE route does)
             for (event in storedEvents) {
-                val json = Json.encodeToString(event as CoroutineCreated)
+                val json = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)
                 assertTrue(json.isNotEmpty(), "Event should serialize to non-empty JSON")
                 assertTrue(json.contains("\"sessionId\""), "Serialized event should contain sessionId")
                 assertTrue(json.contains("\"seq\""), "Serialized event should contain seq")
@@ -185,9 +196,9 @@ class SseStreamTest {
             // 'kind' is a computed property accessed directly by the SSE route, not serialized in JSON
             assertEquals("CoroutineCreated", event.kind, "Event kind should be 'CoroutineCreated'")
 
-            // Serialize the event the same way the SSE route does: Json.encodeToString(event)
-            val serialized = Json.encodeToString(event)
-            val eventJson = Json.parseToJsonElement(serialized).jsonObject
+            // Serialize the event the same way the SSE route does: polymorphic via appJson
+            val serialized = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)
+            val eventJson = appJson.parseToJsonElement(serialized).jsonObject
 
             // 'sessionId' and 'seq' are used to construct the SSE id field: "${event.sessionId}-${event.seq}"
             val eventSessionId = eventJson["sessionId"]?.jsonPrimitive?.content
@@ -265,5 +276,109 @@ class SseStreamTest {
             val coroutineIds = coroutines.map { it.jsonObject["id"]?.jsonPrimitive?.content }
             assertTrue(coroutineIds.contains("c-1"), "Snapshot should contain coroutine c-1")
             assertTrue(coroutineIds.contains("c-2"), "Snapshot should contain coroutine c-2")
+        }
+
+    @Test
+    fun `SSE stream flushes headers immediately for a session with zero events`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            // UAT gap 2 failure mode: a freshly created session has ZERO stored events, so
+            // the replay loop writes nothing and headers never flush (curl HTTP 000, Vite
+            // proxy turns it into a 500, EventSource treats non-200 as fatal — no reconnect).
+            val session = SessionManager.createSession("sse-zero-event-test")
+            val sessionId = session.sessionId
+
+            // The handler for an existing session never completes (infinite live loop), so a
+            // plain get() + bodyAsText() would hang forever. Stream the body incrementally.
+            // Run on Dispatchers.Default so withTimeout uses real time — testApplication's
+            // virtual-time dispatcher would fire the timeout while the server streams on
+            // wall-clock time (same convention as MetricsWiringTest).
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    client.prepareGet("/api/sessions/$sessionId/stream").execute { response ->
+                        assertEquals(
+                            HttpStatusCode.OK,
+                            response.status,
+                            "Zero-event stream must respond 200 immediately",
+                        )
+
+                        val contentType = response.contentType()
+                        assertNotNull(contentType, "Stream response should declare a Content-Type")
+                        assertTrue(
+                            contentType.toString().startsWith("text/event-stream"),
+                            "Content-Type should be text/event-stream but was '$contentType'",
+                        )
+
+                        val channel = response.bodyAsChannel()
+                        var line: String? = channel.readUTF8Line()
+                        // SSE frames end with a blank line — skip blanks to find the first content line
+                        while (line != null && line.isBlank()) {
+                            line = channel.readUTF8Line()
+                        }
+                        assertNotNull(line, "Stream should produce a first content line without any stored events")
+                        assertTrue(
+                            line.startsWith(":"),
+                            "First non-blank line should be an SSE comment frame but was '$line'",
+                        )
+                        assertTrue(
+                            line.contains("connected"),
+                            "Comment frame should contain 'connected' but was '$line'",
+                        )
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun `connected comment precedes replayed events on a session with stored events`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val session = SessionManager.createSession("sse-comment-order-test")
+            val sessionId = session.sessionId
+
+            session.send(
+                CoroutineCreated(
+                    sessionId = sessionId,
+                    seq = 1L,
+                    tsNanos = System.nanoTime(),
+                    coroutineId = "c-1",
+                    jobId = "j-1",
+                    parentCoroutineId = null,
+                    scopeId = "scope-1",
+                    label = "replayed-coroutine",
+                ),
+            )
+            assertEquals(1, session.store.all().size, "Session should have 1 stored event for replay")
+
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    client.prepareGet("/api/sessions/$sessionId/stream").execute { response ->
+                        assertEquals(HttpStatusCode.OK, response.status)
+
+                        val channel = response.bodyAsChannel()
+                        val linesBeforeData = mutableListOf<String>()
+                        var line: String? = channel.readUTF8Line()
+                        while (line != null && !line.startsWith("data:")) {
+                            if (line.isNotBlank()) {
+                                linesBeforeData.add(line)
+                            }
+                            line = channel.readUTF8Line()
+                        }
+                        assertNotNull(line, "Stream should produce a 'data:' line for the stored event")
+
+                        val commentIndex =
+                            linesBeforeData.indexOfFirst { it.startsWith(":") && it.contains("connected") }
+                        assertTrue(
+                            commentIndex >= 0,
+                            "': connected' comment must appear before the first 'data:' line; " +
+                                "lines before data were $linesBeforeData",
+                        )
+                    }
+                }
+            }
         }
 }

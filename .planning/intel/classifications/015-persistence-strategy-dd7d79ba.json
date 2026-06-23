@@ -1,0 +1,24 @@
+{
+  "source_path": "/Users/jirihermann/Documents/workspace-vizcore/vizcore/docs/adr/015-persistence-strategy.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "ADR-015: Persistence Strategy",
+  "summary": "Introduce database-backed persistence using Exposed ORM with H2 for development and PostgreSQL for production, retaining in-memory storage as default.",
+  "scope": [
+    "session storage",
+    "event storage",
+    "persistence layer",
+    "database schema",
+    "connection pooling",
+    "retention policy",
+    "configuration"
+  ],
+  "cross_refs": [
+    "ADR-019: Session Sharing",
+    "ADR-020: Performance Scaling"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

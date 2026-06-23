@@ -1,10 +1,19 @@
 import { Card, CardBody, Chip } from '@heroui/react'
 import { motion } from 'framer-motion'
 import { FiCheckCircle, FiXCircle, FiAlertTriangle } from 'react-icons/fi'
-import type { ValidationError, ValidationWarning } from '@/types/api'
+import type { ValidationRuleResult } from '@/types/api'
+
+// Legacy type kept for ValidationWarningCard (unused — backend has no Warning type)
+interface LegacyValidationWarning {
+  code: string
+  message: string
+  eventSeq?: number
+  coroutineId?: string
+  suggestion?: string
+}
 
 interface ValidationErrorCardProps {
-  error: ValidationError
+  error: ValidationRuleResult
   index?: number
 }
 
@@ -39,14 +48,11 @@ export function ValidationErrorCard({ error, index = 0 }: ValidationErrorCardPro
             <FiXCircle className="text-danger shrink-0 mt-0.5" size={18} />
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <Chip size="sm" variant="flat" color="danger">{error.code}</Chip>
+                <Chip size="sm" variant="flat" color="danger">{error.ruleName}</Chip>
               </div>
               <p className="text-sm text-default-700">{error.message}</p>
-              {(error.eventSeq != null || error.coroutineId) && (
-                <div className="flex gap-2 text-xs text-default-400">
-                  {error.eventSeq != null && <span>Event #{error.eventSeq}</span>}
-                  {error.coroutineId && <span className="font-mono">{error.coroutineId}</span>}
-                </div>
+              {error.details && (
+                <p className="text-xs text-default-500">{error.details}</p>
               )}
             </div>
           </CardBody>
@@ -57,7 +63,7 @@ export function ValidationErrorCard({ error, index = 0 }: ValidationErrorCardPro
 }
 
 interface ValidationWarningCardProps {
-  warning: ValidationWarning
+  warning: LegacyValidationWarning
   index?: number
 }
 
@@ -105,12 +111,12 @@ export function ValidationWarningCard({ warning, index = 0 }: ValidationWarningC
 }
 
 interface ValidationPassCardProps {
-  valid: boolean
-  errorCount: number
-  warningCount: number
+  failCount: number
+  totalCount: number
 }
 
-export function ValidationPassCard({ valid, errorCount, warningCount }: ValidationPassCardProps) {
+export function ValidationPassCard({ failCount, totalCount }: ValidationPassCardProps) {
+  const valid = failCount === 0
   return (
     <motion.div
       initial={{ scale: 0.9, opacity: 0 }}
@@ -144,22 +150,19 @@ export function ValidationPassCard({ valid, errorCount, warningCount }: Validati
               <>
                 <FiCheckCircle className="text-success" size={24} />
                 <div>
-                  <div className="font-semibold text-success">Validation Passed</div>
-                  {warningCount > 0 && (
-                    <div className="text-xs text-default-500">
-                      {warningCount} warning{warningCount !== 1 ? 's' : ''}
-                    </div>
-                  )}
+                  <div className="font-semibold text-success">All Rules Passed</div>
+                  <div className="text-xs text-default-500">
+                    {totalCount} rule{totalCount !== 1 ? 's' : ''} checked
+                  </div>
                 </div>
               </>
             ) : (
               <>
                 <FiXCircle className="text-danger" size={24} />
                 <div>
-                  <div className="font-semibold text-danger">Validation Failed</div>
+                  <div className="font-semibold text-danger">{failCount} Rule{failCount !== 1 ? 's' : ''} Failed</div>
                   <div className="text-xs text-default-500">
-                    {errorCount} error{errorCount !== 1 ? 's' : ''}
-                    {warningCount > 0 && `, ${warningCount} warning${warningCount !== 1 ? 's' : ''}`}
+                    {failCount} of {totalCount} rules failed
                   </div>
                 </div>
               </>

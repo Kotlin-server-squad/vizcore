@@ -10,7 +10,6 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.plugins.defaultheaders.*
 import io.ktor.server.plugins.openapi.*
-import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.plugins.swagger.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -18,7 +17,6 @@ import io.ktor.server.sse.*
 import io.ktor.sse.*
 import io.micrometer.prometheus.*
 import org.slf4j.LoggerFactory
-import kotlin.time.Duration.Companion.minutes
 
 private val logger = LoggerFactory.getLogger("HTTP")
 
@@ -33,20 +31,9 @@ fun Application.configureHTTP() {
         header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     }
 
-    install(RateLimit) {
-        register(RateLimitName("api")) {
-            rateLimiter(limit = 60, refillPeriod = 1.minutes)
-            requestKey { call ->
-                call.request.local.remoteAddress
-            }
-        }
-        register(RateLimitName("session-create")) {
-            rateLimiter(limit = 10, refillPeriod = 1.minutes)
-            requestKey { call ->
-                call.request.local.remoteAddress
-            }
-        }
-    }
+    // RateLimit is installed once in Application.configureRateLimit() (api +
+    // session-create + the config-gated shared scope) — Ktor forbids installing a
+    // plugin twice, so it must not also be installed here.
 
     install(AsyncApiPlugin) {
         extension =

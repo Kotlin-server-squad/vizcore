@@ -1,13 +1,13 @@
 import { useMutation } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
-import type { ValidationResult } from '@/types/api'
+import type { ValidationResponse } from '@/types/api'
 
 /**
  * Calls POST /api/validate/session/{id} via apiClient.validateSession().
  * Returns loading/error/data states using TanStack Query mutation.
  */
 export function useValidation(sessionId: string) {
-  const mutation = useMutation<ValidationResult, Error>({
+  const mutation = useMutation<ValidationResponse, Error>({
     mutationFn: () => apiClient.validateSession(sessionId),
   })
 

@@ -23,7 +23,7 @@ sealed interface SemaphoreEvent : VizEvent {
 @SerialName("SemaphoreCreated")
 data class SemaphoreCreated(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val semaphoreId: String,
     override val semaphoreLabel: String?,
@@ -39,7 +39,7 @@ data class SemaphoreCreated(
 @SerialName("SemaphoreAcquireRequested")
 data class SemaphoreAcquireRequested(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val semaphoreId: String,
     override val semaphoreLabel: String?,
@@ -59,7 +59,7 @@ data class SemaphoreAcquireRequested(
 @SerialName("SemaphorePermitAcquired")
 data class SemaphorePermitAcquired(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val semaphoreId: String,
     override val semaphoreLabel: String?,
@@ -78,7 +78,7 @@ data class SemaphorePermitAcquired(
 @SerialName("SemaphorePermitReleased")
 data class SemaphorePermitReleased(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val semaphoreId: String,
     override val semaphoreLabel: String?,
@@ -97,7 +97,7 @@ data class SemaphorePermitReleased(
 @SerialName("SemaphoreTryAcquireFailed")
 data class SemaphoreTryAcquireFailed(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val semaphoreId: String,
     override val semaphoreLabel: String?,
@@ -116,7 +116,7 @@ data class SemaphoreTryAcquireFailed(
 @SerialName("SemaphoreStateChanged")
 data class SemaphoreStateChanged(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val semaphoreId: String,
     override val semaphoreLabel: String?,

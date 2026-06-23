@@ -30,6 +30,10 @@ dependencies {
     implementation("org.openfolder:kotlin-asyncapi-ktor:3.2.2")
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-auth")
+    // JWT auth (AUTH-03) — version from the Ktor BOM (io.ktor.plugin) so it tracks ktor-server-auth.
+    implementation("io.ktor:ktor-server-auth-jwt")
+    // Argon2id password verification for the token endpoint (AUTH-03, D-02). Maven Central, vetted.
+    implementation("com.password4j:password4j:1.8.2")
     implementation("io.ktor:ktor-server-compression")
     implementation("io.ktor:ktor-server-cors")
     implementation("io.ktor:ktor-server-swagger")
@@ -37,6 +41,7 @@ dependencies {
     implementation("io.ktor:ktor-server-sse")
     implementation("io.ktor:ktor-server-status-pages")
     implementation("io.ktor:ktor-server-default-headers")
+    // Per-IP rate limiting for the public shared read (SHAR-02, D-12) — version from the Ktor BOM.
     implementation("io.ktor:ktor-server-rate-limit")
     implementation("io.ktor:ktor-server-metrics-micrometer")
     implementation("io.micrometer:micrometer-registry-prometheus:$prometheus_version")
@@ -44,7 +49,22 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-netty")
     implementation("ch.qos.logback:logback-classic:$logback_version")
+    implementation("net.logstash.logback:logstash-logback-encoder:8.1")
     implementation("io.ktor:ktor-server-config-yaml")
+
+    // Persistence (PERS-01/02) — Exposed 1.x DSL + HikariCP pool + Flyway migrations.
+    // These live on :backend ONLY — coroutine-viz-core stays a zero-DB publishable SDK.
+    implementation("org.jetbrains.exposed:exposed-core:1.3.0")
+    implementation("org.jetbrains.exposed:exposed-jdbc:1.3.0")
+    implementation("org.jetbrains.exposed:exposed-json:1.3.0")
+    implementation("org.jetbrains.exposed:exposed-kotlin-datetime:1.3.0")
+    implementation("com.zaxxer:HikariCP:6.3.0")
+    implementation("org.flywaydb:flyway-core:11.8.2")
+    implementation("org.flywaydb:flyway-database-postgresql:11.8.2")
+    implementation("org.postgresql:postgresql:42.7.7")
+    implementation("com.h2database:h2:2.3.232")
+    testRuntimeOnly("com.h2database:h2:2.3.232")
+
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-content-negotiation")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")

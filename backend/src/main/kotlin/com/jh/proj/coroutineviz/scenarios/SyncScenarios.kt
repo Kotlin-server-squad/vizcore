@@ -334,7 +334,9 @@ object SyncScenarios {
     suspend fun producerConsumerBuffer(scope: VizScope) {
         val bufferSize = 5
         val emptySlots = scope.vizSemaphore("buffer-empty-slots", permits = bufferSize)
-        val fullSlots = scope.vizSemaphore("buffer-full-slots", permits = 0)
+        // F10: "full slots" starts empty (0 available) with capacity = bufferSize. kotlinx Semaphore
+        // forbids permits = 0, so model it as fully-acquired: permits = bufferSize, acquiredPermits = bufferSize.
+        val fullSlots = scope.vizSemaphore("buffer-full-slots", permits = bufferSize, acquiredPermits = bufferSize)
         val bufferLock = scope.vizMutex("buffer-access")
 
         val buffer = ArrayDeque<Int>()

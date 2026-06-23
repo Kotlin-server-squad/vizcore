@@ -45,6 +45,7 @@ const mockComparison: SessionComparison = {
   coroutineCountDiff: 3,
   eventCountDiff: -5,
   totalDurationDiffNanos: -200_000_000,
+  distinctThreadsDiff: 1,
   coroutinesOnlyInA: ['coro-a1'],
   coroutinesOnlyInB: ['coro-b1', 'coro-b2'],
   commonCoroutines: [

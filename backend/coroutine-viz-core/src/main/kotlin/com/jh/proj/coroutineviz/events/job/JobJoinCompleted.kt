@@ -17,7 +17,7 @@ import kotlinx.serialization.Serializable
 @SerialName("JobJoinCompleted")
 data class JobJoinCompleted(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     override val coroutineId: String,
     override val jobId: String,

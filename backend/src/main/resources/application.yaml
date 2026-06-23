@@ -6,13 +6,60 @@ ktor:
     port: ${PORT:8080}
 
 auth:
+  # Legacy single-key var (back-compat). Empty = no legacy key. Prefer auth.keys below.
   apiKey: ${API_KEY:}  # Empty = auth disabled
+  # SHA-256-hashed API keys (AUTH-02). Each entry: {name, hash (hex), role}. Empty list = no api-key auth.
+  # Hashes are env-interpolated; never store plaintext keys. role ∈ {viewer, runner, admin}.
+  keys: []
+  # Config-seeded users (AUTH-03, D-01). Each entry: {username, passwordHashB64, role}.
+  # passwordHashB64 is the BASE64 of an Argon2id PHC string (Password.hash(plain).withArgon2().result).
+  # Base64 is required because the raw PHC starts with `$argon2…` and Ktor's YAML loader treats any
+  # `$`-leading value as an env-var reference (no escape). Inert when SEED_USER is unset. No CRUD.
+  users:
+    - username: ${SEED_USER:}
+      passwordHashB64: ${SEED_HASH_B64:}
+      role: ${SEED_ROLE:viewer}
+  jwt:
+    secret: ${JWT_SECRET:}            # HMAC256 dev secret. Empty + no PEM paths = jwt provider inert.
+    issuer: ${JWT_ISSUER:coroutineviz}
+    audience: ${JWT_AUDIENCE:coroutineviz-api}
+    realm: ${JWT_REALM:coroutineviz}
+    accessTtlMinutes: ${JWT_ACCESS_TTL_MINUTES:60}
+    privateKeyPath: ${JWT_PRIVATE_KEY_PATH:}   # RS256 prod signing key (PEM). Unset = HMAC (dev).
+    publicKeyPath: ${JWT_PUBLIC_KEY_PATH:}     # RS256 prod verify key (PEM). Unset = HMAC (dev).
 
 cors:
-  allowedOrigins: ${CORS_ALLOWED_ORIGINS:"http://localhost:3000,http://127.0.0.1:3000"}
-  allowedMethods: ${CORS_ALLOWED_METHODS:"GET,POST,DELETE,OPTIONS"}
+  allowedOrigins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+  allowedMethods: ${CORS_ALLOWED_METHODS:GET,POST,DELETE,OPTIONS}
 
 session:
+  maxEvents: ${SESSION_MAX_EVENTS:10000}
+  # In-memory session lifecycle (production hardening, ADR-029): evict by age/count.
+  # Covers memory mode; storage.retention.* below covers DB mode (do not double-wire).
   maxAgeMs: ${SESSION_MAX_AGE_MS:3600000}
   maxCount: ${SESSION_MAX_COUNT:100}
   checkIntervalMs: ${SESSION_CHECK_INTERVAL_MS:60000}
+
+app:
+  # Base URL the share link is built from (e.g. https://app.example.com). Empty =
+  # derive from the request origin (scheme + host[:port]). Used for {base}/shared/{token}.
+  publicBaseUrl: ${APP_PUBLIC_BASE_URL:}
+
+share:
+  rateLimit:
+    # Per-IP limit on GET /api/shared/{token} (D-12). Applied at install(RateLimit)
+    # time; changing it requires an application restart (consistent with auth/storage toggles).
+    enabled: ${SHARE_RATE_LIMIT_ENABLED:true}
+    requestsPerMinute: ${SHARE_RATE_LIMIT_RPM:60}
+
+storage:
+  type: ${STORAGE_TYPE:memory}  # memory | database. Default memory = in-memory, ephemeral (D-04a)
+  database:
+    url: ${DB_URL:jdbc:h2:file:./data/coroutineviz;AUTO_SERVER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE}
+    driver: ${DB_DRIVER:org.h2.Driver}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  retention:
+    maxAgeDays: ${RETENTION_MAX_AGE_DAYS:30}
+    maxEventsPerSession: ${RETENTION_MAX_EVENTS_PER_SESSION:100000}
+    cleanupIntervalMinutes: ${RETENTION_CLEANUP_INTERVAL_MINUTES:60}

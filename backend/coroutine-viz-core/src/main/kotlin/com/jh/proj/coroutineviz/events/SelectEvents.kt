@@ -18,7 +18,7 @@ import kotlinx.serialization.Serializable
 @SerialName("SelectStarted")
 data class SelectStarted(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val selectId: String,
     val coroutineId: String,
@@ -41,7 +41,7 @@ data class SelectStarted(
 @SerialName("SelectClauseRegistered")
 data class SelectClauseRegistered(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val selectId: String,
     val coroutineId: String,
@@ -67,7 +67,7 @@ data class SelectClauseRegistered(
 @SerialName("SelectClauseWon")
 data class SelectClauseWon(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val selectId: String,
     val coroutineId: String,
@@ -88,7 +88,7 @@ data class SelectClauseWon(
 @SerialName("SelectCompleted")
 data class SelectCompleted(
     override val sessionId: String,
-    override val seq: Long,
+    override var seq: Long,
     override val tsNanos: Long,
     val selectId: String,
     val coroutineId: String,
