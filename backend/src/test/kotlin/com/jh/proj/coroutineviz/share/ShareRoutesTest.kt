@@ -39,6 +39,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
@@ -76,6 +77,16 @@ class ShareRoutesTest {
                 json(com.jh.proj.coroutineviz.appJson)
             }
             install(io.ktor.server.sse.SSE)
+            // registerSessionRoutes wraps creation in rateLimit("session-create"); the
+            // plugin must be installed (generous limits so the test isn't throttled).
+            install(io.ktor.server.plugins.ratelimit.RateLimit) {
+                register(io.ktor.server.plugins.ratelimit.RateLimitName("api")) {
+                    rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
+                }
+                register(io.ktor.server.plugins.ratelimit.RateLimitName("session-create")) {
+                    rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
+                }
+            }
             routing {
                 registerSessionRoutes()
                 registerShareOwnerRoutes(service, publicBaseUrl = "https://app.example.com")

@@ -3,11 +3,11 @@ val logback_version: String by project
 val prometheus_version: String by project
 
 plugins {
-    kotlin("jvm") version "2.2.20"
+    kotlin("jvm") version "2.3.21"
     id("io.ktor.plugin") version "3.3.2"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
     id("org.jlleitschuh.gradle.ktlint") version "12.2.0"
-    id("io.gitlab.arturbosch.detekt") version "1.23.7"
+    id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
 
 detekt {
@@ -27,7 +27,7 @@ dependencies {
     // Core library (events, wrappers, session, validation)
     implementation(project(":coroutine-viz-core"))
 
-    implementation("org.openfolder:kotlin-asyncapi-ktor:3.1.3")
+    implementation("org.openfolder:kotlin-asyncapi-ktor:3.2.2")
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-auth")
     // JWT auth (AUTH-03) — version from the Ktor BOM (io.ktor.plugin) so it tracks ktor-server-auth.
@@ -39,6 +39,8 @@ dependencies {
     implementation("io.ktor:ktor-server-swagger")
     implementation("io.ktor:ktor-server-openapi")
     implementation("io.ktor:ktor-server-sse")
+    implementation("io.ktor:ktor-server-status-pages")
+    implementation("io.ktor:ktor-server-default-headers")
     // Per-IP rate limiting for the public shared read (SHAR-02, D-12) — version from the Ktor BOM.
     implementation("io.ktor:ktor-server-rate-limit")
     implementation("io.ktor:ktor-server-metrics-micrometer")
@@ -68,9 +70,9 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 
     // JUnit 5 (Jupiter) for new dispatcher tests
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 
 tasks.named<Test>("test") {

@@ -167,7 +167,8 @@ class ExposedSessionStoreTest {
         fun created(n: Int) =
             CoroutineCreated(
                 sessionId = id,
-                seq = 0, // provisional; the store reassigns it
+                // provisional; the store reassigns the seq
+                seq = 0,
                 tsNanos = n.toLong() * 1_000,
                 coroutineId = "c$n",
                 jobId = "j$n",

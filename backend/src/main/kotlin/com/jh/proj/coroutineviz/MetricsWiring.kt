@@ -29,26 +29,30 @@ fun wireMetrics(registry: PrometheusMeterRegistry) {
         .register(registry)
 
     // --- ADR-020 metric 3: events.emitted (Counter) ---
-    val eventsEmittedCounter = Counter.builder("events.emitted")
-        .description("Total events emitted across all sessions")
-        .register(registry)
+    val eventsEmittedCounter =
+        Counter.builder("events.emitted")
+            .description("Total events emitted across all sessions")
+            .register(registry)
 
     // --- ADR-020 metric 4: events.dropped (Counter) ---
-    val eventsDroppedCounter = Counter.builder("events.dropped")
-        .description("Events dropped due to bounded EventStore capacity")
-        .register(registry)
+    val eventsDroppedCounter =
+        Counter.builder("events.dropped")
+            .description("Events dropped due to bounded EventStore capacity")
+            .register(registry)
 
     // --- ADR-020 metric 5: scenario.duration (Timer) ---
-    val scenarioDurationTimer = Timer.builder("scenario.duration")
-        .description("Time to complete scenario execution")
-        .register(registry)
+    val scenarioDurationTimer =
+        Timer.builder("scenario.duration")
+            .description("Time to complete scenario execution")
+            .register(registry)
     // Expose for use in ScenarioRunnerRoutes
     scenarioDurationTimerRef = scenarioDurationTimer
 
     // --- ADR-020 metric 6: event.processing.duration (Timer) ---
-    val eventProcessingTimer = Timer.builder("event.processing.duration")
-        .description("Time to process and broadcast a single event")
-        .register(registry)
+    val eventProcessingTimer =
+        Timer.builder("event.processing.duration")
+            .description("Time to process and broadcast a single event")
+            .register(registry)
 
     // Per-session buffer gauges: track Meter.Id by sessionId so the gauge can be
     // deregistered when the session closes. Without removal, the registry keeps a

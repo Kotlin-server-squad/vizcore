@@ -26,18 +26,19 @@ class ForkDeletionTest {
          * If any of these reappears under backend/src/main/.../session/, the fork
          * has been silently re-introduced and this test must fail.
          */
-        private val DELETED_FORK_CLASS_FILES = listOf(
-            "EventApplier.kt",
-            "EventBus.kt",
-            "EventContext.kt",
-            "EventStore.kt",
-            "FlowEventContext.kt",
-            "ChannelEventContext.kt",
-            "JobStatusMonitor.kt",
-            "ProjectionService.kt",
-            "SessionManager.kt",
-            "VizSession.kt",
-        )
+        private val DELETED_FORK_CLASS_FILES =
+            listOf(
+                "EventApplier.kt",
+                "EventBus.kt",
+                "EventContext.kt",
+                "EventStore.kt",
+                "FlowEventContext.kt",
+                "ChannelEventContext.kt",
+                "JobStatusMonitor.kt",
+                "ProjectionService.kt",
+                "SessionManager.kt",
+                "VizSession.kt",
+            )
 
         /**
          * The session package directory under backend/src/main that must be empty.
@@ -50,19 +51,20 @@ class ForkDeletionTest {
          * VizActor.kt and VizSelect.kt are deliberately NOT listed — they exist
          * only in coroutine-viz-core and were never part of the fork.
          */
-        private val CORE_WRAPPERS_CLASS_FILES = listOf(
-            "InstrumentedDeferred.kt",
-            "InstrumentedDispatcher.kt",
-            "InstrumentedFlow.kt",
-            "InstrumentedChannel.kt",
-            "InstrumentedSharedFlow.kt",
-            "InstrumentedStateFlow.kt",
-            "VizCoroutineElement.kt",
-            "VizDispatchers.kt",
-            "VizMutex.kt",
-            "VizScope.kt",
-            "VizSemaphore.kt",
-        )
+        private val CORE_WRAPPERS_CLASS_FILES =
+            listOf(
+                "InstrumentedDeferred.kt",
+                "InstrumentedDispatcher.kt",
+                "InstrumentedFlow.kt",
+                "InstrumentedChannel.kt",
+                "InstrumentedSharedFlow.kt",
+                "InstrumentedStateFlow.kt",
+                "VizCoroutineElement.kt",
+                "VizDispatchers.kt",
+                "VizMutex.kt",
+                "VizScope.kt",
+                "VizSemaphore.kt",
+            )
 
         /**
          * The wrappers package directory under backend/src/main that must be empty.
@@ -119,70 +121,76 @@ class ForkDeletionTest {
     @Test
     fun `no session fork classes remain under backend src main (FND-01 static guard)`() {
         // Collect any .kt files present in the fork directory
-        val existingKtFiles = if (SESSION_FORK_DIR.exists() && SESSION_FORK_DIR.isDirectory) {
-            SESSION_FORK_DIR.listFiles { f -> f.extension == "kt" }?.toList() ?: emptyList()
-        } else {
-            emptyList()
-        }
+        val existingKtFiles =
+            if (SESSION_FORK_DIR.exists() && SESSION_FORK_DIR.isDirectory) {
+                SESSION_FORK_DIR.listFiles { f -> f.extension == "kt" }?.toList() ?: emptyList()
+            } else {
+                emptyList()
+            }
 
-        val reintroducedFiles = existingKtFiles.filter { file ->
-            file.name in DELETED_FORK_CLASS_FILES
-        }
+        val reintroducedFiles =
+            existingKtFiles.filter { file ->
+                file.name in DELETED_FORK_CLASS_FILES
+            }
 
         assertTrue(
             reintroducedFiles.isEmpty(),
             "Fork session classes have been silently re-introduced under backend/src/main/.../session/. " +
                 "Remove these files — the session package is owned by coroutine-viz-core only (FND-01). " +
-                "Re-introduced files: ${reintroducedFiles.map { it.name }}"
+                "Re-introduced files: ${reintroducedFiles.map { it.name }}",
         )
 
         // Also assert the directory is either absent or contains no .kt files at all
-        val allKtFiles = if (SESSION_FORK_DIR.exists() && SESSION_FORK_DIR.isDirectory) {
-            SESSION_FORK_DIR.listFiles { f -> f.extension == "kt" }?.size ?: 0
-        } else {
-            0
-        }
+        val allKtFiles =
+            if (SESSION_FORK_DIR.exists() && SESSION_FORK_DIR.isDirectory) {
+                SESSION_FORK_DIR.listFiles { f -> f.extension == "kt" }?.size ?: 0
+            } else {
+                0
+            }
 
         assertEquals(
             0,
             allKtFiles,
             "backend/src/main/.../session/ must contain 0 .kt files after de-fork. " +
-                "Found $allKtFiles .kt file(s). The session package belongs exclusively to coroutine-viz-core."
+                "Found $allKtFiles .kt file(s). The session package belongs exclusively to coroutine-viz-core.",
         )
     }
 
     @Test
     fun `no wrappers fork classes remain under backend src main (FND-01 static guard)`() {
         // Collect any .kt files present in the wrappers fork directory
-        val existingKtFiles = if (WRAPPERS_FORK_DIR.exists() && WRAPPERS_FORK_DIR.isDirectory) {
-            WRAPPERS_FORK_DIR.listFiles { f -> f.extension == "kt" }?.toList() ?: emptyList()
-        } else {
-            emptyList()
-        }
+        val existingKtFiles =
+            if (WRAPPERS_FORK_DIR.exists() && WRAPPERS_FORK_DIR.isDirectory) {
+                WRAPPERS_FORK_DIR.listFiles { f -> f.extension == "kt" }?.toList() ?: emptyList()
+            } else {
+                emptyList()
+            }
 
-        val reintroducedFiles = existingKtFiles.filter { file ->
-            file.name in CORE_WRAPPERS_CLASS_FILES
-        }
+        val reintroducedFiles =
+            existingKtFiles.filter { file ->
+                file.name in CORE_WRAPPERS_CLASS_FILES
+            }
 
         assertTrue(
             reintroducedFiles.isEmpty(),
             "Fork wrapper classes have been silently re-introduced under backend/src/main/.../wrappers/. " +
                 "Remove these files — the wrappers package is owned by coroutine-viz-core only (FND-01). " +
-                "Re-introduced files: ${reintroducedFiles.map { it.name }}"
+                "Re-introduced files: ${reintroducedFiles.map { it.name }}",
         )
 
         // Also assert the directory is either absent or contains no .kt files at all
-        val allKtFiles = if (WRAPPERS_FORK_DIR.exists() && WRAPPERS_FORK_DIR.isDirectory) {
-            WRAPPERS_FORK_DIR.listFiles { f -> f.extension == "kt" }?.size ?: 0
-        } else {
-            0
-        }
+        val allKtFiles =
+            if (WRAPPERS_FORK_DIR.exists() && WRAPPERS_FORK_DIR.isDirectory) {
+                WRAPPERS_FORK_DIR.listFiles { f -> f.extension == "kt" }?.size ?: 0
+            } else {
+                0
+            }
 
         assertEquals(
             0,
             allKtFiles,
             "backend/src/main/.../wrappers/ must contain 0 .kt files after de-fork. " +
-                "Found $allKtFiles .kt file(s). The wrappers package belongs exclusively to coroutine-viz-core."
+                "Found $allKtFiles .kt file(s). The wrappers package belongs exclusively to coroutine-viz-core.",
         )
     }
 
@@ -197,7 +205,7 @@ class ForkDeletionTest {
             ktFiles.size,
             "backend/src/main/.../events/ must contain 0 .kt files after the FND-01 de-fork (Plan 02-02). " +
                 "Found ${ktFiles.size} .kt file(s) — the events package belongs exclusively to coroutine-viz-core. " +
-                "Re-introduced files: ${ktFiles.map { it.relativeTo(EVENTS_FORK_DIR).path }}"
+                "Re-introduced files: ${ktFiles.map { it.relativeTo(EVENTS_FORK_DIR).path }}",
         )
     }
 
@@ -212,7 +220,7 @@ class ForkDeletionTest {
             "backend/src/main/.../checksystem/ must contain 0 .kt files after the FND-01 de-fork (Plan 02-02). " +
                 "Found ${ktFiles.size} .kt file(s) — the checksystem package belongs exclusively to coroutine-viz-core. " +
                 "A reintroduced TimingAnalyzer fork could shadow the core ns→ms conversion (T-02-03). " +
-                "Re-introduced files: ${ktFiles.map { it.relativeTo(CHECKSYSTEM_FORK_DIR).path }}"
+                "Re-introduced files: ${ktFiles.map { it.relativeTo(CHECKSYSTEM_FORK_DIR).path }}",
         )
     }
 }

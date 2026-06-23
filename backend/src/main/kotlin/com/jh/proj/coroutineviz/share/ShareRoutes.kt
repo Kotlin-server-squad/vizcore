@@ -41,8 +41,7 @@ private fun ApplicationCall.shareCreatorId(): String =
  * implements [TenantScopedSessionStore]; null in memory / auth-off mode (where
  * ownership is enforced by the recorded `created_by` only, D-04b).
  */
-private fun tenantScopedStore(): TenantScopedSessionStore? =
-    SessionManager.backingStore() as? TenantScopedSessionStore
+private fun tenantScopedStore(): TenantScopedSessionStore? = SessionManager.backingStore() as? TenantScopedSessionStore
 
 /**
  * Strict ownership tenant used for MINTING a share (WR-02). Unlike the general

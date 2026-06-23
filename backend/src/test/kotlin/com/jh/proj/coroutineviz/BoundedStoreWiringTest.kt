@@ -46,9 +46,10 @@ class BoundedStoreWiringTest {
         testApplication {
             application { module() }
 
-            val jsonClient = createClient {
-                install(ContentNegotiation) { json() }
-            }
+            val jsonClient =
+                createClient {
+                    install(ContentNegotiation) { json() }
+                }
 
             // Create a session via the API
             val response = jsonClient.post("/api/sessions?name=wiring-test")
@@ -65,8 +66,10 @@ class BoundedStoreWiringTest {
             // The store must be the bounded core EventStore (ArrayDeque + RWLock variant)
             // The old fork used CopyOnWriteArrayList — if the fork is present this would
             // be the fork's EventStore (no maxEvents constructor param), not core's.
-            assertIs<EventStore>(session.store,
-                "Session store should be the bounded core EventStore (FND-02)")
+            assertIs<EventStore>(
+                session.store,
+                "Session store should be the bounded core EventStore (FND-02)",
+            )
         }
 
     @Test
@@ -91,7 +94,7 @@ class BoundedStoreWiringTest {
                     parentCoroutineId = null,
                     scopeId = "scope",
                     label = "label-$i",
-                )
+                ),
             )
         }
 

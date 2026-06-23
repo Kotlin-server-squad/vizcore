@@ -8,6 +8,7 @@ import io.ktor.server.application.*
 import io.ktor.server.metrics.micrometer.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.plugins.defaultheaders.*
 import io.ktor.server.plugins.openapi.*
 import io.ktor.server.plugins.swagger.*
 import io.ktor.server.response.*
@@ -20,9 +21,41 @@ import org.slf4j.LoggerFactory
 private val logger = LoggerFactory.getLogger("HTTP")
 
 fun Application.configureHTTP() {
-    val config = environment.config
+    configureCors()
 
-    // CORS Configuration — origins and methods come from application.yaml / env vars
+    install(DefaultHeaders) {
+        header("X-Content-Type-Options", "nosniff")
+        header("X-Frame-Options", "DENY")
+        header("X-XSS-Protection", "1; mode=block")
+        header("Referrer-Policy", "strict-origin-when-cross-origin")
+        header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    }
+
+    // RateLimit is installed once in Application.configureRateLimit() (api +
+    // session-create + the config-gated shared scope) — Ktor forbids installing a
+    // plugin twice, so it must not also be installed here.
+
+    install(AsyncApiPlugin) {
+        extension =
+            AsyncApiExtension.builder {
+                info {
+                    title("Coroutine Visualizer API")
+                    version("1.0.0")
+                }
+            }
+    }
+    routing {
+        swaggerUI(path = "openapi")
+    }
+    routing {
+        openAPI(path = "openapi")
+    }
+}
+
+// CORS configuration — origins and methods come from application.yaml / env vars. Extracted from
+// configureHTTP so each stays within the LongMethod limit.
+private fun Application.configureCors() {
+    val config = environment.config
     install(CORS) {
         val originsRaw =
             config.propertyOrNull("cors.allowedOrigins")?.getString()
@@ -62,21 +95,5 @@ fun Application.configureHTTP() {
 
         // Set max age for preflight requests cache
         maxAgeInSeconds = 3600
-    }
-
-    install(AsyncApiPlugin) {
-        extension =
-            AsyncApiExtension.builder {
-                info {
-                    title("Coroutine Visualizer API")
-                    version("1.0.0")
-                }
-            }
-    }
-    routing {
-        swaggerUI(path = "openapi")
-    }
-    routing {
-        openAPI(path = "openapi")
     }
 }

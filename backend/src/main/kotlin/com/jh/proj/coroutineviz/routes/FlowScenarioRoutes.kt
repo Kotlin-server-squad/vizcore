@@ -14,28 +14,28 @@ import io.ktor.server.routing.post
 
 fun Route.registerFlowScenarioRoutes() {
     post("/api/scenarios/flow/simple") {
-        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"],"flow-simple")
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-simple")
         val scope = VizScope(session)
         FlowScenarios.simpleFlow(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("Simple Flow completed"))
     }
 
     post("/api/scenarios/flow/operators") {
-        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"],"flow-operators")
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-operators")
         val scope = VizScope(session)
         FlowScenarios.flowOperators(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("Flow Operators completed"))
     }
 
     post("/api/scenarios/flow/stateflow") {
-        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"],"flow-stateflow")
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-stateflow")
         val scope = VizScope(session)
         FlowScenarios.stateFlowDemo(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("StateFlow demo completed"))
     }
 
     post("/api/scenarios/flow/sharedflow") {
-        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"],"flow-sharedflow")
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-sharedflow")
         val scope = VizScope(session)
         FlowScenarios.sharedFlowDemo(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("SharedFlow demo completed"))

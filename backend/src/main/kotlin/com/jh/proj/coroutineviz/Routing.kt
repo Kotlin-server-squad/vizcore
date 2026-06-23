@@ -18,8 +18,7 @@ import com.jh.proj.coroutineviz.share.ShareService
 import com.jh.proj.coroutineviz.share.registerShareOwnerRoutes
 import com.jh.proj.coroutineviz.share.registerSharedPublicRoute
 import io.ktor.server.application.*
-import io.ktor.server.plugins.ratelimit.RateLimitName
-import io.ktor.server.plugins.ratelimit.rateLimit
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 import kotlin.time.ExperimentalTime
@@ -42,7 +41,7 @@ fun Application.configureRouting() {
     val rateLimitShared = attributes.getOrNull(SharedRateLimitEnabledKey) ?: false
 
     routing {
-        // Public routes — no auth required (AUTH-01 allowlist).
+        // Public routes — no auth required (AUTH-01 allowlist), no rate limit.
         registerRootRoutes()
         registerHealthRoutes()
         // POST /api/auth/token is ALWAYS public (login endpoint).
@@ -55,20 +54,24 @@ fun Application.configureRouting() {
 
         // Protected routes — wrapped so EITHER X-API-Key OR JWT satisfies (D-08); pass-through
         // when auth is fully unconfigured (D-04a). /openapi.json is served by the OpenAPI plugin
-        // (configureHTTP), outside this wrapper, so it stays public.
+        // (configureHTTP), outside this wrapper, so it stays public. Nested inside the per-IP
+        // "api" rate-limit scope (ADR-029, 60/min) so protected routes are authenticated AND
+        // rate-limited.
         authenticatedApi {
-            registerVizScenarioRoutes()
-            registerSyncScenarioRoutes()
-            registerTestRoutes()
-            registerSessionRoutes()
-            registerValidationRoutes()
-            registerScenarioRunnerRoutes()
-            registerFlowScenarioRoutes()
-            registerPatternRoutes()
-            registerComparisonRoutes()
-            // Owner share management (SHAR-01): mint/list/revoke require a credential
-            // when auth is on (T-03-16). createdBy is resolved from the principal.
-            shareService?.let { registerShareOwnerRoutes(it, publicBaseUrl) }
+            rateLimit(RateLimitName("api")) {
+                registerVizScenarioRoutes()
+                registerSyncScenarioRoutes()
+                registerTestRoutes()
+                registerSessionRoutes()
+                registerValidationRoutes()
+                registerScenarioRunnerRoutes()
+                registerFlowScenarioRoutes()
+                registerPatternRoutes()
+                registerComparisonRoutes()
+                // Owner share management (SHAR-01): mint/list/revoke require a credential
+                // when auth is on (T-03-16). createdBy is resolved from the principal.
+                shareService?.let { registerShareOwnerRoutes(it, publicBaseUrl) }
+            }
         }
     }
 }

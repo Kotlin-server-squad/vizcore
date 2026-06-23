@@ -57,6 +57,7 @@ import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.ExperimentalTime
 
 /**
@@ -150,6 +151,16 @@ class TenantIsolationE2ETest {
                     }
                 }
             }
+            // registerSessionRoutes wraps creation in rateLimit("session-create"); the
+            // plugin must be installed (generous limits so the test isn't throttled).
+            install(io.ktor.server.plugins.ratelimit.RateLimit) {
+                register(io.ktor.server.plugins.ratelimit.RateLimitName("api")) {
+                    rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
+                }
+                register(io.ktor.server.plugins.ratelimit.RateLimitName("session-create")) {
+                    rateLimiter(limit = 10_000, refillPeriod = 1.minutes)
+                }
+            }
             routing {
                 // Public read route — the token IS the credential (outside auth).
                 registerSharedPublicRoute(service)
@@ -215,12 +226,14 @@ class TenantIsolationE2ETest {
             // assertion because a DB-rebuilt session's projection is not replayed
             // from stored events (pre-existing, out of this plan's scope — see
             // deferred-items.md); its cross-tenant 404 above still guards isolation.
-            for (path in
-                listOf(
-                    "/api/sessions/$aId/events",
-                    "/api/sessions/$aId/hierarchy",
-                    "/api/sessions/$aId/threads",
-                )) {
+            for (
+            path in
+            listOf(
+                "/api/sessions/$aId/events",
+                "/api/sessions/$aId/hierarchy",
+                "/api/sessions/$aId/threads",
+            )
+            ) {
                 val aliceResp = client.get(path) { header("Authorization", "Bearer $alice") }
                 assertEquals(
                     HttpStatusCode.OK,

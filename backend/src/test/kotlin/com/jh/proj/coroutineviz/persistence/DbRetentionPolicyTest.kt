@@ -50,15 +50,21 @@ class DbRetentionPolicyTest {
         dataSource.close()
     }
 
-    private fun policy(maxAgeDays: Int = 30, maxEvents: Int = 100_000) =
-        DbRetentionPolicy(
-            db = db,
-            maxAgeDays = maxAgeDays,
-            maxEventsPerSession = maxEvents,
-            clock = { nowMs },
-        )
+    private fun policy(
+        maxAgeDays: Int = 30,
+        maxEvents: Int = 100_000,
+    ) = DbRetentionPolicy(
+        db = db,
+        maxAgeDays = maxAgeDays,
+        maxEventsPerSession = maxEvents,
+        clock = { nowMs },
+    )
 
-    private fun insertSession(id: String, createdAtMs: Long, tenant: String? = null) {
+    private fun insertSession(
+        id: String,
+        createdAtMs: Long,
+        tenant: String? = null,
+    ) {
         transaction(db) {
             SessionsTable.insert {
                 it[SessionsTable.id] = id
@@ -71,7 +77,10 @@ class DbRetentionPolicyTest {
         }
     }
 
-    private fun insertEvent(sessionId: String, seq: Long) {
+    private fun insertEvent(
+        sessionId: String,
+        seq: Long,
+    ) {
         transaction(db) {
             EventsTable.insert {
                 it[EventsTable.sessionId] = sessionId
@@ -83,7 +92,11 @@ class DbRetentionPolicyTest {
         }
     }
 
-    private fun insertShare(token: String, sessionId: String, expiresAtMs: Long?) {
+    private fun insertShare(
+        token: String,
+        sessionId: String,
+        expiresAtMs: Long?,
+    ) {
         transaction(db) {
             SharesTable.insert {
                 it[SharesTable.token] = token

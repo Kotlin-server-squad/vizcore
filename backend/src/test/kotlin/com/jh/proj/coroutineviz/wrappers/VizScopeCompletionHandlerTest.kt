@@ -31,13 +31,15 @@ class VizScopeCompletionHandlerTest {
      * and since job.isCancelled == true for a failed job, it emits CoroutineCancelled.
      */
     @Test
-    fun `failing coroutine emits CoroutineFailed not CoroutineCancelled (FIX-03)`(): Unit = runBlocking {
+    fun `failing coroutine emits CoroutineFailed not CoroutineCancelled (FIX-03)`(): Unit =
+        runBlocking {
             val session = VizSession("test-fix-03")
 
             // Use a standalone scope with SupervisorJob + CoroutineExceptionHandler so that
             // the deliberate IllegalStateException thrown by 'failing-child' does not propagate
             // to the test runner and fail the test before we can assert on events.
-            val exceptionHandler = CoroutineExceptionHandler { _, _ -> /* swallow expected exception */ }
+            // swallow the expected exception
+            val exceptionHandler = CoroutineExceptionHandler { _, _ -> }
             val isolatedScope = CoroutineScope(SupervisorJob() + exceptionHandler)
             val viz = VizScope(session, context = isolatedScope.coroutineContext)
 

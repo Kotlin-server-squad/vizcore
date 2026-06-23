@@ -9,6 +9,7 @@ import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -59,25 +60,29 @@ internal fun ApplicationCall.resolveScopedSession(sessionId: String): VizSession
 }
 
 fun Route.registerSessionRoutes() {
-    post("/api/sessions") {
-        val name = call.request.queryParameters["name"]
-        val store = tenantScopedStore()
-        val session =
-            if (store != null) {
-                store.createSession(name, call.resolveTenant())
-            } else {
-                SessionManager.createSession(name)
-            }
+    // Session creation is rate-limited (ADR-029, 10/min) AND tenant-scoped (T-03):
+    // a scoped store stamps ownership, else fall back to the in-memory manager (D-04b).
+    rateLimit(RateLimitName("session-create")) {
+        post("/api/sessions") {
+            val name = call.request.queryParameters["name"]
+            val store = tenantScopedStore()
+            val session =
+                if (store != null) {
+                    store.createSession(name, call.resolveTenant())
+                } else {
+                    SessionManager.createSession(name)
+                }
 
-        logger.info("Created new session via API: ${session.sessionId}")
+            logger.info("Created new session via API: ${session.sessionId}")
 
-        call.respond(
-            HttpStatusCode.Created,
-            mapOf(
-                "sessionId" to session.sessionId,
-                "message" to "Session created successfully",
-            ),
-        )
+            call.respond(
+                HttpStatusCode.Created,
+                mapOf(
+                    "sessionId" to session.sessionId,
+                    "message" to "Session created successfully",
+                ),
+            )
+        }
     }
 
     get("/api/sessions") {

@@ -92,27 +92,30 @@ class MetricsWiringTest {
             val body = response.bodyAsText()
 
             // ADR-020 required metric names (Prometheus replaces '.' with '_')
-            val requiredMetrics = listOf(
-                "viz_sessions_active",
-                "viz_sse_clients_active",
-                "events_emitted",
-                "events_dropped_total",   // Counter naming: may be _total or plain
-                "events_buffer_size",
-                "scenario_duration",
-                "event_processing_duration",
-            )
+            val requiredMetrics =
+                listOf(
+                    "viz_sessions_active",
+                    "viz_sse_clients_active",
+                    "events_emitted",
+                    // Counter naming: may be _total or plain
+                    "events_dropped_total",
+                    "events_buffer_size",
+                    "scenario_duration",
+                    "event_processing_duration",
+                )
 
             // Check each required metric is present (Prometheus may suffix _total on counters,
             // use partial match to handle both plain and _total variants)
-            val metricsToCheck = mapOf(
-                "viz_sessions_active" to listOf("viz_sessions_active"),
-                "viz_sse_clients_active" to listOf("viz_sse_clients_active"),
-                "events_emitted" to listOf("events_emitted_total", "events_emitted"),
-                "events_dropped" to listOf("events_dropped_total", "events_dropped"),
-                "events_buffer_size" to listOf("events_buffer_size"),
-                "scenario_duration" to listOf("scenario_duration_seconds", "scenario_duration"),
-                "event_processing_duration" to listOf("event_processing_duration_seconds", "event_processing_duration"),
-            )
+            val metricsToCheck =
+                mapOf(
+                    "viz_sessions_active" to listOf("viz_sessions_active"),
+                    "viz_sse_clients_active" to listOf("viz_sse_clients_active"),
+                    "events_emitted" to listOf("events_emitted_total", "events_emitted"),
+                    "events_dropped" to listOf("events_dropped_total", "events_dropped"),
+                    "events_buffer_size" to listOf("events_buffer_size"),
+                    "scenario_duration" to listOf("scenario_duration_seconds", "scenario_duration"),
+                    "event_processing_duration" to listOf("event_processing_duration_seconds", "event_processing_duration"),
+                )
 
             for ((metricDisplayName, candidates) in metricsToCheck) {
                 val found = candidates.any { body.contains(it) }

@@ -44,9 +44,10 @@ class BoundedStoreRegressionTest {
         testApplication {
             application { module() }
 
-            val jsonClient = createClient {
-                install(ContentNegotiation) { json() }
-            }
+            val jsonClient =
+                createClient {
+                    install(ContentNegotiation) { json() }
+                }
 
             // Create a session via the real API — module() will have called
             // SessionManager.configure(maxEventsPerSession = 10000) before routing
@@ -66,9 +67,10 @@ class BoundedStoreRegressionTest {
             // Strategy: configure a small maxEvents, create a new session, push more events.
             val smallCap = 20
             SessionManager.configure(maxEventsPerSession = smallCap)
-            val cappedSession = kotlinx.coroutines.runBlocking {
-                SessionManager.createSession("capped-session")
-            }
+            val cappedSession =
+                kotlinx.coroutines.runBlocking {
+                    SessionManager.createSession("capped-session")
+                }
 
             // Emit more than smallCap events through the real VizSession.send() path
             val overLimit = smallCap + 10
@@ -83,7 +85,7 @@ class BoundedStoreRegressionTest {
                         parentCoroutineId = null,
                         scopeId = "scope",
                         label = "label-$i",
-                    )
+                    ),
                 )
             }
 
@@ -91,7 +93,7 @@ class BoundedStoreRegressionTest {
             val storeSize = cappedSession.store.all().size
             assertTrue(
                 storeSize <= smallCap,
-                "store.all().size ($storeSize) must be <= maxEvents ($smallCap) — bounded cap not enforced (FND-03)"
+                "store.all().size ($storeSize) must be <= maxEvents ($smallCap) — bounded cap not enforced (FND-03)",
             )
             // Also verify events were actually stored (not silently dropped before storing)
             assertTrue(storeSize > 0, "Store should contain events after sends")

@@ -3,16 +3,25 @@ package com.jh.proj.coroutineviz
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.session.RetentionPolicy
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.server.application.*
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.util.AttributeKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.minutes
 
 private val moduleLogger = LoggerFactory.getLogger("com.jh.proj.coroutineviz.ApplicationModule")
+
+// Session-lifecycle defaults (used when not overridden via application.yaml / env).
+private const val DEFAULT_SESSION_MAX_AGE_MS = 3_600_000L // 1 hour
+private const val DEFAULT_SESSION_MAX_COUNT = 100
+private const val DEFAULT_SESSION_CHECK_INTERVAL_MS = 60_000L // 1 minute
 
 /**
  * Set when `storage.type=database`: the connected Exposed [Database] handle.
@@ -51,35 +60,91 @@ fun Application.module() {
 
     configureRateLimit()
 
+    configureErrorHandling()
     configureRouting()
+    configureSessionLifecycle()
+}
+
+fun Application.configureSessionLifecycle() {
+    val config = environment.config
+
+    // The in-memory RetentionPolicy evicts via SessionManager.deleteSession, which in
+    // DB mode would delete PERSISTED sessions after the 1h default — fighting the
+    // 30-day storage.retention.* policy that startDbRetention already wires. Run the
+    // in-memory lifecycle ONLY in memory mode; DB mode is covered separately (PERS-03,
+    // "do not double-wire").
+    val storageType = config.propertyOrNull("storage.type")?.getString() ?: "memory"
+    if (storageType.equals("database", ignoreCase = true)) {
+        moduleLogger.info("Session lifecycle: DB mode — retention handled by storage.retention.* (DbRetentionPolicy)")
+        return
+    }
+
+    val maxAgeMs =
+        config.propertyOrNull("session.maxAgeMs")?.getString()?.toLongOrNull() ?: DEFAULT_SESSION_MAX_AGE_MS
+    val maxCount =
+        config.propertyOrNull("session.maxCount")?.getString()?.toIntOrNull() ?: DEFAULT_SESSION_MAX_COUNT
+    val checkIntervalMs =
+        config.propertyOrNull("session.checkIntervalMs")?.getString()?.toLongOrNull()
+            ?: DEFAULT_SESSION_CHECK_INTERVAL_MS
+
+    val retentionScope = CoroutineScope(SupervisorJob())
+    val retentionPolicy =
+        RetentionPolicy(
+            maxSessionAgeMs = maxAgeMs,
+            maxSessions = maxCount,
+            checkIntervalMs = checkIntervalMs,
+        )
+
+    retentionPolicy.start(retentionScope, SessionManager)
+    moduleLogger.info("Session lifecycle configured: maxAge={}ms, maxCount={}, checkInterval={}ms", maxAgeMs, maxCount, checkIntervalMs)
+
+    monitor.subscribe(ApplicationStopped) {
+        moduleLogger.info("Application stopping — cleaning up sessions")
+        retentionPolicy.stop()
+        SessionManager.clearAll()
+        retentionScope.cancel()
+        moduleLogger.info("Session cleanup complete")
+    }
 }
 
 /**
- * Install the per-IP [RateLimit] scope for the public shared read (SHAR-02, D-12).
+ * Install the single [RateLimit] plugin and register all per-IP scopes (Ktor
+ * forbids installing the plugin twice, so this is the ONE install site):
+ *  - `api` (60/min) and `session-create` (10/min) — production hardening (ADR-029),
+ *    always registered, keyed on `remoteAddress`.
+ *  - `shared` (SHAR-02, D-12) — the public shared read, keyed on `remoteHost`,
+ *    config-gated by `share.rateLimit.enabled` and sized by `requestsPerMinute`.
  *
- * The bucket is keyed on `origin.remoteHost` (the client IP). Behind a reverse
- * proxy, install `XForwardedHeaders` so `remoteHost` is the real client and not
- * the proxy — otherwise ALL viewers share one bucket. That is a DEPLOY config
- * (not wired here). The limit value is read at install time; changing it requires
- * a restart (consistent with the auth/storage toggles).
+ * Behind a reverse proxy, install `XForwardedHeaders` so the client IP (not the
+ * proxy) is used — otherwise all viewers share one bucket. That is DEPLOY config.
+ * Limits are read at install time; changing them requires a restart.
  */
 private fun Application.configureRateLimit() {
     val cfg = environment.config
-    val enabled = cfg.propertyOrNull("share.rateLimit.enabled")?.getString()?.toBoolean() ?: true
-    attributes.put(SharedRateLimitEnabledKey, enabled)
-    if (!enabled) {
-        moduleLogger.info("Shared-read rate limiting disabled (share.rateLimit.enabled=false)")
-        return
-    }
-    val rpm = cfg.propertyOrNull("share.rateLimit.requestsPerMinute")?.getString()?.toIntOrNull() ?: 60
+    val sharedEnabled = cfg.propertyOrNull("share.rateLimit.enabled")?.getString()?.toBoolean() ?: true
+    attributes.put(SharedRateLimitEnabledKey, sharedEnabled)
+    val sharedRpm = cfg.propertyOrNull("share.rateLimit.requestsPerMinute")?.getString()?.toIntOrNull() ?: 60
 
     install(RateLimit) {
-        register(RateLimitName(SHARED_RATE_LIMIT_NAME)) {
-            rateLimiter(limit = rpm, refillPeriod = 1.minutes)
-            requestKey { call -> call.request.local.remoteHost }
+        register(RateLimitName("api")) {
+            rateLimiter(limit = 60, refillPeriod = 1.minutes)
+            requestKey { call -> call.request.local.remoteAddress }
+        }
+        register(RateLimitName("session-create")) {
+            rateLimiter(limit = 10, refillPeriod = 1.minutes)
+            requestKey { call -> call.request.local.remoteAddress }
+        }
+        if (sharedEnabled) {
+            register(RateLimitName(SHARED_RATE_LIMIT_NAME)) {
+                rateLimiter(limit = sharedRpm, refillPeriod = 1.minutes)
+                requestKey { call -> call.request.local.remoteHost }
+            }
         }
     }
-    moduleLogger.info("Shared-read rate limiting enabled (perIp={}/min)", rpm)
+    moduleLogger.info(
+        "Rate limiting installed (api=60/min, session-create=10/min, shared={})",
+        if (sharedEnabled) "$sharedRpm/min" else "disabled",
+    )
 }
 
 /**
