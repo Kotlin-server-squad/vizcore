@@ -36,7 +36,8 @@ dependencies {
         intellijIdeaCommunity("2024.1")
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.kotlin")
-        instrumentationTools()
+        // instrumentationTools() removed in IntelliJ Platform Gradle Plugin 2.x —
+        // code instrumentation tools are now added automatically.
     }
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
