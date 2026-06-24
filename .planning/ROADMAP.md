@@ -259,7 +259,7 @@ Plans:
 
 **Wave 3** *(frontend — depends on 08-01 event fields + 08-02 API shape)*
 
-- [ ] 08-03-PLAN.md — Active-only "What's running now" view (+ "Show completed (N)" / "N more" cap) + Session metrics panel + leak list (warning) reusing DispatcherOverview/StateIndicator/EmptyState; useSessionMetrics poll-while-live; ends with live-demo human-verify checkpoint (RCO-06/RCO-07 FE; D-08)
+- [x] 08-03-PLAN.md — Active-only "What's running now" view (+ "Show completed (N)" / "N more" cap) + Session metrics panel + leak list (warning) reusing DispatcherOverview/StateIndicator/EmptyState; useSessionMetrics poll-while-live (RCO-06/RCO-07 FE; D-08) ✅ 2026-06-24 (code complete; tests/lint/build green) — live-demo human-verify (Task 4 / SC#1+SC#2) DEFERRED to /gsd-verify-work
 
 **UI hint**: yes
 
@@ -277,6 +277,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 3. Persistence, Auth & Sharing | 7/7 | Complete    | 2026-06-21 |
 | 6. Instrumentation Source + DebugProbesSource (v1.1) | 0/TBD | Not started — **next** | - |
 | 7. Real-App Transport (v1.1) | 4/4 | Complete    | 2026-06-24 |
-| 8. Live Real-App View + Metrics (v1.1) | 0/3 | Planned — **next** | - |
+| 8. Live Real-App View + Metrics (v1.1) | 3/3 | Code complete — live UAT pending /gsd-verify-work | - |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
