@@ -30,6 +30,8 @@ import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
+import { SessionMetrics } from './SessionMetrics'
+import { EmptyState } from './EmptyState'
 import { ChannelPanel } from './channels/ChannelPanel'
 import { FlowPanel } from './flow/FlowPanel'
 import { SyncPanel } from './sync/SyncPanel'
@@ -66,6 +68,13 @@ const SESSION_REFETCH_DEBOUNCE_MS = 500
  */
 const SESSION_REFETCH_MAX_WAIT_MS = 1500
 
+/**
+ * Max number of live coroutine nodes rendered before collapsing the overflow
+ * into an "N more coroutines" indicator (D-08). Tuned against the demo to beat
+ * the Phase-7 ~1,800-card flat wall while keeping the active view legible.
+ */
+const NODE_CAP = 200
+
 interface SessionDetailsProps {
   sessionId: string
   scenarioId?: string
@@ -94,6 +103,9 @@ export function SessionDetails({
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
+  // Active-only "What's running now" view (D-08): completed coroutines collapse
+  // into an expandable aggregate, toggled off by default.
+  const [showCompleted, setShowCompleted] = useState(false)
   // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
   // the read-only shared view (ADR-019: no re-sharing from a shared link).
   const [sharesOpen, setSharesOpen] = useState(false)
@@ -240,6 +252,26 @@ export function SessionDetails({
     () => (replayActive ? projectCoroutines(replay.visibleEvents) : session?.coroutines ?? []),
     [replayActive, replay.visibleEvents, session?.coroutines],
   )
+  // Active-only "What's running now" derivation (D-08). Default the live view to
+  // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
+  // remainder ("N more") + the collapsed completed aggregate ("Show completed").
+  const { activeCoroutines, completedCount, shownCoroutines, moreCount } = useMemo(() => {
+    const active = panelCoroutines.filter(c => !TERMINAL_STATES.has(c.state as CoroutineState))
+    const shown = active.slice(0, NODE_CAP)
+    return {
+      activeCoroutines: active,
+      completedCount: panelCoroutines.length - active.length,
+      shownCoroutines: shown,
+      moreCount: active.length - shown.length,
+    }
+  }, [panelCoroutines])
+  // What the tree/graph render: the capped active set, or — when the user expands
+  // the completed aggregate — the full set (active + completed) up to the cap.
+  const renderedCoroutines = useMemo(
+    () => (showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines),
+    [showCompleted, panelCoroutines, shownCoroutines],
+  )
+
   const panelThreadActivity: ThreadActivity | undefined = useMemo(() => {
     if (replayActive) return projectThreadActivity(replay.visibleEvents)
     // Read-only shared view: the protected /threads fetch is disabled, so derive
@@ -678,17 +710,44 @@ export function SessionDetails({
             projected snapshot from the replay cursor (D-17). */}
         <Tab key="coroutines" title="Coroutines">
           <div className="space-y-4 pt-2">
-            <Card>
-              <CardBody className="overflow-auto">
-                <div ref={panelRef}>
-                  {viewMode === 'graph' ? (
-                    <CoroutineTreeGraph coroutines={panelCoroutines} />
-                  ) : (
-                    <CoroutineTree coroutines={panelCoroutines} />
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">What&apos;s running now</h3>
+              {completedCount > 0 && (
+                <Button
+                  size="sm"
+                  variant="flat"
+                  onPress={() => setShowCompleted(prev => !prev)}
+                >
+                  {showCompleted
+                    ? `Hide completed (${completedCount})`
+                    : `Show completed (${completedCount})`}
+                </Button>
+              )}
+            </div>
+
+            {activeCoroutines.length === 0 && !showCompleted ? (
+              <EmptyState
+                title="No live coroutines yet"
+                description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
+              />
+            ) : (
+              <Card>
+                <CardBody className="overflow-auto">
+                  <div ref={panelRef}>
+                    {viewMode === 'graph' ? (
+                      <CoroutineTreeGraph coroutines={renderedCoroutines} />
+                    ) : (
+                      <CoroutineTree coroutines={renderedCoroutines} />
+                    )}
+                  </div>
+                  {moreCount > 0 && (
+                    <div className="text-xs text-default-500 mt-2">
+                      {moreCount} more coroutines
+                    </div>
                   )}
-                </div>
-              </CardBody>
-            </Card>
+                </CardBody>
+              </Card>
+            )}
           </div>
         </Tab>
 
@@ -720,7 +779,12 @@ export function SessionDetails({
               </Card>
             )}
 
-            <div className="py-2">
+            <div className="py-2 space-y-4">
+              <SessionMetrics
+                sessionId={sessionId}
+                isLive={streamEnabled}
+                enabled={!readOnly}
+              />
               <DispatcherOverview
                 sessionId={sessionId}
                 isLive={streamEnabled}
