@@ -81,6 +81,37 @@ class InstrumentationSourceTest {
     }
 
     @Test
+    fun `WrapperSource stop releases the job monitoring it enabled (WR-07)`() {
+        val session = VizSession("wr-07-release")
+        val source = WrapperSource(session)
+
+        source.start()
+        assertTrue(session.isMonitoringEnabled(), "start() must enable job monitoring")
+
+        source.stop()
+        assertFalse(source.isRunning, "isRunning must be false after stop")
+        assertFalse(
+            session.isMonitoringEnabled(),
+            "stop() must release the monitoring resource it acquired so isRunning=false is truthful",
+        )
+    }
+
+    @Test
+    fun `WrapperSource is restartable - re-enables monitoring after stop`() {
+        val session = VizSession("wr-07-restart")
+        val source = WrapperSource(session)
+
+        source.start()
+        source.stop()
+        assertFalse(session.isMonitoringEnabled())
+
+        source.start()
+        assertTrue(source.isRunning, "restart must run again")
+        assertTrue(session.isMonitoringEnabled(), "restart must re-enable monitoring")
+        source.stop()
+    }
+
+    @Test
     fun `isRunning transitions false to true to false across start and stop`() {
         val session = VizSession("transitions")
         val source = WrapperSource(session)

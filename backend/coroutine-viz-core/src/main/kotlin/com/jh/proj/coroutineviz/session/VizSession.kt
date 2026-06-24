@@ -64,6 +64,9 @@ class VizSession(
     private val applier = EventApplier(snapshot)
     private var monitoringEnabled = false
 
+    /** Whether job monitoring is currently active (test/diagnostic, WR-07). */
+    fun isMonitoringEnabled(): Boolean = monitoringEnabled
+
     // Sequence generator to keep events globally ordered in this session
     private val seqGenerator = AtomicLong(0)
 
@@ -187,11 +190,25 @@ class VizSession(
     }
 
     /**
+     * Stop job monitoring if it was enabled. Idempotent (a no-op when monitoring
+     * is already off), and safe to call independently of [close] — a source that
+     * enabled monitoring in `start()` can release it in `stop()` so the source's
+     * `isRunning=false` is truthful and the monitor is not still emitting after
+     * the source claims to have stopped (Phase 6 WR-07). [close] also calls this.
+     */
+    fun disableJobMonitoring() {
+        if (monitoringEnabled) {
+            jobMonitor.stop()
+            monitoringEnabled = false
+        }
+    }
+
+    /**
      * Clean up session resources.
      * Call this when session is closed.
      */
     fun close() {
-        jobMonitor.stop()
+        disableJobMonitoring()
         sessionScope.cancel()
     }
 

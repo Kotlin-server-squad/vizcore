@@ -21,9 +21,13 @@ import kotlin.coroutines.EmptyCoroutineContext
  * - [start] is idempotent; it flips the running flag and enables the session's
  *   job monitoring (`VizSession.enableJobMonitoring()` is itself already
  *   idempotent), mirroring how wrapper-driven sessions are activated today.
- * - [stop] is idempotent; it clears the running flag. Job-monitor teardown
- *   happens via `VizSession.close()` on session close (wired by the backend via
- *   `SessionManager.addOnSessionClosed`), so [stop] does not double-tear-down.
+ * - [stop] is idempotent; on the true->false transition it disables the job
+ *   monitoring it enabled in [start] (`VizSession.disableJobMonitoring()` is
+ *   itself idempotent), honoring the [InstrumentationSource] contract that
+ *   `stop()` MUST release the resources the source acquired (WR-07). Without
+ *   this, `isRunning` reported false while the monitor kept emitting into the
+ *   session. `VizSession.close()` also disables monitoring on session close, so
+ *   the two paths are mutually idempotent and never double-tear-down.
  */
 class WrapperSource(
     private val session: VizSession,
@@ -43,9 +47,13 @@ class WrapperSource(
     }
 
     override fun stop() {
-        // Idempotent: clearing the flag is enough; job-monitor teardown is owned
-        // by VizSession.close() so we never double-stop it here.
-        running.set(false)
+        // Idempotent: only release on the true->false transition. Disable the job
+        // monitoring we enabled in start() so the source actually relinquishes the
+        // resource it acquired and isRunning=false is truthful (WR-07). The call is
+        // itself idempotent and mutually safe with VizSession.close().
+        if (running.compareAndSet(true, false)) {
+            session.disableJobMonitoring()
+        }
     }
 
     /**
