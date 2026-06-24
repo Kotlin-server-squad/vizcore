@@ -19,9 +19,17 @@ import com.jh.proj.coroutineviz.session.coroutineSuspended
  * - `CoroutineName` → `label`
  * - function/file:line + reason → `SuspensionPoint(function, fileName, lineNumber, reason)`
  *
- * Decisions locked for v1 (06-RESEARCH.md):
- * - `parentCoroutineId` = null (A5; FE tolerates null parent).
- * - `scopeId` = [SOURCE_ID] ("debugprobes").
+ * Hierarchy + grouping (Phase 8, D-01/D-02/D-03 — supersedes the v1 flat locks):
+ * - `parentCoroutineId` = the nearest-observed-ancestor's id, derived as
+ *   `"dp-${snapshot.parentKey.token}"` — the SAME `dp-` form as [coroutineId], so a
+ *   child's `parentCoroutineId` equals its parent coroutine's own id and
+ *   ProjectionService wires the tree edge with zero downstream change. Null
+ *   `parentKey` (tree root / synthetic null-job path) → null parent.
+ * - `scopeId` = `snapshot.dispatcherName ?: sourceId` (D-03 / Open Q1 default), so
+ *   `getHierarchyTree(scopeId)` groups by dispatcher instead of one flat
+ *   "debugprobes" bucket.
+ *
+ * Decisions still locked for v1 (06-RESEARCH.md):
  * - Vanished → [com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted]
  *   only — DebugProbes cannot distinguish completed/cancelled/failed (A3).
  *
@@ -52,8 +60,13 @@ class DebugProbesEventSynthesizer(
             session = session,
             coroutineId = coroutineId(snapshot),
             jobId = jobId(snapshot),
-            parentCoroutineId = null,
-            scopeId = sourceId,
+            // Same "dp-" form as coroutineId(snapshot) (line above) so the child's
+            // parentCoroutineId equals the parent coroutine's OWN id — edges connect
+            // (D-01/D-02, key-consistency note). Null parentKey → root.
+            parentCoroutineId = snapshot.parentKey?.let { "dp-${it.token}" },
+            // Dispatcher-derived grouping (D-03 / Open Q1 default); source-id fallback
+            // when the dispatcher is unknown.
+            scopeId = snapshot.dispatcherName ?: sourceId,
             label = snapshot.label,
         )
 
