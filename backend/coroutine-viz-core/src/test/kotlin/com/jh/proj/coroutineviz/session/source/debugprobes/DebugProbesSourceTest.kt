@@ -1,11 +1,15 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.events.CoroutineEvent
+import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.EventSampler
+import com.jh.proj.coroutineviz.session.EventStore
+import com.jh.proj.coroutineviz.session.EventStoreInterface
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -270,4 +274,162 @@ class DebugProbesSourceTest {
             SessionManager.deleteSession(session.sessionId)
             assertFalse(source.isRunning, "stop() must run when the bound session is closed")
         }
+
+    @Test
+    fun `stop deregisters the close listener so it does not leak into SessionManager (CR-02)`() =
+        runTest {
+            assertEquals(0, SessionManager.onSessionClosedListenerCount(), "registry starts clean")
+
+            val session = VizSession("dp-leak")
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(snap("a", CoroState.RUNNING)) },
+                )
+
+            source.start()
+            assertEquals(1, SessionManager.onSessionClosedListenerCount(), "start registers exactly one close hook")
+
+            source.stop()
+            assertEquals(
+                0,
+                SessionManager.onSessionClosedListenerCount(),
+                "stop() MUST deregister its close hook — otherwise the lambda (and the source + " +
+                    "VizSession/EventStore it captures) leaks into the singleton registry forever (CR-02)",
+            )
+        }
+
+    @Test
+    fun `many start-stop cycles do not accumulate close listeners (CR-02 leak)`() =
+        runTest {
+            val session = VizSession("dp-leak-cycles")
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(snap("a", CoroState.RUNNING)) },
+                )
+
+            repeat(5) {
+                source.start()
+                source.stop()
+            }
+
+            assertEquals(
+                0,
+                SessionManager.onSessionClosedListenerCount(),
+                "repeated start/stop must not accrete listeners",
+            )
+        }
+
+    @Test
+    fun `after a stop-start restart the close hook is re-registered and still tears down on close (CR-02)`() =
+        runTest {
+            val session = SessionManager.createSession("dp-restart-close")
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(snap("a", CoroState.RUNNING)) },
+                )
+
+            source.start()
+            source.stop()
+            assertEquals(0, SessionManager.onSessionClosedListenerCount(), "stop deregisters")
+
+            // Restart: the close hook MUST be re-registered (closeListenerRegistered
+            // is reset on stop). Before the CR-02 fix, the flag was never reset so a
+            // restarted loop was never torn down on session close.
+            source.start()
+            runCurrent()
+            assertTrue(source.isRunning)
+            assertEquals(1, SessionManager.onSessionClosedListenerCount(), "restart re-registers the hook")
+
+            SessionManager.deleteSession(session.sessionId)
+            assertFalse(source.isRunning, "restarted source must still stop on session close")
+        }
+
+    @Test
+    fun `a mid-batch send failure does not replay the already-delivered prefix on the next tick (WR-02)`() =
+        runTest {
+            // The diff yields Appeared(a) then Appeared(b) (next-iteration order).
+            // We inject a store that THROWS while recording b's events on the first
+            // tick — simulating a send failure mid-batch after a was delivered.
+            val failOnB = java.util.concurrent.atomic.AtomicBoolean(true)
+            val session =
+                VizSession(
+                    sessionId = "dp-wr02",
+                    eventStoreFactory = {
+                        FailingStore(EventStore(100_000)) { event ->
+                            failOnB.get() && (event as? CoroutineEvent)?.coroutineId == "dp-b"
+                        }
+                    },
+                )
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(snap("a", CoroState.RUNNING), snap("b", CoroState.RUNNING)) },
+                )
+
+            source.start()
+            runCurrent() // tick1: a recorded; b's first event throws → tick caught, prev advanced past a only.
+            assertTrue(source.isRunning, "loop survives the mid-batch failure")
+            val afterTick1 = session.store.all().map { (it as CoroutineEvent).coroutineId to it.kind }
+            assertEquals(2, afterTick1.count { it.first == "dp-a" }, "a's Created+Started delivered")
+            assertEquals(0, afterTick1.count { it.first == "dp-b" }, "b never delivered (threw)")
+
+            // Stop failing; next tick must recover ONLY b, never replay a.
+            failOnB.set(false)
+            advanceTimeBy(interval)
+            runCurrent()
+
+            val all = session.store.all().map { (it as CoroutineEvent).coroutineId to it.kind }
+            assertEquals(
+                1,
+                all.count { it == ("dp-a" to "CoroutineCreated") },
+                "a must NOT be re-Appeared — its delta was committed despite b's failure (WR-02)",
+            )
+            assertEquals(
+                1,
+                all.count { it == ("dp-b" to "CoroutineCreated") },
+                "b recovers exactly once on the next successful tick",
+            )
+
+            source.stop()
+        }
+
+    /**
+     * Delegating store that throws on [record] for events matching [failWhen],
+     * else forwards to [delegate]. Used to simulate a mid-batch send failure
+     * (WR-02) without depending on EventStore internals.
+     */
+    private class FailingStore(
+        private val delegate: EventStore,
+        private val failWhen: (VizEvent) -> Boolean,
+    ) : EventStoreInterface {
+        override fun record(event: VizEvent) {
+            if (failWhen(event)) error("simulated record failure")
+            delegate.record(event)
+        }
+
+        override fun all() = delegate.all()
+
+        override fun since(seq: Long) = delegate.since(seq)
+
+        override fun byCoroutine(coroutineId: String) = delegate.byCoroutine(coroutineId)
+
+        override fun count() = delegate.count()
+
+        override fun clear() = delegate.clear()
+    }
 }

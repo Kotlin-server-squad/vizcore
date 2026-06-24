@@ -97,6 +97,19 @@ object SessionManager : SessionStoreInterface {
         onSessionClosedListeners.add(listener)
     }
 
+    /**
+     * Remove a specific close-listener previously registered via
+     * [addOnSessionClosed]. Paired removal so a per-session source
+     * (e.g. Plan 06-02 DebugProbesSource) can deregister its `stop()` hook on
+     * teardown instead of leaking its lambda — and, transitively, the source and
+     * its [VizSession]/[EventStore] — into this object-singleton registry forever
+     * (CR-02). No-op if the listener was never registered or already removed.
+     * Thread-safe against concurrent fire/registration ([CopyOnWriteArrayList]).
+     */
+    fun removeOnSessionClosed(listener: (String) -> Unit) {
+        onSessionClosedListeners.remove(listener)
+    }
+
     /** Remove all listeners registered via [addOnSessionCreated]. Test helper. */
     fun clearOnSessionCreatedListeners() {
         onSessionCreatedListeners.clear()
@@ -106,6 +119,9 @@ object SessionManager : SessionStoreInterface {
     fun clearOnSessionClosedListeners() {
         onSessionClosedListeners.clear()
     }
+
+    /** Count of currently-registered close listeners (test/diagnostic, CR-02). */
+    fun onSessionClosedListenerCount(): Int = onSessionClosedListeners.size
 
     /**
      * Reset both created- and closed-listener registries. SessionManager is an
