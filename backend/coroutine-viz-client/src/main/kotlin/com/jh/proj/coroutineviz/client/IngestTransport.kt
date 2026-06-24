@@ -33,8 +33,18 @@ suspend fun stream(
     token: String,
     buffer: OutboundBuffer,
 ) {
+    // Ktor's client WebSockets plugin only performs the upgrade handshake for the ws/wss
+    // scheme; an http/https URL is sent as a plain GET (NoTransformationFoundException). Convert
+    // the REST backendUrl scheme to its WebSocket equivalent. A scheme-less value (e.g. "" in the
+    // in-process round-trip test) is left untouched so the relative-URL path still works.
+    val wsBackendUrl =
+        when {
+            backendUrl.startsWith("https://", ignoreCase = true) -> "wss://" + backendUrl.substring("https://".length)
+            backendUrl.startsWith("http://", ignoreCase = true) -> "ws://" + backendUrl.substring("http://".length)
+            else -> backendUrl
+        }
     httpClient.webSocket(
-        urlString = "$backendUrl/api/sessions/$sessionId/ingest",
+        urlString = "$wsBackendUrl/api/sessions/$sessionId/ingest",
         request = { header(HttpHeaders.Authorization, "Bearer $token") },
     ) {
         buffer.drain { event ->
