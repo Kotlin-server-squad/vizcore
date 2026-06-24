@@ -4,6 +4,7 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import org.slf4j.LoggerFactory
 
@@ -74,4 +75,18 @@ class EventBus {
      * @return Cold flow that emits all future events
      */
     fun stream(): Flow<VizEvent> = flow.asSharedFlow()
+
+    /**
+     * The number of subscribers currently collecting [stream], surfacing the
+     * underlying [MutableSharedFlow.subscriptionCount].
+     *
+     * This is an ADDITIVE, Ktor-free accessor (kotlinx-coroutines [StateFlow], no
+     * new dependency). It lets a consumer deterministically await a live collector
+     * before emitting — important precisely because this bus is `replay = 0`, so an
+     * event sent before any collector has subscribed has no live receiver and would
+     * be lost. By awaiting `subscriptionCount.first { it >= 1 }`, a consumer can
+     * close that startup race without sleeping. The `send`/`stream`/buffer semantics
+     * are unchanged.
+     */
+    val subscriptionCount: StateFlow<Int> get() = flow.subscriptionCount
 }
