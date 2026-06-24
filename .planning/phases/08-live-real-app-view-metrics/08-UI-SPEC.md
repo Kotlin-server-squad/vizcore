@@ -51,16 +51,16 @@ Exceptions: none. Use HeroUI/Tailwind utility classes (`gap-*`, `p-*`, `space-y-
 
 ## Typography
 
-HeroUI/Tailwind text scale already in use. **4 sizes, 2 weights** (project convention: `font-normal` 400 body, `font-semibold` 600 emphasis — `font-bold` 700 reserved for single-glance metric numbers as in `DispatcherOverview` queue-depth).
+HeroUI/Tailwind text scale already in use. **Exactly 4 sizes, 2 weights** (project convention: `font-normal` 400 body, `font-semibold` 600 emphasis — `font-bold` 700 reserved for single-glance metric *numerals* as in `DispatcherOverview` queue-depth). Declared sizes: 12 / 14 / 18 / 20px (`text-xs` / `text-sm` / `text-lg` / `text-xl`). `text-base` (16px) is intentionally NOT used — metric values share the `text-lg` (18px) token with card titles to keep the count at exactly four.
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Caption / meta | 12px (`text-xs`) | 400 (`font-normal`) | 1.5 — dispatcher descriptions, thread-ID labels, `file:line` attribution, "N more" indicator |
 | Body / label | 14px (`text-sm`) | 400 (`font-normal`) | 1.5 — metric labels, list rows, coroutine names |
-| Metric value / sub-heading | 16–18px (`text-base`/`text-lg`) | 600 (`font-semibold`) | 1.4 — active/peak counts, throughput numbers, card titles (`h4`) |
+| Metric value / sub-heading | 18px (`text-lg`) | 600 (`font-semibold`) | 1.4 — active/peak counts, throughput numbers, card titles (`h4`) |
 | Panel heading | 20px (`text-xl`) | 600 (`font-semibold`) | 1.2 — metrics-panel / empty-state title (`h3`, matches `EmptyState.tsx`) |
 
-> Inter, line-height 1.5 globally (from `index.css`). Leak-count and peak-count single numbers MAY use `font-bold` (700) for at-a-glance scanning — this is the one established exception (see `DispatcherOverview` queue-depth `text-lg font-bold`), not a new weight class for prose.
+> Inter, line-height 1.5 globally (from `index.css`). Four sizes total — no role may introduce a fifth (notably `text-base`/16px is excluded). Leak-count and peak-count single **numerals only** MAY use `font-bold` (700) for at-a-glance scanning — this is the one established brownfield exception (see `DispatcherOverview` queue-depth `text-lg font-bold`). Do NOT generalize `font-bold` to prose, labels, or headings; it applies to standalone metric numbers exclusively.
 
 ---
 
