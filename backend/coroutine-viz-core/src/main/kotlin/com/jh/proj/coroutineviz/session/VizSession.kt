@@ -79,6 +79,13 @@ class VizSession(
     val projectionService = ProjectionService(this)
 
     /**
+     * Per-session aggregate metrics (active/peak/throughput/dispatcher-util/leaks,
+     * RCO-07). Like [projectionService] it subscribes to [eventBus] in its own
+     * `init` and is rebuilt from the store on [rehydrateFromStore] (Pitfall 5).
+     */
+    val metricsProjection = MetricsProjection(this)
+
+    /**
      * Optional callback invoked after each event is successfully emitted via [send].
      * Used by the metrics layer to increment the events.emitted counter without
      * adding a Micrometer dependency to coroutine-viz-core.
@@ -162,6 +169,7 @@ class VizSession(
             }
         }
         projectionService.rebuildFrom(events)
+        metricsProjection.rebuildFrom(events)
     }
 
     /**
