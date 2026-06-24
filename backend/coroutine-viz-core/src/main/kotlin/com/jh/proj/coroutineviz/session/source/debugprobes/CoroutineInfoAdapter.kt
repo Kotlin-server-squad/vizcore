@@ -46,18 +46,48 @@ class CoroutineInfoAdapter {
     private val syntheticKeys = ConcurrentHashMap<String, String>()
     private val syntheticOrdinal = AtomicInteger(0)
 
+    /**
+     * Drop all accumulated identity state (job→key and synthetic signature→key).
+     *
+     * The adapter's identity maps are scoped to ONE poll-loop run. A
+     * [DebugProbesSource] restart (`stop()` then `start()`) resets its `prev`
+     * snapshot to empty, so without also resetting the adapter a coroutine whose
+     * synthetic key was cached in the prior run would re-resolve to the same key
+     * against an empty `prev` and be re-`Appeared` (re-emitting its full
+     * CREATED/STARTED lifecycle) even though it already completed (WR-03). The
+     * source calls this on every `start()` so synthetic identity is run-scoped.
+     */
+    fun reset() {
+        jobKeys.clear()
+        syntheticKeys.clear()
+        syntheticOrdinal.set(0)
+    }
+
+    private fun stackSignature(stack: List<StackTraceElement>): String =
+        stack.joinToString("|") { "${it.className}#${it.methodName}:${it.lineNumber}" }
+
     private fun keyFor(
         job: Job?,
         creationStackTrace: List<StackTraceElement>,
+        lastObservedStackTrace: List<StackTraceElement>,
     ): CoroKey {
         if (job != null) {
             val token = jobKeys.computeIfAbsent(System.identityHashCode(job)) { "job:${System.identityHashCode(job)}" }
             return CoroKey(token)
         }
-        // Synthetic fallback: stable across re-dumps for the same creation signature.
-        val signature = creationStackTrace.joinToString("|") { "${it.className}#${it.methodName}:${it.lineNumber}" }
+        // Synthetic fallback: stable across re-dumps for the same identity, scoped
+        // to one run (the source resets the adapter on each start, WR-03).
+        //
+        // The synthetic identity combines the creation signature with the
+        // last-observed (suspension) signature so two CONCURRENT coroutines that
+        // share a creation site but are parked at different points do not collapse
+        // onto a single key (WR-03). The `#ordinal` keeps keys distinct even when
+        // both signatures collide. Residual v1 limitation: two concurrent
+        // null-job coroutines created AND parked at the identical point are
+        // genuinely indistinguishable from DebugProbes alone and may still merge.
+        val signature = stackSignature(creationStackTrace) + "@@" + stackSignature(lastObservedStackTrace)
         val token =
-            syntheticKeys.computeIfAbsent(signature) { "synthetic:${signature.hashCode()}#${syntheticOrdinal.getAndIncrement()}" }
+            syntheticKeys.computeIfAbsent(signature) { "synthetic:#${syntheticOrdinal.getAndIncrement()}" }
         return CoroKey(token)
     }
 
@@ -65,7 +95,7 @@ class CoroutineInfoAdapter {
     fun toSnapshot(raw: RawInfo): CoroutineSnapshot {
         val location = SourceAttribution.fromCreationStack(raw.creationStackTrace)
         return CoroutineSnapshot(
-            key = keyFor(raw.job, raw.creationStackTrace),
+            key = keyFor(raw.job, raw.creationStackTrace, raw.lastObservedStackTrace),
             state = raw.state,
             label = SourceAttribution.label(raw.context),
             dispatcherName = SourceAttribution.dispatcherName(raw.context),

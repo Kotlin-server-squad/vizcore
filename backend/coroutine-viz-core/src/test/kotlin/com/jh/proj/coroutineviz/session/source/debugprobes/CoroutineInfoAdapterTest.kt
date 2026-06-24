@@ -56,7 +56,7 @@ class CoroutineInfoAdapterTest {
         assertEquals("App.kt", snap.fileName)
         assertEquals(12, snap.lineNumber)
         assertEquals("fetcher", snap.label)
-        assertEquals(Dispatchers.Default.toString(), snap.dispatcherName)
+        assertEquals("Dispatchers.Default", snap.dispatcherName)
         assertEquals("fetch", snap.reason)
         assertEquals(lastObserved, snap.lastObservedStackTrace)
     }
