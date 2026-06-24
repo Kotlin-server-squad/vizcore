@@ -50,6 +50,9 @@ fun Application.module() {
     configureAuth()
     configureMonitoring()
     configureSerialization()
+    // Install the WebSockets plugin before configureRouting() — the ingest
+    // webSocket route (RCO-05) cannot be registered until the plugin is present.
+    configureWebSockets()
 
     // Configure bounded EventStore before any sessions are created (FND-02)
     val maxEvents =

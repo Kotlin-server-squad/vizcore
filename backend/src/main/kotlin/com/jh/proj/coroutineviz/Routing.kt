@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.routes.registerAuthRoutes
 import com.jh.proj.coroutineviz.routes.registerComparisonRoutes
 import com.jh.proj.coroutineviz.routes.registerFlowScenarioRoutes
 import com.jh.proj.coroutineviz.routes.registerHealthRoutes
+import com.jh.proj.coroutineviz.routes.registerIngestRoutes
 import com.jh.proj.coroutineviz.routes.registerPatternRoutes
 import com.jh.proj.coroutineviz.routes.registerRootRoutes
 import com.jh.proj.coroutineviz.routes.registerScenarioRunnerRoutes
@@ -63,6 +64,9 @@ fun Application.configureRouting() {
                 registerSyncScenarioRoutes()
                 registerTestRoutes()
                 registerSessionRoutes()
+                // WebSocket ingest (RCO-05): inherits auth + the 60/min per-IP
+                // limit + D-04a fail-open from this authenticatedApi/rateLimit block.
+                registerIngestRoutes()
                 registerValidationRoutes()
                 registerScenarioRunnerRoutes()
                 registerFlowScenarioRoutes()

@@ -39,6 +39,9 @@ dependencies {
     implementation("io.ktor:ktor-server-swagger")
     implementation("io.ktor:ktor-server-openapi")
     implementation("io.ktor:ktor-server-sse")
+    // WebSocket ingest endpoint (RCO-05) — version from the Ktor BOM (io.ktor.plugin 3.3.2),
+    // mirroring ktor-server-sse. First-party JetBrains, same trust basis (RESEARCH T-07-SC).
+    implementation("io.ktor:ktor-server-websockets")
     implementation("io.ktor:ktor-server-status-pages")
     implementation("io.ktor:ktor-server-default-headers")
     // Per-IP rate limiting for the public shared read (SHAR-02, D-12) — version from the Ktor BOM.
