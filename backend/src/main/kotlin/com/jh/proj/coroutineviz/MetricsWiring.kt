@@ -66,8 +66,13 @@ fun wireMetrics(registry: PrometheusMeterRegistry) {
     // accumulates one stale events_buffer_size series per session ever created (WR-03).
     val bufferGaugeIds = ConcurrentHashMap<String, Meter.Id>()
 
-    // Wire callbacks into every new session via SessionManager.onSessionCreated
-    SessionManager.onSessionCreated = { session ->
+    // Wire callbacks into every new session via the composable registry rather
+    // than assigning the single onSessionCreated slot — that slot is shared, and
+    // overwriting it would clobber any other subsystem's per-session wiring
+    // (e.g. an instrumentation-source installer). addOnSessionCreated composes,
+    // so metrics + source wiring both fire on every createSession (RCO-01,
+    // Research Pitfall 3, T-06-01).
+    SessionManager.addOnSessionCreated { session ->
         // events.emitted: increment each time send() successfully completes
         session.onEventEmitted = { eventsEmittedCounter.increment() }
 
