@@ -9,7 +9,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -23,6 +23,12 @@ import kotlin.test.assertTrue
  * events with that coroutineId, and JobStateChanged must be emitted BEFORE the
  * terminal event so downstream views see job-state transitions for async
  * coroutines just like launched ones.
+ *
+ * Timing note: VizScope runs vizAsync coroutines on [VizSession.sessionScope]'s REAL
+ * [kotlinx.coroutines.Dispatchers.Default]. These tests use [runBlocking] (real time) and poll
+ * the store until the terminal event has actually been emitted, rather than `runTest`'s
+ * virtual-time `delay`, which would skip ahead without waiting for the real-dispatcher
+ * invokeOnCompletion handler — the race that made these flaky on loaded CI runners.
  */
 class VizScopeAsyncTerminalOrderingTest {
 
@@ -31,7 +37,7 @@ class VizScopeAsyncTerminalOrderingTest {
      * CoroutineFailed, preceded by a JobStateChanged with a strictly lower seq.
      */
     @Test
-    fun `failed async coroutine emits JobStateChanged before CoroutineFailed`(): Unit = runTest {
+    fun `failed async coroutine emits JobStateChanged before CoroutineFailed`() = runBlocking {
         val session = VizSession("test-async-terminal-ordering-failed")
         val exceptionHandler = CoroutineExceptionHandler { _, _ -> /* swallow expected exception */ }
         val isolatedScope = CoroutineScope(SupervisorJob() + exceptionHandler)
@@ -47,8 +53,8 @@ class VizScopeAsyncTerminalOrderingTest {
         } catch (_: Exception) {
             // expected — the async block throws
         }
-        // Give invokeOnCompletion handlers time to fire
-        delay(200)
+        // Wait (real time) until the failing-async coroutine's terminal event has been emitted.
+        awaitTerminalLabel(session) { it is CoroutineFailed && it.label == "failing-async" }
 
         val events = session.store.all()
         val failedCoroutineId = events
@@ -90,7 +96,7 @@ class VizScopeAsyncTerminalOrderingTest {
      * be CoroutineCancelled, preceded by a JobStateChanged with a strictly lower seq.
      */
     @Test
-    fun `cancelled async coroutine emits JobStateChanged before CoroutineCancelled`(): Unit = runTest {
+    fun `cancelled async coroutine emits JobStateChanged before CoroutineCancelled`() = runBlocking {
         val session = VizSession("test-async-terminal-ordering-cancelled")
         val viz = VizScope(session)
 
@@ -106,7 +112,8 @@ class VizScopeAsyncTerminalOrderingTest {
         } catch (_: Exception) {
             // expected
         }
-        delay(200)
+        // Wait (real time) until the cancellable-async coroutine's terminal event has been emitted.
+        awaitTerminalLabel(session) { it is CoroutineCancelled && it.label == "cancellable-async" }
 
         val events = session.store.all()
         val cancelledCoroutineId = events
@@ -148,7 +155,7 @@ class VizScopeAsyncTerminalOrderingTest {
      * failing-async event stream must produce zero findings.
      */
     @Test
-    fun `NoEventsAfterTerminalRule produces zero findings for instrumented failing-async scenario`(): Unit = runTest {
+    fun `NoEventsAfterTerminalRule produces zero findings for instrumented failing-async scenario`() = runBlocking {
         val session = VizSession("test-async-terminal-validator-clean")
         val exceptionHandler = CoroutineExceptionHandler { _, _ -> /* swallow */ }
         val isolatedScope = CoroutineScope(SupervisorJob() + exceptionHandler)
@@ -164,7 +171,8 @@ class VizScopeAsyncTerminalOrderingTest {
         } catch (_: Exception) {
             // expected
         }
-        delay(200)
+        // Wait until the failing-async terminal event is emitted so the validator sees the full stream.
+        awaitTerminalLabel(session) { it is CoroutineFailed && it.label == "failing-async" }
 
         val events = session.store.all()
         val findings = NoEventsAfterTerminalRule().validate(events)

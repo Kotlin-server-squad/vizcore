@@ -9,7 +9,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -24,6 +24,13 @@ import kotlin.test.assertTrue
  *
  * Failure of this invariant triggers NoEventsAfterTerminalRule findings, which causes
  * the app to flag its own instrumentation on every Exception Handling scenario run.
+ *
+ * Timing note: VizScope launches its coroutines on [VizSession.sessionScope], which uses the
+ * REAL [kotlinx.coroutines.Dispatchers.Default]. These tests therefore use [runBlocking] (real
+ * time) and poll the store until the terminal event has actually been emitted, rather than
+ * `runTest`'s virtual-time `delay`, which would skip ahead instantly without waiting for the
+ * real-dispatcher invokeOnCompletion handler — a race that passed on idle dev machines but
+ * failed on loaded CI runners (see VizScopeFireForgetOrderingTest for the same pattern).
  */
 class VizScopeTerminalOrderingTest {
 
@@ -32,7 +39,7 @@ class VizScopeTerminalOrderingTest {
      * and any JobStateChanged for that coroutineId must have a strictly lower seq.
      */
     @Test
-    fun `failed coroutine terminal event has highest seq among its events`(): Unit = runTest {
+    fun `failed coroutine terminal event has highest seq among its events`() = runBlocking {
         val session = VizSession("test-terminal-ordering-failed")
         val exceptionHandler = CoroutineExceptionHandler { _, _ -> /* swallow expected exception */ }
         val isolatedScope = CoroutineScope(SupervisorJob() + exceptionHandler)
@@ -50,8 +57,8 @@ class VizScopeTerminalOrderingTest {
         } catch (_: Exception) {
             // expected — parent cancelled due to child failure
         }
-        // Give invokeOnCompletion handlers time to fire
-        delay(200)
+        // Wait (real time) until the failing-child's terminal event has actually been emitted.
+        awaitTerminalLabel(session) { it is CoroutineFailed && it.label == "failing-child" }
 
         val events = session.store.all()
         val failedCoroutineId = events
@@ -92,7 +99,7 @@ class VizScopeTerminalOrderingTest {
      * strictly lower seq.
      */
     @Test
-    fun `cancelled coroutine terminal event has highest seq among its events`(): Unit = runTest {
+    fun `cancelled coroutine terminal event has highest seq among its events`() = runBlocking {
         val session = VizSession("test-terminal-ordering-cancelled")
         val viz = VizScope(session)
 
@@ -108,7 +115,8 @@ class VizScopeTerminalOrderingTest {
         } catch (_: Exception) {
             // expected
         }
-        delay(200)
+        // Wait (real time) until the cancellable coroutine's terminal event has been emitted.
+        awaitTerminalLabel(session) { it is CoroutineCancelled && it.label == "cancellable" }
 
         val events = session.store.all()
         val cancelledCoroutineId = events
@@ -149,7 +157,7 @@ class VizScopeTerminalOrderingTest {
      * the app would flag its own instrumentation.
      */
     @Test
-    fun `NoEventsAfterTerminalRule produces zero findings for instrumented failing-child scenario`(): Unit = runTest {
+    fun `NoEventsAfterTerminalRule produces zero findings for instrumented failing-child scenario`() = runBlocking {
         val session = VizSession("test-terminal-validator-clean")
         val exceptionHandler = CoroutineExceptionHandler { _, _ -> /* swallow */ }
         val isolatedScope = CoroutineScope(SupervisorJob() + exceptionHandler)
@@ -167,7 +175,8 @@ class VizScopeTerminalOrderingTest {
         } catch (_: Exception) {
             // expected
         }
-        delay(200)
+        // Wait until the failing-child terminal event is emitted so the validator sees the full stream.
+        awaitTerminalLabel(session) { it is CoroutineFailed && it.label == "failing-child" }
 
         val events = session.store.all()
         val findings = NoEventsAfterTerminalRule().validate(events)
