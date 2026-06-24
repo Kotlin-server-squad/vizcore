@@ -842,3 +842,23 @@ export const SELECT_EVENT_KINDS: ReadonlySet<string> = new Set([
   'SelectClauseWon',
   'SelectCompleted',
 ])
+
+// Session metrics (RCO-07) - WIRE shape of GET /sessions/{id}/metrics.
+// Mirrors the backend MetricsResponse / LeakDto @Serializable DTOs exactly
+// (backend RouteDtos.kt). leakThresholdMs is the SERVER-resolved (clamped)
+// threshold so the FE leak tooltip can show the effective value.
+export interface MetricsResponse {
+  active: number
+  peak: number
+  throughputPerSec: number
+  dispatcherUtilization: Record<string, number>
+  leaks: LeakDto[]
+  leakThresholdMs: number
+}
+
+// A still-active coroutine flagged as a potential leak (alive past the threshold).
+export interface LeakDto {
+  coroutineId: string
+  label: string | null
+  aliveMs: number
+}

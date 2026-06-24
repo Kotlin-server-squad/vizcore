@@ -12,6 +12,7 @@ import type {
   CoroutineTimeline,
   ValidationResponse,
   SessionComparison,
+  MetricsResponse,
 } from '@/types/api'
 import type {
   CreateShareResponse,
@@ -202,6 +203,12 @@ class ApiClient {
 
   async getCoroutineTimeline(sessionId: string, coroutineId: string): Promise<CoroutineTimeline> {
     return this.fetchJson<CoroutineTimeline>(`/sessions/${encodeURIComponent(sessionId)}/coroutines/${encodeURIComponent(coroutineId)}/timeline`)
+  }
+
+  // Session metrics (RCO-07). Wire shape: MetricsResponse
+  // (active/peak/throughput/dispatcher-utilization/leaks + clamped threshold).
+  async getMetrics(sessionId: string): Promise<MetricsResponse> {
+    return this.fetchJson<MetricsResponse>(`/sessions/${encodeURIComponent(sessionId)}/metrics`)
   }
 
   // Validation
