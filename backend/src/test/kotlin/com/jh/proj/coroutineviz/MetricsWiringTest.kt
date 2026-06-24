@@ -23,6 +23,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -31,11 +32,16 @@ class MetricsWiringTest {
     @BeforeEach
     fun setUp() {
         SessionManager.clearAll()
+        // SessionManager is an object singleton; reset both listener registries so
+        // listeners added by one test (or by module()/wireMetrics) do not accrete
+        // across test classes and flake on ordering (06-REVIEWS.md listener-reset).
+        SessionManager.clearSessionListeners()
     }
 
     @AfterEach
     fun tearDown() {
         SessionManager.clearAll()
+        SessionManager.clearSessionListeners()
     }
 
     @Test
@@ -267,6 +273,70 @@ class MetricsWiringTest {
                 bodyAfterClose.contains("events_buffer_size{sessionId=\"$sessionId\""),
                 "events_buffer_size gauge for $sessionId must be deregistered after session close",
             )
+        }
+
+    @Test
+    fun `a second addOnSessionCreated listener fires alongside metrics wiring on the same session`() =
+        testApplication {
+            application { module() }
+
+            val jsonClient =
+                createClient {
+                    install(ContentNegotiation) {
+                        json()
+                    }
+                }
+
+            // module() already wired metrics via SessionManager.addOnSessionCreated.
+            // Register a SECOND listener (simulating a source/DebugProbes installer) —
+            // both MUST fire on the same createSession (RCO-01, onSessionCreated not
+            // clobbered, Research Pitfall 3 / T-06-01).
+            val secondListenerFired = AtomicBoolean(false)
+            var observedSessionId: String? = null
+            SessionManager.addOnSessionCreated { session ->
+                observedSessionId = session.sessionId
+                secondListenerFired.set(true)
+            }
+
+            // Create the session that drives both listeners.
+            val createResponse = jsonClient.post("/api/sessions?name=composition-test")
+            assertEquals(HttpStatusCode.Created, createResponse.status)
+            val sessionId =
+                createResponse.bodyAsText().substringAfter("\"sessionId\":\"").substringBefore("\"")
+            assertTrue(sessionId.isNotBlank(), "Session ID must be non-blank")
+
+            // (a) the second listener fired for this exact session.
+            assertTrue(secondListenerFired.get(), "second addOnSessionCreated listener must fire")
+            assertEquals(sessionId, observedSessionId, "second listener saw the created session")
+
+            // (b) metrics wiring also fired: the per-session buffer gauge is registered,
+            // and a send increments events.emitted (the metrics onSessionCreated body ran).
+            val session = SessionManager.getSession(sessionId)
+            assertTrue(session != null, "session must exist")
+            session.send(
+                CoroutineCreated(
+                    sessionId = sessionId,
+                    seq = session.nextSeq(),
+                    tsNanos = System.nanoTime(),
+                    coroutineId = "comp-coro",
+                    jobId = "comp-job",
+                    parentCoroutineId = null,
+                    scopeId = "comp-scope",
+                    label = "composition-event",
+                ),
+            )
+
+            val body = client.get("/metrics").bodyAsText()
+            assertTrue(
+                body.contains("events_buffer_size{sessionId=\"$sessionId\""),
+                "metrics wiring must register the per-session buffer gauge (proves the metrics listener fired)",
+            )
+            val emittedFound =
+                body.lines().any { line ->
+                    (line.startsWith("events_emitted_total ") || line.startsWith("events_emitted ")) &&
+                        (line.substringAfterLast(" ").trim().toDoubleOrNull() ?: 0.0) >= 1.0
+                }
+            assertTrue(emittedFound, "events.emitted must be >= 1.0 after a send (metrics onEventEmitted fired)")
         }
 
     /**

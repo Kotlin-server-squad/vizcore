@@ -13,6 +13,10 @@ version = "0.1.0"
 dependencies {
     // Core dependencies only — no Ktor, no web framework
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    // DebugProbes runtime introspection (RCO-02). implementation (NOT api) so the
+    // debug module stays off consumers' compile classpath. Version-parity with
+    // kotlinx-coroutines-core 1.11.0 (same JetBrains release train). JVM 17 OK.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.slf4j:slf4j-api:2.0.9")
 
@@ -24,9 +28,32 @@ dependencies {
     testImplementation("ch.qos.logback:logback-classic:1.5.32")
 }
 
+val includeIntegration = project.hasProperty("includeIntegration")
+
 tasks.named<Test>("test") {
-    useJUnitPlatform()
-    finalizedBy(tasks.jacocoTestReport)
+    // DebugProbes (kotlinx-coroutines-debug) attaches a byte-buddy agent dynamically
+    // at install() time; allow it explicitly so the JVM does not warn / (in a future
+    // JDK) refuse the dynamic agent load. Affects only the @Tag("integration") smoke IT.
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
+    useJUnitPlatform {
+        // The timing-bearing DebugProbes smoke IT is @Tag("integration"); exclude it
+        // from the deterministic gate by default. Opt in with:
+        //   ./gradlew :coroutine-viz-core:test -PincludeIntegration
+        // (e.g. `--tests "*DebugProbesSmokeIT*" -PincludeIntegration`).
+        if (!includeIntegration) {
+            excludeTags("integration")
+        }
+    }
+    // The JaCoCo java-agent re-instruments classes at load time, which conflicts with
+    // DebugProbes' byte-buddy class re-transformation ("class redefinition failed:
+    // attempted to delete a method") on JDK 21. Disable coverage when the real-probes
+    // smoke IT runs; the deterministic gate (no -PincludeIntegration) keeps coverage on.
+    extensions.configure<JacocoTaskExtension> {
+        isEnabled = !includeIntegration
+    }
+    if (!includeIntegration) {
+        finalizedBy(tasks.jacocoTestReport)
+    }
 }
 
 tasks.jacocoTestReport {

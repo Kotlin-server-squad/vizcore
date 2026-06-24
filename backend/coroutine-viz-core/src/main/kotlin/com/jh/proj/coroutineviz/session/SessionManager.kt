@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.session
 import com.jh.proj.coroutineviz.models.SessionInfo
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Manages active visualization sessions.
@@ -38,11 +39,119 @@ object SessionManager : SessionStoreInterface {
     @Volatile
     private var backingStore: SessionStoreInterface? = null
 
-    /** Callback invoked when a new session is created. */
+    /**
+     * Legacy single-slot callback invoked when a new session is created.
+     *
+     * Retained for backward compatibility (direct-assignment callers and tests
+     * still read/write it). When set, it fires FIRST on every createSession,
+     * before any listener registered via [addOnSessionCreated]. New subsystems
+     * should prefer [addOnSessionCreated] so multiple wirings compose instead of
+     * clobbering each other (Phase 6 RCO-01).
+     */
     var onSessionCreated: ((VizSession) -> Unit)? = null
 
-    /** Callback invoked when a session is closed, with the session ID. */
+    /**
+     * Legacy single-slot callback invoked when a session is closed, with the
+     * session ID. Retained for backward compatibility; fires FIRST on every
+     * deleteSession, before any listener registered via [addOnSessionClosed].
+     * New subsystems should prefer [addOnSessionClosed].
+     */
     var onSessionClosed: ((String) -> Unit)? = null
+
+    /**
+     * Composable session-created listeners. Each is invoked (in registration
+     * order) on every createSession AFTER the legacy [onSessionCreated] slot,
+     * so multiple subsystems (metrics, instrumentation sources, …) can wire into
+     * session creation without clobbering one another (Phase 6 RCO-01,
+     * Research Pitfall 3). [CopyOnWriteArrayList] keeps iteration thread-safe
+     * against concurrent registration.
+     */
+    private val onSessionCreatedListeners = CopyOnWriteArrayList<(VizSession) -> Unit>()
+
+    /**
+     * Composable session-closed listeners, invoked (in registration order) on
+     * every deleteSession AFTER the legacy [onSessionClosed] slot. This is the
+     * teardown hook an [com.jh.proj.coroutineviz.session.source.InstrumentationSource]
+     * registers its `stop()` against (e.g. Plan 06-02 DebugProbesSource), so a
+     * JVM-global ref-counted install is always released when a session is closed
+     * or evicted — no long-lived leak.
+     */
+    private val onSessionClosedListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+    /**
+     * Register a listener fired on every session creation. Composes with the
+     * legacy [onSessionCreated] slot and any other registered listeners — none
+     * clobbers another. Listeners fire in registration order.
+     */
+    fun addOnSessionCreated(listener: (VizSession) -> Unit) {
+        onSessionCreatedListeners.add(listener)
+    }
+
+    /**
+     * Register a listener fired on every session close/delete (both the
+     * backing-store and in-memory branches). Composes with the legacy
+     * [onSessionClosed] slot and any other registered listeners. Listeners fire
+     * in registration order. Sources use this to wire `stop()`/teardown.
+     */
+    fun addOnSessionClosed(listener: (String) -> Unit) {
+        onSessionClosedListeners.add(listener)
+    }
+
+    /**
+     * Remove a specific close-listener previously registered via
+     * [addOnSessionClosed]. Paired removal so a per-session source
+     * (e.g. Plan 06-02 DebugProbesSource) can deregister its `stop()` hook on
+     * teardown instead of leaking its lambda — and, transitively, the source and
+     * its [VizSession]/[EventStore] — into this object-singleton registry forever
+     * (CR-02). No-op if the listener was never registered or already removed.
+     * Thread-safe against concurrent fire/registration ([CopyOnWriteArrayList]).
+     */
+    fun removeOnSessionClosed(listener: (String) -> Unit) {
+        onSessionClosedListeners.remove(listener)
+    }
+
+    /** Remove all listeners registered via [addOnSessionCreated]. Test helper. */
+    fun clearOnSessionCreatedListeners() {
+        onSessionCreatedListeners.clear()
+    }
+
+    /** Remove all listeners registered via [addOnSessionClosed]. Test helper. */
+    fun clearOnSessionClosedListeners() {
+        onSessionClosedListeners.clear()
+    }
+
+    /** Count of currently-registered close listeners (test/diagnostic, CR-02). */
+    fun onSessionClosedListenerCount(): Int = onSessionClosedListeners.size
+
+    /**
+     * Reset both created- and closed-listener registries. SessionManager is an
+     * object singleton, so tests sharing it must reset listener state between
+     * runs to avoid cross-test accretion/flake (06-REVIEWS.md listener-reset).
+     */
+    fun clearSessionListeners() {
+        clearOnSessionCreatedListeners()
+        clearOnSessionClosedListeners()
+    }
+
+    /**
+     * Fire the legacy created-slot then every registered created-listener,
+     * in registration order. Centralizes the composition so both createSession
+     * branches stay identical.
+     */
+    private fun fireSessionCreated(session: VizSession) {
+        onSessionCreated?.invoke(session)
+        onSessionCreatedListeners.forEach { it(session) }
+    }
+
+    /**
+     * Fire the legacy closed-slot then every registered close-listener, in
+     * registration order. Centralizes the composition so both deleteSession
+     * branches stay identical.
+     */
+    private fun fireSessionClosed(sessionId: String) {
+        onSessionClosed?.invoke(sessionId)
+        onSessionClosedListeners.forEach { it(sessionId) }
+    }
 
     /**
      * Configure session defaults. Call before creating sessions.
@@ -83,7 +192,7 @@ object SessionManager : SessionStoreInterface {
         backingStore?.let { store ->
             val session = store.createSession(name)
             logger.info("Created session (backing store): ${session.sessionId}")
-            onSessionCreated?.invoke(session)
+            fireSessionCreated(session)
             return session
         }
 
@@ -95,7 +204,7 @@ object SessionManager : SessionStoreInterface {
         sessions[sessionId] = session
 
         logger.info("Created session: $sessionId")
-        onSessionCreated?.invoke(session)
+        fireSessionCreated(session)
         return session
     }
 
@@ -138,7 +247,7 @@ object SessionManager : SessionStoreInterface {
             val deleted = store.deleteSession(sessionId)
             if (deleted) {
                 logger.info("Closed session (backing store): $sessionId")
-                onSessionClosed?.invoke(sessionId)
+                fireSessionClosed(sessionId)
             }
             return deleted
         }
@@ -147,7 +256,7 @@ object SessionManager : SessionStoreInterface {
         if (removed != null) {
             removed.close() // Clean up session resources
             logger.info("Closed session: $sessionId")
-            onSessionClosed?.invoke(sessionId)
+            fireSessionClosed(sessionId)
             return true
         }
         return false
