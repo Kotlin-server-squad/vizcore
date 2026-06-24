@@ -62,6 +62,15 @@ data class CoroutineSnapshot(
     val reason: String? = null,
     /** Last observed stack at dump time (JDK type; DebugProbes-free). */
     val lastObservedStackTrace: List<StackTraceElement>? = null,
+    /**
+     * Identity key of this coroutine's nearest OBSERVED ancestor (Phase 8, D-01/D-02),
+     * issued by the SAME adapter `jobKeys` cache as [key] so a child's [parentKey]
+     * equals its parent coroutine's own [key] and tree edges connect. Null for a
+     * tree root (no observed ancestor) or the synthetic null-job path where
+     * DebugProbes gives no reliable parent. All-defaulted so no existing call site
+     * breaks; a pure internal value, not a wire DTO (no serialization annotation).
+     */
+    val parentKey: CoroKey? = null,
 )
 
 /**
