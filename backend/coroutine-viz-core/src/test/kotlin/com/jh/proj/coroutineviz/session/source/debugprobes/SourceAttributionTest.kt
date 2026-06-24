@@ -1,10 +1,13 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.jupiter.api.Test
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * RCO-03 source-attribution extraction tests. Pure over hand-built
@@ -103,11 +106,29 @@ class SourceAttributionTest {
     }
 
     @Test
-    fun `dispatcherName read from context interceptor`() {
-        val ctx = kotlinx.coroutines.Dispatchers.Default
-        val name = SourceAttribution.dispatcherName(ctx)
-        // Dispatchers.Default has a stable, non-null toString.
-        assertEquals(kotlinx.coroutines.Dispatchers.Default.toString(), name)
+    fun `dispatcherName normalizes standard dispatchers to stable names`() {
+        // WR-04: standard dispatchers map to stable, hash-free names rather than
+        // the raw toString() (which embeds worker-pool identity / hashcodes).
+        assertEquals("Dispatchers.Default", SourceAttribution.dispatcherName(kotlinx.coroutines.Dispatchers.Default))
+        assertEquals("Dispatchers.IO", SourceAttribution.dispatcherName(kotlinx.coroutines.Dispatchers.IO))
+        assertEquals("Dispatchers.Unconfined", SourceAttribution.dispatcherName(kotlinx.coroutines.Dispatchers.Unconfined))
+    }
+
+    @Test
+    fun `dispatcherName falls back to simple class name for unknown dispatchers`() {
+        // A custom dispatcher (single-thread executor) is not one of the standard
+        // ones, so we expose its simple class name rather than the hash-bearing
+        // toString() (WR-04).
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val custom = executor.asCoroutineDispatcher()
+            val name = SourceAttribution.dispatcherName(custom)
+            assertNotNull(name)
+            // No '@' hashcode segment leaks through the normalized name.
+            assertTrue('@' !in name, "normalized dispatcher name must not embed a hashcode, got: $name")
+        } finally {
+            executor.shutdown()
+        }
     }
 
     @Test

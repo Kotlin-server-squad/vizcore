@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 
@@ -50,6 +51,26 @@ object SourceAttribution {
     /** `CoroutineName.name` → event `label`. Null when unnamed. */
     fun label(context: CoroutineContext): String? = context[CoroutineName]?.name
 
-    /** Dispatcher (`ContinuationInterceptor`) → `ThreadAssigned.dispatcherName`. Null when absent. */
-    fun dispatcherName(context: CoroutineContext): String? = context[ContinuationInterceptor]?.toString()
+    /**
+     * Dispatcher (`ContinuationInterceptor`) → `ThreadAssigned.dispatcherName`.
+     * Null when absent.
+     *
+     * Normalizes the standard dispatchers to STABLE, human-meaningful names
+     * (`Dispatchers.Default`/`IO`/`Main`/`Unconfined`) rather than the raw
+     * `toString()`, which for many dispatchers embeds a hashcode or worker-pool
+     * identity (e.g. `DefaultDispatcher@1a2b[...]`) — neither stable nor
+     * meaningful, and it differs run-to-run, producing unstable FE thread lanes
+     * (WR-04). Unknown dispatchers fall back to their simple class name instead of
+     * the full (often hash-bearing) `toString()`.
+     */
+    fun dispatcherName(context: CoroutineContext): String? {
+        val interceptor = context[ContinuationInterceptor] ?: return null
+        return when (interceptor) {
+            Dispatchers.Default -> "Dispatchers.Default"
+            Dispatchers.IO -> "Dispatchers.IO"
+            Dispatchers.Main -> "Dispatchers.Main"
+            Dispatchers.Unconfined -> "Dispatchers.Unconfined"
+            else -> interceptor::class.simpleName ?: interceptor.toString()
+        }
+    }
 }
