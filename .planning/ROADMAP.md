@@ -255,7 +255,7 @@ Plans:
 
 **Wave 2** *(backend metrics — depends on 08-01: dispatcherName/scope propagation)*
 
-- [ ] 08-02-PLAN.md — Per-session MetricsProjection (active/peak/throughput/dispatcher-util/leaks, replay-consistent) + tenant-scoped GET /api/sessions/{id}/metrics + MetricsResponse/LeakDto DTOs (RCO-07; D-04/D-05/D-06/D-07)
+- [x] 08-02-PLAN.md — Per-session MetricsProjection (active/peak/throughput/dispatcher-util/leaks, replay-consistent) + tenant-scoped GET /api/sessions/{id}/metrics + MetricsResponse/LeakDto DTOs (RCO-07; D-04/D-05/D-06/D-07) ✅ 2026-06-24
 
 **Wave 3** *(frontend — depends on 08-01 event fields + 08-02 API shape)*
 
