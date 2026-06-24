@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -110,5 +111,54 @@ class CoroutineInfoAdapterTest {
         val k1 = adapter.toSnapshot(raw).key
         val k2 = adapter.toSnapshot(raw).key
         assertEquals(k1, k2)
+    }
+
+    @Test
+    fun `toSnapshots links child parentKey to the parent's own key via the same jobKeys cache`() {
+        // root (OBSERVED) ── scopeA (UNOBSERVED intermediate) ── child (OBSERVED)
+        // child's nearest-observed-ancestor is root; its parentKey must equal root's own key.
+        val adapter = CoroutineInfoAdapter()
+        val root = Job()
+        val scopeA = Job(root) // intermediate, NOT in the observed infos
+        val child = Job(scopeA)
+
+        val rootRaw = CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, root, CoroutineName("root"), creationStack, emptyList())
+        val childRaw = CoroutineInfoAdapter.RawInfo(CoroState.SUSPENDED, child, CoroutineName("child"), creationStack, lastObserved)
+
+        val snaps = adapter.toSnapshots(listOf(rootRaw, childRaw))
+        val rootSnap = snaps.single { it.label == "root" }
+        val childSnap = snaps.single { it.label == "child" }
+
+        // Edge connects: child.parentKey == the parent coroutine's OWN key (T-08-02).
+        assertEquals(rootSnap.key, childSnap.parentKey)
+        // root is a tree root — no observed ancestor.
+        assertNull(rootSnap.parentKey)
+    }
+
+    @Test
+    fun `toSnapshots leaves parentKey null for a null-job (synthetic) coroutine`() {
+        val adapter = CoroutineInfoAdapter()
+        val raw = CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, null, EmptyCoroutineContext, creationStack, emptyList())
+
+        val snap = adapter.toSnapshots(listOf(raw)).single()
+        assertNull(snap.parentKey)
+    }
+
+    @Test
+    fun `toSnapshots preserves single-info field extraction`() {
+        val adapter = CoroutineInfoAdapter()
+        val raw =
+            CoroutineInfoAdapter.RawInfo(
+                state = CoroState.SUSPENDED,
+                job = Job(),
+                context = CoroutineName("fetcher") + Dispatchers.Default,
+                creationStackTrace = creationStack,
+                lastObservedStackTrace = lastObserved,
+            )
+
+        val snap = adapter.toSnapshots(listOf(raw)).single()
+        assertEquals("startWork", snap.function)
+        assertEquals("Dispatchers.Default", snap.dispatcherName)
+        assertEquals("fetch", snap.reason)
     }
 }
