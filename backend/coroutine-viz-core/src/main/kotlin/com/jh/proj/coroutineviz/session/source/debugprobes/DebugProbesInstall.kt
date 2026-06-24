@@ -21,6 +21,17 @@ object DebugProbesInstall {
     private val logger = LoggerFactory.getLogger(DebugProbesInstall::class.java)
     private val refCount = AtomicInteger(0)
 
+    /**
+     * True only when THIS object actually called [DebugProbes.install]. The
+     * acquire/release guards must be symmetric on ownership: acquire installs
+     * only when DebugProbes was not already installed (so we don't double-install
+     * over an external party), and release must therefore uninstall ONLY when we
+     * were the installer. Keying release off the global `DebugProbes.isInstalled`
+     * instead would tear down probes installed by some other party (another
+     * agent, a test harness, an app using DebugProbes directly) — CR-01.
+     */
+    private var installedByUs = false
+
     /** Increment the ref-count; install DebugProbes on the 0→1 transition. */
     @Synchronized
     fun acquire() {
@@ -28,6 +39,7 @@ object DebugProbesInstall {
         if (count == 1 && !DebugProbes.isInstalled) {
             DebugProbes.enableCreationStackTraces = true
             DebugProbes.install()
+            installedByUs = true
             logger.info("DebugProbes installed (enableCreationStackTraces=true)")
         }
     }
@@ -36,8 +48,9 @@ object DebugProbesInstall {
     @Synchronized
     fun release() {
         val count = refCount.updateAndGet { if (it > 0) it - 1 else 0 }
-        if (count == 0 && DebugProbes.isInstalled) {
+        if (count == 0 && installedByUs) {
             uninstallQuietly()
+            installedByUs = false
         }
     }
 
@@ -71,5 +84,9 @@ object DebugProbesInstall {
         if (DebugProbes.isInstalled) {
             uninstallQuietly()
         }
+        installedByUs = false
     }
+
+    /** Test/diagnostic: did THIS object install DebugProbes (CR-01 ownership). */
+    fun installedByUs(): Boolean = installedByUs
 }
