@@ -251,7 +251,7 @@ Plans:
 
 **Wave 1** *(backend core — no deps)*
 
-- [ ] 08-01-PLAN.md — Hierarchy reconstruction (HierarchyReconstructor + batch toSnapshots) + parentCoroutineId/scopeId propagation through the synthesizer so the existing ProjectionService/CoroutineTree populate (RCO-06; D-01/D-02/D-03)
+- [x] 08-01-PLAN.md — Hierarchy reconstruction (HierarchyReconstructor + batch toSnapshots) + parentCoroutineId/scopeId propagation through the synthesizer so the existing ProjectionService/CoroutineTree populate (RCO-06; D-01/D-02/D-03) ✅ 2026-06-24
 
 **Wave 2** *(backend metrics — depends on 08-01: dispatcherName/scope propagation)*
 
