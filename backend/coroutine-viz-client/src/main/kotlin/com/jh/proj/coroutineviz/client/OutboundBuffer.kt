@@ -22,7 +22,12 @@ import java.util.concurrent.atomic.AtomicLong
  * subscribes to `session.bus.stream()` exactly ONCE per client lifetime ([feed]) and
  * writes into a bounded [Channel] that OUTLIVES individual sockets. Whichever socket
  * is currently active [drain]s that channel; events emitted while disconnected are
- * retained and delivered on the next successful connect (zero loss across churn).
+ * retained and delivered on the next successful connect. Delivery is AT-MOST-ONCE:
+ * all events still BUFFERED while disconnected survive, but an event already dequeued
+ * for an in-flight `send` when the socket drops abruptly is NOT re-enqueued and may be
+ * lost — at most one frame per drop (see [drain]). This is an accepted trade-off for a
+ * dev visualization tool; the structurally-unbounded startup/backoff-window loss that
+ * motivated CR-01 is what this bridge eliminates.
  *
  * Startup race: because `feed` launches its collector on a passed-in scope, the
  * collector has not necessarily registered with the `replay = 0` SharedFlow by the
@@ -91,7 +96,14 @@ class OutboundBuffer(
      * Drain the buffer into [send], one event at a time, until the channel is closed
      * ([close]) OR the calling coroutine is cancelled (a socket drop cancels the
      * drain). On cancellation the channel and its retained events SURVIVE — the NEXT
-     * drain resumes from where this one left off. Cooperative cancellation propagates
+     * drain resumes from where this one left off.
+     *
+     * AT-MOST-ONCE caveat: `for (event in channel)` removes an event via the channel
+     * iterator BEFORE [send] runs, so the single event already dequeued for the
+     * in-flight [send] when cancellation hits is NOT re-enqueued — that one frame may
+     * be lost per abrupt drop. All events still in the channel are retained.
+     *
+     * Cooperative cancellation propagates
      * (the underlying channel iteration rethrows [kotlinx.coroutines.CancellationException]).
      */
     suspend fun drain(send: suspend (VizEvent) -> Unit) {

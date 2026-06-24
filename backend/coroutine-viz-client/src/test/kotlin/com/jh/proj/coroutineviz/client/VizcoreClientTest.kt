@@ -86,7 +86,7 @@ class VizcoreClientTest {
         )
 
     @Test
-    fun `round-trip is lossless across the no-socket startup window AND a forced reconnect`() =
+    fun `buffered events survive the no-socket startup window AND a reconnect-backoff window`() =
         testApplication {
             application {
                 install(ServerWebSockets)
@@ -149,13 +149,16 @@ class VizcoreClientTest {
 
             val total = firstBatch + secondBatch
 
-            // The backend session must receive ALL emitted events (zero loss across the
-            // no-socket startup window AND the forced reconnect), each carrying the
-            // SERVER id. Assertion is on COMPLETENESS, gated on the subscription await
-            // above — never a delay(200) sleep.
+            // The backend session must receive ALL emitted events that were BUFFERED
+            // across the no-socket startup window AND the reconnect-backoff window (the
+            // failure is injected at the transport boundary, before any drain, so no
+            // frame is ever in flight). Each carries the SERVER id. Assertion is on
+            // COMPLETENESS, gated on the subscription await above — never a delay(200)
+            // sleep. (Delivery is at-most-once only for a frame in flight during an
+            // abrupt mid-send drop — not exercised here; see OutboundBuffer.drain.)
             pollFor { if (serverSession.store.all().size >= total) Unit else null }
             val received = serverSession.store.all()
-            assertEquals(total, received.size, "every emitted event must arrive (zero loss across reconnect)")
+            assertEquals(total, received.size, "every buffered event must arrive across the reconnect-backoff window")
             assertTrue(
                 received.all { it.sessionId == serverId },
                 "every received event must carry the SERVER session id (Pitfall 1)",
