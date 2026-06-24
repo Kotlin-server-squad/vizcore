@@ -97,8 +97,13 @@ fun wireMetrics(registry: PrometheusMeterRegistry) {
     }
 
     // Deregister the per-session gauge when the session is closed, releasing the
-    // session reference held by the gauge's value lambda.
-    SessionManager.onSessionClosed = { sessionId ->
+    // session reference held by the gauge's value lambda. Use the composable
+    // addOnSessionClosed registry (mirroring the created-side above) rather than
+    // assigning the single-slot SessionManager.onSessionClosed — that slot is
+    // shared, so another subsystem (or a second wireMetrics call) assigning it
+    // would silently clobber this gauge-deregistration and re-introduce the
+    // gauge/session leak (WR-05, RCO-01 "compose, don't clobber").
+    SessionManager.addOnSessionClosed { sessionId ->
         bufferGaugeIds.remove(sessionId)?.let { meterId -> registry.remove(meterId) }
     }
 
