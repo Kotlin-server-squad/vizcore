@@ -67,7 +67,11 @@ class DebugProbesSource(
     private val installProbes: Boolean = true,
     private val adapter: CoroutineInfoAdapter = CoroutineInfoAdapter(),
     private val dump: () -> List<CoroutineSnapshot> = {
-        DebugProbes.dumpCoroutinesInfo().map { adapter.toSnapshot(it) }
+        // Batch path (Phase 8): one pass reconstructs the parent/child hierarchy so
+        // each snapshot carries parentKey (nearest observed ancestor) keyed by the
+        // SAME jobKeys cache — pollTick stays unchanged (still List<CoroutineSnapshot>
+        // keyed by it.key).
+        adapter.toSnapshots(DebugProbes.dumpCoroutinesInfo())
     },
 ) : InstrumentationSource {
     private val logger = LoggerFactory.getLogger(DebugProbesSource::class.java)

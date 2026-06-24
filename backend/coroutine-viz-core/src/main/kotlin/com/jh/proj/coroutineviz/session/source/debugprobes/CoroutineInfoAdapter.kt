@@ -119,6 +119,55 @@ class CoroutineInfoAdapter {
             ),
         )
 
+    /**
+     * Batch map a whole DebugProbes dump in ONE pass, reconstructing the
+     * parent/child hierarchy (Phase 8, D-01/D-02). Each returned snapshot carries
+     * `parentKey` = the [CoroKey] of its nearest OBSERVED ancestor (or null for a
+     * tree root / the synthetic null-job path).
+     *
+     * Key consistency is the whole point (threat T-08-02): the parent reference is
+     * resolved through the SAME [keyFor]/`jobKeys` cache as the child's own [key], so
+     * a parent Job yields the identical token the parent coroutine receives — edges
+     * connect with ZERO downstream change. We first materialise every observed
+     * snapshot (which populates `jobKeys` for every observed Job), then resolve each
+     * parent Job's already-cached key.
+     */
+    fun toSnapshots(infos: List<CoroutineInfo>): List<CoroutineSnapshot> =
+        toSnapshots(
+            infos.map {
+                RawInfo(
+                    state = it.state.toCoroState(),
+                    job = it.job,
+                    context = it.context,
+                    creationStackTrace = it.creationStackTrace,
+                    lastObservedStackTrace = it.lastObservedStackTrace(),
+                )
+            },
+        )
+
+    /**
+     * Fakeable [RawInfo]-based batch core (unit-tested without real DebugProbes).
+     * Mirrors the single-info [toSnapshot]/[toSnapshots] forwarding split.
+     */
+    @JvmName("toSnapshotsRaw")
+    fun toSnapshots(raws: List<RawInfo>): List<CoroutineSnapshot> {
+        // First pass: produce each snapshot via the existing field-extraction path.
+        // This also issues every observed Job's CoroKey into the jobKeys cache.
+        val snapshots = raws.map { raw -> raw to toSnapshot(raw) }
+
+        // Build the nearest-observed-ancestor map over the observed Job set.
+        val observedJobs = raws.mapNotNull { it.job }.toHashSet()
+        val reconstructor = HierarchyReconstructor.build(observedJobs)
+
+        // Second pass: link parentKey by resolving the parent Job through the SAME
+        // jobKeys cache (already populated above), so child.parentKey == parent.key.
+        return snapshots.map { (raw, snap) ->
+            val job = raw.job ?: return@map snap // null-job: no reliable parent.
+            val parentJob = reconstructor.nearestObservedParent(job) ?: return@map snap
+            snap.copy(parentKey = keyFor(parentJob, emptyList(), emptyList()))
+        }
+    }
+
     private fun State.toCoroState(): CoroState =
         when (this) {
             State.CREATED -> CoroState.CREATED
