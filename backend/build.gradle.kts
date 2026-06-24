@@ -70,6 +70,8 @@ dependencies {
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-content-negotiation")
+    // Client WebSockets plugin for the ingest-route tests (RCO-05) — Ktor BOM.
+    testImplementation("io.ktor:ktor-client-websockets")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 
     // JUnit 5 (Jupiter) for new dispatcher tests
