@@ -96,6 +96,12 @@ vi.mock('./DispatcherOverview', () => ({
   DispatcherOverview: () => <div data-testid="dispatcher-overview" />,
 }))
 
+vi.mock('./SessionMetrics', () => ({
+  SessionMetrics: ({ sessionId, isLive }: { sessionId: string; isLive?: boolean }) => (
+    <div data-testid="session-metrics" data-session={sessionId} data-live={String(!!isLive)} />
+  ),
+}))
+
 vi.mock('./channels/ChannelPanel', () => ({
   ChannelPanel: () => <div data-testid="channel-panel" />,
 }))
@@ -757,5 +763,88 @@ describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
     // Back to live: REPLAY chip gone, Replay toggle shown again.
     expect(screen.queryByText('REPLAY')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^replay$/i })).toBeInTheDocument()
+  })
+})
+
+describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function coro(id: string, state: string) {
+    return {
+      id,
+      jobId: `j-${id}`,
+      parentId: null,
+      scopeId: 'scope-1',
+      label: id,
+      state: state as CoroutineState,
+    }
+  }
+
+  function mountSession(coroutines: ReturnType<typeof coro>[]) {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: coroutines.length, coroutines }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    return render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+  }
+
+  it('renders only non-terminal coroutines in the graph by default', () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('b-suspended', 'SUSPENDED'),
+      coro('c-completed', 'COMPLETED'),
+      coro('d-failed', 'FAILED'),
+    ])
+
+    const graph = screen.getByTestId('coroutine-tree-graph')
+    // Terminal (COMPLETED/FAILED) filtered out; active set keeps order.
+    expect(graph).toHaveAttribute('data-ids', 'a-active,b-suspended')
+  })
+
+  it('shows the "What\'s running now" section title', () => {
+    mountSession([coro('a-active', 'ACTIVE')])
+    expect(screen.getByText("What's running now")).toBeInTheDocument()
+  })
+
+  it('shows "Show completed (N)" with the terminal count', () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('c-completed', 'COMPLETED'),
+      coro('d-cancelled', 'CANCELLED'),
+    ])
+    expect(screen.getByText('Show completed (2)')).toBeInTheDocument()
+  })
+
+  it('does not show "Show completed" when nothing has completed', () => {
+    mountSession([coro('a-active', 'ACTIVE')])
+    expect(screen.queryByText(/Show completed/)).toBeNull()
+  })
+
+  it('shows "N more coroutines" when the active set exceeds the node cap', () => {
+    const many = Array.from({ length: 205 }, (_, i) => coro(`a-${i}`, 'ACTIVE'))
+    mountSession(many)
+
+    // NODE_CAP = 200 → 5 more
+    expect(screen.getByText('5 more coroutines')).toBeInTheDocument()
+    const graph = screen.getByTestId('coroutine-tree-graph')
+    expect(graph).toHaveAttribute('data-count', '200')
+  })
+
+  it('mounts the SessionMetrics panel for the session (Threads tab)', async () => {
+    mountSession([coro('a-active', 'ACTIVE')])
+    // SessionMetrics is mounted alongside DispatcherOverview in the Threads tab,
+    // which HeroUI renders lazily on selection.
+    await userEvent.click(screen.getByRole('tab', { name: /threads/i }))
+    const metrics = screen.getByTestId('session-metrics')
+    expect(metrics).toBeInTheDocument()
+    expect(metrics).toHaveAttribute('data-session', 'session-1')
+  })
+
+  it('shows the "No live coroutines yet" empty state when nothing is active', () => {
+    mountSession([coro('c-completed', 'COMPLETED')])
+    expect(screen.getByText('No live coroutines yet')).toBeInTheDocument()
   })
 })
