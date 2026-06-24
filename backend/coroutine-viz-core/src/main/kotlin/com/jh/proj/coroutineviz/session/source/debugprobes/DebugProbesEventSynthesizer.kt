@@ -34,6 +34,9 @@ class DebugProbesEventSynthesizer(
 ) {
     companion object {
         const val SOURCE_ID: String = "debugprobes"
+
+        /** Default suspension reason when the snapshot carries none (IN-05). */
+        private const val DEFAULT_REASON: String = "suspend"
     }
 
     /** Derive a stable coroutine/job id from the opaque key token. */
@@ -61,7 +64,7 @@ class DebugProbesEventSynthesizer(
             function = function,
             fileName = snapshot.fileName,
             lineNumber = snapshot.lineNumber,
-            reason = snapshot.reason ?: "suspend",
+            reason = snapshot.reason ?: DEFAULT_REASON,
         )
     }
 
@@ -71,7 +74,7 @@ class DebugProbesEventSynthesizer(
     ): List<VizEvent> =
         listOf(
             ctx.coroutineSuspended(
-                reason = snapshot.reason ?: "suspend",
+                reason = snapshot.reason ?: DEFAULT_REASON,
                 suspensionPoint = suspensionPointOf(snapshot),
             ),
         )
@@ -100,10 +103,16 @@ class DebugProbesEventSynthesizer(
                 when {
                     delta.from == CoroState.CREATED && delta.to == CoroState.RUNNING ->
                         listOf(ctx.coroutineStarted())
+                    // A coroutine observed jumping CREATED→SUSPENDED (it started and
+                    // parked between polls) must emit started BEFORE suspended, else
+                    // the FE sees a suspend with no prior start (WR-01). This case
+                    // must precede the generic `to == SUSPENDED` branch below.
+                    delta.from == CoroState.CREATED && delta.to == CoroState.SUSPENDED ->
+                        listOf(ctx.coroutineStarted()) + suspendedEvents(ctx, delta.now)
                     delta.to == CoroState.SUSPENDED -> suspendedEvents(ctx, delta.now)
                     delta.from == CoroState.SUSPENDED && delta.to == CoroState.RUNNING ->
                         listOf(ctx.coroutineResumed())
-                    // Defensive: any other transition (e.g. CREATED→SUSPENDED) treated as a started+suspend.
+                    // Defensive: any other transition into RUNNING treated as a start.
                     delta.to == CoroState.RUNNING -> listOf(ctx.coroutineStarted())
                     else -> emptyList()
                 }

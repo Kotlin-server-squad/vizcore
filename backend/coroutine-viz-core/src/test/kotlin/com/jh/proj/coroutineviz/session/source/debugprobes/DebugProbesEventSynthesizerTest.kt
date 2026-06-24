@@ -127,6 +127,30 @@ class DebugProbesEventSynthesizerTest {
     }
 
     @Test
+    fun `StateChanged CREATED to SUSPENDED yields Started then Suspended (WR-01)`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.StateChanged(
+                    CoroState.CREATED,
+                    CoroState.SUSPENDED,
+                    snap("a", CoroState.SUSPENDED, function = "fetch", fileName = "App.kt", lineNumber = 9, reason = "delay"),
+                ),
+                s,
+            )
+
+        // A coroutine that started+parked between polls must emit Started BEFORE
+        // Suspended — never a suspend with no prior start (WR-01).
+        assertEquals(2, events.size)
+        assertTrue(events[0] is CoroutineStarted, "started must come first")
+        val suspended = events[1]
+        assertTrue(suspended is CoroutineSuspended, "suspended must follow started")
+        assertEquals("delay", suspended.reason)
+        assertEquals("fetch", suspended.suspensionPoint?.function)
+        assertTrue(events[0].seq < events[1].seq, "Started seq precedes Suspended seq")
+    }
+
+    @Test
     fun `StateChanged SUSPENDED to RUNNING yields Resumed`() {
         val s = session()
         val events =
