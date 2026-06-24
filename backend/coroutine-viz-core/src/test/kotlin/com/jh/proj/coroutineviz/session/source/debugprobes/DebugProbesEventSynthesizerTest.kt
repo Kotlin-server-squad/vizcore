@@ -31,6 +31,7 @@ class DebugProbesEventSynthesizerTest {
         fileName: String? = null,
         lineNumber: Int? = null,
         reason: String? = null,
+        parentKey: CoroKey? = null,
     ) = CoroutineSnapshot(
         key = CoroKey(keyToken),
         state = state,
@@ -40,6 +41,7 @@ class DebugProbesEventSynthesizerTest {
         fileName = fileName,
         lineNumber = lineNumber,
         reason = reason,
+        parentKey = parentKey,
     )
 
     @Test
@@ -171,6 +173,53 @@ class DebugProbesEventSynthesizerTest {
 
         assertEquals(1, events.size)
         assertTrue(events.single() is CoroutineCompleted)
+    }
+
+    @Test
+    fun `Appeared with a parentKey yields parentCoroutineId using the same dp- prefix as the parent id`() {
+        val s = session()
+        // child's parentKey points at the parent coroutine's own key ("p1").
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.Appeared(snap("c1", CoroState.CREATED, parentKey = CoroKey("p1"))),
+                s,
+            )
+
+        val created = events.single()
+        assertTrue(created is CoroutineCreated)
+        // The child's parentCoroutineId MUST equal the parent's own derived id
+        // ("dp-${parentKey.token}") so ProjectionService wires the tree edge.
+        assertEquals("dp-p1", created.parentCoroutineId)
+    }
+
+    @Test
+    fun `Appeared without a parentKey yields a null parentCoroutineId (tree root)`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(CoroutineDelta.Appeared(snap("r1", CoroState.CREATED)), s)
+
+        assertNull((events.single() as CoroutineCreated).parentCoroutineId)
+    }
+
+    @Test
+    fun `scopeId is derived from dispatcherName when present (D-03 grouping)`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.Appeared(snap("a", CoroState.CREATED, dispatcherName = "Dispatchers.IO")),
+                s,
+            )
+
+        assertEquals("Dispatchers.IO", (events.single() as CoroutineCreated).scopeId)
+    }
+
+    @Test
+    fun `scopeId falls back to the source id when dispatcherName is null`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(CoroutineDelta.Appeared(snap("a", CoroState.CREATED)), s)
+
+        assertEquals("debugprobes", (events.single() as CoroutineCreated).scopeId)
     }
 
     @Test
