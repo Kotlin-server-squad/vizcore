@@ -51,13 +51,21 @@ class VizcoreClient internal constructor(
     private val scope: CoroutineScope,
     private val backoff: Backoff = Backoff(),
     /**
+     * The lifetime-scoped outbound bridge (CR-01). Fed ONCE at [start] by the single
+     * source-side collector that subscribes to `session.bus.stream()` and SURVIVES
+     * every reconnect; drained by whichever socket is currently active. Injectable so
+     * a test can supply a buffer fed from its own local session.
+     */
+    private val buffer: OutboundBuffer = OutboundBuffer(),
+    /**
      * The single-connection transport attempt. Defaults to the real Ktor client WS
-     * send loop ([stream]); injectable so [ReconnectTest] drives a fake transport
-     * (e.g. one that throws) under runTest virtual time. Returns when the socket
-     * closes; throws on a connection error (→ the loop reconnects with backoff).
+     * send loop ([stream]) draining the lifetime [buffer]; injectable so [ReconnectTest]
+     * drives a fake transport (e.g. one that throws) under runTest virtual time.
+     * Returns when the socket closes; throws on a connection error (→ the loop
+     * reconnects with backoff).
      */
     private val transport: suspend () -> Unit = {
-        stream(httpClient, backendUrl, sessionId, token, session)
+        stream(httpClient, backendUrl, sessionId, token, buffer)
     },
 ) {
     private val logger = LoggerFactory.getLogger(VizcoreClient::class.java)
@@ -67,13 +75,26 @@ class VizcoreClient internal constructor(
 
     /**
      * Start producing + forwarding events. Idempotent: a second call while running
-     * is a no-op. Starts the [source], then launches the reconnect loop that keeps
-     * an ingest WebSocket open and re-establishes it with capped backoff if it drops.
+     * is a no-op.
+     *
+     * Closes the CR-01 startup race deterministically: launches the SINGLE lifetime
+     * feed (`buffer.feed(session, scope)`, which awaits its own bus subscription) and
+     * ONLY AFTER it returns drives the [source] — so no synthesized event precedes the
+     * feed collector. The feed is created exactly once per client lifetime and survives
+     * every reconnect. The reconnect loop runs in parallel and DRAINS the buffer, which
+     * already retains everything once the feed is subscribed (covering the entire
+     * no-socket-yet startup window AND every backoff window).
      */
     fun start() {
         if (running) return
         running = true
-        source.start()
+        // Feed-then-source ordering: subscribe the bus and await the subscription
+        // before the source can emit, then drive the source. The feed collector lives
+        // for the whole client lifetime on the scope.
+        scope.launch {
+            buffer.feed(session, scope)
+            source.start()
+        }
         scope.launch {
             var attempt = 0
             while (isActive && running) {
@@ -95,14 +116,16 @@ class VizcoreClient internal constructor(
     }
 
     /**
-     * Stop the source, close the WebSocket/HTTP client, and cancel the client
-     * scope. Idempotent and leak-free: after [stop] the [source] is no longer
-     * running and the scope is cancelled.
+     * Stop the source, close the outbound [buffer] (so the feed collector + any active
+     * drain terminate), close the WebSocket/HTTP client, and cancel the client scope.
+     * Idempotent and leak-free: after [stop] the [source] is no longer running, the
+     * buffer is closed, and the scope is cancelled.
      */
     fun stop() {
         if (!running) return
         running = false
         source.stop()
+        buffer.close()
         httpClient.close()
         scope.cancel()
     }
