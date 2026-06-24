@@ -53,6 +53,7 @@ import kotlin.time.ExperimentalTime
  * seeded with live events returns a non-empty snapshot.
  */
 @OptIn(ExperimentalTime::class)
+@Suppress("TooManyFunctions") // test fixture helpers (jwt/client/seed/h2) + 3 cases exceed the default threshold
 class MetricsRouteTest {
     private val testSecret = "test-jwt-secret-do-not-use-in-prod"
 

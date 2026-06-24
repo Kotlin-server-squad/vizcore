@@ -55,3 +55,28 @@ data class CoroutineNodeDto(
     val label: String?,
     val state: String,
 )
+
+/**
+ * Wire shape for `GET /api/sessions/{id}/metrics` (RCO-07). Plain `@Serializable`
+ * data class — NOT a `VizEvent` subtype — so `appJson` serializes it with no
+ * polymorphic registration. The route maps the core [com.jh.proj.coroutineviz.session.MetricsSnapshot]
+ * into this. [leakThresholdMs] is the SERVER-resolved (clamped) threshold so the
+ * FE tooltip can show the effective value (UI-SPEC `{threshold}`).
+ */
+@Serializable
+data class MetricsResponse(
+    val active: Int,
+    val peak: Int,
+    val throughputPerSec: Double,
+    val dispatcherUtilization: Map<String, Int>,
+    val leaks: List<LeakDto>,
+    val leakThresholdMs: Long,
+)
+
+/** A still-active coroutine flagged as a potential leak (alive past the threshold). */
+@Serializable
+data class LeakDto(
+    val coroutineId: String,
+    val label: String?,
+    val aliveMs: Long,
+)

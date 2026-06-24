@@ -33,6 +33,18 @@ private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
 private const val SSE_LIVE_BUFFER_CAPACITY = 4096
 
 /**
+ * Default leak-detection age threshold for `GET /api/sessions/{id}/metrics` when
+ * the `?leakThresholdMs=` query param is absent or unparseable (~30s, D-07).
+ */
+const val DEFAULT_LEAK_MS: Long = 30_000
+
+/** Lower clamp bound for the leak threshold — guards against absurdly-small values (V5). */
+const val MIN_LEAK_MS: Long = 1_000
+
+/** Upper clamp bound for the leak threshold — guards against Long.MAX / DoS values (T-08-05/V5). */
+const val MAX_LEAK_MS: Long = 3_600_000
+
+/**
  * The active tenant-scoped backing store, if persistence is on AND the store
  * implements [TenantScopedSessionStore]. In memory mode (or when persistence is
  * off) this is null and routes fall back to the unscoped [SessionManager] calls
@@ -193,6 +205,43 @@ fun Route.registerSessionRoutes() {
         val tree = session.projectionService.getHierarchyTree(scopeId)
 
         call.respond(HttpStatusCode.OK, tree)
+    }
+
+    get("/api/sessions/{id}/metrics") {
+        val sessionId =
+            call.parameters["id"] ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing session ID"))
+                return@get
+            }
+
+        // MANDATORY tenant scoping (Pitfall 3 / T-08-04): a cross-tenant id resolves
+        // to null → 404 (never 403, never leaking another tenant's metrics existence).
+        val session = call.resolveScopedSession(sessionId)
+        if (session == null) {
+            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
+            return@get
+        }
+
+        // Validate + clamp the leak threshold (T-08-05/V5): an unparseable/absent value
+        // falls back to the server default; negative/absurd values are clamped to bounds.
+        val leakThresholdMs =
+            call.request.queryParameters["leakThresholdMs"]
+                ?.toLongOrNull()
+                ?.coerceIn(MIN_LEAK_MS, MAX_LEAK_MS)
+                ?: DEFAULT_LEAK_MS
+
+        val snapshot = session.metricsProjection.snapshot(System.nanoTime(), leakThresholdMs)
+        call.respond(
+            HttpStatusCode.OK,
+            MetricsResponse(
+                active = snapshot.active,
+                peak = snapshot.peak,
+                throughputPerSec = snapshot.throughputPerSec,
+                dispatcherUtilization = snapshot.dispatcherUtilization,
+                leaks = snapshot.leaks.map { LeakDto(it.coroutineId, it.label, it.aliveMs) },
+                leakThresholdMs = leakThresholdMs,
+            ),
+        )
     }
 
     get("/api/sessions/{id}/threads") {
