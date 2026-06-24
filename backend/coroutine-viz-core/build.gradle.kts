@@ -13,6 +13,10 @@ version = "0.1.0"
 dependencies {
     // Core dependencies only — no Ktor, no web framework
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    // DebugProbes runtime introspection (RCO-02). implementation (NOT api) so the
+    // debug module stays off consumers' compile classpath. Version-parity with
+    // kotlinx-coroutines-core 1.11.0 (same JetBrains release train). JVM 17 OK.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.slf4j:slf4j-api:2.0.9")
 
