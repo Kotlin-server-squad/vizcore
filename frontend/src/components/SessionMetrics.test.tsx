@@ -79,6 +79,45 @@ describe('SessionMetrics', () => {
     expect(useSessionMetricsMock).toHaveBeenCalledWith('s-1', true, false)
   })
 
+  it('reflows the tiles into a horizontal flex strip (Delta L1, not a 2-col grid)', () => {
+    useSessionMetricsMock.mockReturnValue({ data: metrics(), isLoading: false })
+
+    const { container } = render(<SessionMetrics sessionId="s-1" />)
+
+    // The tile container is a wrapping flex strip, not the old md:grid-cols-2 card grid.
+    expect(container.querySelector('.flex.flex-wrap')).not.toBeNull()
+    expect(container.querySelector('.md\\:grid-cols-2')).toBeNull()
+  })
+
+  it('renders metric numerals at font-semibold (2-weight scale), never font-bold', () => {
+    useSessionMetricsMock.mockReturnValue({ data: metrics(), isLoading: false })
+
+    const { container } = render(<SessionMetrics sessionId="s-1" />)
+
+    // No metric numeral uses font-bold (700); the live contract is a 2-weight scale.
+    expect(container.querySelector('.font-bold')).toBeNull()
+
+    // Active numeral keeps text-primary AND is font-semibold.
+    const active = screen.getByText('3')
+    expect(active).toHaveClass('font-semibold')
+    expect(active).toHaveClass('text-primary')
+
+    // Peak + throughput numerals are font-semibold too.
+    expect(screen.getByText('7')).toHaveClass('font-semibold')
+    expect(screen.getByText('12.5')).toHaveClass('font-semibold')
+  })
+
+  it('renders the throughput em-dash at font-semibold when zero', () => {
+    useSessionMetricsMock.mockReturnValue({
+      data: metrics({ throughputPerSec: 0 }),
+      isLoading: false,
+    })
+
+    render(<SessionMetrics sessionId="s-1" />)
+
+    expect(screen.getByText('—')).toHaveClass('font-semibold')
+  })
+
   it('surfaces leaks through the LeakList badge', () => {
     useSessionMetricsMock.mockReturnValue({
       data: metrics({
