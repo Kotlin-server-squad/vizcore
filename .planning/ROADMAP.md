@@ -280,17 +280,17 @@ Plans:
 **Goal:** Make per-coroutine source attribution + jump-to-code USER-REACHABLE in the live view. Mount a per-coroutine source-detail drawer that renders the creation/suspension `file:line` frames (sourced lazily via the existing `GET /api/sessions/{id}/coroutines/{coroutineId}/timeline`), wiring the already-built jump-to-code (copy+toast) and frame classifier from 08.1 so they actually appear. FE-only — no backend change, no new dependency, literal Tailwind only (IN-12).
 **Requirements**: RCO-06
 **Depends on:** Phase 08.1 (reuses its LivePill, frame classifier, and jump-to-code components)
-**Plans:** 2 plans (2 waves)
+**Plans:** 2/2 plans complete
 
 Plans:
 
 **Wave 1** *(NEW drawer surface — no deps; unit-testable in isolation)*
 
-- [ ] 08.2-01-PLAN.md — `CoroutineSourceDrawer` (HeroUI Drawer, right/lg) + extracted headerless `CoroutineSourceStack` body (Created at / Suspended at file:line frames) reusing the LOCKED jump-to-code + lazy useCoroutineTimeline data path verbatim; colocated tests for loading/empty/error/jump-to-code/inert-library (RCO-06; D-01/D-03/D-04/D-07/D-08/D-09)
+- [x] 08.2-01-PLAN.md — `CoroutineSourceDrawer` (HeroUI Drawer, right/lg) + extracted headerless `CoroutineSourceStack` body (Created at / Suspended at file:line frames) reusing the LOCKED jump-to-code + lazy useCoroutineTimeline data path verbatim; colocated tests for loading/empty/error/jump-to-code/inert-library (RCO-06; D-01/D-03/D-04/D-07/D-08/D-09) ✅ 2026-06-25 (FE gates green: 472 tests / lint 0 errors / build)
 
 **Wave 2** *(mount path — depends on 08.2-01: imports CoroutineSourceDrawer)*
 
-- [ ] 08.2-02-PLAN.md — Optional/additive `onSelect`/`selectedNodeId` on CoroutineTree + CoroutineTreeGraph (selected ring, IN-12 literal classes) + lift `selectedCoroutineId` in SessionDetails + mount the drawer in the live view; integration test proving click→drawer→file:line reachability; replay/shared views stay presentational (RCO-06; D-02/D-05/D-06)
+- [x] 08.2-02-PLAN.md — Optional/additive `onSelect`/`selectedNodeId` on CoroutineTree + CoroutineTreeGraph (selected ring, IN-12 literal classes) + lift `selectedCoroutineId` in SessionDetails + mount the drawer in the live view; integration test proving click→drawer→file:line reachability; replay/shared views stay presentational (RCO-06; D-02/D-05/D-06) ✅ 2026-06-25 (FE gates green: 478 tests / lint 0 errors / build; tree node uses HeroUI isPressable+onPress — Rule 3; reachability proof in new SessionDetails.reachability.test.tsx — Rule 3; D-10 guards empty. Live-app UAT deferred to /gsd-verify-work)
 
 ## Progress
 
