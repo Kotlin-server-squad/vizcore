@@ -44,6 +44,13 @@ data class EventContext(
     fun nextSeq(): Long = session.nextSeq()
 
     fun timestamp(): Long = System.nanoTime()
+
+    /**
+     * Wall-clock creation stamp for the persistence-safe leak-age basis (CR-01).
+     * Distinct from [timestamp] ([System.nanoTime], a per-process monotonic clock): epoch
+     * millis has a fixed origin, so it survives a backend restart on the DB-rehydrated path.
+     */
+    fun epochMillis(): Long = System.currentTimeMillis()
 }
 
 // ============================================================================
@@ -60,6 +67,7 @@ fun EventContext.coroutineCreated(): CoroutineCreated =
         parentCoroutineId = parentCoroutineId,
         scopeId = scopeId,
         label = label,
+        createdAtEpochMs = epochMillis(),
     )
 
 fun EventContext.coroutineStarted(): CoroutineStarted =

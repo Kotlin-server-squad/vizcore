@@ -230,7 +230,9 @@ fun Route.registerSessionRoutes() {
                 ?.coerceIn(MIN_LEAK_MS, MAX_LEAK_MS)
                 ?: DEFAULT_LEAK_MS
 
-        val snapshot = session.metricsProjection.snapshot(System.nanoTime(), leakThresholdMs)
+        // Wall-clock read basis (CR-01): leak age must subtract a fixed-origin epoch-millis
+        // clock so it stays well-defined on the DB-rehydrated path across a restart.
+        val snapshot = session.metricsProjection.snapshot(System.currentTimeMillis(), leakThresholdMs)
         call.respond(
             HttpStatusCode.OK,
             MetricsResponse(

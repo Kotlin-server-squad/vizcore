@@ -36,7 +36,12 @@ import java.util.ArrayDeque
  *   the DebugProbes synthesizer never emits one, so the `/threads` projection is
  *   empty for real-app sessions (Pitfall 1).
  * - **leaks** — coroutines still alive (created, not yet terminal) whose age
- *   `now - createdAtNanos` exceeds the caller-supplied threshold (D-07).
+ *   `nowEpochMs - createdAtEpochMs` exceeds the caller-supplied threshold (D-07).
+ *   The leak-age basis is WALL-CLOCK epoch millis ([CoroutineCreated.createdAtEpochMs],
+ *   set from [System.currentTimeMillis] at construction), NOT [System.nanoTime]: epoch
+ *   millis has a fixed origin, so the subtraction stays well-defined across a backend
+ *   restart on the DB-rehydrated path that the /metrics route serves (CR-01). The route
+ *   passes [System.currentTimeMillis] as `nowEpochMs`.
  *
  * Memory is bounded to the ACTIVE set: a coroutine's leak/dispatcher tracking is
  * dropped on any terminal event (T-08-06). The throughput window is also bounded
@@ -51,7 +56,7 @@ class MetricsProjection(
 ) {
     private val lock = Any()
 
-    /** Per-active-coroutine tracking: id -> (label, createdAtNanos, dispatcherName). */
+    /** Per-active-coroutine tracking: id -> (label, createdAtEpochMs, dispatcherName). */
     private val activeCoroutines = LinkedHashMap<String, ActiveCoroutine>()
 
     /** Monotonic high-water mark of [activeCoroutines] size. */
@@ -91,7 +96,7 @@ class MetricsProjection(
                     activeCoroutines[event.coroutineId] =
                         ActiveCoroutine(
                             label = event.label,
-                            createdAtNanos = event.tsNanos,
+                            createdAtEpochMs = event.createdAtEpochMs,
                             dispatcherName = event.scopeId,
                         )
                     if (activeCoroutines.size > peakActive) peakActive = activeCoroutines.size
@@ -125,12 +130,14 @@ class MetricsProjection(
     }
 
     /**
-     * Read-only computation of the current metric set. [nowNanos] is the clock used
-     * for leak age (System.nanoTime in production; a virtual clock in tests).
+     * Read-only computation of the current metric set. [nowEpochMs] is the WALL-CLOCK
+     * read clock used for leak age (System.currentTimeMillis in production; an explicit
+     * epoch-millis clock in tests). It is epoch millis — NOT [System.nanoTime] — so the
+     * leak-age subtraction is well-defined across a restart boundary (CR-01).
      * [leakThresholdMs] flags any still-active coroutine older than the threshold.
      */
     fun snapshot(
-        nowNanos: Long,
+        nowEpochMs: Long,
         leakThresholdMs: Long,
     ): MetricsSnapshot =
         synchronized(lock) {
@@ -141,17 +148,18 @@ class MetricsProjection(
                     .groupingBy { it.dispatcherName }
                     .eachCount()
 
-            val thresholdNanos = leakThresholdMs * NANOS_PER_MILLI
             val leaks =
                 activeCoroutines
                     .asSequence()
                     .mapNotNull { (id, c) ->
-                        val aliveNanos = nowNanos - c.createdAtNanos
-                        if (aliveNanos > thresholdNanos) {
+                        // Wall-clock age in millis. A non-positive age (clock skew, or a
+                        // default 0L stamp on a legacy row) is never reported as a leak.
+                        val aliveMs = nowEpochMs - c.createdAtEpochMs
+                        if (aliveMs > 0 && aliveMs > leakThresholdMs) {
                             LeakInfo(
                                 coroutineId = id,
                                 label = c.label,
-                                aliveMs = aliveNanos / NANOS_PER_MILLI,
+                                aliveMs = aliveMs,
                             )
                         } else {
                             null
@@ -184,12 +192,11 @@ class MetricsProjection(
 
     private data class ActiveCoroutine(
         val label: String?,
-        val createdAtNanos: Long,
+        val createdAtEpochMs: Long,
         val dispatcherName: String,
     )
 
     companion object {
-        private const val NANOS_PER_MILLI = 1_000_000L
         private const val NANOS_PER_SECOND = 1_000_000_000.0
 
         /** Sliding window for the observed-throughput estimate (10s of recent arrivals). */

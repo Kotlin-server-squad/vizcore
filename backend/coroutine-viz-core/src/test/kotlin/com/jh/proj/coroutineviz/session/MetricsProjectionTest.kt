@@ -27,6 +27,7 @@ class MetricsProjectionTest {
         scope: String,
         tsNanos: Long,
         label: String? = id,
+        createdAtEpochMs: Long = 0L,
     ): CoroutineCreated =
         CoroutineCreated(
             sessionId = session.sessionId,
@@ -37,6 +38,7 @@ class MetricsProjectionTest {
             parentCoroutineId = null,
             scopeId = scope,
             label = label,
+            createdAtEpochMs = createdAtEpochMs,
         )
 
     private fun started(
@@ -90,7 +92,7 @@ class MetricsProjectionTest {
                 )
             metrics.rebuildFrom(events)
 
-            val snap = metrics.snapshot(nowNanos = 10, leakThresholdMs = 30_000)
+            val snap = metrics.snapshot(nowEpochMs = 10, leakThresholdMs = 30_000)
             assertEquals(0, snap.active, "both completed -> active is 0")
             assertEquals(2, snap.peak, "peak high-water mark is 2")
         } finally {
@@ -115,7 +117,7 @@ class MetricsProjectionTest {
                     started(session, "b", "io", 900 * oneMs),
                 )
             metrics.rebuildFrom(events)
-            val snap = metrics.snapshot(nowNanos = 1_000 * oneMs, leakThresholdMs = 30_000)
+            val snap = metrics.snapshot(nowEpochMs = 1_000 * oneMs, leakThresholdMs = 30_000)
             assertTrue(snap.throughputPerSec > 0.0, "throughput must be positive after a burst; was ${snap.throughputPerSec}")
         } finally {
             session.close()
@@ -167,18 +169,18 @@ class MetricsProjectionTest {
         val session = VizSession("metrics-leak")
         try {
             val metrics = session.metricsProjection
-            val msToNanos = 1_000_000L
-            // 'old' created at t0; 'young' created at t0 + 29s.
+            // Leak age is WALL-CLOCK epoch millis (CR-01): createdAtEpochMs is the basis,
+            // NOT tsNanos. 'old' created at epoch 0; 'young' created at epoch 29s.
             metrics.rebuildFrom(
                 listOf(
-                    created(session, "old", "io", 0, label = "old-leak"),
+                    created(session, "old", "io", tsNanos = 0, label = "old-leak", createdAtEpochMs = 0),
                     started(session, "old", "io", 1),
-                    created(session, "young", "io", 29_000 * msToNanos),
-                    started(session, "young", "io", 29_000 * msToNanos + 1),
+                    created(session, "young", "io", tsNanos = 2, createdAtEpochMs = 29_000),
+                    started(session, "young", "io", 3),
                 ),
             )
-            // now = t0 + 31s, threshold = 30s -> only 'old' leaks.
-            val snap = metrics.snapshot(nowNanos = 31_000 * msToNanos, leakThresholdMs = 30_000)
+            // now = 31s (epoch ms), threshold = 30s -> only 'old' (age 31s) leaks; 'young' is 2s.
+            val snap = metrics.snapshot(nowEpochMs = 31_000, leakThresholdMs = 30_000)
             assertEquals(1, snap.leaks.size, "exactly one leak; was ${snap.leaks}")
             val leak = snap.leaks.single()
             assertEquals("old", leak.coroutineId)
@@ -211,7 +213,7 @@ class MetricsProjectionTest {
                 seq = 0
                 val events = build(rebuilt)
                 rebuilt.metricsProjection.rebuildFrom(events)
-                rebuilt.metricsProjection.snapshot(nowNanos = 100 * msToNanos, leakThresholdMs = 30_000)
+                rebuilt.metricsProjection.snapshot(nowEpochMs = 100 * msToNanos, leakThresholdMs = 30_000)
             } finally {
                 rebuilt.close()
             }
@@ -233,7 +235,7 @@ class MetricsProjectionTest {
                         Thread.sleep(10)
                     }
                 }
-                live.metricsProjection.snapshot(nowNanos = 100 * msToNanos, leakThresholdMs = 30_000)
+                live.metricsProjection.snapshot(nowEpochMs = 100 * msToNanos, leakThresholdMs = 30_000)
             } finally {
                 live.close()
             }

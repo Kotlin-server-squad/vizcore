@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.persistence
 
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
+import com.jh.proj.coroutineviz.session.MetricsSnapshot
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
@@ -45,18 +46,35 @@ class MetricsLeakAgePersistenceTest {
         // ~60s, NOT negative and NOT absurd.
         val createdAtEpochMs = System.currentTimeMillis() - AGED_MS
 
-        // --- First "boot": create a session + write a leaking CoroutineCreated, then close. ---
-        val sessionId: String
-        val ds1 = h2DataSource(url)
-        try {
-            val db1 = DatabaseFactory.init(ds1 as DataSource)
-            val store1 = ExposedSessionStore(db1)
-            val session = runBlocking { store1.createSession("leak-age") }
-            sessionId = session.sessionId
+        // Boot 1: write a leaking CoroutineCreated, then close the pool.
+        val sessionId = writeLeakingSession(url, createdAtEpochMs)
 
-            val created =
+        // Boot 2: NEW pool + NEW store on the SAME file (simulated restart).
+        val snap = readMetricsAfterRestart(url, sessionId)
+
+        assertEquals(1, snap.leaks.size, "exactly one leak after restart; was ${snap.leaks}")
+        val leak = snap.leaks.single()
+        assertEquals("leaker", leak.coroutineId)
+        assertEquals("leaky-coroutine", leak.label)
+        assertTrue(
+            leak.aliveMs in LOWER_BOUND_MS until UPPER_BOUND_MS,
+            "aliveMs must be a sane positive wall-clock age (~$AGED_MS ms) across the " +
+                "restart boundary; was ${leak.aliveMs}",
+        )
+    }
+
+    /** Boot 1: create a session and persist a never-terminated, past-dated coroutine. */
+    private fun writeLeakingSession(
+        url: String,
+        createdAtEpochMs: Long,
+    ): String {
+        val ds = h2DataSource(url)
+        try {
+            val store = ExposedSessionStore(DatabaseFactory.init(ds as DataSource))
+            val session = runBlocking { store.createSession("leak-age") }
+            session.send(
                 CoroutineCreated(
-                    sessionId = sessionId,
+                    sessionId = session.sessionId,
                     seq = 1,
                     tsNanos = 111,
                     coroutineId = "leaker",
@@ -65,10 +83,11 @@ class MetricsLeakAgePersistenceTest {
                     scopeId = "Dispatchers.IO",
                     label = "leaky-coroutine",
                     createdAtEpochMs = createdAtEpochMs,
-                )
-            val startedEvent =
+                ),
+            )
+            session.send(
                 CoroutineStarted(
-                    sessionId = sessionId,
+                    sessionId = session.sessionId,
                     seq = 2,
                     tsNanos = 222,
                     coroutineId = "leaker",
@@ -76,43 +95,35 @@ class MetricsLeakAgePersistenceTest {
                     parentCoroutineId = null,
                     scopeId = "Dispatchers.IO",
                     label = "leaky-coroutine",
-                )
-            session.send(created)
-            session.send(startedEvent)
+                ),
+            )
             assertEquals(2, session.store.count())
+            return session.sessionId
         } finally {
-            ds1.close()
+            ds.close()
         }
+    }
 
-        // --- Second "boot": NEW pool + NEW store on the SAME file (simulated restart). ---
-        val ds2 = h2DataSource(url)
+    /**
+     * Boot 2: rehydrate the session from a SECOND store on the same file and read the
+     * metrics with the REAL wall clock the /metrics route uses — NOT a synthetic clock
+     * derived from tsNanos. This is what proves CR-01 is fixed.
+     */
+    private fun readMetricsAfterRestart(
+        url: String,
+        sessionId: String,
+    ): MetricsSnapshot {
+        val ds = h2DataSource(url)
         try {
-            val db2 = DatabaseFactory.init(ds2 as DataSource)
-            val store2 = ExposedSessionStore(db2)
-
-            val reloaded = store2.getSession(sessionId)
+            val store = ExposedSessionStore(DatabaseFactory.init(ds as DataSource))
+            val reloaded = store.getSession(sessionId)
             assertNotNull(reloaded, "session must survive restart")
-            // The metrics projection is rebuilt from the persisted events on rehydrate.
-
-            // Read with the REAL wall clock, exactly as the /metrics route does — NOT a
-            // synthetic clock derived from tsNanos. This is what proves CR-01 is fixed.
-            val snap =
-                reloaded.metricsProjection.snapshot(
-                    nowEpochMs = System.currentTimeMillis(),
-                    leakThresholdMs = THRESHOLD_MS,
-                )
-
-            assertEquals(1, snap.leaks.size, "exactly one leak after restart; was ${snap.leaks}")
-            val leak = snap.leaks.single()
-            assertEquals("leaker", leak.coroutineId)
-            assertEquals("leaky-coroutine", leak.label)
-            assertTrue(
-                leak.aliveMs in LOWER_BOUND_MS until UPPER_BOUND_MS,
-                "aliveMs must be a sane positive wall-clock age (~$AGED_MS ms) across the " +
-                    "restart boundary; was ${leak.aliveMs}",
+            return reloaded.metricsProjection.snapshot(
+                nowEpochMs = System.currentTimeMillis(),
+                leakThresholdMs = THRESHOLD_MS,
             )
         } finally {
-            ds2.close()
+            ds.close()
         }
     }
 
