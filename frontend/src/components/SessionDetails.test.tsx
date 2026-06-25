@@ -102,6 +102,12 @@ vi.mock('./SessionMetrics', () => ({
   ),
 }))
 
+vi.mock('./LivePill', () => ({
+  LivePill: ({ streamEnabled }: { streamEnabled: boolean }) => (
+    <div data-testid="live-pill" data-stream={String(streamEnabled)} />
+  ),
+}))
+
 vi.mock('./channels/ChannelPanel', () => ({
   ChannelPanel: () => <div data-testid="channel-panel" />,
 }))
@@ -833,14 +839,30 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
     expect(graph).toHaveAttribute('data-count', '200')
   })
 
-  it('mounts the SessionMetrics panel for the session (Threads tab)', async () => {
+  it('mounts the docked metrics panel (LivePill + SessionMetrics) below the live canvas (Delta L1)', () => {
     mountSession([coro('a-active', 'ACTIVE')])
-    // SessionMetrics is mounted alongside DispatcherOverview in the Threads tab,
-    // which HeroUI renders lazily on selection.
-    await userEvent.click(screen.getByRole('tab', { name: /threads/i }))
+    // The dock lives in the live "Coroutines" tab region (default selected) —
+    // no tab switch needed; it is always visible below the canvas.
     const metrics = screen.getByTestId('session-metrics')
     expect(metrics).toBeInTheDocument()
     expect(metrics).toHaveAttribute('data-session', 'session-1')
+    // The LIVE/DEMO pill renders in the dock header.
+    expect(screen.getByTestId('live-pill')).toBeInTheDocument()
+  })
+
+  it('mounts SessionMetrics exactly once (single /metrics poll — no double-mount, T-08.1-04)', () => {
+    mountSession([coro('a-active', 'ACTIVE')])
+    expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
+  })
+
+  it('no longer renders SessionMetrics under the Threads tab (Delta L1 removal)', async () => {
+    mountSession([coro('a-active', 'ACTIVE')])
+    await userEvent.click(screen.getByRole('tab', { name: /threads/i }))
+    // The dock metrics still mount once (in the always-rendered live region),
+    // but the Threads tab must NOT add a second SessionMetrics.
+    expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
+    // DispatcherOverview (thread lanes) may remain under Threads.
+    expect(screen.getByTestId('dispatcher-overview')).toBeInTheDocument()
   })
 
   it('shows the "No live coroutines yet" empty state when nothing is active', () => {
