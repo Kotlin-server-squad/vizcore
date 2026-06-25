@@ -117,7 +117,14 @@ class MetricsProjectionTest {
                     started(session, "b", "io", 900 * oneMs),
                 )
             metrics.rebuildFrom(events)
-            val snap = metrics.snapshot(nowEpochMs = 1_000 * oneMs, leakThresholdMs = 30_000)
+            // Read the throughput clock just after the last arrival so the window retains
+            // all 4 events (WR-04: throughput is evicted against the nowNanos read clock).
+            val snap =
+                metrics.snapshot(
+                    nowEpochMs = 1_000,
+                    leakThresholdMs = 30_000,
+                    nowNanos = 1_000 * oneMs,
+                )
             assertTrue(snap.throughputPerSec > 0.0, "throughput must be positive after a burst; was ${snap.throughputPerSec}")
         } finally {
             session.close()
@@ -247,5 +254,76 @@ class MetricsProjectionTest {
             liveSnap.dispatcherUtilization,
             "dispatcher util must match between rebuild and live",
         )
+    }
+
+    @Test
+    fun `rebuildFrom replays a known sequence to exact active and peak under one lock`() {
+        // WR-01: clear + replay run inside ONE lock, so rebuildFrom over a known sequence
+        // yields the deterministic active/peak with no interleaving corruption.
+        val session = VizSession("metrics-rebuild-atomic")
+        try {
+            val metrics = session.metricsProjection
+            metrics.rebuildFrom(
+                listOf(
+                    created(session, "a", "io", 0),
+                    started(session, "a", "io", 1),
+                    created(session, "b", "io", 2),
+                    started(session, "b", "io", 3),
+                    created(session, "c", "io", 4),
+                    // peak is 3 here (a, b, c all active)
+                    completed(session, "a", "io", 5),
+                    completed(session, "b", "io", 6),
+                ),
+            )
+            // A second rebuild over the SAME sequence must reproduce the identical result
+            // (clear-then-replay is atomic and idempotent).
+            metrics.rebuildFrom(
+                listOf(
+                    created(session, "a", "io", 0),
+                    started(session, "a", "io", 1),
+                    created(session, "b", "io", 2),
+                    started(session, "b", "io", 3),
+                    created(session, "c", "io", 4),
+                    completed(session, "a", "io", 5),
+                    completed(session, "b", "io", 6),
+                ),
+            )
+            val snap = metrics.snapshot(nowEpochMs = 10, leakThresholdMs = 30_000)
+            assertEquals(1, snap.active, "only 'c' remains active after the sequence")
+            assertEquals(3, snap.peak, "peak high-water mark across the sequence is 3")
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `throughput decays toward zero on an idle session as the read clock advances`() {
+        // WR-04: after a burst, advancing the nowNanos read clock past the window evicts
+        // the stale arrivals so the rate decays to ~0 instead of reporting a non-zero /s
+        // indefinitely.
+        val session = VizSession("metrics-idle-decay")
+        try {
+            val metrics = session.metricsProjection
+            val oneMs = 1_000_000L
+            metrics.rebuildFrom(
+                listOf(
+                    created(session, "a", "io", 0),
+                    started(session, "a", "io", 100 * oneMs),
+                    created(session, "b", "io", 200 * oneMs),
+                    started(session, "b", "io", 300 * oneMs),
+                ),
+            )
+            // Right after the burst: positive throughput.
+            val live =
+                metrics.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000, nowNanos = 300 * oneMs)
+            assertTrue(live.throughputPerSec > 0.0, "throughput must be positive right after a burst")
+
+            // 60s later with no new arrivals (window is 10s): the window is empty -> ~0 /s.
+            val idle =
+                metrics.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000, nowNanos = 60_000 * oneMs)
+            assertEquals(0.0, idle.throughputPerSec, "idle throughput must decay to 0; was ${idle.throughputPerSec}")
+        } finally {
+            session.close()
+        }
     }
 }
