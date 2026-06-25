@@ -277,14 +277,20 @@ Plans:
 
 ### Phase 08.2: Surface source attribution + jump-to-code on a MOUNTED per-coroutine view (mount CoroutineTimelineView/detail via lazy GET /coroutines/{id}/timeline) — makes Delta S1 user-reachable and folds in the deferred live-card source chip (Delta L2) (INSERTED)
 
-**Goal:** Make per-coroutine source attribution + jump-to-code USER-REACHABLE in the live view. Mount a per-coroutine timeline/detail surface that renders the creation/suspension `file:line` frames (sourced lazily via the existing `GET /api/sessions/{id}/coroutines/{coroutineId}/timeline`), wiring the already-built jump-to-code (copy+toast) and frame classifier from 08.1 so they actually appear; optionally fold in the live-card source chip (deferred Delta L2) via the same lazy fetch. FE-only — no backend change.
+**Goal:** Make per-coroutine source attribution + jump-to-code USER-REACHABLE in the live view. Mount a per-coroutine source-detail drawer that renders the creation/suspension `file:line` frames (sourced lazily via the existing `GET /api/sessions/{id}/coroutines/{coroutineId}/timeline`), wiring the already-built jump-to-code (copy+toast) and frame classifier from 08.1 so they actually appear. FE-only — no backend change, no new dependency, literal Tailwind only (IN-12).
 **Requirements**: RCO-06
 **Depends on:** Phase 08.1 (reuses its LivePill, frame classifier, and jump-to-code components)
-**Plans:** 0 plans
+**Plans:** 2 plans (2 waves)
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 08.2 to break down)
+**Wave 1** *(NEW drawer surface — no deps; unit-testable in isolation)*
+
+- [ ] 08.2-01-PLAN.md — `CoroutineSourceDrawer` (HeroUI Drawer, right/lg) + extracted headerless `CoroutineSourceStack` body (Created at / Suspended at file:line frames) reusing the LOCKED jump-to-code + lazy useCoroutineTimeline data path verbatim; colocated tests for loading/empty/error/jump-to-code/inert-library (RCO-06; D-01/D-03/D-04/D-07/D-08/D-09)
+
+**Wave 2** *(mount path — depends on 08.2-01: imports CoroutineSourceDrawer)*
+
+- [ ] 08.2-02-PLAN.md — Optional/additive `onSelect`/`selectedNodeId` on CoroutineTree + CoroutineTreeGraph (selected ring, IN-12 literal classes) + lift `selectedCoroutineId` in SessionDetails + mount the drawer in the live view; integration test proving click→drawer→file:line reachability; replay/shared views stay presentational (RCO-06; D-02/D-05/D-06)
 
 ## Progress
 
@@ -302,5 +308,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 7. Real-App Transport (v1.1) | 4/4 | Complete    | 2026-06-24 |
 | 8. Live Real-App View + Metrics (v1.1) | 4/4 | Complete (verified + secured + live UAT passed) | 2026-06-25 |
 | 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete    | 2026-06-25 |
+| 8.2 Surface source attribution + jump-to-code (mounted) (v1.1) | 0/2 | Planned | - |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
