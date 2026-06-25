@@ -263,17 +263,28 @@ Plans:
 
 **UI hint**: yes
 
-### Phase 08.1: Align live real-app view to sketch winners — IDE-docked metrics tiles in panel header (out of the Threads tab) + per-frame jump-to-code source attribution (sketches 001/002 via sketch-findings-vizcore) (INSERTED)
+### Phase 08.1: Align live real-app view to sketch winners — IDE-docked metric tiles (Delta L1 delivered; Delta S1/L2 source-attribution surfacing → Phase 08.2) (INSERTED)
 
-**Goal:** Move the shipped Phase-8 live real-app view to match the locked sketch winners (IDE-docked metric tiles + per-frame jump-to-code source attribution) — FE alignment only, no backend change.
-**Requirements**: RCO-06, RCO-07
+**Goal:** Move the shipped Phase-8 live real-app view to match the locked sketch winners. **Delivered: Delta L1** — IDE-docked metric tiles in a static panel below the canvas, metrics out of the Threads tab, LIVE pill (live-UAT verified 2026-06-25). **Re-scoped out:** Delta S1 jump-to-code shipped in code (frame classifier + copy+toast) but its target components (CoroutineNodeEnhanced/CoroutineTimelineView) are unmounted, so it is not user-reachable; surfacing S1 + the deferred L2 chip moved to **Phase 08.2**.
+**Requirements**: RCO-07 (metrics surfacing, delivered); RCO-06 source-attribution surfacing → 08.2
 **Depends on:** Phase 8
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 
-- [x] 08.1-01-PLAN.md — Wave 1: frame classifier + LivePill + jump-to-code (S1) on the two existing file:line sites (SourceAttribution chip/stack = Delta L2 DEFERRED out of 08.1) ✅ 2026-06-25 (FE gates green: tests/lint/build)
-- [x] 08.1-02-PLAN.md — Wave 2: reflow SessionMetrics to a horizontal strip (2-weight numerals) + static docked panel with LivePill below the canvas; remove metrics from the Threads tab (L1) ✅ 2026-06-25 (FE gates green: 463 tests/lint/build)
+- [x] 08.1-01-PLAN.md — Wave 1: frame classifier + LivePill + jump-to-code (S1) code on the two file:line sites (NOT user-reachable — components unmounted; surfacing → 08.2; SourceAttribution chip/stack = Delta L2 DEFERRED) ✅ 2026-06-25 (FE gates green: tests/lint/build)
+- [x] 08.1-02-PLAN.md — Wave 2: reflow SessionMetrics to a horizontal strip (2-weight numerals) + static docked panel with LivePill below the canvas; remove metrics from the Threads tab (L1) ✅ 2026-06-25 (FE gates green: 463 tests/lint/build; live-UAT verified)
+
+### Phase 08.2: Surface source attribution + jump-to-code on a MOUNTED per-coroutine view (mount CoroutineTimelineView/detail via lazy GET /coroutines/{id}/timeline) — makes Delta S1 user-reachable and folds in the deferred live-card source chip (Delta L2) (INSERTED)
+
+**Goal:** Make per-coroutine source attribution + jump-to-code USER-REACHABLE in the live view. Mount a per-coroutine timeline/detail surface that renders the creation/suspension `file:line` frames (sourced lazily via the existing `GET /api/sessions/{id}/coroutines/{coroutineId}/timeline`), wiring the already-built jump-to-code (copy+toast) and frame classifier from 08.1 so they actually appear; optionally fold in the live-card source chip (deferred Delta L2) via the same lazy fetch. FE-only — no backend change.
+**Requirements**: RCO-06
+**Depends on:** Phase 08.1 (reuses its LivePill, frame classifier, and jump-to-code components)
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 08.2 to break down)
 
 ## Progress
 
@@ -290,6 +301,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 6. Instrumentation Source + DebugProbesSource (v1.1) | 2/2 | Complete    | 2026-06-24 |
 | 7. Real-App Transport (v1.1) | 4/4 | Complete    | 2026-06-24 |
 | 8. Live Real-App View + Metrics (v1.1) | 4/4 | Complete (verified + secured + live UAT passed) | 2026-06-25 |
-| 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete (both waves shipped; ready for verification) | 2026-06-25 |
+| 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete    | 2026-06-25 |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
