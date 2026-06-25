@@ -31,6 +31,7 @@ import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
 import { SessionMetrics } from './SessionMetrics'
+import { LivePill } from './LivePill'
 import { EmptyState } from './EmptyState'
 import { ChannelPanel } from './channels/ChannelPanel'
 import { FlowPanel } from './flow/FlowPanel'
@@ -748,6 +749,21 @@ export function SessionDetails({
                 </CardBody>
               </Card>
             )}
+
+            {/* Delta L1: static docked panel below the live canvas (sketch
+                001-C, LOCKED — no collapse/resize). --surface body + --border
+                top edge; header hosts the LIVE/DEMO pill + the reflowed metric
+                tile strip with leaks inline. Delta L2 (source panel) deferred. */}
+            <div className="mt-8 rounded-xl border-t border-default-200 bg-content1">
+              <div className="flex items-center justify-between gap-4 p-6">
+                <LivePill streamEnabled={streamEnabled} />
+                <SessionMetrics
+                  sessionId={sessionId}
+                  isLive={streamEnabled}
+                  enabled={!readOnly}
+                />
+              </div>
+            </div>
           </div>
         </Tab>
 
@@ -779,12 +795,10 @@ export function SessionDetails({
               </Card>
             )}
 
+            {/* Delta L1: SessionMetrics moved out of the Threads tab into the
+                static docked panel below the live canvas. Thread lanes
+                (DispatcherOverview) remain here per UI-SPEC line 125. */}
             <div className="py-2 space-y-4">
-              <SessionMetrics
-                sessionId={sessionId}
-                isLive={streamEnabled}
-                enabled={!readOnly}
-              />
               <DispatcherOverview
                 sessionId={sessionId}
                 isLive={streamEnabled}

@@ -858,9 +858,10 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
   it('no longer renders SessionMetrics under the Threads tab (Delta L1 removal)', async () => {
     mountSession([coro('a-active', 'ACTIVE')])
     await userEvent.click(screen.getByRole('tab', { name: /threads/i }))
-    // The dock metrics still mount once (in the always-rendered live region),
-    // but the Threads tab must NOT add a second SessionMetrics.
-    expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
+    // HeroUI renders only the selected tab panel: on Threads, the live-region
+    // dock (which now owns SessionMetrics) is unmounted, so no SessionMetrics
+    // appears here. The Threads tab itself must NOT add one back.
+    expect(screen.queryByTestId('session-metrics')).toBeNull()
     // DispatcherOverview (thread lanes) may remain under Threads.
     expect(screen.getByTestId('dispatcher-overview')).toBeInTheDocument()
   })
