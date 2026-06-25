@@ -273,7 +273,7 @@ Plans:
 Plans:
 
 - [x] 08.1-01-PLAN.md — Wave 1: frame classifier + LivePill + jump-to-code (S1) on the two existing file:line sites (SourceAttribution chip/stack = Delta L2 DEFERRED out of 08.1) ✅ 2026-06-25 (FE gates green: tests/lint/build)
-- [ ] 08.1-02-PLAN.md — Wave 2: reflow SessionMetrics to a horizontal strip (2-weight numerals) + static docked panel with LivePill below the canvas; remove metrics from the Threads tab (L1)
+- [x] 08.1-02-PLAN.md — Wave 2: reflow SessionMetrics to a horizontal strip (2-weight numerals) + static docked panel with LivePill below the canvas; remove metrics from the Threads tab (L1) ✅ 2026-06-25 (FE gates green: 463 tests/lint/build)
 
 ## Progress
 
@@ -290,6 +290,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 6. Instrumentation Source + DebugProbesSource (v1.1) | 2/2 | Complete    | 2026-06-24 |
 | 7. Real-App Transport (v1.1) | 4/4 | Complete    | 2026-06-24 |
 | 8. Live Real-App View + Metrics (v1.1) | 4/4 | Complete (verified + secured + live UAT passed) | 2026-06-25 |
-| 8.1 Align live view to sketch winners (v1.1) | 1/2 | In progress (08.1-01 done; 08.1-02 next) | - |
+| 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete (both waves shipped; ready for verification) | 2026-06-25 |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
