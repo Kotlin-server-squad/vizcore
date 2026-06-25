@@ -1,8 +1,61 @@
-import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
+import { Card, CardBody, CardHeader, Chip, Tooltip } from '@heroui/react'
 import { useCoroutineTimeline, useTimelineStats, useSuspensionPoints } from '@/hooks/use-timeline'
 import { formatNanoTime } from '@/lib/utils'
+import { isUserFrame } from '@/lib/source-frames'
+import { toastSuccess } from '@/lib/toast'
 import { FiClock, FiActivity, FiPause, FiCpu, FiMapPin } from 'react-icons/fi'
 import type { TimelineEvent } from '@/types/api'
+
+/**
+ * Delta S1 jump-to-code (v1, LOCKED): copy `{fileName}:{lineNumber}` to the
+ * clipboard and confirm with a success toast.
+ */
+function copyFileLine(fileName: string, lineNumber: number | string): void {
+  const target = `${fileName}:${lineNumber}`
+  void navigator.clipboard?.writeText(target)
+  toastSuccess(`Copied ${target}`)
+}
+
+/**
+ * Renders a suspension point's `file:line`. User-code frames (per `isUserFrame`)
+ * become an accent jump-to-code target wrapped in a "Copy file:line" tooltip;
+ * library frames keep the call site's existing dimmed `text-default-500` text.
+ */
+function TimelineSourceRef({
+  fn,
+  fileName,
+  lineNumber,
+}: {
+  fn: string | null | undefined
+  fileName: string
+  lineNumber?: number | null
+}) {
+  const label = lineNumber ? `${fileName}:${lineNumber}` : fileName
+
+  if (isUserFrame(fn)) {
+    return (
+      <Tooltip content="Copy file:line">
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Jump to code: ${label}`}
+          className="font-semibold text-primary cursor-pointer hover:underline"
+          onClick={() => copyFileLine(fileName, lineNumber!)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              copyFileLine(fileName, lineNumber!)
+            }
+          }}
+        >
+          {label}
+        </span>
+      </Tooltip>
+    )
+  }
+
+  return <>{label}</>
+}
 
 interface CoroutineTimelineViewProps {
   sessionId: string
@@ -130,8 +183,11 @@ export function CoroutineTimelineView({ sessionId, coroutineId }: CoroutineTimel
                     <div className="font-mono text-sm font-semibold">{point.function}</div>
                     {point.fileName && (
                       <div className="text-xs text-default-500">
-                        {point.fileName}
-                        {point.lineNumber && `:${point.lineNumber}`}
+                        <TimelineSourceRef
+                          fn={point.function}
+                          fileName={point.fileName}
+                          lineNumber={point.lineNumber}
+                        />
                       </div>
                     )}
                     {point.duration && (
@@ -254,8 +310,11 @@ function TimelineEventCard({ event, isLast }: { event: TimelineEvent; isLast: bo
                   </div>
                   {event.suspensionPoint.fileName && (
                     <div className="text-default-500 ml-5">
-                      {event.suspensionPoint.fileName}
-                      {event.suspensionPoint.lineNumber && `:${event.suspensionPoint.lineNumber}`}
+                      <TimelineSourceRef
+                        fn={event.suspensionPoint.function}
+                        fileName={event.suspensionPoint.fileName}
+                        lineNumber={event.suspensionPoint.lineNumber}
+                      />
                     </div>
                   )}
                 </div>

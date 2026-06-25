@@ -12,7 +12,62 @@ import { motion } from 'framer-motion'
 import { FiCpu, FiZap, FiClock } from 'react-icons/fi'
 import { getDispatcherBadgeProps, formatThreadName } from '@/lib/dispatcher-utils'
 import { formatNanoTime } from '@/lib/utils'
+import { isUserFrame } from '@/lib/source-frames'
+import { toastSuccess } from '@/lib/toast'
 import type { HierarchyNode } from '@/types/api'
+
+/**
+ * Delta S1 jump-to-code resolution (v1, LOCKED): copy `{fileName}:{lineNumber}`
+ * to the clipboard and confirm with a success toast. The IDE deep-link strategy
+ * can be swapped behind this handler later without changing the visual contract.
+ */
+export function copyFileLine(fileName: string, lineNumber: number | string): void {
+  const target = `${fileName}:${lineNumber}`
+  void navigator.clipboard?.writeText(target)
+  toastSuccess(`Copied ${target}`)
+}
+
+/**
+ * Delta S1 source reference for a suspension point's `file:line`.
+ *
+ * User-code frames (per {@link isUserFrame}) render as an accent jump-to-code
+ * target (copy `file:line` + toast); library frames render as plain dimmed text
+ * that inherits the call site's existing weight-400 dim class.
+ */
+export function SuspensionSourceRef({
+  fn,
+  fileName,
+  lineNumber,
+}: {
+  fn: string | null | undefined
+  fileName?: string | null
+  lineNumber?: number | null
+}) {
+  if (!fileName) return null
+  const label = `${fileName}:${lineNumber}`
+
+  if (isUserFrame(fn)) {
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={`Jump to code: ${label}`}
+        className="font-semibold text-primary cursor-pointer hover:underline"
+        onClick={() => copyFileLine(fileName, lineNumber!)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            copyFileLine(fileName, lineNumber!)
+          }
+        }}
+      >
+        {label}
+      </span>
+    )
+  }
+
+  return <>{label}</>
+}
 
 interface EnhancedNodeBadgesProps {
   node: HierarchyNode
@@ -73,7 +128,12 @@ export function EnhancedNodeBadges({ node }: EnhancedNodeBadgesProps) {
                 <div key={i} className="text-xs mb-1">
                   <div className="font-mono">{point.function}</div>
                   <div className="text-default-400">
-                    {point.fileName}:{point.lineNumber} ({point.reason})
+                    <SuspensionSourceRef
+                      fn={point.function}
+                      fileName={point.fileName}
+                      lineNumber={point.lineNumber}
+                    />{' '}
+                    ({point.reason})
                   </div>
                 </div>
               ))}
