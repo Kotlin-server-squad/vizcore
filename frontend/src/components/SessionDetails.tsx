@@ -26,6 +26,7 @@ import { projectCoroutines } from '@/lib/projections/project-coroutines'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { CoroutineTree } from './CoroutineTree'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
+import { CoroutineSourceDrawer } from './CoroutineSourceDrawer'
 import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
@@ -104,6 +105,11 @@ export function SessionDetails({
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
+  // Selected coroutine for the source drawer (RCO-06, D-02/D-06). Lifted here so
+  // both live-view modes (graph/list) share one selection + one mounted drawer.
+  // Null = drawer closed. Wired ONLY at the live "What's running now" mount, so
+  // replay/shared node renders stay non-interactive.
+  const [selectedCoroutineId, setSelectedCoroutineId] = useState<string | null>(null)
   // Active-only "What's running now" view (D-08): completed coroutines collapse
   // into an expandable aggregate, toggled off by default.
   const [showCompleted, setShowCompleted] = useState(false)
@@ -736,9 +742,17 @@ export function SessionDetails({
                 <CardBody className="overflow-auto">
                   <div ref={panelRef}>
                     {viewMode === 'graph' ? (
-                      <CoroutineTreeGraph coroutines={renderedCoroutines} />
+                      <CoroutineTreeGraph
+                        coroutines={renderedCoroutines}
+                        onSelect={setSelectedCoroutineId}
+                        selectedNodeId={selectedCoroutineId}
+                      />
                     ) : (
-                      <CoroutineTree coroutines={renderedCoroutines} />
+                      <CoroutineTree
+                        coroutines={renderedCoroutines}
+                        onSelect={setSelectedCoroutineId}
+                        selectedNodeId={selectedCoroutineId}
+                      />
                     )}
                   </div>
                   {moreCount > 0 && (
@@ -749,6 +763,18 @@ export function SessionDetails({
                 </CardBody>
               </Card>
             )}
+
+            {/* Source-attribution drawer (RCO-06, D-02/D-06). Mounted ONLY in the
+                live "What's running now" block so it is absent in shared/replay
+                contexts. Opens when a live node is selected; lazily fetches the
+                timeline (enabled-guarded) only while a coroutineId is set. */}
+            <CoroutineSourceDrawer
+              sessionId={sessionId}
+              coroutineId={selectedCoroutineId}
+              label={renderedCoroutines.find(c => c.id === selectedCoroutineId)?.label}
+              isOpen={!!selectedCoroutineId}
+              onClose={() => setSelectedCoroutineId(null)}
+            />
 
             {/* Delta L1: static docked panel below the live canvas (sketch
                 001-C, LOCKED — no collapse/resize). --surface body + --border
