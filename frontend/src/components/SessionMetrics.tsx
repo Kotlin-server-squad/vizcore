@@ -18,10 +18,10 @@ interface SessionMetricsProps {
 }
 
 /**
- * The "Session metrics" panel (RCO-07, D-06/D-07). Modelled on
- * DispatcherOverview: a Card grid (md:grid-cols-2) of Active / Peak /
- * Throughput / Dispatcher utilization, plus a Potential-leaks card backed by
- * LeakList. Fed by useSessionMetrics (poll-while-live).
+ * The "Session metrics" panel (RCO-07, D-06/D-07). Delta L1 reflows the tiles
+ * into a single horizontal strip (flex-wrap) of Active / Peak / Throughput /
+ * Dispatcher utilization, plus a Potential-leaks card backed by LeakList. Fed
+ * by useSessionMetrics (poll-while-live).
  */
 export function SessionMetrics({
   sessionId,
@@ -56,19 +56,22 @@ export function SessionMetrics({
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">Session metrics</h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Delta L1: a single horizontal tile strip (wrap allowed on narrow
+          widths) — Active · Peak · Throughput /s · Dispatcher util — replacing
+          the old two-column card grid (UI-SPEC line 124). */}
+      <div className="flex flex-wrap gap-4">
         {/* Active — uses the primary accent (UI-SPEC accent reserved list) */}
         <MetricCard
           icon={<FiActivity className="w-4 h-4 text-primary" />}
           label="Active"
-          value={<span className="text-lg font-bold text-primary">{data.active}</span>}
+          value={<span className="text-lg font-semibold text-primary">{data.active}</span>}
         />
 
         {/* Peak — neutral metric numeral */}
         <MetricCard
           icon={<FiTrendingUp className="w-4 h-4 text-default-600" />}
           label="Peak"
-          value={<span className="text-lg font-bold">{data.peak}</span>}
+          value={<span className="text-lg font-semibold">{data.peak}</span>}
         />
 
         {/* Throughput — "—" em-dash when zero/no events, else "N /s" */}
@@ -78,11 +81,11 @@ export function SessionMetrics({
           value={
             data.throughputPerSec > 0 ? (
               <span>
-                <span className="text-lg font-bold">{formatThroughput(data.throughputPerSec)}</span>
+                <span className="text-lg font-semibold">{formatThroughput(data.throughputPerSec)}</span>
                 <span className="text-sm text-default-500"> /s</span>
               </span>
             ) : (
-              <span className="text-lg font-bold text-default-400">—</span>
+              <span className="text-lg font-semibold text-default-400">—</span>
             )
           }
         />
