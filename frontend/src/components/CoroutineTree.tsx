@@ -10,9 +10,18 @@ import { layoutSpring } from '@/lib/layout-transition'
 
 interface CoroutineTreeProps {
   coroutines: CoroutineNode[]
+  /**
+   * Optional/additive (D-05/D-06). When provided, each node becomes a
+   * clickable/focusable button that fires `onSelect(node.id)` on click or
+   * Enter/Space — used by the live "What's running now" view to open the
+   * source drawer. When omitted (replay/shared views) nodes stay presentational.
+   */
+  onSelect?: (id: string) => void
+  /** Id of the currently selected node; drives the `ring-2 ring-primary` highlight. */
+  selectedNodeId?: string | null
 }
 
-export function CoroutineTree({ coroutines }: CoroutineTreeProps) {
+export function CoroutineTree({ coroutines, onSelect, selectedNodeId }: CoroutineTreeProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines), [coroutines])
 
   if (coroutines.length === 0) {
@@ -27,7 +36,13 @@ export function CoroutineTree({ coroutines }: CoroutineTreeProps) {
     <LayoutGroup>
       <div className="space-y-4">
         {tree.map(node => (
-          <TreeNode key={node.id} node={node} depth={0} />
+          <TreeNode
+            key={node.id}
+            node={node}
+            depth={0}
+            onSelect={onSelect}
+            selectedNodeId={selectedNodeId}
+          />
         ))}
       </div>
     </LayoutGroup>
@@ -39,9 +54,12 @@ type CoroutineTreeNode = CoroutineNode & { children: CoroutineTreeNode[] }
 interface TreeNodeProps {
   node: CoroutineTreeNode
   depth: number
+  onSelect?: (id: string) => void
+  selectedNodeId?: string | null
 }
 
-function TreeNode({ node, depth }: TreeNodeProps) {
+function TreeNode({ node, depth, onSelect, selectedNodeId }: TreeNodeProps) {
+  const isSelected = selectedNodeId === node.id
   const colors = getStateColors(node.state)
   const stateVariant = getStateVariant(node.state)
   const shouldAnimate = useAnimationSlot()
@@ -79,7 +97,26 @@ function TreeNode({ node, depth }: TreeNodeProps) {
           ? { whileHover: hoverGlow }
           : {})}
       >
-        <Card className="mb-2" shadow="sm">
+        <Card
+          className={
+            isSelected
+              ? 'mb-2 ring-2 ring-primary bg-primary/5'
+              : onSelect
+                ? 'mb-2 cursor-pointer hover:bg-default-100'
+                : 'mb-2'
+          }
+          shadow="sm"
+          {...(onSelect
+            ? {
+                // HeroUI Card gates its internal click handling behind
+                // `isPressable`; this also makes the Card a real role="button"
+                // focusable target firing on click + Enter/Space natively.
+                isPressable: true,
+                'aria-label': `Open source for ${node.label || node.id}`,
+                onPress: () => onSelect(node.id),
+              }
+            : {})}
+        >
           <CardBody className="py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -249,7 +286,13 @@ function TreeNode({ node, depth }: TreeNodeProps) {
       </PulseComponent>
 
       {node.children.map(child => (
-        <TreeNode key={child.id} node={child} depth={depth + 1} />
+        <TreeNode
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          onSelect={onSelect}
+          selectedNodeId={selectedNodeId}
+        />
       ))}
     </OuterComponent>
   )

@@ -1,3 +1,4 @@
+import type React from 'react'
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
@@ -11,6 +12,14 @@ import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize, FiLock, FiUnlock } from 'rea
 
 interface CoroutineTreeGraphProps {
   coroutines: CoroutineNode[]
+  /**
+   * Optional/additive (D-05/D-06). When provided, each graph node card becomes
+   * a clickable/focusable button that fires `onSelect(node.id)` on click or
+   * Enter/Space. Omitted in replay/shared views (nodes stay presentational).
+   */
+  onSelect?: (id: string) => void
+  /** Id of the currently selected node; drives the `ring-2 ring-primary` highlight. */
+  selectedNodeId?: string | null
 }
 
 interface TreeNode extends CoroutineNode {
@@ -20,7 +29,7 @@ interface TreeNode extends CoroutineNode {
 // Re-alias for local readability
 const isRunning = isActiveState
 
-export function CoroutineTreeGraph({ coroutines }: CoroutineTreeGraphProps) {
+export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId }: CoroutineTreeGraphProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines), [coroutines])
   const activeCount = useMemo(
     () => coroutines.filter(c => isRunning(c.state)).length,
@@ -162,6 +171,8 @@ export function CoroutineTreeGraph({ coroutines }: CoroutineTreeGraphProps) {
                         isRoot
                         level={0}
                         siblingIndex={index}
+                        onSelect={onSelect}
+                        selectedNodeId={selectedNodeId}
                       />
                     ))}
                   </AnimatePresence>
@@ -180,9 +191,18 @@ interface TreeNodeComponentProps {
   isRoot?: boolean
   level: number
   siblingIndex: number
+  onSelect?: (id: string) => void
+  selectedNodeId?: string | null
 }
 
-function TreeNodeComponent({ node, isRoot = false, level, siblingIndex }: TreeNodeComponentProps) {
+function TreeNodeComponent({
+  node,
+  isRoot = false,
+  level,
+  siblingIndex,
+  onSelect,
+  selectedNodeId,
+}: TreeNodeComponentProps) {
   const colors = getStateColors(node.state)
   const hasChildren = node.children.length > 0
   const shouldAnimate = useAnimationSlot()
@@ -272,12 +292,31 @@ function TreeNodeComponent({ node, isRoot = false, level, siblingIndex }: TreeNo
                   : {},
               }
             : {})}
-          className={`
-            relative rounded-2xl border-2 bg-content1 p-6 shadow-lg
-            transition-all hover:shadow-2xl
-            ${colors.border}
-          `}
+          className={
+            selectedNodeId === node.id
+              ? 'relative rounded-2xl border-2 bg-content1 p-6 shadow-lg transition-all hover:shadow-2xl ring-2 ring-primary ' +
+                colors.border
+              : onSelect
+                ? 'relative rounded-2xl border-2 bg-content1 p-6 shadow-lg transition-all hover:shadow-2xl cursor-pointer ' +
+                  colors.border
+                : 'relative rounded-2xl border-2 bg-content1 p-6 shadow-lg transition-all hover:shadow-2xl ' +
+                  colors.border
+          }
           style={{ minWidth: '280px' }}
+          {...(onSelect
+            ? {
+                role: 'button',
+                tabIndex: 0,
+                'aria-label': `Open source for ${node.label || node.id}`,
+                onClick: () => onSelect(node.id),
+                onKeyDown: (e: React.KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelect(node.id)
+                  }
+                },
+              }
+            : {})}
         >
           {/* Animated Background for Running States */}
           {shouldAnimate ? (
@@ -503,6 +542,8 @@ function TreeNodeComponent({ node, isRoot = false, level, siblingIndex }: TreeNo
                 node={node.children[0]!}
                 level={level + 1}
                 siblingIndex={0}
+                onSelect={onSelect}
+                selectedNodeId={selectedNodeId}
               />
             </>
           ) : (
@@ -591,6 +632,8 @@ function TreeNodeComponent({ node, isRoot = false, level, siblingIndex }: TreeNo
                         node={child}
                         level={level + 1}
                         siblingIndex={index}
+                        onSelect={onSelect}
+                        selectedNodeId={selectedNodeId}
                       />
                     </div>
                   ))}

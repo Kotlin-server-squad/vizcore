@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { CoroutineTree } from './CoroutineTree'
 import type { CoroutineNode } from '@/types/api'
@@ -112,5 +113,51 @@ describe('CoroutineTree', () => {
     expect(
       screen.getByText(/Exception thrown.*will cancel parent and siblings/),
     ).toBeInTheDocument()
+  })
+
+  it('makes nodes clickable when onSelect is provided and fires onSelect with the node id (D-06)', async () => {
+    const onSelect = vi.fn()
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'c-7', label: 'Clickable' }),
+    ]
+
+    render(<CoroutineTree coroutines={coroutines} onSelect={onSelect} />)
+
+    const node = screen.getByRole('button', { name: 'Open source for Clickable' })
+    expect(node).toBeInTheDocument()
+
+    await userEvent.click(node)
+    expect(onSelect).toHaveBeenCalledWith('c-7')
+  })
+
+  it('applies the ring-2 ring-primary highlight to the selected node (D-05)', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'c-sel', label: 'Selected' }),
+    ]
+
+    render(
+      <CoroutineTree
+        coroutines={coroutines}
+        onSelect={vi.fn()}
+        selectedNodeId="c-sel"
+      />,
+    )
+
+    const node = screen.getByRole('button', { name: 'Open source for Selected' })
+    expect(node.className).toContain('ring-2')
+    expect(node.className).toContain('ring-primary')
+  })
+
+  it('keeps nodes presentational (no role=button) when onSelect is omitted (back-compat)', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'c-inert', label: 'Presentational' }),
+    ]
+
+    render(<CoroutineTree coroutines={coroutines} />)
+
+    expect(screen.getByText('Presentational')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Open source for Presentational' }),
+    ).toBeNull()
   })
 })
