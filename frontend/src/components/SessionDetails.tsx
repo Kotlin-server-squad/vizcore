@@ -279,6 +279,17 @@ export function SessionDetails({
     [showCompleted, panelCoroutines, shownCoroutines],
   )
 
+  // Close the source drawer if its coroutine leaves the session entirely (e.g. a
+  // replay cursor moving before its creation, or a session reset). A terminal or
+  // capped-out coroutine still exists in panelCoroutines, so it keeps its drawer +
+  // resolved label (WR-04); only a truly-absent id clears the selection so we stop
+  // fetching a coroutine that no longer exists.
+  useEffect(() => {
+    if (selectedCoroutineId && !panelCoroutines.some(c => c.id === selectedCoroutineId)) {
+      setSelectedCoroutineId(null)
+    }
+  }, [selectedCoroutineId, panelCoroutines])
+
   const panelThreadActivity: ThreadActivity | undefined = useMemo(() => {
     if (replayActive) return projectThreadActivity(replay.visibleEvents)
     // Read-only shared view: the protected /threads fetch is disabled, so derive
@@ -771,7 +782,7 @@ export function SessionDetails({
             <CoroutineSourceDrawer
               sessionId={sessionId}
               coroutineId={selectedCoroutineId}
-              label={renderedCoroutines.find(c => c.id === selectedCoroutineId)?.label}
+              label={panelCoroutines.find(c => c.id === selectedCoroutineId)?.label}
               isOpen={!!selectedCoroutineId}
               onClose={() => setSelectedCoroutineId(null)}
             />
