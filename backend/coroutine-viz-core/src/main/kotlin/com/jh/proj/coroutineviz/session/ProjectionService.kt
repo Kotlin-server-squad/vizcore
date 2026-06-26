@@ -16,6 +16,7 @@ import com.jh.proj.coroutineviz.events.job.JobStateChanged
 import com.jh.proj.coroutineviz.models.CoroutineTimeline
 import com.jh.proj.coroutineviz.models.HierarchyNode
 import com.jh.proj.coroutineviz.models.ThreadEvent
+import com.jh.proj.coroutineviz.models.TimelineEventSummary
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -258,16 +259,51 @@ class ProjectionService(
     fun getCoroutineTimeline(coroutineId: String): CoroutineTimeline? {
         val node = coroutines[coroutineId] ?: return null
 
-        // Could aggregate events for this coroutine
-        // Return computed timeline with durations
+        // Aggregate the coroutine's raw events (oldest-first) into source-frame summaries.
+        // Reuse the existing raw-event-by-coroutineId filter as the aggregation seed (D-02);
+        // reading fresh from the store keeps this replay/DB-rehydrate safe. Only CoroutineStarted
+        // and CoroutineSuspended carry source frames in v1 (D-03/D-04); other event types are
+        // skipped. Dispatcher/thread/duration breakdowns stay null (deferred per D-02/D-04).
+        val events =
+            session.getCoroutineTimeline(coroutineId, newestFirst = false)
+                .mapNotNull { toSummary(it) }
+
         return CoroutineTimeline(
             coroutineId = coroutineId,
             name = node.name,
             state = node.state,
             totalDuration = node.completedAtNanos?.let { it - node.createdAtNanos },
-            // ... more computed fields ...
+            events = events,
         )
     }
+
+    /**
+     * Map a raw event to a source-focused [TimelineEventSummary], or null to skip it.
+     *
+     * Emits the kebab-case `kind` strings the FE filters on (D-03). The `suspensionPoint`
+     * from a [CoroutineSuspended] is passed through UNCHANGED (no flatten, no conversion);
+     * [CoroutineStarted] carries no source frame (D-04).
+     */
+    private fun toSummary(event: VizEvent): TimelineEventSummary? =
+        when (event) {
+            is CoroutineSuspended ->
+                TimelineEventSummary(
+                    seq = event.seq,
+                    tsNanos = event.tsNanos,
+                    kind = "coroutine.suspended",
+                    reason = event.reason,
+                    suspensionPoint = event.suspensionPoint,
+                )
+
+            is CoroutineStarted ->
+                TimelineEventSummary(
+                    seq = event.seq,
+                    tsNanos = event.tsNanos,
+                    kind = "coroutine.started",
+                )
+
+            else -> null
+        }
 
     /**
      * Get all active children of a coroutine
