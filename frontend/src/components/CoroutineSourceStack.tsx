@@ -5,13 +5,15 @@ import { toastSuccess } from '@/lib/toast'
 import { EmptyState } from './EmptyState'
 
 /**
- * Delta S1 jump-to-code (v1, LOCKED — copied verbatim from CoroutineTimelineView):
- * copy `{fileName}:{lineNumber}` to the clipboard and confirm with a success toast.
+ * Delta S1 jump-to-code (v1): copy the already-rendered `file:line` label (or bare
+ * `file` when no line is known) to the clipboard and confirm with a success toast.
+ * Takes the final label rather than `(file, line)` so a null line never produces a
+ * literal `file:null` on the clipboard (WR-02) — this view feeds nullable lines that
+ * the original CoroutineTimelineView did not.
  */
-function copyFileLine(fileName: string, lineNumber: number | string): void {
-  const target = `${fileName}:${lineNumber}`
-  void navigator.clipboard?.writeText(target)
-  toastSuccess(`Copied ${target}`)
+function copyFileLine(label: string): void {
+  void navigator.clipboard?.writeText(label)
+  toastSuccess(`Copied ${label}`)
 }
 
 /**
@@ -40,11 +42,11 @@ function TimelineSourceRef({
           tabIndex={0}
           aria-label={`Jump to code: ${label}`}
           className="font-semibold text-primary cursor-pointer hover:underline"
-          onClick={() => copyFileLine(fileName, lineNumber!)}
+          onClick={() => copyFileLine(label)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
-              copyFileLine(fileName, lineNumber!)
+              copyFileLine(label)
             }
           }}
         >
@@ -137,12 +139,15 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
     )
   }
 
-  // `Created at` derives from the first/started timeline event's source frame
+  // `Created at` derives from the started/created timeline event's source frame
   // (the timeline view surfaces no dedicated creation stack — D-03 read_first note).
+  // We do NOT fall back to events[0]: the first event is frequently a
+  // `coroutine.suspended`, and rendering a *suspension* frame under the "Created at"
+  // heading is a factually wrong attribution (and duplicates a Suspended-at row).
   const startedEvent = timeline?.events.find(
     (e) => e.kind === 'coroutine.started' || e.kind === 'coroutine.created',
   )
-  const creationFrame = startedEvent?.suspensionPoint ?? timeline?.events[0]?.suspensionPoint
+  const creationFrame = startedEvent?.suspensionPoint
 
   const hasCreationFrame = !!creationFrame?.fileName
   const hasSuspensionFrames = suspensionPoints.length > 0
@@ -175,8 +180,8 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
       {hasSuspensionFrames && (
         <div className="space-y-2">
           <h3 className="text-lg font-semibold">Suspended at</h3>
-          {suspensionPoints.map((point, i) => (
-            <Card key={i} shadow="none">
+          {suspensionPoints.map((point) => (
+            <Card key={point.eventSeq} shadow="none">
               <CardBody className="p-0">
                 <SourceFrameRow
                   frame={{
