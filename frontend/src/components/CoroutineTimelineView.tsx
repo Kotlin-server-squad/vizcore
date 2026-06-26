@@ -190,11 +190,6 @@ export function CoroutineTimelineView({ sessionId, coroutineId }: CoroutineTimel
                         />
                       </div>
                     )}
-                    {point.duration && (
-                      <div className="text-xs text-default-400 mt-1">
-                        Duration: {formatNanoTime(point.duration)}
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
@@ -323,12 +318,7 @@ function TimelineEventCard({ event, isLast }: { event: TimelineEvent; isLast: bo
           </div>
 
           <div className="text-xs text-default-400 text-right">
-            {formatNanoTime(event.timestamp)}
-            {event.duration && (
-              <div className="text-warning font-semibold">
-                +{formatNanoTime(event.duration)}
-              </div>
-            )}
+            {formatNanoTime(event.tsNanos)}
           </div>
         </div>
       </div>

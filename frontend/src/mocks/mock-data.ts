@@ -113,8 +113,7 @@ export function generateMockSuspensionPoint(): SuspensionPoint {
     function: functions[Math.floor(Math.random() * functions.length)] ?? 'unknown',
     fileName: files[Math.floor(Math.random() * files.length)],
     lineNumber: Math.floor(Math.random() * 200) + 10,
-    reason: reasons[Math.floor(Math.random() * reasons.length)] ?? 'unknown',
-    timestamp: Date.now() * 1_000_000
+    reason: reasons[Math.floor(Math.random() * reasons.length)] ?? 'unknown'
   }
 }
 
@@ -179,14 +178,13 @@ export function generateMockTimelineEvent(
 ): TimelineEvent {
   const event: TimelineEvent = {
     seq,
-    timestamp: baseTime + seq * 10_000_000,  // 10ms between events
+    tsNanos: baseTime + seq * 10_000_000,  // 10ms between events
     kind,
   }
 
   if (kind === 'coroutine.started' || kind === 'coroutine.resumed') {
-    event.threadId = Math.floor(Math.random() * 4) + 1
-    event.threadName = `DefaultDispatcher-worker-${event.threadId}`
-    event.dispatcherId = 'dispatcher-Default'
+    const threadId = Math.floor(Math.random() * 4) + 1
+    event.threadName = `DefaultDispatcher-worker-${threadId}`
     event.dispatcherName = 'Default'
   }
 
@@ -216,24 +214,14 @@ export function generateMockCoroutineTimeline(
     events.push(generateMockTimelineEvent(i, kind, baseTime))
   })
 
-  // Add computed durations for suspend/resume pairs
-  events.forEach((event, i) => {
-    if (event.kind === 'coroutine.resumed' && i > 0) {
-      const suspendEvent = events[i - 1]
-      if (suspendEvent?.kind === 'coroutine.suspended') {
-        event.duration = event.timestamp - suspendEvent.timestamp
-      }
-    }
-  })
-
   const lastEvent = events[events.length - 1]
   const firstEvent = events[0]
-  const totalDuration = lastEvent && firstEvent ? lastEvent.timestamp - firstEvent.timestamp : 0
-  const suspendedTime = events
+  const totalDuration = lastEvent && firstEvent ? lastEvent.tsNanos - firstEvent.tsNanos : 0
+  const suspendedDuration = events
     .filter(e => e.kind === 'coroutine.suspended')
     .reduce((sum, e, i) => {
       const nextEvent = events[i + 1]
-      return sum + (nextEvent ? nextEvent.timestamp - e.timestamp : 0)
+      return sum + (nextEvent ? nextEvent.tsNanos - e.tsNanos : 0)
     }, 0)
 
   return {
@@ -243,8 +231,8 @@ export function generateMockCoroutineTimeline(
     parentId: null,
     childrenIds: [],
     totalDuration,
-    activeTime: totalDuration - suspendedTime,
-    suspendedTime,
+    activeDuration: totalDuration - suspendedDuration,
+    suspendedDuration,
     events
   }
 }

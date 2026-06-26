@@ -148,23 +148,22 @@ function makeTimeline(): CoroutineTimeline {
   return {
     coroutineId: 'c-live',
     name: 'LiveWorker',
-    state: 'SUSPENDED' as CoroutineState,
+    state: 'SUSPENDED',
     parentId: null,
     childrenIds: [],
     totalDuration: 0,
-    activeTime: 0,
-    suspendedTime: 0,
+    activeDuration: 0,
+    suspendedDuration: 0,
     events: [
       {
         seq: 1,
-        timestamp: 1000,
+        tsNanos: 1000,
         kind: 'coroutine.suspended',
         suspensionPoint: {
           function: 'com.acme.app.UserService.loadUser',
           fileName: 'UserService.kt',
           lineNumber: 42,
           reason: 'delay',
-          timestamp: 1000,
         },
       },
     ],

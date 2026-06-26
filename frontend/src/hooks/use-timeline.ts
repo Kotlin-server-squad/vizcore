@@ -45,27 +45,30 @@ export function useTimelineStats(timeline: CoroutineTimeline | undefined) {
     const dispatcherEvents = timeline.events.filter(e => e.kind === 'DispatcherSelected')
     const threadEvents = timeline.events.filter(e => e.kind === 'thread.assigned')
 
-    // Calculate average suspension duration
-    const suspensionDurations = suspensionEvents
-      .map(e => e.duration)
-      .filter((d): d is number => d !== undefined && d !== null)
-    
-    const avgSuspensionDuration = suspensionDurations.length > 0
-      ? suspensionDurations.reduce((sum, d) => sum + d, 0) / suspensionDurations.length
+    // Per-event durations are a deferred timeline-projection stub (D-02): the
+    // source-only DTO carries no per-event `duration`, so we report 0 rather than
+    // fabricate a value.
+    const avgSuspensionDuration = 0
+
+    // The view-model output keys (activeTime/suspendedTime) are sourced from the
+    // reconciled generated fields (activeDuration/suspendedDuration), which are
+    // nullable on the source-only DTO.
+    const totalDuration = timeline.totalDuration ?? 0
+    const activeTime = timeline.activeDuration ?? 0
+    const suspendedTime = timeline.suspendedDuration ?? 0
+
+    const activePercent = totalDuration > 0
+      ? (activeTime / totalDuration) * 100
       : 0
 
-    const activePercent = timeline.totalDuration > 0
-      ? (timeline.activeTime / timeline.totalDuration) * 100
-      : 0
-
-    const suspendedPercent = timeline.totalDuration > 0
-      ? (timeline.suspendedTime / timeline.totalDuration) * 100
+    const suspendedPercent = totalDuration > 0
+      ? (suspendedTime / totalDuration) * 100
       : 0
 
     return {
-      totalDuration: timeline.totalDuration,
-      activeTime: timeline.activeTime,
-      suspendedTime: timeline.suspendedTime,
+      totalDuration,
+      activeTime,
+      suspendedTime,
       activePercent,
       suspendedPercent,
       suspensionCount: suspensionEvents.length,
@@ -90,8 +93,7 @@ export function useSuspensionPoints(sessionId: string | undefined, coroutineId: 
       .map(e => ({
         ...e.suspensionPoint!,
         eventSeq: e.seq,
-        timestamp: e.timestamp,
-        duration: e.duration
+        tsNanos: e.tsNanos
       }))
   }, [timeline])
 
@@ -107,14 +109,15 @@ export function useDispatcherSwitches(sessionId: string | undefined, coroutineId
   const switches = useMemo(() => {
     if (!timeline?.events) return []
 
+    // The source-only DTO carries no per-event dispatcherId/threadId/timestamp
+    // (deferred timeline projection, D-02). Map to the generated fields that exist
+    // — do not fabricate dispatcher data.
     return timeline.events
       .filter(e => e.kind === 'DispatcherSelected')
       .map(e => ({
         seq: e.seq,
-        timestamp: e.timestamp,
-        dispatcherId: e.dispatcherId,
+        tsNanos: e.tsNanos,
         dispatcherName: e.dispatcherName,
-        threadId: e.threadId,
         threadName: e.threadName
       }))
   }, [timeline])
@@ -130,7 +133,7 @@ export function useTimelineVisualizationData(timeline: CoroutineTimeline | undef
   return useMemo(() => {
     if (!timeline?.events || timeline.events.length === 0) return []
 
-    const baseTime = timeline.events[0]!.timestamp
+    const baseTime = timeline.events[0]!.tsNanos
     const data: Array<{
       seq: number
       relativeTime: number
@@ -141,7 +144,7 @@ export function useTimelineVisualizationData(timeline: CoroutineTimeline | undef
     }> = []
 
     timeline.events.forEach((event, _index) => {
-      const relativeTime = event.timestamp - baseTime
+      const relativeTime = event.tsNanos - baseTime
 
       let state: 'active' | 'suspended' | 'transition' = 'transition'
       if (event.kind === 'coroutine.started' || event.kind === 'coroutine.resumed') {
@@ -155,9 +158,9 @@ export function useTimelineVisualizationData(timeline: CoroutineTimeline | undef
         relativeTime,
         kind: event.kind,
         state,
-        duration: event.duration ?? undefined,
+        // Per-event duration is a deferred projection stub (D-02) — not on the wire.
+        duration: undefined,
         metadata: {
-          threadId: event.threadId,
           threadName: event.threadName,
           dispatcherName: event.dispatcherName,
           suspensionPoint: event.suspensionPoint

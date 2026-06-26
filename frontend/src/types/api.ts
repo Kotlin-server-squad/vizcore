@@ -480,13 +480,16 @@ export interface HierarchyNodeTree extends HierarchyNode {
   children: HierarchyNodeTree[]  // Full nested children, not just IDs
 }
 
-// Suspension Point tracking
+// Suspension Point tracking.
+// Structurally matches the generated `components["schemas"]["SuspensionPoint"]`
+// (shared/api-types/generated.ts) — the single source of truth (D-01). The raw
+// backend `CoroutineSuspended.suspensionPoint` carries exactly these four fields;
+// there is no `timestamp` on the wire (dropped — the drawer never read it).
 export interface SuspensionPoint {
   function: string
   fileName?: string | null
   lineNumber?: number | null
   reason: string  // "delay", "withContext", "join", etc.
-  timestamp: number
 }
 
 // Enhanced Coroutine Suspended event with suspension point
@@ -495,29 +498,35 @@ export interface CoroutineSuspendedEvent extends CoroutineEvent {
   suspensionPoint?: SuspensionPoint | null
 }
 
-// Timeline data structures
+// Timeline data structures.
+// These structurally match the generated contract
+// (`components["schemas"]["CoroutineTimeline"]` / `["TimelineEventSummary"]` in
+// shared/api-types/generated.ts) — the single source of truth (D-01). The prior
+// hand-written shape diverged (`timestamp`/`duration`/`dispatcherId`/`threadId`
+// on the event; `activeTime`/`suspendedTime` on the timeline) and that divergence
+// is exactly what hid the RCO-06 missing-`suspensionPoint` bug. Today the backend
+// projection is source-only (D-02): thread/dispatcher/duration breakdowns are a
+// deferred stub, so those fields are NOT on the wire — do not reintroduce them.
 export interface CoroutineTimeline {
   coroutineId: string
-  name: string | null
-  state: CoroutineState
-  parentId: string | null
+  name: string
+  state: string
+  totalDuration?: number | null  // in nanos
+  activeDuration?: number | null  // in nanos
+  suspendedDuration?: number | null  // in nanos
+  parentId?: string | null
   childrenIds: string[]
-  totalDuration: number  // in nanos
-  activeTime: number  // in nanos
-  suspendedTime: number  // in nanos
   events: TimelineEvent[]
 }
 
 export interface TimelineEvent {
   seq: number
-  timestamp: number  // in nanos
-  kind: VizEventKind
-  threadId?: number | null
+  tsNanos: number  // in nanos
+  kind: string
   threadName?: string | null
-  dispatcherId?: string | null
   dispatcherName?: string | null
+  reason?: string | null
   suspensionPoint?: SuspensionPoint | null
-  duration?: number | null  // For computed durations (suspend -> resume)
 }
 
 // Thread Activity - DERIVED view model.

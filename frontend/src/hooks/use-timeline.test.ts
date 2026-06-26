@@ -32,13 +32,11 @@ function createWrapper() {
 
 function makeTimelineEvent(overrides: Partial<TimelineEvent> & { seq: number; kind: string }): TimelineEvent {
   return {
-    timestamp: 1000 + overrides.seq * 100,
-    threadId: null,
+    tsNanos: 1000 + overrides.seq * 100,
     threadName: null,
-    dispatcherId: null,
     dispatcherName: null,
+    reason: null,
     suspensionPoint: null,
-    duration: null,
     ...overrides,
     kind: overrides.kind as TimelineEvent['kind'],
   }
@@ -52,8 +50,8 @@ function makeTimeline(overrides: Partial<CoroutineTimeline> = {}): CoroutineTime
     parentId: null,
     childrenIds: [],
     totalDuration: 1000,
-    activeTime: 600,
-    suspendedTime: 400,
+    activeDuration: 600,
+    suspendedDuration: 400,
     events: [],
     ...overrides,
   }
@@ -79,11 +77,11 @@ describe('useTimelineStats', () => {
   it('calculates correct percentages', () => {
     const timeline = makeTimeline({
       totalDuration: 1000,
-      activeTime: 600,
-      suspendedTime: 400,
+      activeDuration: 600,
+      suspendedDuration: 400,
       events: [
-        makeTimelineEvent({ seq: 1, kind: 'coroutine.suspended', duration: 200 }),
-        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended', duration: 200 }),
+        makeTimelineEvent({ seq: 1, kind: 'coroutine.suspended' }),
+        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended' }),
         makeTimelineEvent({ seq: 3, kind: 'DispatcherSelected' }),
         makeTimelineEvent({ seq: 4, kind: 'thread.assigned' }),
         makeTimelineEvent({ seq: 5, kind: 'thread.assigned' }),
@@ -99,41 +97,44 @@ describe('useTimelineStats', () => {
     expect(result.current.threadSwitches).toBe(2)
   })
 
-  it('calculates average suspension duration', () => {
+  it('reports zero avg suspension duration (per-event durations are a deferred stub)', () => {
+    // The source-only DTO carries no per-event duration (D-02), so
+    // avgSuspensionDuration is always 0 — we count suspensions, never fabricate
+    // durations.
     const timeline = makeTimeline({
       events: [
-        makeTimelineEvent({ seq: 1, kind: 'coroutine.suspended', duration: 100 }),
-        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended', duration: 300 }),
-        makeTimelineEvent({ seq: 3, kind: 'coroutine.suspended', duration: 200 }),
+        makeTimelineEvent({ seq: 1, kind: 'coroutine.suspended' }),
+        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended' }),
+        makeTimelineEvent({ seq: 3, kind: 'coroutine.suspended' }),
       ],
     })
 
     const { result } = renderHook(() => useTimelineStats(timeline))
 
-    expect(result.current.avgSuspensionDuration).toBe(200)
+    expect(result.current.avgSuspensionDuration).toBe(0)
     expect(result.current.suspensionCount).toBe(3)
   })
 
-  it('handles suspension events without duration', () => {
+  it('counts suspensions regardless of duration data', () => {
     const timeline = makeTimeline({
       events: [
-        makeTimelineEvent({ seq: 1, kind: 'coroutine.suspended', duration: 100 }),
-        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended', duration: null }),
+        makeTimelineEvent({ seq: 1, kind: 'coroutine.suspended' }),
+        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended' }),
       ],
     })
 
     const { result } = renderHook(() => useTimelineStats(timeline))
 
     expect(result.current.suspensionCount).toBe(2)
-    // Only one event has a duration, so avg = 100 / 1
-    expect(result.current.avgSuspensionDuration).toBe(100)
+    // Durations are a deferred stub on the source-only timeline.
+    expect(result.current.avgSuspensionDuration).toBe(0)
   })
 
   it('returns zero percentages when totalDuration is 0', () => {
     const timeline = makeTimeline({
       totalDuration: 0,
-      activeTime: 0,
-      suspendedTime: 0,
+      activeDuration: 0,
+      suspendedDuration: 0,
       events: [],
     })
 
@@ -162,10 +163,10 @@ describe('useTimelineVisualizationData', () => {
   it('formats events with relative time and state', () => {
     const timeline = makeTimeline({
       events: [
-        makeTimelineEvent({ seq: 1, kind: 'coroutine.started', timestamp: 1000 }),
-        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended', timestamp: 1500, duration: 200 }),
-        makeTimelineEvent({ seq: 3, kind: 'coroutine.resumed', timestamp: 1700 }),
-        makeTimelineEvent({ seq: 4, kind: 'DispatcherSelected', timestamp: 1800 }),
+        makeTimelineEvent({ seq: 1, kind: 'coroutine.started', tsNanos: 1000 }),
+        makeTimelineEvent({ seq: 2, kind: 'coroutine.suspended', tsNanos: 1500 }),
+        makeTimelineEvent({ seq: 3, kind: 'coroutine.resumed', tsNanos: 1700 }),
+        makeTimelineEvent({ seq: 4, kind: 'DispatcherSelected', tsNanos: 1800 }),
       ],
     })
 
@@ -182,7 +183,8 @@ describe('useTimelineVisualizationData', () => {
     expect(result.current[1]!.relativeTime).toBe(500)
     expect(result.current[1]!.kind).toBe('coroutine.suspended')
     expect(result.current[1]!.state).toBe('suspended')
-    expect(result.current[1]!.duration).toBe(200)
+    // Per-event duration is a deferred stub on the source-only timeline (D-02).
+    expect(result.current[1]!.duration).toBeUndefined()
 
     // Third event: resumed -> active
     expect(result.current[2]!.relativeTime).toBe(700)
@@ -199,8 +201,7 @@ describe('useTimelineVisualizationData', () => {
         makeTimelineEvent({
           seq: 1,
           kind: 'coroutine.started',
-          timestamp: 1000,
-          threadId: 42,
+          tsNanos: 1000,
           threadName: 'worker-1',
           dispatcherName: 'Default',
         }),
@@ -210,7 +211,6 @@ describe('useTimelineVisualizationData', () => {
     const { result } = renderHook(() => useTimelineVisualizationData(timeline))
 
     expect(result.current[0]!.metadata).toEqual({
-      threadId: 42,
       threadName: 'worker-1',
       dispatcherName: 'Default',
       suspensionPoint: null,
@@ -227,7 +227,7 @@ describe('useCoroutineTimeline', () => {
     const mockTimeline = makeTimeline({
       coroutineId: 'c1',
       events: [
-        makeTimelineEvent({ seq: 1, kind: 'coroutine.started', timestamp: 1000 }),
+        makeTimelineEvent({ seq: 1, kind: 'coroutine.started', tsNanos: 1000 }),
       ],
     })
     mockedApiClient.getCoroutineTimeline.mockResolvedValue(mockTimeline)
