@@ -292,6 +292,29 @@ Plans:
 
 - [x] 08.2-02-PLAN.md — Optional/additive `onSelect`/`selectedNodeId` on CoroutineTree + CoroutineTreeGraph (selected ring, IN-12 literal classes) + lift `selectedCoroutineId` in SessionDetails + mount the drawer in the live view; integration test proving click→drawer→file:line reachability; replay/shared views stay presentational (RCO-06; D-02/D-05/D-06) ✅ 2026-06-25 (FE gates green: 478 tests / lint 0 errors / build; tree node uses HeroUI isPressable+onPress — Rule 3; reachability proof in new SessionDetails.reachability.test.tsx — Rule 3; D-10 guards empty. Live-app UAT deferred to /gsd-verify-work)
 
+> ⚠️ **08.2 live-UAT (2026-06-26):** Test 1 (drawer reachability) PASS; Test 2 (real jump-to-code) FAIL — drawer is reachable but shows "No source attribution yet" for every coroutine against the real backend. Root cause is a backend gap (timeline endpoint is a stub) → **Phase 08.3**. RCO-06 not yet delivered end-to-end. See `08.2-UAT.md`.
+
+### Phase 08.3: Populate per-coroutine timeline source frames end-to-end so RCO-06 jump-to-code works against the real backend (backend: aggregate events + suspensionPoint in the timeline endpoint, regen api-types, reconcile FE, add the missing projection + integration tests) (INSERTED)
+
+**Goal:** Make per-coroutine source attribution ACTUALLY APPEAR against the real backend, closing the RCO-06 end-to-end gap found in 08.2 live UAT (the source drawer is reachable but always empty). `ProjectionService.getCoroutineTimeline` is a stub that returns `events: []`, and `TimelineEventSummary` has no `suspensionPoint` field — so the frames the event store already holds (`CoroutineSuspended.suspensionPoint`, e.g. `SpringVizcoreDemoApplication.kt:75`) never reach the FE drawer. Implement event aggregation in the timeline projection (map `CoroutineStarted`→`coroutine.started`, `CoroutineSuspended`→`coroutine.suspended`, carry `suspensionPoint`), add the source fields to the DTO, update OpenAPI + regenerate `shared/api-types`, reconcile the hand-written FE `api.ts`, and add the missing backend projection test plus a non-mocked integration test asserting a real `file:line` frame is returned. Backend-led; NOT a sketch-alignment pass (that surface work is a separate future FE phase).
+**Requirements**: RCO-06 (completes end-to-end delivery — 08.1 built the code, 08.2 mounted the drawer, 08.3 supplies the data)
+**Depends on:** Phase 08.2 (the FE drawer + lazy timeline data path already consume this endpoint)
+**Plans:** 3 plans (3 waves)
+
+Plans:
+
+**Wave 1** *(backend projection + DTO + non-mocked test — no deps)*
+
+- [x] 08.3-01-PLAN.md — Add nested `suspensionPoint` to `TimelineEventSummary` + implement the `ProjectionService.getCoroutineTimeline` aggregation (CoroutineSuspended→`coroutine.suspended` carrying `suspensionPoint`, CoroutineStarted→`coroutine.started`) + non-mocked projection test asserting a real `file:line` (RCO-06; D-01 backend half/D-02/D-03/D-04/D-05a) ✅ commits 5dd9834, be6bb16, 0f4fcc1
+
+**Wave 2** *(contract pipeline — depends on 08.3-01: needs the new DTO field)*
+
+- [x] 08.3-02-PLAN.md — Extend OpenAPI (`SuspensionPoint` component + `suspensionPoint` field + kebab-case `kind` doc) → sync `openapi.json` → `pnpm generate` regen `generated.ts` → reconcile FE `api.ts`/`use-timeline.ts` to the generated shape (kill the divergence; `tsNanos` not `timestamp`) (RCO-06; D-01) ✅ commits adc32ed, d508301
+
+**Wave 3** *(live UAT — depends on 08.3-01 + 08.3-02; non-autonomous human-verify)*
+
+- [ ] 08.3-03-PLAN.md — Stand up the 3-process demo harness on free alt-ports + re-run 08.2 Test 2 in live Chrome: confirm the source drawer renders a real `SpringVizcoreDemoApplication.kt:<line>` frame (not "No source attribution yet") and clipboard-copies it; record `08.3-UAT.md` (RCO-06; D-05b)
+
 ## Progress
 
 **Execution Order:**
@@ -309,5 +332,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 8. Live Real-App View + Metrics (v1.1) | 4/4 | Complete (verified + secured + live UAT passed) | 2026-06-25 |
 | 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete    | 2026-06-25 |
 | 8.2 Surface source attribution + jump-to-code (mounted) (v1.1) | 0/2 | Planned | - |
+| 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 2/3 | In progress | - |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
