@@ -490,11 +490,13 @@ export interface components {
             seq: number;
             /** Format: int64 */
             tsNanos: number;
+            /** @description Event type (kebab-case, e.g. "coroutine.suspended", "coroutine.started") */
             kind: string;
             threadName?: string | null;
             dispatcherName?: string | null;
             /** @description For suspension events */
             reason?: string | null;
+            suspensionPoint?: components["schemas"]["SuspensionPoint"];
         };
         ThreadEvent: {
             coroutineId: string;
@@ -639,6 +641,17 @@ export interface components {
             /** @description Number of events for this coroutine in session B */
             eventCountB: number;
         };
+        /** @description Source code location where a coroutine suspended */
+        SuspensionPoint: {
+            /** @description Name of the suspending function */
+            function: string;
+            /** @description Source file name */
+            fileName?: string | null;
+            /** @description Source line number */
+            lineNumber?: number | null;
+            /** @description Reason for suspension (e.g. "delay", "withContext", "join", "await") */
+            reason: string;
+        } | null;
     };
     responses: never;
     parameters: never;

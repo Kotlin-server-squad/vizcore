@@ -1938,7 +1938,7 @@ components:
           description: Nanosecond timestamp
         kind:
           type: string
-          description: Event type (e.g. "CoroutineStarted", "CoroutineSuspended")
+          description: Event type (kebab-case, e.g. "coroutine.suspended", "coroutine.started")
         threadName:
           type: string
           nullable: true
@@ -1951,6 +1951,29 @@ components:
           type: string
           nullable: true
           description: Reason for suspension (for suspension events)
+        suspensionPoint:
+          $ref: "#/components/schemas/SuspensionPoint"
+
+    SuspensionPoint:
+      type: object
+      description: Source code location where a coroutine suspended
+      required: [function, reason]
+      nullable: true
+      properties:
+        function:
+          type: string
+          description: Name of the suspending function
+        fileName:
+          type: string
+          nullable: true
+          description: Source file name
+        lineNumber:
+          type: integer
+          nullable: true
+          description: Source line number
+        reason:
+          type: string
+          description: Reason for suspension (e.g. "delay", "withContext", "join", "await")
 
     # -----------------------------------------------------------------------
     # Comparison

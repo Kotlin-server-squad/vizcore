@@ -1363,7 +1363,8 @@
             "format": "int64"
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Event type (kebab-case, e.g. \"coroutine.suspended\", \"coroutine.started\")"
           },
           "threadName": {
             "type": "string",
@@ -1377,6 +1378,9 @@
             "type": "string",
             "nullable": true,
             "description": "For suspension events"
+          },
+          "suspensionPoint": {
+            "$ref": "#/components/schemas/SuspensionPoint"
           }
         }
       },
@@ -1831,6 +1835,35 @@
           "eventCountB": {
             "type": "integer",
             "description": "Number of events for this coroutine in session B"
+          }
+        }
+      },
+      "SuspensionPoint": {
+        "type": "object",
+        "description": "Source code location where a coroutine suspended",
+        "required": [
+          "function",
+          "reason"
+        ],
+        "nullable": true,
+        "properties": {
+          "function": {
+            "type": "string",
+            "description": "Name of the suspending function"
+          },
+          "fileName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Source file name"
+          },
+          "lineNumber": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Source line number"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for suspension (e.g. \"delay\", \"withContext\", \"join\", \"await\")"
           }
         }
       }
