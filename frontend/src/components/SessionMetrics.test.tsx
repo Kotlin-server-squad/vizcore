@@ -130,4 +130,36 @@ describe('SessionMetrics', () => {
 
     expect(screen.getByText('1 potential leak')).toBeInTheDocument()
   })
+
+  it('keeps the internal leak Card by default (showLeaks omitted = back-compat)', () => {
+    useSessionMetricsMock.mockReturnValue({
+      data: metrics({
+        leaks: [{ coroutineId: 'dp-1', label: 'fetchUser', aliveMs: 42_000 }],
+      }),
+      isLoading: false,
+    })
+
+    render(<SessionMetrics sessionId="s-1" />)
+
+    // The "Potential leaks" Card header renders for every existing call site.
+    expect(screen.getByText('Potential leaks')).toBeInTheDocument()
+    expect(screen.getByText('1 potential leak')).toBeInTheDocument()
+  })
+
+  it('hides the internal leak Card when showLeaks={false} (tiles-only strip)', () => {
+    useSessionMetricsMock.mockReturnValue({
+      data: metrics({
+        leaks: [{ coroutineId: 'dp-1', label: 'fetchUser', aliveMs: 42_000 }],
+      }),
+      isLoading: false,
+    })
+
+    render(<SessionMetrics sessionId="s-1" showLeaks={false} />)
+
+    // Strip is tiles-only — no leak Card, no leak badge (the dock owns the leak mount).
+    expect(screen.queryByText('Potential leaks')).toBeNull()
+    expect(screen.queryByText('1 potential leak')).toBeNull()
+    // Tiles still render.
+    expect(screen.getByText('Active')).toBeInTheDocument()
+  })
 })

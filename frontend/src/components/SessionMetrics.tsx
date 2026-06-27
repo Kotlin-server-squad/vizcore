@@ -15,6 +15,14 @@ interface SessionMetricsProps {
    * The shared shell carries no Bearer, so this query would 401/poll noisily.
    */
   enabled?: boolean
+  /**
+   * Render the internal "Potential leaks" Card (default true). Set false when
+   * the leaks are mounted separately (e.g. the LiveDockPanel header strip is
+   * tiles-only and the dock's left column owns the single LeakList mount,
+   * PD-02/PD-04a). Additive — every existing call site omits it and keeps the
+   * shipped behavior unchanged.
+   */
+  showLeaks?: boolean
 }
 
 /**
@@ -27,6 +35,7 @@ export function SessionMetrics({
   sessionId,
   isLive = false,
   enabled = true,
+  showLeaks = true,
 }: SessionMetricsProps) {
   const { data, isLoading } = useSessionMetrics(sessionId, isLive, enabled)
 
@@ -114,22 +123,26 @@ export function SessionMetrics({
         </Card>
       </div>
 
-      {/* Potential leaks (D-07) — warning highlight, never danger */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2 text-sm text-default-600">
-            <FiAlertCircle className="w-4 h-4" />
-            <span>Potential leaks</span>
-          </div>
-        </CardHeader>
-        <CardBody>
-          {data.leaks.length === 0 ? (
-            <div className="text-xs text-default-400">No potential leaks detected</div>
-          ) : (
-            <LeakList leaks={data.leaks} leakThresholdMs={data.leakThresholdMs} />
-          )}
-        </CardBody>
-      </Card>
+      {/* Potential leaks (D-07) — warning highlight, never danger. Suppressed
+          when showLeaks={false} so the LiveDockPanel header strip is tiles-only
+          and the dock's left column owns the single LeakList mount (PD-04a). */}
+      {showLeaks && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2 text-sm text-default-600">
+              <FiAlertCircle className="w-4 h-4" />
+              <span>Potential leaks</span>
+            </div>
+          </CardHeader>
+          <CardBody>
+            {data.leaks.length === 0 ? (
+              <div className="text-xs text-default-400">No potential leaks detected</div>
+            ) : (
+              <LeakList leaks={data.leaks} leakThresholdMs={data.leakThresholdMs} />
+            )}
+          </CardBody>
+        </Card>
+      )}
     </div>
   )
 }
