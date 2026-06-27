@@ -31,8 +31,7 @@ import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
-import { SessionMetrics } from './SessionMetrics'
-import { LivePill } from './LivePill'
+import { LiveDockPanel } from './LiveDockPanel'
 import { EmptyState } from './EmptyState'
 import { ChannelPanel } from './channels/ChannelPanel'
 import { FlowPanel } from './flow/FlowPanel'
@@ -150,6 +149,9 @@ export function SessionDetails({
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
   const hasScenario = !!scenarioId
+  // Live-view gate (PD-01): the Surface-001 IDE-dock is LIVE-ONLY. Replay and
+  // read-only shared modes keep the existing tabbed, non-interactive layout.
+  const isLiveView = !replayActive && !readOnly
 
   // Replay drives over the FROZEN snapshot taken at entry (never the live
   // `allEvents`), so live SSE events buffer for the badge without re-rendering
@@ -728,52 +730,81 @@ export function SessionDetails({
             projected snapshot from the replay cursor (D-17). */}
         <Tab key="coroutines" title="Coroutines">
           <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">What&apos;s running now</h3>
-              {completedCount > 0 && (
-                <Button
-                  size="sm"
-                  variant="flat"
-                  onPress={() => setShowCompleted(prev => !prev)}
-                >
-                  {showCompleted
-                    ? `Hide completed (${completedCount})`
-                    : `Show completed (${completedCount})`}
-                </Button>
-              )}
-            </div>
-
-            {activeCoroutines.length === 0 && !showCompleted ? (
-              <EmptyState
-                title="No live coroutines yet"
-                description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
-              />
-            ) : (
-              <Card>
-                <CardBody className="overflow-auto">
-                  <div ref={panelRef}>
-                    {viewMode === 'graph' ? (
-                      <CoroutineTreeGraph
-                        coroutines={renderedCoroutines}
-                        onSelect={setSelectedCoroutineId}
-                        selectedNodeId={selectedCoroutineId}
-                      />
-                    ) : (
-                      <CoroutineTree
-                        coroutines={renderedCoroutines}
-                        onSelect={setSelectedCoroutineId}
-                        selectedNodeId={selectedCoroutineId}
-                      />
+            {/* The live "what's running now" list (header + Show-completed
+                control + tree/graph canvas + "N more"). In the live view it is
+                hosted in the dock's left column (PD-01/PD-02); in replay/shared
+                it renders standalone in the existing tabbed layout. */}
+            {(() => {
+              const liveList = (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">What&apos;s running now</h3>
+                    {completedCount > 0 && (
+                      <Button
+                        size="sm"
+                        variant="flat"
+                        onPress={() => setShowCompleted(prev => !prev)}
+                      >
+                        {showCompleted
+                          ? `Hide completed (${completedCount})`
+                          : `Show completed (${completedCount})`}
+                      </Button>
                     )}
                   </div>
-                  {moreCount > 0 && (
-                    <div className="text-xs text-default-500 mt-2">
-                      {moreCount} more coroutines
-                    </div>
+
+                  {activeCoroutines.length === 0 && !showCompleted ? (
+                    <EmptyState
+                      title="No live coroutines yet"
+                      description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
+                    />
+                  ) : (
+                    <Card>
+                      <CardBody className="overflow-auto">
+                        <div ref={panelRef}>
+                          {/* Source-selection is LIVE-ONLY (PD-01): omit
+                              onSelect/selectedNodeId in replay/shared so those
+                              renders stay presentational with no added
+                              interactivity (Pitfall 1 back-compat). */}
+                          {viewMode === 'graph' ? (
+                            <CoroutineTreeGraph
+                              coroutines={renderedCoroutines}
+                              onSelect={isLiveView ? setSelectedCoroutineId : undefined}
+                              selectedNodeId={isLiveView ? selectedCoroutineId : undefined}
+                            />
+                          ) : (
+                            <CoroutineTree
+                              coroutines={renderedCoroutines}
+                              onSelect={isLiveView ? setSelectedCoroutineId : undefined}
+                              selectedNodeId={isLiveView ? selectedCoroutineId : undefined}
+                            />
+                          )}
+                        </div>
+                        {moreCount > 0 && (
+                          <div className="text-xs text-default-500 mt-2">
+                            {moreCount} more coroutines
+                          </div>
+                        )}
+                      </CardBody>
+                    </Card>
                   )}
-                </CardBody>
-              </Card>
-            )}
+                </div>
+              )
+
+              // Surface 001 (PD-01): LIVE view → IDE-dock; replay/shared → the
+              // existing standalone list (no dock, no added interactivity). The
+              // dock owns the single SessionMetrics tile-strip + the single
+              // inline LeakList (PD-02), so neither is mounted again here.
+              return isLiveView ? (
+                <LiveDockPanel
+                  sessionId={sessionId}
+                  streamEnabled={streamEnabled}
+                  readOnly={readOnly}
+                  liveList={liveList}
+                />
+              ) : (
+                liveList
+              )
+            })()}
 
             {/* Source-attribution drawer (RCO-06, D-02/D-06). Mounted ONLY in the
                 live "What's running now" block so it is absent in shared/replay
@@ -786,21 +817,6 @@ export function SessionDetails({
               isOpen={!!selectedCoroutineId}
               onClose={() => setSelectedCoroutineId(null)}
             />
-
-            {/* Delta L1: static docked panel below the live canvas (sketch
-                001-C, LOCKED — no collapse/resize). --surface body + --border
-                top edge; header hosts the LIVE/DEMO pill + the reflowed metric
-                tile strip with leaks inline. Delta L2 (source panel) deferred. */}
-            <div className="mt-8 rounded-xl border-t border-default-200 bg-content1">
-              <div className="flex items-center justify-between gap-4 p-6">
-                <LivePill streamEnabled={streamEnabled} />
-                <SessionMetrics
-                  sessionId={sessionId}
-                  isLive={streamEnabled}
-                  enabled={!readOnly}
-                />
-              </div>
-            </div>
           </div>
         </Tab>
 

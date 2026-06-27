@@ -50,6 +50,10 @@ vi.mock('@/lib/api-client', () => ({
   apiClient: {
     getThreadActivity: vi.fn(() => Promise.resolve({})),
     getCoroutineTimeline: vi.fn(),
+    // The LiveDockPanel sources its inline LeakList from useSessionMetrics →
+    // apiClient.getMetrics. A leak fixture lets us assert the single dock-owned
+    // amber leak mount in the live view.
+    getMetrics: vi.fn(),
   },
 }))
 
@@ -110,9 +114,26 @@ vi.mock('@tanstack/react-router', () => ({ useNavigate: vi.fn(() => vi.fn()) }))
 
 import { useSession } from '@/hooks/use-sessions'
 import { apiClient } from '@/lib/api-client'
+import type { MetricsResponse } from '@/types/api'
 
 const mockedUseSession = vi.mocked(useSession)
 const mockedApiClient = vi.mocked(apiClient)
+
+// A metrics fixture carrying two leaks so the dock's single inline LeakList
+// renders the "2 potential leaks" amber badge in the live view.
+function makeMetrics(): MetricsResponse {
+  return {
+    active: 1,
+    peak: 2,
+    throughputPerSec: 0,
+    dispatcherUtilization: { Default: 1 },
+    leaks: [
+      { coroutineId: 'dp-1', label: 'fetchUser', aliveMs: 42_000 },
+      { coroutineId: 'dp-2', label: 'pollLoop', aliveMs: 51_000 },
+    ],
+    leakThresholdMs: 30_000,
+  }
+}
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -175,6 +196,7 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
     vi.clearAllMocks()
     mockedApiClient.getThreadActivity.mockResolvedValue({})
     mockedApiClient.getCoroutineTimeline.mockResolvedValue(makeTimeline())
+    mockedApiClient.getMetrics.mockResolvedValue(makeMetrics())
     mockedUseSession.mockReturnValue({
       data: makeSession(),
       isLoading: false,
@@ -236,5 +258,45 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
     // (the enabled-guard keeps the query disabled while coroutineId is null, D-08).
     expect(screen.queryByText(/Coroutine source —/)).toBeNull()
     expect(mockedApiClient.getCoroutineTimeline).not.toHaveBeenCalled()
+  })
+
+  // ── Surface 001 IDE-dock reconcile (Task 2) ──────────────────────────────
+
+  it('renders the LiveDockPanel (metric strip + live list) in the live view, with a single inline leak list', async () => {
+    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+
+    // The dock header strip mounts the metric tiles + LIVE/DEMO pill (un-buried
+    // from the Threads tab). Mounted exactly once.
+    expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
+    expect(screen.getByTestId('live-pill')).toBeInTheDocument()
+
+    // The live list still renders inside the dock's left column.
+    expect(screen.getByText(/What's running now/)).toBeInTheDocument()
+
+    // The dock owns the single inline amber LeakList (fed by getMetrics). The
+    // "2 potential leaks" badge appears exactly once — no duplicate leak mount.
+    const leakBadges = await screen.findAllByText('2 potential leaks')
+    expect(leakBadges).toHaveLength(1)
+  })
+
+  it('renders the existing tabs with NO dock and no source affordances in the read-only shared view', async () => {
+    render(<SessionDetails sessionId="session-1" readOnly />, { wrapper: createWrapper() })
+
+    // PD-01 back-compat: the read-only shared view keeps the standalone tabbed
+    // layout — the dock metric strip + LIVE pill are NOT mounted.
+    expect(screen.queryByTestId('session-metrics')).toBeNull()
+    expect(screen.queryByTestId('live-pill')).toBeNull()
+
+    // The live list still renders (presentational).
+    expect(screen.getByText(/What's running now/)).toBeInTheDocument()
+
+    // Switch to the REAL CoroutineTree (list view) and prove the nodes carry no
+    // clickable source affordance — onSelect is wired only in the live view.
+    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    expect(screen.getByText('LiveWorker')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open source for LiveWorker' })).toBeNull()
+
+    // And no protected metrics fetch fires in the shared shell (no Bearer).
+    expect(mockedApiClient.getMetrics).not.toHaveBeenCalled()
   })
 })
