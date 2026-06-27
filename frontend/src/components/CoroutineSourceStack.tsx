@@ -1,4 +1,5 @@
-import { Card, CardBody, Chip, Tooltip } from '@heroui/react'
+import { useState } from 'react'
+import { Button, Card, CardBody, Chip, Tooltip } from '@heroui/react'
 import { useCoroutineTimeline, useSuspensionPoints } from '@/hooks/use-timeline'
 import { isUserFrame } from '@/lib/source-frames'
 import { toastSuccess } from '@/lib/toast'
@@ -101,16 +102,24 @@ interface CoroutineSourceStackProps {
 }
 
 /**
- * Headerless source-stack body for the per-coroutine source drawer (D-03/D-04/D-08/D-09).
+ * Headerless source-stack body for the in-dock source panel (Surface 002).
  *
- * Renders the `Created at` / `Suspended at` `file:line` frames per sketch 002-B,
- * reusing the LOCKED jump-to-code (copy + toast) and the lazy
+ * Collapsed default (sketch 002-A): compact `Created at` / `Suspended at`
+ * `file:line` chips (the `srcchip` token) each with a Jump affordance for fast
+ * triage. A "Show full stack" expander reveals the full creation + suspension
+ * stack (sketch 002-B) in two sections — `Created at — creation stack` /
+ * `Suspended at — last observed` — with user frames bold/accent jump targets and
+ * library frames dimmed/inert.
+ *
+ * Reuses the LOCKED jump-to-code (copy + toast) and the lazy
  * `useCoroutineTimeline`/`useSuspensionPoints` data path verbatim. The timeline
  * query stays disabled (no eager fetch) while `coroutineId` is null. The stat
  * cards, time-distribution bar, and timeline-events list from
  * `CoroutineTimelineView` are intentionally suppressed (source-focused, D-03).
  */
 export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSourceStackProps) {
+  // Compact-chips → expand-to-full-stack toggle (PD-08). Default collapsed.
+  const [expanded, setExpanded] = useState(false)
   const { data: timeline, isLoading, isError } = useCoroutineTimeline(
     sessionId,
     coroutineId ?? undefined,
@@ -161,39 +170,87 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
     )
   }
 
-  return (
-    <div className="space-y-6">
-      {hasCreationFrame && (
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold">Created at</h3>
-          <SourceFrameRow
-            frame={{
-              function: creationFrame!.function,
-              fileName: creationFrame!.fileName,
-              lineNumber: creationFrame!.lineNumber,
-              reason: creationFrame!.reason,
-            }}
-          />
-        </div>
-      )}
+  // The first suspension point backs the collapsed "Suspended at" compact chip.
+  const firstSuspension = suspensionPoints[0]
 
-      {hasSuspensionFrames && (
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold">Suspended at</h3>
-          {suspensionPoints.map((point) => (
-            <Card key={point.eventSeq} shadow="none">
-              <CardBody className="p-0">
-                <SourceFrameRow
-                  frame={{
-                    function: point.function,
-                    fileName: point.fileName,
-                    lineNumber: point.lineNumber,
-                    reason: point.reason,
-                  }}
-                />
-              </CardBody>
-            </Card>
-          ))}
+  return (
+    <div className="space-y-4">
+      {/* Collapsed default (PD-08): compact `Created at` / `Suspended at`
+          `file:line` chips with a Jump affordance for fast triage. */}
+      <div className="space-y-2">
+        {hasCreationFrame && creationFrame!.fileName && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-default-400">Created at</span>
+            <span className="font-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+              <TimelineSourceRef
+                fn={creationFrame!.function}
+                fileName={creationFrame!.fileName}
+                lineNumber={creationFrame!.lineNumber}
+              />
+            </span>
+          </div>
+        )}
+
+        {hasSuspensionFrames && firstSuspension.fileName && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-default-400">Suspended at</span>
+            <span className="font-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+              <TimelineSourceRef
+                fn={firstSuspension.function}
+                fileName={firstSuspension.fileName}
+                lineNumber={firstSuspension.lineNumber}
+              />
+            </span>
+          </div>
+        )}
+
+        <Button
+          size="sm"
+          variant="light"
+          className="text-xs"
+          onPress={() => setExpanded((prev) => !prev)}
+        >
+          {expanded ? 'Hide full stack' : 'Show full stack'}
+        </Button>
+      </div>
+
+      {/* Expanded (PD-07): the full creation + suspension stacks, headers at
+          text-sm font-semibold (NOT text-lg). */}
+      {expanded && (
+        <div className="space-y-6">
+          {hasCreationFrame && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Created at — creation stack</h3>
+              <SourceFrameRow
+                frame={{
+                  function: creationFrame!.function,
+                  fileName: creationFrame!.fileName,
+                  lineNumber: creationFrame!.lineNumber,
+                  reason: creationFrame!.reason,
+                }}
+              />
+            </div>
+          )}
+
+          {hasSuspensionFrames && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Suspended at — last observed</h3>
+              {suspensionPoints.map((point) => (
+                <Card key={point.eventSeq} shadow="none">
+                  <CardBody className="p-0">
+                    <SourceFrameRow
+                      frame={{
+                        function: point.function,
+                        fileName: point.fileName,
+                        lineNumber: point.lineNumber,
+                        reason: point.reason,
+                      }}
+                    />
+                  </CardBody>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

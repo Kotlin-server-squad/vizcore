@@ -25,6 +25,40 @@ beforeEach(() => {
   Object.assign(navigator, { clipboard: { writeText } })
 })
 
+// A timeline whose started event carries a user-code creation frame.
+function timelineWithCreation() {
+  return {
+    data: {
+      coroutineId: 'c-1',
+      name: 'Worker',
+      events: [
+        {
+          seq: 1,
+          timestamp: 100,
+          kind: 'coroutine.started',
+          suspensionPoint: {
+            function: 'com.app.Service.run',
+            fileName: 'Service.kt',
+            lineNumber: 42,
+            reason: 'launch',
+            timestamp: 100,
+          },
+        },
+      ],
+    },
+    isLoading: false,
+    isError: false,
+  }
+}
+
+const userSuspension = {
+  function: 'com.app.Service.fetch',
+  fileName: 'Service.kt',
+  lineNumber: 99,
+  reason: 'delay',
+  timestamp: 200,
+}
+
 describe('CoroutineSourceStack', () => {
   it('keeps the timeline query disabled when coroutineId is null (no eager fetch)', () => {
     useCoroutineTimeline.mockReturnValue({ data: undefined, isLoading: false, isError: false })
@@ -79,43 +113,61 @@ describe('CoroutineSourceStack', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders Created at + Suspended at sections with a user-frame jump target', () => {
-    useCoroutineTimeline.mockReturnValue({
-      data: {
-        coroutineId: 'c-1',
-        name: 'Worker',
-        events: [
-          {
-            seq: 1,
-            timestamp: 100,
-            kind: 'coroutine.started',
-            suspensionPoint: {
-              function: 'com.app.Service.run',
-              fileName: 'Service.kt',
-              lineNumber: 42,
-              reason: 'launch',
-              timestamp: 100,
-            },
-          },
-        ],
-      },
-      isLoading: false,
-      isError: false,
-    })
-    useSuspensionPoints.mockReturnValue([
-      {
-        function: 'com.app.Service.fetch',
-        fileName: 'Service.kt',
-        lineNumber: 99,
-        reason: 'delay',
-        timestamp: 200,
-      },
-    ])
+  it('collapsed default renders the compact Created at / Suspended at chips (not the full stack)', () => {
+    useCoroutineTimeline.mockReturnValue(timelineWithCreation())
+    useSuspensionPoints.mockReturnValue([userSuspension])
 
     render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
 
+    // Compact chip labels render by default.
     expect(screen.getByText('Created at')).toBeInTheDocument()
     expect(screen.getByText('Suspended at')).toBeInTheDocument()
+
+    // Each compact chip surfaces its file:line.
+    expect(screen.getByText('Service.kt:42')).toBeInTheDocument()
+    expect(screen.getByText('Service.kt:99')).toBeInTheDocument()
+
+    // The full-stack section headers are NOT shown until expanded.
+    expect(screen.queryByText('Created at — creation stack')).toBeNull()
+    expect(screen.queryByText('Suspended at — last observed')).toBeNull()
+  })
+
+  it('expanding reveals the full creation + suspension stack sections', () => {
+    useCoroutineTimeline.mockReturnValue(timelineWithCreation())
+    useSuspensionPoints.mockReturnValue([userSuspension])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /show full stack/i }))
+
+    expect(screen.getByText('Created at — creation stack')).toBeInTheDocument()
+    expect(screen.getByText('Suspended at — last observed')).toBeInTheDocument()
+    // Full frame rows render the function names.
+    expect(screen.getByText('com.app.Service.run')).toBeInTheDocument()
+    expect(screen.getByText('com.app.Service.fetch')).toBeInTheDocument()
+  })
+
+  it('the expanded section headers render text-sm (not text-lg)', () => {
+    useCoroutineTimeline.mockReturnValue(timelineWithCreation())
+    useSuspensionPoints.mockReturnValue([userSuspension])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /show full stack/i }))
+
+    const created = screen.getByText('Created at — creation stack')
+    const suspended = screen.getByText('Suspended at — last observed')
+    expect(created.className).toContain('text-sm')
+    expect(created.className).not.toContain('text-lg')
+    expect(suspended.className).toContain('text-sm')
+    expect(suspended.className).not.toContain('text-lg')
+  })
+
+  it('a user-frame jump copies {file}:{line} + toasts verbatim (collapsed compact chip)', () => {
+    useCoroutineTimeline.mockReturnValue(timelineWithCreation())
+    useSuspensionPoints.mockReturnValue([userSuspension])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
 
     const jumpTarget = screen.getByRole('button', { name: 'Jump to code: Service.kt:99' })
     fireEvent.click(jumpTarget)
@@ -123,7 +175,7 @@ describe('CoroutineSourceStack', () => {
     expect(toastSuccess).toHaveBeenCalledWith('Copied Service.kt:99')
   })
 
-  it('renders a library frame inert (no role=button)', () => {
+  it('renders a library frame inert (no jump target)', () => {
     useCoroutineTimeline.mockReturnValue({
       data: { coroutineId: 'c-1', name: 'Worker', events: [] },
       isLoading: false,
