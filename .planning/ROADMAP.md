@@ -315,7 +315,7 @@ Plans:
 
 - [x] 08.3-03-PLAN.md — Stand up the 3-process demo harness on free alt-ports + re-run 08.2 Test 2 in live Chrome: confirm the source drawer renders a real `SpringVizcoreDemoApplication.kt:<line>` frame (not "No source attribution yet") and clipboard-copies it; record `08.3-UAT.md` (RCO-06; D-05b)
 
-### Phase 08.4: Eliminate the duplicate-FQN model shadowing hazard (CR-01 hardening) (INSERTED)
+### Phase 08.4: Eliminate the duplicate-FQN model shadowing hazard (CR-01 hardening) (✅ COMPLETE)
 
 **Goal:** Remove the latent classpath-shadowing trap surfaced by the 08.3 code review (CR-01, BLOCKER). The `com.jh.proj.coroutineviz.models.*` model classes exist TWICE under the SAME fully-qualified names — once in the `:coroutine-viz-core` SDK module and once in the `:backend` app module — and both land on the runtime classpath. The `:backend` copies shadow the SDK copies, which already caused a hard HTTP 500 in 08.3 (`NoSuchMethodError: TimelineEventSummary.<init>(... SuspensionPoint ...)` after 08.3-01 edited only the SDK copy), and `RuntimeSnapshot.kt` has ALREADY drifted between the two copies (verified via `diff`). Unit tests miss this because they compile each module in isolation; only the running app loads the shadowing class. Deliver: (1) determine authoritatively whether the `:backend` model copies are dead (no `:backend` source binds to them) or load-bearing; (2) eliminate the duplication — delete the dead `:backend` copies (preferred) or consolidate to a single module — so each model FQN resolves to exactly one class; (3) add a build-time guard (Gradle task / detekt rule / CI check) that FAILS the build on any same-FQN class duplicated across `:backend` and `:coroutine-viz-core`, so the trap cannot re-arm; (4) prove the timeline endpoint (and the broader app) still return real frames after the change. Backend-only hardening; no FE or product-behavior change.
 **Requirements**: hardening / tech-debt (CR-01 from `08.3-REVIEW.md`; see also WR-01/02/03 as optional adjacent cleanups)
@@ -324,7 +324,7 @@ Plans:
 
 Plans:
 
-- [ ] 08.4-01-PLAN.md — Delete 8 :backend duplicate model/sync files, add the verifyNoDuplicateSourceFqns Gradle guard wired into check, and prove the fix with an assembled-app Ktor Test Host timeline test (CR-01)
+- [x] 08.4-01-PLAN.md — Delete 8 :backend duplicate model/sync files, add the verifyNoDuplicateSourceFqns Gradle guard wired into check, and prove the fix with an assembled-app Ktor Test Host timeline test (CR-01) — DONE: 8 deletions (50f805b), guard wired into check (f6c6107), assembled-app TimelineRouteAssembledTest (a51bed1); guard negative-check confirmed (reintroduce→FAIL→remove→PASS); ./gradlew clean check GREEN under JDK 21
 
 ## Progress
 
