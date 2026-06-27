@@ -320,7 +320,7 @@ Plans:
 **Goal:** Remove the latent classpath-shadowing trap surfaced by the 08.3 code review (CR-01, BLOCKER). The `com.jh.proj.coroutineviz.models.*` model classes exist TWICE under the SAME fully-qualified names — once in the `:coroutine-viz-core` SDK module and once in the `:backend` app module — and both land on the runtime classpath. The `:backend` copies shadow the SDK copies, which already caused a hard HTTP 500 in 08.3 (`NoSuchMethodError: TimelineEventSummary.<init>(... SuspensionPoint ...)` after 08.3-01 edited only the SDK copy), and `RuntimeSnapshot.kt` has ALREADY drifted between the two copies (verified via `diff`). Unit tests miss this because they compile each module in isolation; only the running app loads the shadowing class. Deliver: (1) determine authoritatively whether the `:backend` model copies are dead (no `:backend` source binds to them) or load-bearing; (2) eliminate the duplication — delete the dead `:backend` copies (preferred) or consolidate to a single module — so each model FQN resolves to exactly one class; (3) add a build-time guard (Gradle task / detekt rule / CI check) that FAILS the build on any same-FQN class duplicated across `:backend` and `:coroutine-viz-core`, so the trap cannot re-arm; (4) prove the timeline endpoint (and the broader app) still return real frames after the change. Backend-only hardening; no FE or product-behavior change.
 **Requirements**: hardening / tech-debt (CR-01 from `08.3-REVIEW.md`; see also WR-01/02/03 as optional adjacent cleanups)
 **Depends on:** Phase 08.3 (the bug was discovered and partially patched there — `CoroutineTimeline.kt` re-synced in commit `dc33a70`; this phase makes the fix structural and permanent)
-**Plans:** 1 plan (1 wave)
+**Plans:** 1/1 plans complete
 
 Plans:
 
@@ -344,6 +344,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete    | 2026-06-25 |
 | 8.2 Surface source attribution + jump-to-code (mounted) (v1.1) | 0/2 | Planned | - |
 | 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 3/3 | Complete    | 2026-06-27 |
-| 8.4 Eliminate duplicate-FQN model shadowing hazard (CR-01 hardening) (v1.1) | 0/1 | Planned | - |
+| 8.4 Eliminate duplicate-FQN model shadowing hazard (CR-01 hardening) (v1.1) | 1/1 | Complete    | 2026-06-27 |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
