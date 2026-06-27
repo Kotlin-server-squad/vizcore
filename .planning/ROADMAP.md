@@ -299,7 +299,7 @@ Plans:
 **Goal:** Make per-coroutine source attribution ACTUALLY APPEAR against the real backend, closing the RCO-06 end-to-end gap found in 08.2 live UAT (the source drawer is reachable but always empty). `ProjectionService.getCoroutineTimeline` is a stub that returns `events: []`, and `TimelineEventSummary` has no `suspensionPoint` field — so the frames the event store already holds (`CoroutineSuspended.suspensionPoint`, e.g. `SpringVizcoreDemoApplication.kt:75`) never reach the FE drawer. Implement event aggregation in the timeline projection (map `CoroutineStarted`→`coroutine.started`, `CoroutineSuspended`→`coroutine.suspended`, carry `suspensionPoint`), add the source fields to the DTO, update OpenAPI + regenerate `shared/api-types`, reconcile the hand-written FE `api.ts`, and add the missing backend projection test plus a non-mocked integration test asserting a real `file:line` frame is returned. Backend-led; NOT a sketch-alignment pass (that surface work is a separate future FE phase).
 **Requirements**: RCO-06 (completes end-to-end delivery — 08.1 built the code, 08.2 mounted the drawer, 08.3 supplies the data)
 **Depends on:** Phase 08.2 (the FE drawer + lazy timeline data path already consume this endpoint)
-**Plans:** 3 plans (3 waves)
+**Plans:** 3/3 plans complete
 
 Plans:
 
@@ -313,7 +313,7 @@ Plans:
 
 **Wave 3** *(live UAT — depends on 08.3-01 + 08.3-02; non-autonomous human-verify)*
 
-- [ ] 08.3-03-PLAN.md — Stand up the 3-process demo harness on free alt-ports + re-run 08.2 Test 2 in live Chrome: confirm the source drawer renders a real `SpringVizcoreDemoApplication.kt:<line>` frame (not "No source attribution yet") and clipboard-copies it; record `08.3-UAT.md` (RCO-06; D-05b)
+- [x] 08.3-03-PLAN.md — Stand up the 3-process demo harness on free alt-ports + re-run 08.2 Test 2 in live Chrome: confirm the source drawer renders a real `SpringVizcoreDemoApplication.kt:<line>` frame (not "No source attribution yet") and clipboard-copies it; record `08.3-UAT.md` (RCO-06; D-05b)
 
 ## Progress
 
@@ -332,6 +332,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 8. Live Real-App View + Metrics (v1.1) | 4/4 | Complete (verified + secured + live UAT passed) | 2026-06-25 |
 | 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete    | 2026-06-25 |
 | 8.2 Surface source attribution + jump-to-code (mounted) (v1.1) | 0/2 | Planned | - |
-| 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 2/3 | In progress | - |
+| 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 3/3 | Complete   | 2026-06-27 |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
