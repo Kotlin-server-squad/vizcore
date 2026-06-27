@@ -75,10 +75,12 @@ class TimelineRouteAssembledTest {
         coroutineId: String,
     ) {
         // The EventBus is replay=0: an event sent before the ProjectionService collector has
-        // subscribed has no live receiver and is lost. Deterministically await a live subscriber
-        // (the projection's collect launched in ProjectionService.init) before emitting — this
-        // closes the startup race without sleeping (EventBus.subscriptionCount contract).
-        session.eventBus.subscriptionCount.first { it >= 1 }
+        // subscribed has no live receiver and is lost. A VizSession launches TWO independent
+        // init-time bus collectors — ProjectionService.init AND MetricsProjection.init — whose
+        // subscribe order is non-deterministic, so awaiting `>= 1` could return when only
+        // MetricsProjection is live, dropping CoroutineCreated to the projection. Await BOTH
+        // (>= 2) so the projection collector is guaranteed live before the first emit (WR-01).
+        session.eventBus.subscriptionCount.first { it >= 2 }
 
         session.send(
             CoroutineCreated(
