@@ -12,6 +12,6 @@ import type { SessionInfo } from '@/types/api'
  *
  * Pure function so it is unit-testable in isolation.
  */
-export function deriveSessionKind(session: Pick<SessionInfo, 'sessionId'>): 'live' | 'demo' {
+export function deriveSessionKind(session: SessionInfo): 'live' | 'demo' {
   return session.sessionId.startsWith('scenario-') ? 'demo' : 'live'
 }
