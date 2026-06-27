@@ -10,6 +10,20 @@ vizcore is a real-time tool that makes invisible Kotlin coroutine execution visi
 
 A developer can SEE and UNDERSTAND coroutine, Flow, and structured-concurrency execution that is otherwise invisible — reducing time-to-understand of concurrent Kotlin behavior (per BUSINESS_ANALYSIS_V2). Captured behavior is real (instrumented from the live library), not simulated, and is event-sourced for replay/time-travel.
 
+## Current Milestone: v1.2 Production Hardening, SDK & IDE Delivery
+
+**Goal:** Take vizcore from feature-complete to production-grade and developer-distributable — harden it at scale, publish it as a consumable SDK, wire first-class observability, and ship the IntelliJ "Run with Visualizer" experience with a tested, polished frontend.
+
+**Target features** (sequenced: Scale/SDK first → then IDE/FE):
+- Scale & resilience — per-event-type sampling, batching, SSE compression, dev-only load-test harness, rate/cap protection (PERF-01..04, ADR-020)
+- SDK distribution — publish `coroutine-viz-core` to GitHub Packages, CLI fat JAR, `coroutineVizCheck` Gradle task (SDK-01/02, ADR-021)
+- Observability integration — OpenTelemetry/OTLP exporter (zero overhead when off), spans verified in Jaeger/Zipkin (OTEL-01/02)
+- IntelliJ plugin — finish `RunWithVisualizerAction` (javaagent launch), JCEF tool window, plugin tests, Marketplace (IDE-01..03, ADR-010/014)
+- Frontend testing & polish — actor/select/anti-pattern tests, FE coverage ≥80% in CI, Playwright E2E, Storybook, visual regression (FETEST-01..03, ADR-022)
+- ONB-01 close-out — bind `ConnectWizard` auto-resolve to the real `VizcoreClient` session
+
+**Out of scope for v1.2:** business-model / pricing / license + KPI decisions remain pending (engineering-only milestone; deferred to a later go-to-market milestone).
+
 ## Requirements
 
 ### Validated
@@ -111,4 +125,6 @@ A developer can SEE and UNDERSTAND coroutine, Flow, and structured-concurrency e
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-27 after **v1.1 milestone** ("Real-Code Coroutine Observability") — 8 phases / 21 plans, 9/9 requirements satisfied, audit `tech_debt` (no blockers, 11/11 integration seams wired). vizcore can now point at a developer's own running Kotlin app via the `coroutine-viz-client` lib and render it live with source attribution + metrics. Carried-forward debt: ONB-01 ConnectWizard auto-resolve is decoupled from the real client session (onboarding UX polish). Next: Phase 4 (scale/observability/SDK) and Phase 5 (IntelliJ plugin + FE quality).*
+*Updated: 2026-06-27 — **v1.2 milestone started** ("Production Hardening, SDK & IDE Delivery") — bundles the remaining Phase 4 (Scale/Observability/SDK) + Phase 5 (IntelliJ plugin + FE quality) work plus the ONB-01 close-out; phase numbering continues from v1.1 (next phase = 9). Business-model/KPI decisions stay out of scope.*
+
+*Prior: 2026-06-27 after **v1.1 milestone** ("Real-Code Coroutine Observability") — 8 phases / 21 plans, 9/9 requirements satisfied, audit `tech_debt` (no blockers, 11/11 integration seams wired). vizcore can now point at a developer's own running Kotlin app via the `coroutine-viz-client` lib and render it live with source attribution + metrics. Carried-forward debt: ONB-01 ConnectWizard auto-resolve is decoupled from the real client session (onboarding UX polish). Next: Phase 4 (scale/observability/SDK) and Phase 5 (IntelliJ plugin + FE quality).*

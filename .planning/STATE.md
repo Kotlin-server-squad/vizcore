@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: — Real-Code Coroutine Observability
-status: Awaiting next milestone
-stopped_at: Completed 08.5-03-PLAN.md (connect/onboarding → Surface-003; lib/session-kind.ts client LIVE/DEMO derivation + badged SessionsSidebar-as-home + SessionRow + 3-step ConnectWizard with new-id-scoped polled auto-resolve; routes/sessions/index.tsx repointed). Both Wave-1 plans (01 + 03) of Phase 08.5 done.
-last_updated: "2026-06-27T20:09:29.685Z"
-last_activity: 2026-06-27 — Milestone v1.1 completed and archived
+milestone: v1.2
+milestone_name: Production Hardening, SDK & IDE Delivery
+status: planning
+last_updated: "2026-06-27T20:25:20.546Z"
+last_activity: 2026-06-27
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 21
-  completed_plans: 21
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,9 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 ## Current Position
 
-Phase: Milestone v1.1 complete (archived → .planning/milestones/v1.1-*)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
+Status: Defining requirements
+Last activity: 2026-06-27 — Milestone v1.2 started
 
 ## Deferred Items
 
