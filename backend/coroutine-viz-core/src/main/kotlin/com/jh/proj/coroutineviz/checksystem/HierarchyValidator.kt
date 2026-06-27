@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.checksystem
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineBodyCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 
@@ -27,6 +28,16 @@ object HierarchyValidator {
         val coroutineEvents = events.filterIsInstance<CoroutineEvent>()
         val byCoroutine = coroutineEvents.groupBy { it.coroutineId }
 
+        // Whether the source distinguishes body completion from job-tree completion.
+        // Sources that model the structured-concurrency "Completing" / WAITING_FOR_CHILDREN
+        // state emit CoroutineBodyCompleted (e.g. the VizScope wrapper, which also defers a
+        // coroutine's terminal until all children have terminated). Coarse sources such as the
+        // DebugProbes synthesizer emit a single CoroutineCompleted at body/vanish completion and
+        // never emit CoroutineBodyCompleted — so a parent legitimately "completes" (body done)
+        // before its still-running children. The parent-before-children ordering check is only
+        // meaningful when this richer signal is present.
+        val streamModelsBodyCompletion = coroutineEvents.any { it is CoroutineBodyCompleted }
+
         // Build parent-child relationships from CoroutineCreated events
         val createEvents = coroutineEvents.filterIsInstance<CoroutineCreated>()
 
@@ -43,7 +54,12 @@ object HierarchyValidator {
             val parentId = childCreated.parentCoroutineId ?: continue
 
             results += checkChildCreatedWithinParentScope(childCreated, parentId, byCoroutine)
-            results += checkParentNotCompletedBeforeChildren(childCreated, parentId, byCoroutine)
+            results += checkParentNotCompletedBeforeChildren(
+                childCreated,
+                parentId,
+                byCoroutine,
+                streamModelsBodyCompletion,
+            )
         }
 
         if (results.isEmpty()) {
@@ -101,8 +117,23 @@ object HierarchyValidator {
         childCreated: CoroutineCreated,
         parentId: String,
         byCoroutine: Map<String, List<CoroutineEvent>>,
+        streamModelsBodyCompletion: Boolean,
     ): ValidationResult {
         val ruleName = "ParentNotCompletedBeforeChildren"
+
+        // Coarse sources (e.g. DebugProbes) emit CoroutineCompleted at body/vanish completion,
+        // not job-tree completion, and never emit CoroutineBodyCompleted. Under those semantics a
+        // parent legitimately terminates before its children, so the ordering assertion below would
+        // be a false positive. Genuinely never-terminated children are still caught by the
+        // lifecycle "started-has-terminal" leak rule, independent of this hierarchy check.
+        if (!streamModelsBodyCompletion) {
+            return ValidationResult.Pass(
+                ruleName,
+                "Source does not model body-vs-tree completion (no CoroutineBodyCompleted events); " +
+                    "CoroutineCompleted denotes body completion, so parent/child terminal ordering is not asserted",
+            )
+        }
+
         val parentEvents =
             byCoroutine[parentId] ?: return ValidationResult.Pass(
                 ruleName,
