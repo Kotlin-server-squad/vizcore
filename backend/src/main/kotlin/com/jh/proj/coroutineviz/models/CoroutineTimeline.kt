@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.models
 
+import com.jh.proj.coroutineviz.events.SuspensionPoint
 import kotlinx.serialization.Serializable
 
 /**
@@ -33,4 +34,6 @@ data class TimelineEventSummary(
     val dispatcherName: String? = null,
     // For suspension events
     val reason: String? = null,
+    // Source code location where a coroutine suspended (only populated for suspend rows)
+    val suspensionPoint: SuspensionPoint? = null,
 )
