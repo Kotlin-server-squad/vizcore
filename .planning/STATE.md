@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: planning
-last_updated: "2026-06-27T20:25:20.546Z"
+last_updated: "2026-06-27T21:00:00.000Z"
 last_activity: 2026-06-27
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Planning next milestone — Phase 4 (Scale/Observability/SDK) + Phase 5 (IntelliJ plugin + FE quality) remain.
+**Current focus:** v1.2 milestone — Phase 9 (Session Correlation + ONB-01 close-out), first of 6 phases (9–14), Scale/SDK-first → IDE/FE-last.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-27 — Milestone v1.2 started
+Phase: 9 of 14 (Session Correlation + ONB-01 close-out) — first v1.2 phase
+Plan: — (ready to plan)
+Status: Ready to plan
+Last activity: 2026-06-27 — v1.2 roadmap created (Phases 9–14; 22/22 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0% (v1.2)
 
 ## Deferred Items
 
