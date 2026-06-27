@@ -26,7 +26,7 @@ import { projectCoroutines } from '@/lib/projections/project-coroutines'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { CoroutineTree } from './CoroutineTree'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
-import { CoroutineSourceDrawer } from './CoroutineSourceDrawer'
+import { CoroutineSourceStack } from './CoroutineSourceStack'
 import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
@@ -794,29 +794,35 @@ export function SessionDetails({
               // existing standalone list (no dock, no added interactivity). The
               // dock owns the single SessionMetrics tile-strip + the single
               // inline LeakList (PD-02), so neither is mounted again here.
+              // Surface 002 (PD-05): the live-view source attribution lives
+              // INLINE in the dock's right column — the selected coroutine's
+              // CoroutineSourceStack (compact chips → expand) feeds the slot.
+              // The right-side CoroutineSourceDrawer mount is retired so the
+              // timeline is fetched/mounted exactly once (Pitfall 5). A muted
+              // placeholder renders until a coroutine is selected.
               return isLiveView ? (
                 <LiveDockPanel
                   sessionId={sessionId}
                   streamEnabled={streamEnabled}
                   readOnly={readOnly}
                   liveList={liveList}
+                  sourcePanel={
+                    selectedCoroutineId ? (
+                      <CoroutineSourceStack
+                        sessionId={sessionId}
+                        coroutineId={selectedCoroutineId}
+                      />
+                    ) : (
+                      <div className="text-sm text-default-400">
+                        Select a coroutine to view its source
+                      </div>
+                    )
+                  }
                 />
               ) : (
                 liveList
               )
             })()}
-
-            {/* Source-attribution drawer (RCO-06, D-02/D-06). Mounted ONLY in the
-                live "What's running now" block so it is absent in shared/replay
-                contexts. Opens when a live node is selected; lazily fetches the
-                timeline (enabled-guarded) only while a coroutineId is set. */}
-            <CoroutineSourceDrawer
-              sessionId={sessionId}
-              coroutineId={selectedCoroutineId}
-              label={panelCoroutines.find(c => c.id === selectedCoroutineId)?.label}
-              isOpen={!!selectedCoroutineId}
-              onClose={() => setSelectedCoroutineId(null)}
-            />
           </div>
         </Tab>
 

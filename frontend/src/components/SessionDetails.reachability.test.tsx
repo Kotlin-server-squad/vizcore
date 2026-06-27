@@ -7,12 +7,17 @@ import { SessionDetails } from './SessionDetails'
 import type { SessionSnapshot, CoroutineState, CoroutineTimeline } from '@/types/api'
 
 // RCO-06 reachability proof. Unlike the sibling SessionDetails.test.tsx (which
-// stubs CoroutineTree/Graph + the drawer to isolate wiring), this file renders
-// the REAL live CoroutineTree, the REAL CoroutineSourceDrawer + CoroutineSourceStack,
-// and only mocks the per-coroutine timeline fetch — so it proves the genuine
-// click → drawer-open → file:line pipeline end-to-end (NOT a compile-only check).
-// Module-scoped vi.mock() makes this impossible to express in the stub-mocked
-// sibling file, hence a dedicated reachability test file.
+// stubs CoroutineTree/Graph to isolate wiring), this file renders the REAL live
+// CoroutineTree + the REAL inline CoroutineSourceStack (mounted in the dock's
+// right-column sourcePanel slot), and only mocks the per-coroutine timeline
+// fetch — so it proves the genuine click → inline-source → file:line pipeline
+// end-to-end (NOT a compile-only check). Module-scoped vi.mock() makes this
+// impossible to express in the stub-mocked sibling file, hence a dedicated
+// reachability test file.
+//
+// Surface 002 (PD-05): the live-view source is hosted INLINE in the dock — the
+// right-side CoroutineSourceDrawer mount is retired — so the proof asserts the
+// inline file:line jump target, not a Drawer title.
 
 vi.mock('@/hooks/use-sessions', () => ({
   useSession: vi.fn(),
@@ -62,7 +67,7 @@ vi.mock('@/lib/toast', () => ({ toastSuccess: vi.fn(), toastError: vi.fn() }))
 
 // Heavy/irrelevant panels stubbed so SessionDetails mounts in jsdom without
 // pulling in html2canvas / MediaRecorder / framer MotionValue loops. The live
-// CoroutineTree, CoroutineSourceDrawer and CoroutineSourceStack are LEFT REAL.
+// CoroutineTree and the inline CoroutineSourceStack are LEFT REAL.
 vi.mock('./CoroutineTreeGraph', () => ({
   CoroutineTreeGraph: () => <div data-testid="coroutine-tree-graph" />,
 }))
@@ -204,58 +209,64 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
     } as unknown as ReturnType<typeof useSession>)
   })
 
-  it('clicking a live node opens the drawer rendering a real file:line frame', async () => {
+  it('clicking a live node renders the inline source panel with a real file:line frame', async () => {
     render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+
+    // No CoroutineSourceDrawer is mounted in the live view — the source is inline
+    // in the dock's right column (PD-05). The retired Drawer would render a
+    // "Coroutine source — {label}" title; assert it is absent.
+    expect(screen.queryByText(/Coroutine source —/)).toBeNull()
 
     // Switch to the list view so the real CoroutineTree (not the mocked graph) renders.
     await userEvent.click(screen.getByRole('button', { name: /list view/i }))
 
-    // Click the live coroutine node — additive onSelect wiring (Task 1).
+    // Click the live coroutine node — additive onSelect wiring (08.2 idiom).
     const node = await screen.findByRole('button', { name: 'Open source for LiveWorker' })
     await userEvent.click(node)
 
-    // Drawer opens with its title (proves the drawer is mounted + user-reachable).
-    const heading = await screen.findByText(/Coroutine source — LiveWorker/)
-    expect(heading).toBeInTheDocument()
-
-    // And it renders the real file:line frame from the fetched timeline — a
-    // user-code jump target, NOT a compile-only mount. (The single suspension
-    // frame backs both the derived "Created at" and the "Suspended at" rows, so
-    // the jump target legitimately appears more than once.)
+    // The inline source panel renders the real file:line frame from the fetched
+    // timeline — a user-code jump target, NOT a compile-only mount. (The single
+    // suspension frame backs both the derived "Created at" and "Suspended at"
+    // compact chips, so the jump target legitimately appears more than once.)
     const jumpTargets = await screen.findAllByRole('button', {
       name: 'Jump to code: UserService.kt:42',
     })
     expect(jumpTargets.length).toBeGreaterThanOrEqual(1)
     expect(jumpTargets[0]).toHaveTextContent('UserService.kt:42')
 
+    // Still inline — no Drawer title appears after selection.
+    expect(screen.queryByText(/Coroutine source —/)).toBeNull()
+
     // The timeline was actually fetched for the selected coroutine.
     expect(mockedApiClient.getCoroutineTimeline).toHaveBeenCalledWith('session-1', 'c-live')
   })
 
-  it('highlights the selected node with ring-2 ring-primary while the drawer is open', async () => {
+  it('highlights the selected node with ring-2 ring-primary while its inline source is shown', async () => {
     render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
 
     await userEvent.click(screen.getByRole('button', { name: /list view/i }))
 
-    // Capture the node reference BEFORE opening — the open Drawer's focus trap
-    // marks background content inert/aria-hidden, so role queries no longer reach
-    // it; the element itself persists and still carries its className.
     const node = await screen.findByRole('button', { name: 'Open source for LiveWorker' })
     await userEvent.click(node)
 
-    // Drawer is open…
-    expect(await screen.findByText(/Coroutine source — LiveWorker/)).toBeInTheDocument()
+    // The inline source panel renders its file:line jump target…
+    expect(
+      (await screen.findAllByRole('button', { name: 'Jump to code: UserService.kt:42' })).length,
+    ).toBeGreaterThanOrEqual(1)
 
-    // …and the selected node carries the persistent selection ring.
+    // …and the selected node carries the persistent selection ring (no Drawer
+    // focus-trap, so the node stays directly reachable inline).
     expect(node.className).toContain('ring-2')
     expect(node.className).toContain('ring-primary')
   })
 
-  it('does not open the drawer until a node is clicked (no eager fetch)', () => {
+  it('shows the placeholder + does not fetch the timeline until a node is clicked (no eager fetch)', () => {
     render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
 
-    // Before any selection the drawer title is absent and no timeline is fetched
-    // (the enabled-guard keeps the query disabled while coroutineId is null, D-08).
+    // Before any selection the inline source slot shows its muted placeholder and
+    // no timeline is fetched (the enabled-guard keeps the query disabled while
+    // coroutineId is null, D-08). No retired-Drawer title appears.
+    expect(screen.getByText('Select a coroutine to view its source')).toBeInTheDocument()
     expect(screen.queryByText(/Coroutine source —/)).toBeNull()
     expect(mockedApiClient.getCoroutineTimeline).not.toHaveBeenCalled()
   })

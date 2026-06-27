@@ -171,7 +171,7 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
   }
 
   // The first suspension point backs the collapsed "Suspended at" compact chip.
-  const firstSuspension = suspensionPoints[0]
+  const firstSuspension = hasSuspensionFrames ? suspensionPoints[0] : undefined
 
   return (
     <div className="space-y-4">
@@ -191,7 +191,7 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
           </div>
         )}
 
-        {hasSuspensionFrames && firstSuspension.fileName && (
+        {firstSuspension?.fileName && (
           <div className="flex items-center gap-2">
             <span className="text-xs uppercase tracking-wide text-default-400">Suspended at</span>
             <span className="font-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-md">
