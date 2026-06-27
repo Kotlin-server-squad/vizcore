@@ -342,7 +342,7 @@ Plans:
 
 **Wave 2** *(depends on 08.5-01: mounts into the LiveDockPanel source slot, shares SessionDetails.tsx)*
 
-- [ ] 08.5-02-PLAN.md — Surface 002: refactor CoroutineSourceStack to compact-chips → expand-to-full-stack (text-sm headers, jump-to-code preserved verbatim), mount inline in the dock right column, retire the live-view Drawer (FE-ALIGN)
+- [x] 08.5-02-PLAN.md — Surface 002: refactor CoroutineSourceStack to compact-chips → expand-to-full-stack (text-sm headers, jump-to-code preserved verbatim), mount inline in the dock right column, retire the live-view Drawer (FE-ALIGN) — DONE: collapsed srcchip "Created at"/"Suspended at" chips + Jump default + "Show full stack" expander revealing the renamed creation/suspension sections at text-sm; LOCKED copyFileLine/TimelineSourceRef/data path verbatim; SessionDetails feeds the dock sourcePanel slot (selection-gated) and drops the live CoroutineSourceDrawer mount (one selection/mount/fetch); 61 files/507 tests + tsc 0 + lint 0 errors + build clean, no new dep (commits 4e7e07a, 68f1a54)
 
 
 ## Progress
