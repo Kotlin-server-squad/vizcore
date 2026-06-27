@@ -332,6 +332,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 8. Live Real-App View + Metrics (v1.1) | 4/4 | Complete (verified + secured + live UAT passed) | 2026-06-25 |
 | 8.1 Align live view to sketch winners (v1.1) | 2/2 | Complete    | 2026-06-25 |
 | 8.2 Surface source attribution + jump-to-code (mounted) (v1.1) | 0/2 | Planned | - |
-| 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 3/3 | Complete   | 2026-06-27 |
+| 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 3/3 | Complete    | 2026-06-27 |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
