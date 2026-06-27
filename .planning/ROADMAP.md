@@ -337,7 +337,7 @@ Plans:
 
 **Wave 1** *(independent surfaces — no file overlap; run in parallel)*
 
-- [ ] 08.5-01-PLAN.md — Surface 001: extract LiveDockPanel (IDE-dock shell — metric-tile header strip + live list + source slot + inline amber leaks), mount live-only in SessionDetails, retire the partial L1 strip; replay/shared keep the tabs (FE-ALIGN)
+- [x] 08.5-01-PLAN.md — Surface 001: extract LiveDockPanel (IDE-dock shell — metric-tile header strip + live list + source slot + inline amber leaks), mount live-only in SessionDetails, retire the partial L1 strip; replay/shared keep the tabs (FE-ALIGN) — DONE: NEW LiveDockPanel.tsx + test, additive SessionMetrics showLeaks guard, live-only mount via isLiveView, partial L1 strip + duplicate SessionMetrics removed, source-selection gated to live; 59 files/492 tests + tsc 0 + lint 0 errors + build clean, no new dep (commits 70e3d8c, bf011c3)
 - [ ] 08.5-03-PLAN.md — Surface 003 (ONB-01): client-side LIVE/DEMO derivation + badged SessionsSidebar-as-home (grouped rows, + Connect, inline empty state) + 3-step ConnectWizard (Snippet steps + waiting Spinner → live view); repoint routes/sessions/index.tsx
 
 **Wave 2** *(depends on 08.5-01: mounts into the LiveDockPanel source slot, shares SessionDetails.tsx)*
@@ -364,6 +364,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 8.2 Surface source attribution + jump-to-code (mounted) (v1.1) | 0/2 | Planned | - |
 | 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 3/3 | Complete    | 2026-06-27 |
 | 8.4 Eliminate duplicate-FQN model shadowing hazard (CR-01 hardening) (v1.1) | 1/1 | Complete    | 2026-06-27 |
-| 8.5 Align frontend to sketch winners — IDE-dock + inline source stack + connect wizard (v1.1) | 0/3 | Planned | - |
+| 8.5 Align frontend to sketch winners — IDE-dock + inline source stack + connect wizard (v1.1) | 1/3 | Executing | - |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |
