@@ -83,3 +83,35 @@ dependencies {
 tasks.named<Test>("test") {
     useJUnitPlatform()
 }
+
+// CR-01 guard: fail the build if any .kt FQN (== relative path under src/main/kotlin)
+// exists in BOTH :backend and :coroutine-viz-core main sources. Same-FQN duplicates land
+// on one flat runtime classpath and the JVM loads whichever it enumerates first (unspecified
+// order) — the exact hazard that produced the live 08.3 HTTP 500. Scan the WHOLE tree, not
+// models/ only, so a drifted sync/DeadlockDetector.kt cannot slip past.
+val verifyNoDuplicateSourceFqns by tasks.registering {
+    group = "verification"
+    description = "Fails if any .kt FQN (relative path) exists in BOTH :backend and :coroutine-viz-core main sources."
+    val backendRoot = layout.projectDirectory.dir("src/main/kotlin")
+    val coreRoot = project(":coroutine-viz-core").layout.projectDirectory.dir("src/main/kotlin")
+    inputs.dir(backendRoot)
+    inputs.dir(coreRoot)
+    doLast {
+        fun rels(dir: java.io.File) =
+            dir
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .map { it.relativeTo(dir).invariantSeparatorsPath }
+                .toSet()
+        val dups = (rels(backendRoot.asFile) intersect rels(coreRoot.asFile)).sorted()
+        if (dups.isNotEmpty()) {
+            throw GradleException(
+                "Duplicate same-FQN Kotlin sources across :backend and :coroutine-viz-core " +
+                    "(remove the :backend copies — they shadow the SDK at runtime):\n" +
+                    dups.joinToString("\n") { "  - $it" },
+            )
+        }
+    }
+}
+
+tasks.named("check") { dependsOn(verifyNoDuplicateSourceFqns) }
