@@ -331,7 +331,7 @@ Plans:
 **Goal:** Close the three sketch-vs-shipped divergences recorded in the sketch-findings-vizcore skill so the FE matches the validated design winners. (001 — Live view) Move the live real-app view to the winning **IDE-docked layout**: a docked bottom panel with a **header strip of metric tiles** (Active / Peak / Throughput/s / Dispatcher util) — un-bury metrics + the leak list from the current "Threads" tab; keep the existing tree/graph/timeline canvas on top; LIVE pill + ~150ms indicator stays. (002 — Source attribution) Reconcile the current right-side Drawer to the winning **inline compact-chips → expand-to-full-stack** model inside the dock's source panel: compact "Created at / Suspended at" chips by default, expand on click to the full creation+suspension stack with **user frames bold / library frames dimmed** and per-user-frame jump-to-code (jump-to-code itself already ships — preserve it). (003 — Connect/onboarding, GREENFIELD) Build the **badged sessions sidebar-as-home** (LIVE vs DEMO pill on every row, live apps + demo scenarios together, `+ Connect` action, empty state folded inline) plus the **3-step connect wizard** (add dependency → enable → run) with a copy-obvious client-lib snippet and a "waiting for events" spinner. Frontend-only (consumes existing backend/transport from Phases 7–8.4); literal Tailwind + HeroUI per IN-12; no new backend. Design contract = `Skill("sketch-findings-vizcore")` (winning markup in sources/00{1,2,3}-*/index.html). Run `/gsd-ui-phase 08.5` to produce the UI-SPEC, then `/gsd-plan-phase 08.5`.
 **Requirements**: FE-ALIGN (sketch divergence closure — see vizcore-sketch-findings-fe-divergence) + ONB-01 (greenfield connect/onboarding, sketch 003)
 **Depends on:** Phase 08.3 (the live view + source drawer this realigns) and Phase 07 (the client transport the connect wizard onboards)
-**Plans:** 3 plans (2 waves)
+**Plans:** 3/3 plans complete
 
 Plans:
 
@@ -343,7 +343,6 @@ Plans:
 **Wave 2** *(depends on 08.5-01: mounts into the LiveDockPanel source slot, shares SessionDetails.tsx)*
 
 - [x] 08.5-02-PLAN.md — Surface 002: refactor CoroutineSourceStack to compact-chips → expand-to-full-stack (text-sm headers, jump-to-code preserved verbatim), mount inline in the dock right column, retire the live-view Drawer (FE-ALIGN) — DONE: collapsed srcchip "Created at"/"Suspended at" chips + Jump default + "Show full stack" expander revealing the renamed creation/suspension sections at text-sm; LOCKED copyFileLine/TimelineSourceRef/data path verbatim; SessionDetails feeds the dock sourcePanel slot (selection-gated) and drops the live CoroutineSourceDrawer mount (one selection/mount/fetch); 61 files/507 tests + tsc 0 + lint 0 errors + build clean, no new dep (commits 4e7e07a, 68f1a54)
-
 
 ## Progress
 
@@ -364,6 +363,6 @@ Visualizer" parts of Phase 5 (IDE-01..03) are the delivery vehicle for v1.1 and 
 | 8.2 Surface source attribution + jump-to-code (mounted) (v1.1) | 0/2 | Planned | - |
 | 8.3 Populate per-coroutine timeline source frames (backend, RCO-06 e2e) (v1.1) | 3/3 | Complete    | 2026-06-27 |
 | 8.4 Eliminate duplicate-FQN model shadowing hazard (CR-01 hardening) (v1.1) | 1/1 | Complete    | 2026-06-27 |
-| 8.5 Align frontend to sketch winners — IDE-dock + inline source stack + connect wizard (v1.1) | 1/3 | Executing | - |
+| 8.5 Align frontend to sketch winners — IDE-dock + inline source stack + connect wizard (v1.1) | 3/3 | Complete    | 2026-06-27 |
 | 4. Scale, Observability & SDK | 0/TBD | Deferred (post-v1.1) | - |
 | 5. IntelliJ Plugin & Frontend Quality | 0/TBD | Deferred (IDE parts feed v1.1) | - |

@@ -170,7 +170,7 @@ Kotlin app and visualize it in the existing FE. Design record:
 Closes the frontend sketch-vs-shipped divergences recorded in `Skill("sketch-findings-vizcore")`
 and adds the greenfield connect/onboarding surface. FE-only — no backend change, no new dependency.
 
-- [ ] **FE-ALIGN**: Close the sketch-vs-shipped FE divergences per `sketch-findings-vizcore` —
+- [x] **FE-ALIGN**: Close the sketch-vs-shipped FE divergences per `sketch-findings-vizcore` —
   (1) the live real-app view becomes the IDE-docked layout (canvas on top + dock with a header
   metric-tile strip, live list left, source panel right; metrics un-buried from the Threads tab;
   leaks inline/amber); (2) source attribution becomes inline compact-chips → expand-to-full-stack
@@ -252,7 +252,7 @@ and adds the greenfield connect/onboarding surface. FE-only — no backend chang
 | RCO-05 | v1.1 (real-code obs) | Complete (Phase 07 Plan 02) |
 | RCO-06 | v1.1 (real-code obs) | Backend half done (Phase 08 Plan 01: hierarchy reconstruction + parent/scope propagation; ProjectionService/CoroutineTree now populate). FE live-render lands in Wave-3 plan 08-03 |
 | RCO-07 | v1.1 (real-code obs) | Backend done (Phase 08 Plan 02: MetricsProjection active/peak/throughput/dispatcher-util/leaks + tenant-scoped GET /api/sessions/{id}/metrics). FE metrics panel + leak list lands in Wave-3 plan 08-03 |
-| FE-ALIGN | Phase 08.5 | Pending (FE alignment: IDE-dock live view + inline source panel) |
+| FE-ALIGN | Phase 08.5 | Complete (Phase 08.5 Plans 01+02: LiveDockPanel IDE-dock live view with un-buried metric tiles + single amber leak list; inline compact-chips→expand source panel, live Drawer retired, LOCKED copyFileLine preserved) |
 | ONB-01 | Phase 08.5 | Complete (Phase 08.5 Plan 03: client-side LIVE/DEMO derivation + badged SessionsSidebar-as-home + 3-step ConnectWizard with polled auto-resolve) |
 **Coverage:**
 
