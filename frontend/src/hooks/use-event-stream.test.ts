@@ -329,3 +329,173 @@ describe('useEventStream - replay gate (D-02/D-04)', () => {
     expect(invalidationCount(queryClient, 'sessions')).toBe(1)
   })
 })
+
+describe('useEventStream - hybrid batch + dropped frames (D-04/D-08)', () => {
+  let mockEventSource: MockEventSource
+
+  const eventFor = (seq: number) => ({
+    kind: 'CoroutineCreated',
+    sessionId: 'session-1',
+    seq,
+    tsNanos: 1000 + seq,
+    coroutineId: `c${seq}`,
+    jobId: `j${seq}`,
+    parentCoroutineId: null,
+    scopeId: 'scope-1',
+    label: 'test',
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEventSource = new MockEventSource()
+    mockedApiClient.createEventSource.mockReturnValue(
+      mockEventSource as unknown as EventSource,
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('appends every element of a batch array in order (D-04)', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      mockEventSource.simulateEvent(
+        'batch',
+        JSON.stringify([eventFor(1), eventFor(2), eventFor(3)]),
+      )
+    })
+
+    await waitFor(() => {
+      expect(result.current.events.length).toBe(3)
+    })
+    expect(
+      result.current.events.map((e) => (e as { seq?: number }).seq),
+    ).toEqual([1, 2, 3])
+  })
+
+  it('seq-dedupes batch elements against already-seen events (T-10-12)', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // A single-event frame first (seq 1 now seen).
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(1)))
+    })
+    await waitFor(() => expect(result.current.events.length).toBe(1))
+
+    // A batch replaying seq 1 (e.g. reconnect) plus new seqs 2,3 — only 2,3 append.
+    act(() => {
+      mockEventSource.simulateEvent(
+        'batch',
+        JSON.stringify([eventFor(1), eventFor(2), eventFor(3)]),
+      )
+    })
+
+    await waitFor(() => expect(result.current.events.length).toBe(3))
+    expect(
+      result.current.events.map((e) => (e as { seq?: number }).seq),
+    ).toEqual([1, 2, 3])
+  })
+
+  it('seq-dedupes duplicate seqs WITHIN a single batch array', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      mockEventSource.simulateEvent(
+        'batch',
+        JSON.stringify([eventFor(1), eventFor(1), eventFor(2)]),
+      )
+    })
+
+    await waitFor(() => expect(result.current.events.length).toBe(2))
+    expect(
+      result.current.events.map((e) => (e as { seq?: number }).seq),
+    ).toEqual([1, 2])
+  })
+
+  it('survives a malformed batch frame without killing the stream (T-10-14)', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      mockEventSource.simulateEvent('batch', 'not-json{{{')
+    })
+    // No throw, no events.
+    expect(result.current.events).toEqual([])
+
+    // A subsequent valid batch still works (listener not dead).
+    act(() => {
+      mockEventSource.simulateEvent('batch', JSON.stringify([eventFor(1)]))
+    })
+    await waitFor(() => expect(result.current.events.length).toBe(1))
+  })
+
+  it('single-event per-kind frames still parse alongside batch (back-compat)', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(1)))
+      mockEventSource.simulateEvent('batch', JSON.stringify([eventFor(2), eventFor(3)]))
+    })
+
+    await waitFor(() => expect(result.current.events.length).toBe(3))
+    expect(
+      result.current.events.map((e) => (e as { seq?: number }).seq),
+    ).toEqual([1, 2, 3])
+  })
+
+  it('surfaces a dropped marker WITHOUT appending a stored event (D-08, T-10-13)', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    expect(result.current.droppedCount).toBe(0)
+
+    act(() => {
+      mockEventSource.simulateEvent('dropped', JSON.stringify({ count: 3 }))
+    })
+
+    await waitFor(() => expect(result.current.droppedCount).toBe(3))
+    // The control frame must NOT pollute the rendered event list.
+    expect(result.current.events).toEqual([])
+  })
+
+  it('accumulates dropped counts across multiple dropped frames', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      mockEventSource.simulateEvent('dropped', JSON.stringify({ count: 2 }))
+      mockEventSource.simulateEvent('dropped', JSON.stringify({ count: 5 }))
+    })
+
+    await waitFor(() => expect(result.current.droppedCount).toBe(7))
+    expect(result.current.events).toEqual([])
+  })
+
+  it('ignores a malformed dropped frame without throwing', async () => {
+    const { result } = renderHook(() => useEventStream('session-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      mockEventSource.simulateEvent('dropped', 'not-json')
+      mockEventSource.simulateEvent('dropped', JSON.stringify({ notCount: 1 }))
+    })
+
+    // No throw; a non-numeric/absent count does not advance the marker.
+    expect(result.current.droppedCount).toBe(0)
+    expect(result.current.events).toEqual([])
+  })
+})
