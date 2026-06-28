@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
 import com.jh.proj.coroutineviz.sseSamplingDroppedGauge
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.plugins.ratelimit.*
@@ -341,109 +342,122 @@ fun Route.registerSessionRoutes() {
     // header (Pitfall 2), so the jwt provider also reads the JWT from the `?token=<jwt>` query param
     // (SSE_TOKEN_QUERY_PARAM = "token"). No separate auth scheme here — the wrapper + jwt authHeader
     // fallback handle it. When auth is off, this passes through publicly (D-04a).
-    sse("/api/sessions/{id}/stream") {
-        val sessionId =
-            call.parameters["id"] ?: run {
-                logger.warn("SSE connection attempted without session ID")
+    //
+    // Anti-buffering headers (PERF-03, Pitfall P3) MUST be appended BEFORE the SSE response
+    // commits — setting them inside the `sse{}` handler no-ops, because that body runs in
+    // SSEServerContent.writeTo() AFTER status+headers are flushed. A route-scoped intercept on
+    // the stream path (and ONLY that path) appends them ahead of the SSE content (RESEARCH §4):
+    //   X-Accel-Buffering: no   → tells nginx/proxies not to buffer the stream
+    //   Cache-Control:   no-cache → defeats intermediary response caching
+    route("/api/sessions/{id}/stream") {
+        intercept(ApplicationCallPipeline.Plugins) {
+            call.response.headers.append("X-Accel-Buffering", "no")
+            call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
+        }
+        sse {
+            val sessionId =
+                call.parameters["id"] ?: run {
+                    logger.warn("SSE connection attempted without session ID")
+                    return@sse
+                }
+
+            // PRE-STREAM tenant scoping (CR-01 / D-03): resolve the session through the
+            // tenant filter BEFORE the "connected" frame, the gauge increment, and any
+            // bus subscription/replay. A cross-tenant id is indistinguishable from a
+            // missing id (do not leak existence) and yields the SAME 404 error event —
+            // tenant B never opens a stream nor triggers a replay of tenant A's events.
+            val session = call.resolveScopedSession(sessionId)
+            if (session == null) {
+                logger.warn("SSE connection attempted for non-existent session: $sessionId")
+                send(
+                    ServerSentEvent(
+                        data = """{"error": "Session not found"}""",
+                        event = "error",
+                    ),
+                )
                 return@sse
             }
 
-        // PRE-STREAM tenant scoping (CR-01 / D-03): resolve the session through the
-        // tenant filter BEFORE the "connected" frame, the gauge increment, and any
-        // bus subscription/replay. A cross-tenant id is indistinguishable from a
-        // missing id (do not leak existence) and yields the SAME 404 error event —
-        // tenant B never opens a stream nor triggers a replay of tenant A's events.
-        val session = call.resolveScopedSession(sessionId)
-        if (session == null) {
-            logger.warn("SSE connection attempted for non-existent session: $sessionId")
-            send(
-                ServerSentEvent(
-                    data = """{"error": "Session not found"}""",
-                    event = "error",
-                ),
-            )
-            return@sse
-        }
+            logger.info("SSE stream started for session: $sessionId")
+            sseClientsGauge.incrementAndGet()
 
-        logger.info("SSE stream started for session: $sessionId")
-        sseClientsGauge.incrementAndGet()
+            try {
+                // Flush status line + headers immediately: on a session with ZERO stored events
+                // the replay loop writes nothing, so without this frame the response never
+                // reaches the client (curl HTTP 000; the Vite proxy turns it into a 500, which
+                // EventSource treats as FATAL — no auto-reconnect). A comment frame is invisible
+                // to browser EventSource listeners, so no frontend changes are required.
+                send(ServerSentEvent(comments = "connected"))
 
-        try {
-            // Flush status line + headers immediately: on a session with ZERO stored events
-            // the replay loop writes nothing, so without this frame the response never
-            // reaches the client (curl HTTP 000; the Vite proxy turns it into a 500, which
-            // EventSource treats as FATAL — no auto-reconnect). A comment frame is invisible
-            // to browser EventSource listeners, so no frontend changes are required.
-            send(ServerSentEvent(comments = "connected"))
+                coroutineScope {
+                    // Subscribe to live events BEFORE snapshotting the store: EventBus has
+                    // replay = 0, so any event emitted between the store snapshot and the
+                    // subscription would otherwise be permanently lost. Live events are
+                    // bridged into a buffering channel during replay, then drained through the
+                    // structural-aware egress chain with a seq filter to deduplicate.
+                    //
+                    // This bridge channel only spans the subscribe→snapshot race window; the
+                    // REAL per-subscriber bounded shedding is the StructuralAwareBuffer inside
+                    // sseEgressFrames (PERF-04, D-07), which replaces the old blind DROP_OLDEST
+                    // liveBuffer with structural-aware shedding (lifecycle never dropped).
+                    val liveBridge =
+                        Channel<VizEvent>(
+                            capacity = SSE_LIVE_BUFFER_CAPACITY,
+                            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+                            onUndeliveredElement = { dropped ->
+                                logger.warn(
+                                    "SSE live bridge overflow for session {} — dropped event " +
+                                        "kind={} seq={} (slow client; stream gap, refetch /events)",
+                                    sessionId,
+                                    dropped.kind,
+                                    dropped.seq,
+                                )
+                            },
+                        )
+                    launch {
+                        session.bus.stream().collect { liveBridge.send(it) }
+                    }
 
-            coroutineScope {
-                // Subscribe to live events BEFORE snapshotting the store: EventBus has
-                // replay = 0, so any event emitted between the store snapshot and the
-                // subscription would otherwise be permanently lost. Live events are
-                // bridged into a buffering channel during replay, then drained through the
-                // structural-aware egress chain with a seq filter to deduplicate.
-                //
-                // This bridge channel only spans the subscribe→snapshot race window; the
-                // REAL per-subscriber bounded shedding is the StructuralAwareBuffer inside
-                // sseEgressFrames (PERF-04, D-07), which replaces the old blind DROP_OLDEST
-                // liveBuffer with structural-aware shedding (lifecycle never dropped).
-                val liveBridge =
-                    Channel<VizEvent>(
-                        capacity = SSE_LIVE_BUFFER_CAPACITY,
-                        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-                        onUndeliveredElement = { dropped ->
-                            logger.warn(
-                                "SSE live bridge overflow for session {} — dropped event " +
-                                    "kind={} seq={} (slow client; stream gap, refetch /events)",
-                                sessionId,
-                                dropped.kind,
-                                dropped.seq,
-                            )
-                        },
-                    )
-                launch {
-                    session.bus.stream().collect { liveBridge.send(it) }
+                    // 1️⃣ Replay all stored events (history) — snapshot AFTER subscribing.
+                    // Replay is NEVER sampled/shed/batched — history must be complete.
+                    val storedEvents = session.store.all()
+                    logger.info("Replaying ${storedEvents.size} stored events for session: $sessionId")
+                    for (event in storedEvents) {
+                        send(event.toSse())
+                    }
+
+                    // Track the last seq we've sent to avoid duplicates. The max-seq
+                    // watermark is sound because VizSession.send finalizes seq atomically
+                    // with the store append (WR-02/WR-12): store order == seq order ==
+                    // bus delivery order, so any live event with seq <= the snapshot max
+                    // was already part of the replayed snapshot.
+                    val lastReplayedSeq = storedEvents.maxOfOrNull { it.seq } ?: 0L
+
+                    // 2️⃣ Drain LIVE events through the egress chain: adaptive-sample →
+                    // structural-shed → hybrid-batch (RESEARCH §2), filtering already-replayed
+                    // seqs out of the upstream FIRST so dedup is exact. Single-event frames stay
+                    // byte-identical (D-04); under load `event: batch` arrays and `event: dropped`
+                    // control frames appear. The store is untouched (D-03) — control frames are
+                    // egress-only and never replayed (Pitfall P7).
+                    val liveUpstream =
+                        liveBridge.consumeAsFlow().filter { it.seq > lastReplayedSeq }
+                    sseEgressFrames(
+                        upstream = liveUpstream,
+                        config = call.application.egressConfig(),
+                        onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
+                    ).collect { frame -> send(frame) }
                 }
-
-                // 1️⃣ Replay all stored events (history) — snapshot AFTER subscribing.
-                // Replay is NEVER sampled/shed/batched — history must be complete.
-                val storedEvents = session.store.all()
-                logger.info("Replaying ${storedEvents.size} stored events for session: $sessionId")
-                for (event in storedEvents) {
-                    send(event.toSse())
-                }
-
-                // Track the last seq we've sent to avoid duplicates. The max-seq
-                // watermark is sound because VizSession.send finalizes seq atomically
-                // with the store append (WR-02/WR-12): store order == seq order ==
-                // bus delivery order, so any live event with seq <= the snapshot max
-                // was already part of the replayed snapshot.
-                val lastReplayedSeq = storedEvents.maxOfOrNull { it.seq } ?: 0L
-
-                // 2️⃣ Drain LIVE events through the egress chain: adaptive-sample →
-                // structural-shed → hybrid-batch (RESEARCH §2), filtering already-replayed
-                // seqs out of the upstream FIRST so dedup is exact. Single-event frames stay
-                // byte-identical (D-04); under load `event: batch` arrays and `event: dropped`
-                // control frames appear. The store is untouched (D-03) — control frames are
-                // egress-only and never replayed (Pitfall P7).
-                val liveUpstream =
-                    liveBridge.consumeAsFlow().filter { it.seq > lastReplayedSeq }
-                sseEgressFrames(
-                    upstream = liveUpstream,
-                    config = call.application.egressConfig(),
-                    onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
-                ).collect { frame -> send(frame) }
+            } catch (e: CancellationException) {
+                // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
+                // cooperative cancellation; the finally block still decrements the gauge.
+                logger.debug("SSE stream cancelled for session: {}", sessionId)
+                throw e
+            } catch (e: Exception) {
+                logger.error("Error in SSE stream for session $sessionId", e)
+            } finally {
+                sseClientsGauge.decrementAndGet()
+                logger.info("SSE stream ended for session: $sessionId")
             }
-        } catch (e: CancellationException) {
-            // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
-            // cooperative cancellation; the finally block still decrements the gauge.
-            logger.debug("SSE stream cancelled for session: {}", sessionId)
-            throw e
-        } catch (e: Exception) {
-            logger.error("Error in SSE stream for session $sessionId", e)
-        } finally {
-            sseClientsGauge.decrementAndGet()
-            logger.info("SSE stream ended for session: $sessionId")
         }
     }
 }
