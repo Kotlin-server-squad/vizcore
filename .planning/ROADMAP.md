@@ -142,7 +142,12 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
   2. With OTel enabled, coroutine spans export over OTLP with parentage derived from event causality (`coroutineId`/`parentCoroutineId`/`jobId`), never ThreadLocal, and one span per coroutine *lifecycle* (not per event).
   3. The exported spans are verifiable end-to-end in both Jaeger and Zipkin (OTLP → Collector topology), and the exporter runs out-of-band off the `sendLock` path so a stalled exporter cannot block emission.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+- [ ] 12-01-PLAN.md — OTel BOM deps (:backend only) + OtelConfig data class (D-01/D-12)
+- [ ] 12-02-PLAN.md — OtelTracing SDK factory + DropCountingSpanProcessor + CoroutineSpanExporter (causality spans, OTEL-02)
+- [ ] 12-03-PLAN.md — configureObservability() construction gate + application.yaml block + zero-cost-when-off tests (OTEL-01)
+- [ ] 12-04-PLAN.md — Collector->Jaeger+Zipkin compose topology + ADR-030 + dual-UI SC#3 verification (D-13)
 
 ### Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)
 
