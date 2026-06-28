@@ -67,8 +67,8 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Wave 1**
 
-- [ ] 09-01-PLAN.md — Backend: CorrelationRegistry + GET /api/sessions/resolve + record token on POST /api/sessions + evict on close (CORR-01, CORR-02)
-- [ ] 09-02-PLAN.md — Client: optional correlation param through VizcoreClient.start → createSession → POST /api/sessions (CORR-01)
+- [x] 09-01-PLAN.md — Backend: CorrelationRegistry + GET /api/sessions/resolve + record token on POST /api/sessions + evict on close (CORR-01, CORR-02)
+- [x] 09-02-PLAN.md — Client: optional correlation param through VizcoreClient.start → createSession → POST /api/sessions (CORR-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -165,7 +165,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.3 Populate timeline source frames (e2e) | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 8.4 Eliminate duplicate-FQN shadowing (CR-01) | v1.1 | 1/1 | Complete | 2026-06-27 |
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
-| 9. Session Correlation + ONB-01 close-out | v1.2 | 0/3 | Planned | - |
+| 9. Session Correlation + ONB-01 close-out | v1.2 | 2/3 | In Progress|  |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 0/TBD | Not started | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 0/TBD | Not started | - |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |

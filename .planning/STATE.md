@@ -4,13 +4,13 @@ milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
 stopped_at: Phase 9 context gathered
-last_updated: "2026-06-28T06:08:40.847Z"
-last_activity: 2026-06-27 — v1.2 roadmap created (Phases 9–14; 22/22 requirements mapped)
+last_updated: "2026-06-28T07:23:22.000Z"
+last_activity: 2026-06-28 -- Completed 09-02-PLAN.md (CORR-01 client half)
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 2
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** v1.2 milestone — Phase 9 (Session Correlation + ONB-01 close-out), first of 6 phases (9–14), Scale/SDK-first → IDE/FE-last.
+**Current focus:** Phase 09 — session-correlation-shared-foundation-onb-01-close-out
 
 ## Current Position
 
-Phase: 9 of 14 (Session Correlation + ONB-01 close-out) — first v1.2 phase
-Plan: — (ready to plan)
+Phase: 09 (session-correlation-shared-foundation-onb-01-close-out) — EXECUTING
+Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-06-27 — v1.2 roadmap created (Phases 9–14; 22/22 requirements mapped)
+Last activity: 2026-06-28 -- Completed 09-02-PLAN.md (CORR-01 client half)
 
 Progress: [░░░░░░░░░░] 0% (v1.2)
 
@@ -113,6 +113,8 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 08.5 P01 | ~21 min | 2 tasks | 6 files |
 | Phase 08.5 P03 | ~7 min | 2 tasks | 7 files |
 | Phase 08.5 P02 | ~8 min | 2 tasks | 4 files |
+| Phase 09 P01 | 8min | 4 tasks | 5 files |
+| Phase 09 P02 | ~7min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -171,6 +173,9 @@ Recent decisions affecting current work:
 - [Phase 08.5, Plan 01]: Live real-app view → Surface-001 IDE-dock (FE-ALIGN, sketch winner C + B's tiles). Closed the first sketch-vs-shipped divergence — un-buried Active/Peak/Throughput/Dispatcher-util metrics from the Threads tab into a dock header strip. NEW presentational LiveDockPanel (props sessionId/streamEnabled/readOnly/liveList:ReactNode/sourcePanel?:ReactNode) = rounded-xl bg-content1 border-t-2 border-primary min-h-[200px]; header flex row hosts LivePill + reused <SessionMetrics showLeaks={false}> (tiles-only); body grid-cols-[1fr_320px]: left column = liveList + a SINGLE inline LeakList ({metrics && metrics.leaks.length>0 && <LeakList leaks leakThresholdMs/>}, LeakList.tsx real signature, NOT sessionId/isLive), right column = sourcePanel ?? muted "Select a coroutine to view its source". Leak data from useSessionMetrics(sessionId, streamEnabled, !readOnly) sharing the ['session-metrics',sessionId] RQ key (React Query dedupes → one fetch shared with the strip's own internal call; SessionMetrics mounted ONCE, LeakList ONCE). PD-04a: the ONLY SessionMetrics.tsx edit is an additive optional showLeaks?:boolean (default true) wrapping the existing Potential-leaks Card in a showLeaks&&(...) guard — every existing mount omits the prop and is byte-equivalent. PD-01: dock is LIVE-ONLY via isLiveView=!replayActive&&!readOnly in SessionDetails; the Coroutines tab renders <LiveDockPanel liveList={the existing tree/graph + Show-completed/N-more controls}/> in live, or the standalone list in replay/shared (existing tabbed layout, no dock); REMOVED the partial L1 docked-metrics strip (~790–803) + the duplicate SessionMetrics; source-selection (onSelect/selectedNodeId) gated to isLiveView so replay/shared tree/graph nodes stay presentational (Pitfall 1 back-compat). PD-04: numeral kept text-lg font-semibold (no text-2xl); leaks warning/amber never danger. Literal Tailwind only (IN-12). No backend change, no new dep (lockfiles untouched), use-event-stream.ts untouched. Reachability test extended: (a) live render shows the dock metric strip + live list + a single inline "2 potential leaks" amber badge; (b) read-only shared render shows the tabs with NO dock metric strip/LivePill, no "Open source for …" affordance, and no protected getMetrics fetch. Gates: vitest full 59 files/492 tests (--no-file-parallelism; the initial parallel run's 2 worker-startup timeouts were the known environmental flakiness, not a regression), tsc --noEmit 0 errors, lint 0 errors (6 baseline warnings), build clean. Commits 70e3d8c, bf011c3. Plan 02 mounts the Surface-002 source panel into the dock's right slot.
 - [Phase 08.5, Plan 03]: Connect/onboarding → Surface-003 (FE-ALIGN, ONB-01). Closed the third sketch-vs-shipped divergence — greenfield badged sessions-sidebar-as-home + 3-step connect wizard. PD-10 (LIVE/DEMO is CLIENT-derived, no backend field): NEW lib/session-kind.ts deriveSessionKind(session)→'live'|'demo' = demo iff sessionId carries the scenario- prefix the scenarios route mints (createSession.mutateAsync(`scenario-${name}`)), else live; unknown→live so a live app never masquerades as a demo (T-085-08 accept — best-effort, a clean backend discriminator is a deferred phase). SessionRow reuses LivePill (LIVE) / neutral DEMO Chip + mono {N} active (the sketch's {host} is not wire-present in SessionInfo → degrades gracefully, Pitfall 3). SessionsSidebar (320px Card) partitions useSessions() into "Live apps"/"Demo scenarios" groups + primary + Connect; empty list folds the inline "No app connected" empty state (Connect-your-app / Run-a-demo CTAs) INTO the list, not a standalone screen (UI-SPEC 145). PD-11 (first-events signal): ConnectWizard mints ONE session via useCreateSession on open, captures the new id, and POLLS it via a LOCAL useQuery({queryKey:['sessions',newId], enabled:!!newId, refetchInterval:300}) — chose the local new-id-scoped query OVER extending the shipped refetchInterval-less useSession so every existing useSession call site stays byte-equivalent (zero regression surface); AUTO-navigates to /sessions/$sessionId the moment the polled coroutineCount transitions >0 (one-shot resolvedRef, scoped to the new id so it never resolves off a stale cache, Pitfall 6), with a Skip-to-live fallback so it is never a dead-end. 3 Snippet/Spinner steps are static public copy — appName="order-service" is a UI-SPEC constant rendered as React text (auto-escaped), no secret embedded (PD-14, T-085-06/07). PD-12: routes/sessions/index.tsx repointed to the SessionsSidebar-as-home + mounted wizard under Layout; the old flat-grid confirm()-based create UI dropped (create affordance is now + Connect). Two Rule-3 blocking gate fixes: (1) widened deriveSessionKind param Pick<SessionInfo,'sessionId'>→SessionInfo (excess-property typecheck on the test's full-object literals); (2) removed two eslint-disable react-hooks/exhaustive-deps directives — this project's flat ESLint config does NOT register react-hooks so they were "rule not found" ERRORS → replaced with plain comments. TDD both tasks (RED→GREEN): SessionsSidebar.test.tsx (+7) + ConnectWizard.test.tsx (+5, incl. the auto-resolve-on-0→N + new-id-scoping + refetchInterval assertions via captured useQuery options). Literal Tailwind only (IN-12); no backend change, no new dep (package.json/pnpm-lock.yaml untouched, T-085-SC). FE gates green: vitest full 61 files/504 tests (+12), tsc --noEmit 0 errors (no pnpm typecheck script — used npx tsc), lint 0 errors (5 baseline warnings, ≤6 budget), build clean. Commits 12aa5ca, e6dd4ae. Wave 2 (08.5-02) remains: mount the Surface-002 inline source panel into the LiveDockPanel right slot.
 - [Phase 3, Plan 07]: Tenant-isolation gap-closure (CR-01/CR-02/AUTH-05). All five session sub-resource/SSE handlers now route through a shared `ApplicationCall.resolveScopedSession` helper (store!=null → getSession(id, resolveTenant()) → cross-tenant 404; else SessionManager.getSession D-04b fallback); SSE resolves PRE-stream (before connected frame/gauge/bus subscribe/replay) so a cross-tenant caller never opens a stream nor replays. Share routes enforce ownership: mint verifies session ownership via the scoped store (404 for non-owner), list/revoke use new `created_by`-scoped ShareService overloads (existing unscoped signatures kept for the public read path + ShareRoutesTest). New TenantIsolationE2ETest guards the invariant over the REAL routes + JWT auth (jwt provider mirrors Auth.kt incl. ?token= SSE fallback). Known limitation logged to deferred-items: a DB-rebuilt VizSession does NOT replay stored events into projectionService, so /timeline 404s even for the owner (hierarchy/threads return empty 200) — out of scope; isolation still proven via /events + SSE replay.
+- [Phase ?]: 09-01: CorrelationRegistry stores only sessionId; tenant gate deferred to resolveScopedSession (registry stays auth-type-free, core/client JVM-17 pure)
+- [Phase ?]: 09-01: correlation passed as POST /api/sessions query param; resolve 404-until-bound then 200 {sessionId}, cross-tenant 404 never 403; binding evicted via composable addOnSessionClosed
+- [Phase 09, Plan 02]: 09-02 (CORR-01 client half): threaded a trailing defaulted `correlation: String? = null` through VizcoreClient.start() → createSession() → POST /api/sessions; `correlation?.let { parameter("correlation", it) }` emits the param ONLY when supplied (3-arg call sites byte-unchanged). Client forwards an OPAQUE string — zero TenantContext/io.ktor.server import, coroutine-viz-client stays pure JVM-17 (D-12); send()/store path untouched (D-13). SessionBootstrapTest proves presence-when-supplied / absence-when-omitted via an in-process testApplication that captures query params — chose this over ktor-client-mock because MockEngine is not on the client test classpath and adding it = new dependency (T-09-SC block-on-install); no dep added. Client module has NO ktlint/detekt plugin (lint lives at backend root), so the new test style was matched by hand. Gate green under JDK 21. Commits f460eef (feat), f5bf739 (test).
 
 ### Pending Todos
 
@@ -203,9 +208,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-27T21:16:17.135Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-session-correlation-shared-foundation-onb-01-close-out/09-CONTEXT.md
+Last session: 2026-06-28T07:23:22.000Z
+Stopped at: Completed 09-02-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
