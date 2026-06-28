@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
-status: completed
+status: executing
 stopped_at: Phase 12 context gathered
-last_updated: "2026-06-28T19:08:26.886Z"
-last_activity: 2026-06-28
+last_updated: "2026-06-28T19:38:07.677Z"
+last_activity: 2026-06-28 -- Phase 12 execution started
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 11
+  total_plans: 15
   completed_plans: 11
   percent: 50
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Phase 11 — sdk-distribution-jvm-17-guard
+**Current focus:** Phase 12 — observability-integration-opentelemetry-otlp
 
 ## Current Position
 
-Phase: 12
-Plan: Not started
-Status: All 3 plans built; Phase 11 NOT complete pending the deferred remote GitHub Packages publish + remote SC#1 resolution proof
-Last activity: 2026-06-28
+Phase: 12 (observability-integration-opentelemetry-otlp) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 12
+Last activity: 2026-06-28 -- Phase 12 execution started
 
 Progress: [██████----] 33% (Phase 11: 3/3 plans built; remote publish deferred)
 

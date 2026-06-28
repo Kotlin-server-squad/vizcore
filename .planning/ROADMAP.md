@@ -144,7 +144,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Plans**: 4 plans
 
-- [ ] 12-01-PLAN.md — OTel BOM deps (:backend only) + OtelConfig data class (D-01/D-12)
+- [x] 12-01-PLAN.md — OTel BOM deps (:backend only) + OtelConfig data class (D-01/D-12)
 - [ ] 12-02-PLAN.md — OtelTracing SDK factory + DropCountingSpanProcessor + CoroutineSpanExporter (causality spans, OTEL-02)
 - [ ] 12-03-PLAN.md — configureObservability() construction gate + application.yaml block + zero-cost-when-off tests (OTEL-01)
 - [ ] 12-04-PLAN.md — Collector->Jaeger+Zipkin compose topology + ADR-030 + dual-UI SC#3 verification (D-13)
@@ -199,6 +199,6 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 3/3 | Complete    | 2026-06-28 |
-| 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |
+| 12. Observability Integration (OTEL/OTLP) | v1.2 | 1/4 | In Progress|  |
 | 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
