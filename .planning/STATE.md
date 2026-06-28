@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: completed
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-06-28T18:59:59.699Z"
+stopped_at: Phase 12 context gathered
+last_updated: "2026-06-28T19:08:26.886Z"
 last_activity: 2026-06-28
 progress:
   total_phases: 6
@@ -227,9 +227,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-28T16:49:25.423Z
-Stopped at: Completed 11-01-PLAN.md
-Resume file: .planning/phases/11-sdk-distribution-jvm-17-guard/11-02-PLAN.md
+Last session: 2026-06-28T19:08:26.878Z
+Stopped at: Phase 12 context gathered
+Resume file: .planning/phases/12-observability-integration-opentelemetry-otlp/12-CONTEXT.md
 
 ## Operator Next Steps
 
