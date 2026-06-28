@@ -37,6 +37,10 @@ for artifact in "${ARTIFACTS[@]}"; do
   POM="${M2_REPO}/${GROUP_PATH}/${artifact}/${VERSION}/${artifact}-${VERSION}.pom"
   echo "==> Asserting POM: ${POM}"
 
+  # Per-artifact flag so an earlier artifact's failure cannot mislabel this one's
+  # OK/FAIL line. FAILED stays a separate global accumulator for the final exit.
+  artifact_failed=0
+
   if [[ ! -f "${POM}" ]]; then
     echo "    FAIL: POM not found for ${artifact} (publishToMavenLocal did not produce it)"
     FAILED=1
@@ -45,26 +49,30 @@ for artifact in "${ARTIFACTS[@]}"; do
 
   if ! grep -q "<groupId>${GROUP_ID}</groupId>" "${POM}"; then
     echo "    FAIL: groupId ${GROUP_ID} not found in ${artifact} POM"
-    FAILED=1
+    artifact_failed=1
   fi
 
   if ! grep -q "<artifactId>${artifact}</artifactId>" "${POM}"; then
     echo "    FAIL: artifactId ${artifact} not found in ${artifact} POM"
-    FAILED=1
+    artifact_failed=1
   fi
 
   if ! grep -q "<version>${VERSION}</version>" "${POM}"; then
     echo "    FAIL: version ${VERSION} not found in ${artifact} POM"
-    FAILED=1
+    artifact_failed=1
   fi
 
-  if ! grep -q "MIT" "${POM}"; then
-    echo "    FAIL: MIT license not found in ${artifact} POM"
-    FAILED=1
+  # Anchor to the license name element — a bare "MIT" substring would pass on a
+  # comment, a URL, or a transitive dependency artifactId.
+  if ! grep -q "<name>MIT License</name>" "${POM}"; then
+    echo "    FAIL: MIT license element not found in ${artifact} POM"
+    artifact_failed=1
   fi
 
-  if [[ "${FAILED}" -eq 0 ]]; then
+  if [[ "${artifact_failed}" -eq 0 ]]; then
     echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (MIT) asserted"
+  else
+    FAILED=1
   fi
 done
 
