@@ -48,6 +48,18 @@ dependencies {
     implementation("io.ktor:ktor-server-rate-limit")
     implementation("io.ktor:ktor-server-metrics-micrometer")
     implementation("io.micrometer:micrometer-registry-prometheus:$prometheus_version")
+
+    // OpenTelemetry / OTLP observability (OTEL-01/02) — backend-ONLY per D-12.
+    // NEVER add these to coroutine-viz-core / coroutine-viz-client: OTel bytecode in
+    // a publishable module fails the Phase-11 `checkBytecode` guard. First-party CNCF
+    // io.opentelemetry artifacts (RESEARCH Package Legitimacy Audit: all Approved).
+    // BOM pins the version; all other coordinates inherit it (no per-artifact versions).
+    // Do NOT add opentelemetry-sdk-extension-autoconfigure — it eagerly constructs/sets
+    // a global, defeating the OTEL-01 construction gate (RESEARCH anti-pattern).
+    implementation(platform("io.opentelemetry:opentelemetry-bom:1.63.0"))
+    implementation("io.opentelemetry:opentelemetry-api")
+    implementation("io.opentelemetry:opentelemetry-sdk")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
     implementation("io.ktor:ktor-server-content-negotiation")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-netty")
@@ -78,6 +90,10 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+
+    // OTel in-memory span exporter for Wave 0 span-shape assertions (plans 02/03) —
+    // version inherited from the opentelemetry-bom above. Backend-only (D-12).
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
 }
 
 tasks.named<Test>("test") {
