@@ -139,4 +139,88 @@ val verifyNoDuplicateSourceFqns by tasks.registering {
     }
 }
 
+// PERF-06 guard: fail the build if the publishable SDK modules drift off the JVM-17
+// floor (D-07) OR if coroutine-viz-core gains an io.ktor import (D-08, breaks the
+// IntelliJ-241 17-targeted plugin variant). Models the verifyNoDuplicateSourceFqns
+// idiom but scans COMPILED output, so it MUST dependsOn the modules' `classes` tasks
+// (RESEARCH Pitfall 4 — the bytes must exist) and FAIL on an empty classes dir rather
+// than pass vacuously. The backend app (com.jh.proj) legitimately uses io.ktor (see the
+// application { mainClass = "io.ktor.server.netty.EngineMain" } block above) and is NOT
+// scanned — only the two publishable, web-framework-free modules are.
+val checkBytecode by tasks.registering {
+    group = "verification"
+    description =
+        "Fails if coroutine-viz-core/client emit a class with bytecode major > 61 (JVM 17) " +
+        "or if coroutine-viz-core sources import io.ktor."
+    dependsOn(
+        project(":coroutine-viz-core").tasks.named("classes"),
+        project(":coroutine-viz-client").tasks.named("classes"),
+    )
+    doLast {
+        val jvm17Major = 61 // class-file major version for Java 17
+        val offenders = mutableListOf<String>()
+        for (path in listOf(":coroutine-viz-core", ":coroutine-viz-client")) {
+            val classesDir =
+                project(path)
+                    .layout.buildDirectory
+                    .dir("classes/kotlin/main")
+                    .get()
+                    .asFile
+            val classFiles =
+                if (classesDir.isDirectory) {
+                    classesDir.walkTopDown().filter { it.isFile && it.extension == "class" }.toList()
+                } else {
+                    emptyList()
+                }
+            if (classFiles.isEmpty()) {
+                // Pitfall 4: an input-less guard must error, not pass vacuously.
+                throw GradleException(
+                    "checkBytecode found no compiled classes for $path under " +
+                        "${classesDir.path} — the modules must compile before the scan runs.",
+                )
+            }
+            for (classFile in classFiles) {
+                val bytes = classFile.readBytes()
+                // 0xCAFEBABE header: magic[0..3], minor[4..5], major[6..7].
+                val major = ((bytes[6].toInt() and 0xFF) shl 8) or (bytes[7].toInt() and 0xFF)
+                if (major > jvm17Major) {
+                    offenders += "  - ${classFile.path} (major $major > $jvm17Major)"
+                }
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException(
+                "Bytecode above the JVM-17 floor (major > $jvm17Major) in a publishable module:\n" +
+                    offenders.joinToString("\n"),
+            )
+        }
+
+        // D-08: coroutine-viz-core must stay io.ktor-free. Match IMPORT LINES, not a
+        // whole-file substring — three core KDoc comments literally say "no io.ktor"
+        // (documentation, not imports) and MUST pass.
+        val coreSrc =
+            project(":coroutine-viz-core")
+                .layout.projectDirectory
+                .dir("src/main/kotlin")
+                .asFile
+        val ktorImporters =
+            coreSrc
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { file ->
+                    file.readLines().any { line -> line.trimStart().startsWith("import io.ktor") }
+                }.map { "  - ${it.path}" }
+                .sorted()
+                .toList()
+        if (ktorImporters.isNotEmpty()) {
+            throw GradleException(
+                "coroutine-viz-core must stay io.ktor-free (it backs the IntelliJ-241 JVM-17 " +
+                    "plugin variant), but these sources import io.ktor:\n" +
+                    ktorImporters.joinToString("\n"),
+            )
+        }
+    }
+}
+
 tasks.named("check") { dependsOn(verifyNoDuplicateSourceFqns) }
+tasks.named("check") { dependsOn(checkBytecode) }
