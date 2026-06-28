@@ -45,7 +45,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 - [x] **Phase 9: Session Correlation (shared foundation) + ONB-01 close-out** — one in-memory correlation mechanism (`correlation` token + `GET /api/sessions/resolve`) serving both the web ConnectWizard and IntelliJ auto-connect; closes the carried-forward ONB-01 debt (completed 2026-06-28)
 - [x] **Phase 10: Scale & Resilience (PERF wiring + load harness)** — bus-only sampling, SSE batching, anti-buffering headers, ingest rate-cap, dev-only load harness (completed 2026-06-28; verification 5/5, security 19/19)
-- [ ] **Phase 11: SDK Distribution + JVM-17 guard** — publish core + client to GitHub Packages (reconciled coordinates), CLI fat JAR, `coroutineVizCheck` Gradle task, CI bytecode guard
+- [ ] **Phase 11: SDK Distribution + JVM-17 guard** — publish core + client to GitHub Packages (reconciled coordinates), CLI fat JAR, `coroutineVizCheck` Gradle task, CI bytecode guard *(all 3 plans built; remote publish + SC#1 remote resolution DEFERRED to `/gsd-verify-work 11`)*
 - [ ] **Phase 12: Observability Integration (OpenTelemetry/OTLP)** — config-gated causality-based span exporter, zero overhead when off, verified in Jaeger/Zipkin
 - [ ] **Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)** — `RunWithVisualizerAction` javaagent launch, JCEF tool window, correlation auto-connect, plugin tests + Marketplace
 - [ ] **Phase 14: Frontend Testing & Quality** — actor/select/anti-pattern tests, FE coverage ≥80% gated, Playwright E2E, Storybook + visual regression (parallelizable with Phase 13)
@@ -129,7 +129,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Wave 3** *(blocked on Waves 1+2)*
 
-- [ ] 11-03-PLAN.md — `coroutineVizCheck` consumer snippet docs + POM-assertion script + throwaway fresh-consumer proof + manual client publish wiring + HUMAN remote publish/resolution proof (SDK-01, SDK-03) — non-autonomous
+- [x] 11-03-PLAN.md — `coroutineVizCheck` consumer snippet docs + POM-assertion script + throwaway fresh-consumer proof + manual client publish wiring (SDK-03 closed; SDK-01 local proofs done) ✓ Tasks 1-3/4. ⚠️ **DEFERRED:** Task 4 HUMAN remote GitHub Packages publish + remote fresh-consumer resolution (SC#1) → complete via `/gsd-verify-work 11` (agent never publishes, D-03; 0.1.0 is immutable)
 
 ### Phase 12: Observability Integration (OpenTelemetry/OTLP)
 
