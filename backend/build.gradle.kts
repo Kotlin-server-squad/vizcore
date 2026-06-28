@@ -84,6 +84,31 @@ tasks.named<Test>("test") {
     useJUnitPlatform()
 }
 
+// ── PERF-05 dev-only load harness (D-09/D-10/D-11) ───────────────────────────
+// A SEPARATE `loadHarness` source set + JavaExec task that drives sustained
+// synthetic VizEvent load straight at EventBus.send to stress the Plan 01-03
+// egress hardening. Because it is its OWN source set (not `main`), it is excluded
+// from `jar`/`shadowJar` by default — nothing here is ever added to a jar `from(...)`,
+// so the harness can NEVER ship in the production artifact (D-09). The source set
+// compiles/runs against `main`'s output + runtime classpath so it can see
+// VizSession / EventBus / the egress primitives. It lives ONLY in :backend and does
+// NOT touch coroutine-viz-core / coroutine-viz-client build files, so the JVM-17
+// purity of those publishable modules is untouched (Pitfall P6); the harness may run
+// on the backend's JVM 21.
+val loadHarness: SourceSet =
+    sourceSets.create("loadHarness") {
+        compileClasspath += sourceSets["main"].output + configurations["runtimeClasspath"]
+        runtimeClasspath += output + compileClasspath
+    }
+
+// The thin `main()` entrypoint in src/loadHarness/ flooding via EgressLoadDriver (main).
+tasks.register<JavaExec>("loadHarness") {
+    group = "verification"
+    description = "Dev-only: floods synthetic VizEvents at EventBus.send to stress the egress chain (PERF-05)."
+    mainClass.set("com.jh.proj.coroutineviz.harness.LoadHarnessMain")
+    classpath = loadHarness.runtimeClasspath
+}
+
 // CR-01 guard: fail the build if any .kt FQN (== relative path under src/main/kotlin)
 // exists in BOTH :backend and :coroutine-viz-core main sources. Same-FQN duplicates land
 // on one flat runtime classpath and the JVM loads whichever it enumerates first (unspecified
