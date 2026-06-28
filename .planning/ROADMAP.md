@@ -53,70 +53,98 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 ## Phase Details
 
 ### Phase 9: Session Correlation (shared foundation) + ONB-01 close-out
+
 **Goal**: A connecting app and the UI that wants to watch it reliably converge on the *same* live session, closing the v1.1 ONB-01 debt with one mechanism that the IntelliJ plugin will later reuse.
 **Depends on**: Nothing new (builds on the shipped v1.1 client → ingest → SSE pipeline)
 **Requirements**: CORR-01, CORR-02, ONB-01
 **Success Criteria** (what must be TRUE):
+
   1. A developer running `VizcoreClient.start(appName, …, correlation=token)` causes the backend to record that token against the session it actually creates (no separately-minted id).
   2. A caller hitting `GET /api/sessions/resolve?correlation=token` gets back the real, live session id that `VizcoreClient` created, scoped to their tenant (cross-tenant tokens do not resolve).
   3. After connecting via the ConnectWizard, the user is auto-navigated to the **real** connected app's live view (the wizard polls `resolve`, not a self-minted id), and the displayed `DEP_SNIPPET` coordinates match the published artifact.
-**Plans**: TBD
+
+**Plans**: 3 plans in 2 waves
+
+**Wave 1**
+
+- [ ] 09-01-PLAN.md — Backend: CorrelationRegistry + GET /api/sessions/resolve + record token on POST /api/sessions + evict on close (CORR-01, CORR-02)
+- [ ] 09-02-PLAN.md — Client: optional correlation param through VizcoreClient.start → createSession → POST /api/sessions (CORR-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 09-03-PLAN.md — Frontend: ConnectWizard resolve-poll rewire + resolveCorrelation + locked DEP_SNIPPET coordinate (ONB-01, CORR-02)
+
 **UI hint**: yes
 
 ### Phase 10: Scale & Resilience (PERF wiring + load harness)
+
 **Goal**: The live pipeline sheds load gracefully under sustained high event throughput without ever corrupting the event-sourced store, dropping coroutine lifecycle events, or breaking the SSE stream through proxies.
 **Depends on**: Nothing new (independent of Phase 9; validates the hot path before SDK/OTEL attach more subscribers)
 **Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05
 **Success Criteria** (what must be TRUE):
+
   1. Under heavy load, per-event-type sampling reduces emitted SSE volume while the EventStore stays 100% complete — a `rehydrateFromStore()` / `/events` refetch after a sampled live run reproduces every event, and coroutine create/complete/cancel are never dropped (sampling is bus-only; the store-write path stays sacred).
   2. The SSE egress emits batched frames under high throughput and the frontend renders a batched frame array correctly, with single-event back-compat preserved.
   3. The live SSE response carries `X-Accel-Buffering: no` (and appropriate `Cache-Control`) so an intermediary proxy does not buffer/break the stream; bulk JSON routes may be compressed but `/stream` is never gzip-buffered.
   4. Under an overload flood, bounded buffers + an ingest event-rate cap shed load without OOM and without silently losing the *wrong* (structural) events — drops are counted and observable.
   5. A dev-only, Gradle-gated load-test harness drives sustained synthetic event load and reports store/bus/sampling drops separately; it is never present in the production image.
+
 **Plans**: TBD
 
 ### Phase 11: SDK Distribution + JVM-17 guard
+
 **Goal**: vizcore is consumable as a published library and command-line tool — a fresh consumer build can resolve the artifacts and run the validation engine against their own code — with the JVM-17 purity that the IntelliJ plugin depends on enforced by CI.
 **Depends on**: Phase 10 (publish against the load-validated core; the packaged client lib is a prerequisite for Phase 13's agent jar)
 **Requirements**: SDK-01, SDK-02, SDK-03, PERF-06
 **Success Criteria** (what must be TRUE):
+
   1. Both `coroutine-viz-core` AND `coroutine-viz-client` publish to GitHub Packages with an MIT POM and reconciled Maven coordinates — the exact `DEP_SNIPPET` coordinate resolves from a clean, fresh consumer build.
   2. A user can run a Shadow (relocated) fat-JAR CLI to invoke vizcore from the command line and get validation findings (non-zero exit on violations).
   3. A consumer can add a `coroutineVizCheck` Gradle task that runs the existing validation engine against their build and reports coroutine anti-patterns (zero rule duplication).
   4. CI fails the build if `coroutine-viz-core` or `coroutine-viz-client` produce class files above JVM-17 bytecode (and core stays free of `io.ktor`).
+
 **Plans**: TBD
 
 ### Phase 12: Observability Integration (OpenTelemetry/OTLP)
+
 **Goal**: Coroutine execution exports as a correct span tree to standard observability backends, with truly zero cost when the feature is disabled.
 **Depends on**: Phase 10 (slot after PERF so the hot `send()` path is already load-validated before another bus subscriber attaches)
 **Requirements**: OTEL-01, OTEL-02
 **Success Criteria** (what must be TRUE):
+
   1. With OpenTelemetry disabled (default), the OTLP exporter and OTel SDK are never constructed and no EventBus listener/coroutine is registered — measured off-vs-on throughput delta is within noise (gated at construction, not just use).
   2. With OTel enabled, coroutine spans export over OTLP with parentage derived from event causality (`coroutineId`/`parentCoroutineId`/`jobId`), never ThreadLocal, and one span per coroutine *lifecycle* (not per event).
   3. The exported spans are verifiable end-to-end in both Jaeger and Zipkin (OTLP → Collector topology), and the exporter runs out-of-band off the `sendLock` path so a stalled exporter cannot block emission.
+
 **Plans**: TBD
 
 ### Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)
+
 **Goal**: A developer can click "Run with Visualizer" in IntelliJ and watch their own app's live coroutines inside the IDE, auto-connected to the right session — the ergonomic delivery vehicle for the whole real-app pipeline.
 **Depends on**: Phase 9 (correlation auto-connect), Phase 11 (packaged client lib for the agent jar)
 **Requirements**: IDE-01, IDE-02, IDE-03, IDE-04
 **Success Criteria** (what must be TRUE):
+
   1. "Run with Visualizer" launches the developer's app with the vizcore javaagent attached, pointed at the running backend — `RunWithVisualizerAction` is no longer a stub, and the legacy in-IDE Ktor receiver (`PluginEventReceiver`:8090) + Swing UI are deleted.
   2. A JCEF tool window embeds the vizcore React frontend inside IntelliJ (with a graceful fallback when JCEF is unavailable).
   3. The tool window auto-connects to the launched app's live session via the shared correlation mechanism (Phase 9), opening directly on the correct session.
   4. The plugin has automated (headless-safe) tests and is packaged for JetBrains Marketplace distribution.
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 14: Frontend Testing & Quality
+
 **Goal**: The frontend is trustworthy to ship and refactor — its key panels and user flows are tested, coverage is gated, and components are cataloged with visual-regression protection.
 **Depends on**: Nothing new (FE/CI only; runs in parallel with Phase 13)
 **Requirements**: FETEST-01, FETEST-02, FETEST-03, FETEST-04
 **Success Criteria** (what must be TRUE):
+
   1. The actor, select, and anti-pattern panels have unit tests, closing the known FE test gaps.
   2. Frontend test coverage is ≥80% and gated (ratcheted) in CI so it cannot regress.
   3. Playwright E2E covers core user flows — including a live-connect flow — against the live SSE app, non-flaky against the streaming view (web-first assertions on terminal states, dedicated ports).
   4. Storybook 10 catalogs key components with visual-regression checks (addon-vitest, animation-frozen), compatible with React 19 / Vite 6 / Vitest 4.
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -137,7 +165,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.3 Populate timeline source frames (e2e) | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 8.4 Eliminate duplicate-FQN shadowing (CR-01) | v1.1 | 1/1 | Complete | 2026-06-27 |
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
-| 9. Session Correlation + ONB-01 close-out | v1.2 | 0/TBD | Not started | - |
+| 9. Session Correlation + ONB-01 close-out | v1.2 | 0/3 | Planned | - |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 0/TBD | Not started | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 0/TBD | Not started | - |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |

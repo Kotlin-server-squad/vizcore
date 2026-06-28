@@ -2,9 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
-status: planning
-last_updated: "2026-06-27T21:00:00.000Z"
-last_activity: 2026-06-27
+status: executing
+stopped_at: Phase 9 context gathered
+last_updated: "2026-06-28T06:08:40.847Z"
+last_activity: 2026-06-27 — v1.2 roadmap created (Phases 9–14; 22/22 requirements mapped)
 progress:
   total_phases: 6
   completed_phases: 0
@@ -26,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 Phase: 9 of 14 (Session Correlation + ONB-01 close-out) — first v1.2 phase
 Plan: — (ready to plan)
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-06-27 — v1.2 roadmap created (Phases 9–14; 22/22 requirements mapped)
 
 Progress: [░░░░░░░░░░] 0% (v1.2)
@@ -202,9 +203,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-27T17:07:00Z
-Stopped at: Completed 08.5-03-PLAN.md (connect/onboarding → Surface-003; lib/session-kind.ts client LIVE/DEMO derivation + badged SessionsSidebar-as-home + SessionRow + 3-step ConnectWizard with new-id-scoped polled auto-resolve; routes/sessions/index.tsx repointed). Both Wave-1 plans (01 + 03) of Phase 08.5 done.
-Resume file: .planning/phases/08.5-align-the-frontend-to-the-validated-sketch-winners-fe-alignm/08.5-03-SUMMARY.md — next: execute 08.5-02 (Wave 2 — mount the Surface-002 inline source panel into the LiveDockPanel right sourcePanel slot)
+Last session: 2026-06-27T21:16:17.135Z
+Stopped at: Phase 9 context gathered
+Resume file: .planning/phases/09-session-correlation-shared-foundation-onb-01-close-out/09-CONTEXT.md
 
 ## Operator Next Steps
 
