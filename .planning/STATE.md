@@ -4,14 +4,14 @@ milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
 stopped_at: Phase 12 context gathered
-last_updated: "2026-06-28T19:38:07.677Z"
-last_activity: 2026-06-28 -- Phase 12 execution started
+last_updated: "2026-06-28T20:56:20.095Z"
+last_activity: 2026-06-28
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 15
-  completed_plans: 11
-  percent: 50
+  completed_plans: 15
+  percent: 67
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 12 (observability-integration-opentelemetry-otlp) — EXECUTING
-Plan: 1 of 4
+Phase: 13
+Plan: Not started
 Status: Executing Phase 12
-Last activity: 2026-06-28 -- Phase 12 execution started
+Last activity: 2026-06-28
 
 Progress: [██████----] 33% (Phase 11: 3/3 plans built; remote publish deferred)
 
@@ -51,7 +51,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 
 **Velocity:**
 
-- Total plans completed: 61
+- Total plans completed: 65
 - Average duration: ~17 min
 - Total execution time: ~34 min
 
@@ -70,6 +70,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | 08.4 | 1 | - | - |
 | 08.5 | 3 | - | - |
 | 11 | 3 | - | - |
+| 12 | 4 | - | - |
 
 **Recent Trend:**
 
