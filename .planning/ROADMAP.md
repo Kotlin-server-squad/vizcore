@@ -89,7 +89,21 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
   4. Under an overload flood, bounded buffers + an ingest event-rate cap shed load without OOM and without silently losing the *wrong* (structural) events — drops are counted and observable.
   5. A dev-only, Gradle-gated load-test harness drives sustained synthetic event load and reports store/bus/sampling drops separately; it is never present in the production image.
 
-**Plans**: TBD
+**Plans**: 5 plans in 3 waves
+
+**Wave 1** *(pure-core primitives, no file overlap → parallel)*
+
+- [ ] 10-01-PLAN.md — StructuralClassifier (shared spine) + adaptive EventSampler (PERF-01)
+- [ ] 10-02-PLAN.md — EventBatcher (count-or-time) + StructuralAwareBuffer (two-lane shedding) (PERF-02, PERF-04)
+
+**Wave 2** *(egress wiring; route vs FE hook → no file overlap → parallel)*
+
+- [ ] 10-03-PLAN.md — Wire egress chain + hybrid frames + dropped marker + anti-buffering headers + 3 drop counters into SSE route (PERF-02, PERF-03, PERF-04)
+- [ ] 10-04-PLAN.md — Frontend batch + dropped SSE listeners (PERF-02, PERF-04)
+
+**Wave 3**
+
+- [ ] 10-05-PLAN.md — Dev-only Gradle-gated load harness; separate store/bus/sampling counters; jar-exclusion guard (PERF-05)
 
 ### Phase 11: SDK Distribution + JVM-17 guard
 
@@ -166,7 +180,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.4 Eliminate duplicate-FQN shadowing (CR-01) | v1.1 | 1/1 | Complete | 2026-06-27 |
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
-| 10. Scale & Resilience (PERF + load harness) | v1.2 | 0/TBD | Not started | - |
+| 10. Scale & Resilience (PERF + load harness) | v1.2 | 0/5 | Planned | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 0/TBD | Not started | - |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |
 | 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
