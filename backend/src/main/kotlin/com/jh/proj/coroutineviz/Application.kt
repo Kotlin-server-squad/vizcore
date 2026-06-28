@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz
 
+import com.jh.proj.coroutineviz.observability.configureObservability
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
@@ -63,6 +64,10 @@ fun Application.module() {
     SessionManager.configure(maxEventsPerSession = maxEvents)
 
     configureStorage(maxEvents)
+
+    // OTEL-01 construction gate: builds the OTel SDK + per-session span exporter ONLY when
+    // observability.otel.enabled=true; returns immediately (constructs nothing) when off.
+    configureObservability()
 
     configureRateLimit()
 
