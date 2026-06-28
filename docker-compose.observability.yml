@@ -1,0 +1,43 @@
+# Additive, opt-in observability topology for SC#3 verification (OTEL-02).
+#
+# This is a SEPARATE compose file — it does NOT extend or clobber the main `docker-compose.yml`.
+# Bring it up on its own to verify the OTel export path end-to-end:
+#
+#   docker compose -f docker-compose.observability.yml up -d
+#
+# Then run the backend with OTel ON (OTEL_ENABLED=true OTEL_ENDPOINT=http://localhost:4317),
+# drive a coroutine scenario, and confirm the SAME run's spans in BOTH:
+#   Jaeger UI  → http://localhost:16686
+#   Zipkin UI  → http://localhost:9411
+#
+# Topology:  backend --(OTLP 4317)--> otel-collector --> { jaeger, zipkin }
+#
+# Port note: the backend exports to the COLLECTOR on host:4317. The collector talks to Jaeger/Zipkin
+# over the docker network, so Jaeger's own OTLP port is intentionally NOT published to the host
+# (avoids a host:4317 clash with the collector).
+
+services:
+  otel-collector:
+    # 'contrib' image is required — it bundles the zipkin exporter the vanilla collector omits (A2).
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC (backend → collector)
+      - "4318:4318" # OTLP HTTP
+    depends_on:
+      - jaeger
+      - zipkin
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true # native OTLP receiver on 4317/4318 (Jaeger v2)
+    ports:
+      - "16686:16686" # Jaeger UI (Jaeger's own 4317 is NOT published — the collector owns host:4317)
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "9411:9411" # Zipkin UI + /api/v2/spans
