@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: completed
-stopped_at: Completed 10-05-PLAN.md (dev-only load harness; PERF-05 closed → Phase 10 fully covered)
-last_updated: "2026-06-28T13:46:00.436Z"
+stopped_at: Phase 11 context gathered
+last_updated: "2026-06-28T14:51:31.616Z"
 last_activity: 2026-06-28 -- Phase 10 marked complete
 progress:
   total_phases: 6
@@ -220,9 +220,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-28T15:50:00Z
-Stopped at: Completed 10-05-PLAN.md (dev-only load harness; PERF-05 closed → Phase 10 fully covered)
-Resume file: None — Phase 10 complete; next phase is 11 (SDK Distribution + JVM-17 guard)
+Last session: 2026-06-28T14:51:31.608Z
+Stopped at: Phase 11 context gathered
+Resume file: .planning/phases/11-sdk-distribution-jvm-17-guard/11-CONTEXT.md
 
 ## Operator Next Steps
 
