@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
+import com.jh.proj.coroutineviz.sseSamplingDroppedGauge
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.plugins.ratelimit.*
@@ -19,6 +20,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
@@ -377,21 +380,20 @@ fun Route.registerSessionRoutes() {
                 // Subscribe to live events BEFORE snapshotting the store: EventBus has
                 // replay = 0, so any event emitted between the store snapshot and the
                 // subscription would otherwise be permanently lost. Live events are
-                // buffered during replay and drained with a seq filter to deduplicate.
+                // bridged into a buffering channel during replay, then drained through the
+                // structural-aware egress chain with a seq filter to deduplicate.
                 //
-                // The buffer is BOUNDED (WR-14): an unbounded channel let a slow or
-                // half-open client grow server memory without limit, because the
-                // collector below never suspends. On overflow the oldest buffered
-                // event is dropped and logged; the client can re-sync via /events.
-                // (onUndeliveredElement fires only for overflow drops here — this
-                // channel is never cancelled or closed-for-send explicitly.)
-                val liveBuffer =
+                // This bridge channel only spans the subscribe→snapshot race window; the
+                // REAL per-subscriber bounded shedding is the StructuralAwareBuffer inside
+                // sseEgressFrames (PERF-04, D-07), which replaces the old blind DROP_OLDEST
+                // liveBuffer with structural-aware shedding (lifecycle never dropped).
+                val liveBridge =
                     Channel<VizEvent>(
                         capacity = SSE_LIVE_BUFFER_CAPACITY,
                         onBufferOverflow = BufferOverflow.DROP_OLDEST,
                         onUndeliveredElement = { dropped ->
                             logger.warn(
-                                "SSE live buffer overflow for session {} — dropped event " +
+                                "SSE live bridge overflow for session {} — dropped event " +
                                     "kind={} seq={} (slow client; stream gap, refetch /events)",
                                 sessionId,
                                 dropped.kind,
@@ -400,10 +402,11 @@ fun Route.registerSessionRoutes() {
                         },
                     )
                 launch {
-                    session.bus.stream().collect { liveBuffer.send(it) }
+                    session.bus.stream().collect { liveBridge.send(it) }
                 }
 
-                // 1️⃣ Replay all stored events (history) — snapshot AFTER subscribing
+                // 1️⃣ Replay all stored events (history) — snapshot AFTER subscribing.
+                // Replay is NEVER sampled/shed/batched — history must be complete.
                 val storedEvents = session.store.all()
                 logger.info("Replaying ${storedEvents.size} stored events for session: $sessionId")
                 for (event in storedEvents) {
@@ -417,12 +420,19 @@ fun Route.registerSessionRoutes() {
                 // was already part of the replayed snapshot.
                 val lastReplayedSeq = storedEvents.maxOfOrNull { it.seq } ?: 0L
 
-                // 2️⃣ Drain buffered + live events (filtering out already-replayed ones)
-                for (event in liveBuffer) {
-                    if (event.seq > lastReplayedSeq) {
-                        send(event.toSse())
-                    }
-                }
+                // 2️⃣ Drain LIVE events through the egress chain: adaptive-sample →
+                // structural-shed → hybrid-batch (RESEARCH §2), filtering already-replayed
+                // seqs out of the upstream FIRST so dedup is exact. Single-event frames stay
+                // byte-identical (D-04); under load `event: batch` arrays and `event: dropped`
+                // control frames appear. The store is untouched (D-03) — control frames are
+                // egress-only and never replayed (Pitfall P7).
+                val liveUpstream =
+                    liveBridge.consumeAsFlow().filter { it.seq > lastReplayedSeq }
+                sseEgressFrames(
+                    upstream = liveUpstream,
+                    config = call.application.egressConfig(),
+                    onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
+                ).collect { frame -> send(frame) }
             }
         } catch (e: CancellationException) {
             // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
@@ -438,7 +448,7 @@ fun Route.registerSessionRoutes() {
     }
 }
 
-private fun VizEvent.toSse(): ServerSentEvent =
+internal fun VizEvent.toSse(): ServerSentEvent =
     ServerSentEvent(
         data = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), this),
         event = kind,

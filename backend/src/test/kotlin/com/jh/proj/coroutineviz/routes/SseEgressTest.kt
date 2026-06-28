@@ -5,7 +5,6 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.flow.FlowOperatorApplied
 import com.jh.proj.coroutineviz.session.SessionManager
-import io.ktor.sse.ServerSentEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -15,7 +14,6 @@ import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.AfterEach
@@ -122,7 +120,12 @@ class SseEgressTest {
                 droppedFrame != null,
                 "a forced shed must emit an event: dropped frame; got ${frames.map { it.event }}",
             )
-            val count = Json.parseToJsonElement(droppedFrame.data!!).jsonObject["count"]?.jsonPrimitive?.int
+            val count =
+                Json
+                    .parseToJsonElement(droppedFrame.data!!)
+                    .jsonObject["count"]
+                    ?.jsonPrimitive
+                    ?.int
             assertTrue(count != null && count > 0, "dropped frame carries a positive count, was $count")
         }
 
@@ -151,7 +154,11 @@ class SseEgressTest {
             val frames = sseEgressFrames(upstream, config).toList()
             val structuralSeqs =
                 frames.filter { it.event == "CoroutineCreated" }.mapNotNull {
-                    appJson.parseToJsonElement(it.data!!).jsonObject["seq"]?.jsonPrimitive?.int
+                    appJson
+                        .parseToJsonElement(it.data!!)
+                        .jsonObject["seq"]
+                        ?.jsonPrimitive
+                        ?.int
                 }
             assertEquals(listOf(1, 2, 3, 4), structuralSeqs, "structural events must never be sampled out")
         }

@@ -11,11 +11,21 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 private val logger = LoggerFactory.getLogger("MetricsWiring")
 
 /** Tracks active SSE client connections. Increment on connect, decrement on disconnect. */
 val sseClientsGauge = AtomicInteger(0)
+
+/**
+ * Monotonic count of events shed by the per-SSE-connection [StructuralAwareBuffer] egress
+ * sheddable lane (PERF-04/D-08). The shed buffer is per-connection, so the route surfaces its
+ * drop DELTA here (analog to [sseClientsGauge]); MetricsWiring exposes it as the
+ * `events.dropped.sampling` counter (D-11). Core stays Micrometer-free — this AtomicLong is the
+ * callback-to-Micrometer bridge (Pitfall P6).
+ */
+val sseSamplingDroppedGauge = AtomicLong(0)
 
 fun wireMetrics(registry: PrometheusMeterRegistry) {
     // --- ADR-020 metric 1: viz.sessions.active (existing) ---
