@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: Completed 10-03-PLAN.md
-last_updated: "2026-06-28T13:05:00Z"
-last_activity: 2026-06-28 -- 10-03 complete (SSE egress wiring: sample/shed/batch + anti-buffering headers + 3 drop counters)
+stopped_at: Completed 10-04-PLAN.md
+last_updated: "2026-06-28T15:14:00Z"
+last_activity: 2026-06-28 -- 10-04 complete (FE hybrid SSE consumer: batch-array + dropped-marker listeners reusing shared appendNormalized dedup spine; PERF-02/04 FE half closed)
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
-  percent: 30
+  completed_plans: 7
+  percent: 35
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 ## Current Position
 
 Phase: 10 (scale-resilience-perf-wiring-load-harness) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Executing Phase 10
-Last activity: 2026-06-28 -- 10-03 complete (SSE egress wiring: sample/shed/batch + anti-buffering headers + 3 drop counters)
+Last activity: 2026-06-28 -- 10-04 complete (FE hybrid SSE consumer: batch-array + dropped-marker listeners reusing shared appendNormalized dedup spine; PERF-02/04 FE half closed)
 
-Progress: [██████░░░░] 60% (Phase 10: 3/5 plans)
+Progress: [████████░░] 80% (Phase 10: 4/5 plans)
 
 ## Deferred Items
 
@@ -51,7 +51,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 
 **Velocity:**
 
-- Total plans completed: 57
+- Total plans completed: 58
 - Average duration: ~17 min
 - Total execution time: ~34 min
 
@@ -132,6 +132,7 @@ Recent decisions affecting current work:
 - Business-model and KPI variants are unresolved — V2 is the working default; not blocking engineering.
 - [Phase 07, Plan 02]: WebSocket ingest is the server half of real-app transport (RCO-05) — installed once via configureWebSockets() (1 MiB frame cap), registered inside authenticatedApi { rateLimit(api) { } }; publishes into the server-resolved session (never the frame's sessionId, T-07-03) so all downstream (EventStore→snapshot→EventBus→SSE→FE) is pure reuse. AUTH-04 cross-tenant refusal + no-Bearer rejection test-proven over an H2 ExposedSessionStore.
 - [Phase 07, Plan 03]: VizcoreClient is the client half of real-app transport (RCO-04) in a NEW coroutine-viz-client gradle module (JVM 17, Ktor client CIO) kept OUT of core (Ktor-client deps would break core's no-web-framework rule). start(appName, backendUrl, token) authenticates via JWT, POSTs /api/sessions for a server sessionId, builds a LOCAL VizSession with the SERVER id (Pitfall 1/T-07-03), drives a DebugProbesSource, and forwards bus.stream() over a client WS using the SHARED core appJson (Pitfall 3 — wire == ingest == SSE/FE). Reconnect loop on a private SupervisorJob (never GlobalScope) with capped exp backoff+jitter (500ms→30s, T-07-08); CancellationException rethrown; stop() idempotently stops source + closes client + cancels scope. JWT always in the Authorization: Bearer header, never the URL (T-07-02). Notes: kotlinx-serialization-json declared directly in the client (core exposes it as implementation); tests use @org.junit.jupiter.api.Test for platform discovery; round-trip proven in-process with a synthetic event landing in the backend session carrying the server id.
+- [Phase 10, Plan 04]: FE half of the hybrid SSE wire format (PERF-02/04, D-04/D-08). use-event-stream.ts extracts the per-element ingest body (normalizeEvent → numeric-seq membership dedup + bounded-set eviction → setEvents append → D-02 replay-gate/max-wait debounce) into ONE shared appendNormalized(rawEvent, fallbackKind?) closure called by BOTH the per-kind listeners and the new batch loop so the dedup spine cannot drift. NEW addEventListener('batch') JSON.parses the frame, guards Array.isArray, and loops each element through appendNormalized → per-element seq-dedup means reconnect-replayed seqs inside a batch AND duplicate seqs within one batch are both collapsed (T-10-12). NEW addEventListener('dropped') parses {count:N} and accumulates a droppedCount marker exposed from the hook — a NON-stored control frame that never calls appendNormalized / never touches events or seenSeqsRef (T-10-13), mirroring the existing error listener; advances only on numeric count>0, resets on session change. Single-event per-kind frames stay byte-identical (back-compat, D-04); malformed batch/dropped frames skipped via the existing try/catch (T-10-14). Marker UI = a cumulative droppedCount number (additive hook return field, existing SessionDetails destructure ignores it), not a toast — minimal/dependency-free. Deviation (Rule 3): adding droppedCount to the return broke one UNCAST useEventStream mock in SessionDetails.test.tsx (TS2741) — backfilled droppedCount:0 in the two uncast literals; the four cast (as unknown as ReturnType) mocks were exempt. FE gates green: pnpm test use-event-stream 38/38, full suite 518/518, npx tsc --noEmit 0 errors, pnpm lint 0 errors/5 warnings (≤6 budget); package.json/pnpm-lock.yaml untouched (T-10-SC). Commits 4aa823d (test RED), 2e37cbe (feat GREEN).
 - [Phase 10, Plan 03]: Wired the Plan 01/02 primitives onto the live SSE /stream egress (PERF-02/03/04 closed). NEW routes/SseEgress.kt extracts the consumer-side chain into a pure Flow<ServerSentEvent> builder `sseEgressFrames(upstream, config, onShedDelta)` — order adaptive-sample → structural-shed → hybrid-batch (RESEARCH §2); one EventSampler+StructuralAwareBuffer+EventBatcher PER connection. Hybrid wire (D-04): batch size 1 → byte-identical event:<kind> single frame (toSse unchanged, now `internal`); size>1 → event: batch JSON array via the SAME appJson; shed-counter advance → interleaved event: dropped {count:delta} control frame (NEVER store.record'd/replayed, P7). Replay loop unchanged (history complete, unsampled); the old blind DROP_OLDEST liveBuffer is replaced by StructuralAwareBuffer, a small bridge channel only spans the subscribe→snapshot replay race. Anti-buffering headers (PERF-03, P3): a route("/stream"){ intercept(ApplicationCallPipeline.Plugins){append X-Accel-Buffering:no + Cache-Control:no-cache} ; sse{} } wrapper sets them BEFORE the SSE content commits (inside-sse{} no-ops). Three attributable drop counters (D-11): events.dropped (store, existing) + events.dropped.bus (wired to pre-existing EventBus.onDrop) + events.dropped.sampling (FunctionCounter over a process-wide sseSamplingDroppedGauge AtomicLong the route feeds; core stays Micrometer-free, P6) — extracted into registerPhase10DropCounters to keep wireMetrics under detekt LongMethod. Deviation (Rule 1): Compression.kt listed Text.Any + explicit EventStream in the gzip match-list → /stream was gzip-eligible (T-10-11); fixed with excludeContentType(EventStream) + dropped EventStream from matches. EventBus.kt NOT modified (onDrop hook already existed) — sacred VizSession.send/store path untouched (D-03). Full backend gate (:test :coroutine-viz-core:test ktlintCheck detekt) green under JDK 21. Commits 26db97b/735bd48 (egress), a50426f/9dc42ec (headers+counters).
 - [Phase 10, Plan 02]: Two pure-core JVM-17 egress primitives built (PERF-02, PERF-04), NOT yet wired (Plan 03 wires at the SSE route). EventBatcher.batched(upstream, count=50, windowMs=100) = count-OR-time hybrid flush via channelFlow + select over a rendezvous inbox and a per-batch single-shot delay() timer; window measured from FIRST pending element so idle streams never emit empty batches; size-1 batches below load keep the SSE wire byte-identical (D-04); lossless. Chose delay()-based timer over TestCoroutineScheduler (test-only type, won't compile in main) — still deterministic under runTest virtual time. StructuralAwareBuffer(shedCapacity=10_000) = two-lane (RESEARCH §3 Option 2): UNLIMITED lifecycle lane (structural NEVER DROP_OLDEST, P5; bounded transitively by EventStore live-coroutine count) + bounded DROP_OLDEST sheddable lane whose onUndeliveredElement increments an observable AtomicLong `dropped` (D-08); stream() drains lifecycle-lane-first each tick (biased select, never starved); forcedStructuralDrops diagnostic ~0. Protection DELEGATED to StructuralClassifier.isStructural (Plan 01 spine) — no reinvented lifecycle check. No store touch (D-03), no new dependency, core stays io.ktor/Micrometer-free (P6). Core gate (test+ktlintCheck+detekt) green under JDK 21.
 - [Phase 07, Plan 04]: CR-01 closed (RCO-04). The 07-03 client lost events emitted before the first WS connect and during every reconnect-backoff window because IngestTransport subscribed the replay=0/DROP_OLDEST EventBus INSIDE the open socket. Fix: a lifetime-scoped OutboundBuffer (bounded Channel<VizEvent>, cap 10k) written by ONE source-side collector (feed) that subscribes the bus exactly once and survives reconnects, drained per-socket (drain); events emitted while disconnected are retained and delivered on the next connect. Startup race closed deterministically — feed() awaits its OWN bus subscription (subscriptionCount STRICTLY above the pre-launch baseline, NOT >=1, because VizSession eagerly subscribes its ProjectionService collector at construction) before returning, and VizcoreClient.start() runs feed-then-source. Overflow is drop-newest-when-full with a surfaced AtomicLong `dropped` counter (observable, never silent) replacing the EventBus silent DROP_OLDEST at the bridge (T-07-08 instrumented). delay(200) removed from VizcoreClientTest, replaced by a zero-loss completeness assertion gated on subscriptionCount>=2 (forced first-attempt drop proves the reconnect window). One additive Ktor-free core change: EventBus.subscriptionCount: StateFlow<Int>. No new dependency. Full gate (ktlintCheck detekt + both module tests + build) green under JDK 21.
