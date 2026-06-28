@@ -93,7 +93,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Wave 1** *(pure-core primitives, no file overlap → parallel)*
 
-- [ ] 10-01-PLAN.md — StructuralClassifier (shared spine) + adaptive EventSampler (PERF-01)
+- [x] 10-01-PLAN.md — StructuralClassifier (shared spine) + adaptive EventSampler (PERF-01) ✅ 2026-06-28
 - [ ] 10-02-PLAN.md — EventBatcher (count-or-time) + StructuralAwareBuffer (two-lane shedding) (PERF-02, PERF-04)
 
 **Wave 2** *(egress wiring; route vs FE hook → no file overlap → parallel)*
