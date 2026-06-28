@@ -87,6 +87,15 @@ fun Route.registerSessionRoutes() {
 
             logger.info("Created new session via API: ${session.sessionId}")
 
+            // CORR-01 (D-11): record an optional client-minted correlation token against the
+            // session the backend ACTUALLY creates, atomically at create time (no separately-minted
+            // id). Omitting the param records nothing — wire-level back-compat for old clients. This
+            // is create-path metadata only; it does NOT touch VizSession.send() (invariant #1 / D-13).
+            val correlation = call.request.queryParameters["correlation"]
+            if (!correlation.isNullOrBlank()) {
+                CorrelationRegistry.bind(correlation, session.sessionId)
+            }
+
             call.respond(
                 HttpStatusCode.Created,
                 mapOf(
@@ -107,6 +116,38 @@ fun Route.registerSessionRoutes() {
             }
         logger.debug("Listing sessions: ${sessions.size} active")
         call.respond(HttpStatusCode.OK, sessions)
+    }
+
+    // Resolve a client-minted correlation token to the REAL live session id (CORR-02, D-04/D-05).
+    // A constant-segment path, so Ktor's routing priority keeps it from being captured by the
+    // parameterized "/api/sessions/{id}" below (same coexistence proven for "/compare" in 2-01).
+    // Registered inside registerSessionRoutes() so it inherits auth + the 60/min api rate limit
+    // + D-04a fail-open from Routing.kt for free.
+    get("/api/sessions/resolve") {
+        val correlation = call.request.queryParameters["correlation"]
+        if (correlation.isNullOrBlank()) {
+            call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing correlation token"))
+            return@get
+        }
+
+        // Last-write-wins lookup (D-09). A token that was never bound (or whose session was
+        // evicted on close) resolves to null → 404, indistinguishable from not-found.
+        val sessionId = CorrelationRegistry.resolve(correlation)
+        if (sessionId == null) {
+            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
+            return@get
+        }
+
+        // Re-validate tenant visibility through the SAME helper the other read routes use (D-05):
+        // a cross-tenant or vanished id resolves to null → 404, NEVER 403 (no existence leak,
+        // success criterion #2). No reimplemented tenant predicate.
+        val session = call.resolveScopedSession(sessionId)
+        if (session == null) {
+            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
+            return@get
+        }
+
+        call.respond(HttpStatusCode.OK, mapOf("sessionId" to session.sessionId))
     }
 
     get("/api/sessions/{id}") {
