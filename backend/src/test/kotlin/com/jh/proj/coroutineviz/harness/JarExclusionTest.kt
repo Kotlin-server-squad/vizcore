@@ -74,7 +74,8 @@ class JarExclusionTest {
         for (jar in jars) {
             JarFile(jar).use { jf ->
                 val hit =
-                    jf.entries()
+                    jf
+                        .entries()
                         .asSequence()
                         .map { it.name }
                         .filter { it.contains("com/jh/proj/coroutineviz/harness/LoadHarnessMain") }

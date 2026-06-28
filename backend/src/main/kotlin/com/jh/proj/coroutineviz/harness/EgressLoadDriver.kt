@@ -10,7 +10,9 @@ import com.jh.proj.coroutineviz.session.StructuralAwareBuffer
 import com.jh.proj.coroutineviz.session.StructuralClassifier
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
 
@@ -61,6 +63,11 @@ object EgressLoadDriver {
      *   sheddable lane under forced load (D-07/D-08).
      * @property structuralSurvived structural events that made it through the full chain.
      * @property sheddableSurvived sheddable events that made it through the full chain.
+     * @property structuralReceived structural events the egress pump offered to the egress chain
+     *   (i.e. that were NOT bus-shed). The [StructuralAwareBuffer] never sheds these, so
+     *   `structuralSurvived == structuralReceived` is the D-01/D-07 protection invariant — phrased
+     *   against what reached the chain so the pre-existing raw-bus `DROP_OLDEST` (D-03, store keeps
+     *   them upstream) does not make the assertion flaky under flood.
      * @property structuralSent total structural events injected at the bus.
      * @property sheddableSent total sheddable events injected at the bus.
      */
@@ -70,6 +77,7 @@ object EgressLoadDriver {
         val samplingDrops: Long,
         val structuralSurvived: Long,
         val sheddableSurvived: Long,
+        val structuralReceived: Long,
         val structuralSent: Long,
         val sheddableSent: Long,
     )
@@ -95,11 +103,13 @@ object EgressLoadDriver {
     ): Counters {
         require(n >= 0) { "n must be >= 0, was $n" }
 
-        // ── Three counter sources (D-11) ──────────────────────────────────────
+        // ── Store-lane counter (D-11). The bus lane is DERIVED below, not callback-counted: the
+        // bus uses DROP_OLDEST, which silently evicts the oldest buffered element WITHOUT firing
+        // EventBus.onDrop (that hook only fires when a `tryEmit` is REJECTED, which never happens
+        // under DROP_OLDEST). So bus drops cannot be observed via the callback here — they are
+        // computed honestly as `sent - pumpReceived` once the pump has quiesced. ──
         val storeDrops = AtomicLong(0)
-        val busDrops = AtomicLong(0)
         session.onEventDropped = { storeDrops.incrementAndGet() } // store lane (expected ~0)
-        session.eventBus.onDrop = { busDrops.incrementAndGet() } // bus lane
 
         // The egress chain: adaptive-sample → structural-shed (same primitives as the SSE route).
         val sampler = EventSampler(defaultRate = 1.0, adaptive = adaptiveSampling)
@@ -113,53 +123,93 @@ object EgressLoadDriver {
         // ── Flood: inject N synthetic events STRAIGHT at the bus (D-10), bypassing the store ──
         val sent = flood(session, n)
 
-        // Drain: close the upstream so the egress collector finishes, then the shed buffer, then
-        // await the survival collector. Cancel any residual coroutines (structured cleanup).
-        egress.egressJob.join()
+        // Completion via QUIESCENCE: the bus is a never-completing SharedFlow and DROP_OLDEST
+        // silently swallows overflow, so neither upstream-completion nor a drop callback can
+        // signal "the flood is fully processed". Instead, wait until the egress pump's received
+        // count stops advancing across a short settle window — at that point every event has
+        // either been received or silently bus-shed. THEN tear the chain down in order: cancel
+        // the bus pump → close the shed buffer → await the survival drain → cancel it.
+        awaitQuiescence(egress.pumpAccounted)
+        val pumpReceived = egress.pumpAccounted.value
+        egress.egressJob.cancel()
         shedBuffer.close()
         egress.drainDone.await()
         egress.drainJob.cancel()
 
+        // Bus drops = everything injected that the pump never received (DROP_OLDEST overflow loss).
+        val busDrops = (n.toLong() - pumpReceived).coerceAtLeast(0L)
+
         return Counters(
             storeDrops = storeDrops.get(),
-            busDrops = busDrops.get(),
+            busDrops = busDrops,
             samplingDrops = shedBuffer.dropped,
-            structuralSurvived = egress.structuralSurvived.get(),
-            sheddableSurvived = egress.sheddableSurvived.get(),
+            structuralSurvived = egress.tallies.structuralSurvived.get(),
+            sheddableSurvived = egress.tallies.sheddableSurvived.get(),
+            structuralReceived = egress.tallies.structuralReceived.get(),
             structuralSent = sent.first,
             sheddableSent = sent.second,
         )
     }
+
+    /**
+     * Suspend until [counter] stops advancing for [settleMs], i.e. the egress pump has drained
+     * everything the bus delivered. A bounded number of settle checks caps total wait so a
+     * pathological stall surfaces as a test timeout rather than an infinite loop.
+     */
+    private suspend fun awaitQuiescence(
+        counter: kotlinx.coroutines.flow.StateFlow<Long>,
+        settleMs: Long = QUIESCENCE_SETTLE_MS,
+        maxChecks: Int = QUIESCENCE_MAX_CHECKS,
+    ) {
+        var previous = -1L
+        var checks = 0
+        while (checks < maxChecks) {
+            val current = counter.value
+            if (current == previous) return
+            previous = current
+            kotlinx.coroutines.delay(settleMs)
+            checks++
+        }
+    }
+
+    /** Live event tallies the egress collectors increment as they run. */
+    private class Tallies(
+        val structuralReceived: AtomicLong = AtomicLong(0),
+        val structuralSurvived: AtomicLong = AtomicLong(0),
+        val sheddableSurvived: AtomicLong = AtomicLong(0),
+    )
 
     /** Live egress-chain handles the driver awaits/joins after flooding. */
     private class Egress(
         val egressJob: kotlinx.coroutines.Job,
         val drainJob: kotlinx.coroutines.Job,
         val drainDone: CompletableDeferred<Unit>,
-        val structuralSurvived: AtomicLong,
-        val sheddableSurvived: AtomicLong,
+        val pumpAccounted: kotlinx.coroutines.flow.StateFlow<Long>,
+        val tallies: Tallies,
     )
 
     /**
      * Launch the two egress collectors on [session]'s private scope (never GlobalScope): one
      * pumps the bus through [sampler] into [shedBuffer]; one drains the shed buffer
-     * (lifecycle-first) and tallies survivors by structural class.
+     * (lifecycle-first) and tallies survivors by structural class. The pump publishes a running
+     * count of events it has RECEIVED from the bus (`pumpAccounted`) so the caller can detect
+     * flood completion against the never-completing SharedFlow.
      */
     private fun wireEgressChain(
         session: VizSession,
         sampler: EventSampler,
         shedBuffer: StructuralAwareBuffer,
     ): Egress {
-        val structuralSurvived = AtomicLong(0)
-        val sheddableSurvived = AtomicLong(0)
+        val tallies = Tallies()
+        val pumpAccounted = MutableStateFlow(0L)
         val drainDone = CompletableDeferred<Unit>()
         val drainJob =
             session.sessionScope.launch {
                 shedBuffer.stream().collect { event ->
                     if (StructuralClassifier.isStructural(event.kind)) {
-                        structuralSurvived.incrementAndGet()
+                        tallies.structuralSurvived.incrementAndGet()
                     } else {
-                        sheddableSurvived.incrementAndGet()
+                        tallies.sheddableSurvived.incrementAndGet()
                     }
                 }
                 drainDone.complete(Unit)
@@ -167,10 +217,14 @@ object EgressLoadDriver {
         val egressJob =
             session.sessionScope.launch {
                 session.eventBus.stream().collect { event ->
-                    if (sampler.shouldKeep(event)) shedBuffer.offer(event)
+                    if (sampler.shouldKeep(event)) {
+                        if (StructuralClassifier.isStructural(event.kind)) tallies.structuralReceived.incrementAndGet()
+                        shedBuffer.offer(event)
+                    }
+                    pumpAccounted.update { it + 1 }
                 }
             }
-        return Egress(egressJob, drainJob, drainDone, structuralSurvived, sheddableSurvived)
+        return Egress(egressJob, drainJob, drainDone, pumpAccounted, tallies)
     }
 
     /**
@@ -255,4 +309,10 @@ object EgressLoadDriver {
 
     /** Synthetic-event kind cycle length (2 structural + 2 sheddable per stride). */
     private const val STRIDE = 4
+
+    /** Settle window between quiescence checks (ms). */
+    private const val QUIESCENCE_SETTLE_MS = 25L
+
+    /** Max quiescence checks before giving up (bounds total wait; a stall then surfaces upstream). */
+    private const val QUIESCENCE_MAX_CHECKS = 400
 }
