@@ -19,7 +19,7 @@ env:
 
 jobs:
   publish:
-    name: Publish coroutine-viz-core to GitHub Packages
+    name: Publish coroutine-viz-core + coroutine-viz-client to GitHub Packages
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,6 +40,9 @@ jobs:
       - name: Run core tests
         run: ./gradlew :coroutine-viz-core:test
 
+      - name: Run client tests
+        run: ./gradlew :coroutine-viz-client:test
+
       - name: Resolve publish version
         id: version
         run: |
@@ -56,20 +59,21 @@ jobs:
           fi
 
       - name: Publish to GitHub Packages
-        run: ./gradlew :coroutine-viz-core:publish -Pversion=${{ steps.version.outputs.VERSION }}
+        run: ./gradlew :coroutine-viz-core:publish :coroutine-viz-client:publish -Pversion=${{ steps.version.outputs.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
 
       - name: Summary
         run: |
-          echo "### Published coroutine-viz-core" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Published coroutine-viz-core + coroutine-viz-client" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Version:** ${{ steps.version.outputs.VERSION }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Registry:** GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Group:** com.jh.coroutine-visualizer" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Artifact:** coroutine-viz-core" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Artifacts:** coroutine-viz-core, coroutine-viz-client" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo '```kotlin' >> "$GITHUB_STEP_SUMMARY"
           echo "implementation(\"com.jh.coroutine-visualizer:coroutine-viz-core:${{ steps.version.outputs.VERSION }}\")" >> "$GITHUB_STEP_SUMMARY"
+          echo "implementation(\"com.jh.coroutine-visualizer:coroutine-viz-client:${{ steps.version.outputs.VERSION }}\")" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
