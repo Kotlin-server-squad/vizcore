@@ -45,24 +45,37 @@ jobs:
 
       - name: Resolve publish version
         id: version
+        env:
+          # Route workflow_dispatch / release inputs through env (shell variables,
+          # NOT textual ${{ }} substitution into the run: line) to avoid GitHub
+          # Actions script injection from untrusted version_override input.
+          VERSION_OVERRIDE: ${{ inputs.version_override }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [[ -n "${{ inputs.version_override }}" ]]; then
-            echo "VERSION=${{ inputs.version_override }}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.event_name }}" == "release" ]]; then
+          if [[ -n "$VERSION_OVERRIDE" ]]; then
+            VERSION="$VERSION_OVERRIDE"
+          elif [[ "$EVENT_NAME" == "release" ]]; then
             # Strip leading 'v' from release tag
-            TAG="${{ github.event.release.tag_name }}"
-            echo "VERSION=${TAG#v}" >> "$GITHUB_OUTPUT"
+            VERSION="${RELEASE_TAG#v}"
           else
             # Fall back to version in build.gradle.kts
             VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' coroutine-viz-core/build.gradle.kts | head -1)
-            echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
           fi
+          # Guard the resolved version against a sane semver-ish shape before it
+          # ever reaches a publish coordinate.
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "error: resolved version '$VERSION' is not a valid semantic version" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish to GitHub Packages
-        run: ./gradlew :coroutine-viz-core:publish :coroutine-viz-client:publish -Pversion=${{ steps.version.outputs.VERSION }}
         env:
+          PUBLISH_VERSION: ${{ steps.version.outputs.VERSION }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
+        run: ./gradlew :coroutine-viz-core:publish :coroutine-viz-client:publish -Pversion="$PUBLISH_VERSION"
 
       - name: Summary
         run: |
