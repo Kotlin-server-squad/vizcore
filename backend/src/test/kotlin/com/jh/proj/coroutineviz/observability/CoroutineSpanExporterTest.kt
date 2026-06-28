@@ -10,10 +10,10 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.data.SpanData
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor
-import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -40,6 +40,7 @@ import kotlin.test.assertTrue
  *
  * Uses `@org.junit.jupiter.api.Test` (repo convention under `useJUnitPlatform`).
  */
+@Suppress("TooManyFunctions") // event-ctor + await helpers inflate the count past the class threshold
 class CoroutineSpanExporterTest {
     private lateinit var inMemory: InMemorySpanExporter
     private lateinit var provider: SdkTracerProvider
@@ -89,6 +90,17 @@ class CoroutineSpanExporterTest {
     private fun awaitEnded(expected: Int) {
         val deadline = System.currentTimeMillis() + AWAIT_MS
         while (inMemory.finishedSpanItems.size < expected && System.currentTimeMillis() < deadline) {
+            Thread.sleep(POLL_MS)
+        }
+    }
+
+    /** Busy-wait until the exporter has at least [expected] open (started, not-terminal) spans. */
+    private fun awaitOpen(
+        exporter: CoroutineSpanExporter,
+        expected: Int,
+    ) {
+        val deadline = System.currentTimeMillis() + AWAIT_MS
+        while (exporter.openSpanCount() < expected && System.currentTimeMillis() < deadline) {
             Thread.sleep(POLL_MS)
         }
     }
@@ -284,17 +296,23 @@ class CoroutineSpanExporterTest {
     @Test
     fun `session close sweeps still-open span as ERROR leaked`() {
         val session = VizSession(sessionId = "s-leak")
-        newExporterOn(session)
+        val exporter = newExporterOn(session)
 
-        // Created with NO terminal event, then close → leak sweep ends it (D-08).
-        sendAndAwaitEnded(session, created(session, "A"), expectedEnded = 0)
+        // Created with NO terminal event, then close → leak sweep ends it (D-08). Await the span
+        // being OPEN before close() so the sweep cannot race ahead of the bus-collector.
+        session.send(created(session, "A"))
+        awaitOpen(exporter, 1)
         session.close()
         awaitEnded(1)
 
         val span = assertNotNull(spanByCoroutineId("A"), "leaked span was force-closed")
         assertEquals(StatusCode.ERROR, span.status.statusCode, "leaked span → ERROR")
         assertTrue(span.status.description.contains("leaked"), "status carries 'leaked' message")
-        val leaked = span.attributes.asMap().entries.firstOrNull { it.key.key == "coroutine.leaked" }
+        val leaked =
+            span.attributes
+                .asMap()
+                .entries
+                .firstOrNull { it.key.key == "coroutine.leaked" }
         assertEquals(true, leaked?.value, "coroutine.leaked=true attribute set")
     }
 
@@ -321,7 +339,11 @@ class CoroutineSpanExporterTest {
         val startMs = Instant.ofEpochSecond(0, fallback.startEpochNanos).toEpochMilli()
         assertTrue(startMs >= before - CLOCK_SKEW_MS, "0L fell back to now(), not the epoch origin")
         assertNull(
-            fallback.attributes.asMap().entries.firstOrNull { it.key.key == "coroutine.leaked" }?.value,
+            fallback.attributes
+                .asMap()
+                .entries
+                .firstOrNull { it.key.key == "coroutine.leaked" }
+                ?.value,
             "a normally-completed span is not flagged leaked",
         )
         session.close()
