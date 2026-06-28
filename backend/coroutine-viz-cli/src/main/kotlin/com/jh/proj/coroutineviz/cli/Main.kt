@@ -47,12 +47,25 @@ fun runCli(path: String): Int {
         return EXIT_USAGE
     }
 
-    val text = file.readText()
+    val text =
+        try {
+            file.readText()
+        } catch (e: java.io.IOException) {
+            // Unreadable file, mid-read IO error, or non-UTF-8 bytes (MalformedInputException
+            // is an IOException) → readable usage error, not a stack trace.
+            System.err.println("error: could not read '$path': ${e.message}")
+            return EXIT_USAGE
+        }
     val events: List<VizEvent> =
         try {
             appJson.decodeFromString(ListSerializer(PolymorphicSerializer(VizEvent::class)), text)
         } catch (e: SerializationException) {
             System.err.println("error: could not parse '$path' as a VizEvent export: ${e.message}")
+            return EXIT_USAGE
+        } catch (e: IllegalArgumentException) {
+            // Polymorphic discriminator / structural decode errors surface as IAE,
+            // not SerializationException — still a malformed export → exit 2.
+            System.err.println("error: '$path' is not a valid VizEvent export: ${e.message}")
             return EXIT_USAGE
         }
 
@@ -68,12 +81,26 @@ fun runCli(path: String): Int {
     // NEW vs the route (resolved A3/SC#3): also run the AntiPatternDetector. Build the
     // runtime state by replaying the seq-ordered events through an EventApplier and feed
     // an EventRecorder so the detector has both the snapshot and the kind-indexed events.
-    val snapshot = RuntimeSnapshot()
-    val applier = EventApplier(snapshot)
-    val recorder = EventRecorder()
-    events.sortedBy { it.seq }.forEach { applier.apply(it) }
-    events.forEach { recorder.record(it) }
-    val antiPatterns = AntiPatternDetector(snapshot, recorder).detectAll()
+    // The applier and recorder MUST consume the SAME canonical (seq) ordering so the
+    // snapshot and the kind-indexed events the detector reads are built from one view.
+    // This whole block runs against arbitrary user-supplied input, so an unexpected
+    // applier/recorder/detector failure on an inconsistent stream maps to exit 2, not
+    // a stack trace.
+    val antiPatterns =
+        try {
+            val snapshot = RuntimeSnapshot()
+            val applier = EventApplier(snapshot)
+            val recorder = EventRecorder()
+            val ordered = events.sortedBy { it.seq }
+            ordered.forEach { applier.apply(it) }
+            ordered.forEach { recorder.record(it) }
+            AntiPatternDetector(snapshot, recorder).detectAll()
+        } catch (e: RuntimeException) {
+            System.err.println(
+                "error: '$path' could not be analyzed (inconsistent event stream): ${e.message}",
+            )
+            return EXIT_USAGE
+        }
 
     // Print findings, one per line.
     for (result in results) {
