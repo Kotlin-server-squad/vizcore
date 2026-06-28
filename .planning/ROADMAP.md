@@ -45,7 +45,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 - [x] **Phase 9: Session Correlation (shared foundation) + ONB-01 close-out** — one in-memory correlation mechanism (`correlation` token + `GET /api/sessions/resolve`) serving both the web ConnectWizard and IntelliJ auto-connect; closes the carried-forward ONB-01 debt (completed 2026-06-28)
 - [x] **Phase 10: Scale & Resilience (PERF wiring + load harness)** — bus-only sampling, SSE batching, anti-buffering headers, ingest rate-cap, dev-only load harness (completed 2026-06-28; verification 5/5, security 19/19)
-- [ ] **Phase 11: SDK Distribution + JVM-17 guard** — publish core + client to GitHub Packages (reconciled coordinates), CLI fat JAR, `coroutineVizCheck` Gradle task, CI bytecode guard *(all 3 plans built; remote publish + SC#1 remote resolution DEFERRED to `/gsd-verify-work 11`)*
+- [x] **Phase 11: SDK Distribution + JVM-17 guard** — publish core + client to GitHub Packages (reconciled coordinates), CLI fat JAR, `coroutineVizCheck` Gradle task, CI bytecode guard *(all 3 plans built; remote publish + SC#1 remote resolution DEFERRED to `/gsd-verify-work 11`)* (completed 2026-06-28)
 - [ ] **Phase 12: Observability Integration (OpenTelemetry/OTLP)** — config-gated causality-based span exporter, zero overhead when off, verified in Jaeger/Zipkin
 - [ ] **Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)** — `RunWithVisualizerAction` javaagent launch, JCEF tool window, correlation auto-connect, plugin tests + Marketplace
 - [ ] **Phase 14: Frontend Testing & Quality** — actor/select/anti-pattern tests, FE coverage ≥80% gated, Playwright E2E, Storybook + visual regression (parallelizable with Phase 13)
@@ -193,7 +193,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
-| 11. SDK Distribution + JVM-17 guard | v1.2 | 2/3 | In Progress|  |
+| 11. SDK Distribution + JVM-17 guard | v1.2 | 3/3 | Complete    | 2026-06-28 |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |
 | 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
