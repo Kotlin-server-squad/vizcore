@@ -46,7 +46,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 - [x] **Phase 9: Session Correlation (shared foundation) + ONB-01 close-out** — one in-memory correlation mechanism (`correlation` token + `GET /api/sessions/resolve`) serving both the web ConnectWizard and IntelliJ auto-connect; closes the carried-forward ONB-01 debt (completed 2026-06-28)
 - [x] **Phase 10: Scale & Resilience (PERF wiring + load harness)** — bus-only sampling, SSE batching, anti-buffering headers, ingest rate-cap, dev-only load harness (completed 2026-06-28; verification 5/5, security 19/19)
 - [x] **Phase 11: SDK Distribution + JVM-17 guard** — publish core + client to GitHub Packages (reconciled coordinates), CLI fat JAR, `coroutineVizCheck` Gradle task, CI bytecode guard *(all 3 plans built; remote publish + SC#1 remote resolution confirmed via `/gsd-verify-work 11`; secured 11/11 threats)* (completed 2026-06-28)
-- [ ] **Phase 12: Observability Integration (OpenTelemetry/OTLP)** — config-gated causality-based span exporter, zero overhead when off, verified in Jaeger/Zipkin
+- [x] **Phase 12: Observability Integration (OpenTelemetry/OTLP)** — config-gated causality-based span exporter, zero overhead when off, verified in Jaeger/Zipkin (completed 2026-06-28)
 - [ ] **Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)** — `RunWithVisualizerAction` javaagent launch, JCEF tool window, correlation auto-connect, plugin tests + Marketplace
 - [ ] **Phase 14: Frontend Testing & Quality** — actor/select/anti-pattern tests, FE coverage ≥80% gated, Playwright E2E, Storybook + visual regression (parallelizable with Phase 13)
 
@@ -147,7 +147,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 - [x] 12-01-PLAN.md — OTel BOM deps (:backend only) + OtelConfig data class (D-01/D-12)
 - [x] 12-02-PLAN.md — OtelTracing SDK factory + DropCountingSpanProcessor + CoroutineSpanExporter (causality spans, OTEL-02)
 - [x] 12-03-PLAN.md — configureObservability() construction gate + application.yaml block + zero-cost-when-off tests (OTEL-01)
-- [ ] 12-04-PLAN.md — Collector->Jaeger+Zipkin compose topology + ADR-030 + dual-UI SC#3 verification (D-13)
+- [x] 12-04-PLAN.md — Collector->Jaeger+Zipkin compose topology + ADR-030 + dual-UI SC#3 verification (D-13)
 
 ### Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)
 
@@ -199,6 +199,6 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 3/3 | Complete    | 2026-06-28 |
-| 12. Observability Integration (OTEL/OTLP) | v1.2 | 3/4 | In Progress|  |
+| 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete   | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
