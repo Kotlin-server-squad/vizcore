@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: Phase 12 context gathered
+stopped_at: Phase 12 complete (verified)
 last_updated: "2026-06-28T20:56:20.095Z"
 last_activity: 2026-06-28
 progress:
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Phase 12 — observability-integration-opentelemetry-otlp
+**Current focus:** Phase 12 complete — next: Phase 13 (intellij-plugin-delivery)
 
 ## Current Position
 
 Phase: 13
 Plan: Not started
-Status: Executing Phase 12
+Status: Phase 12 complete (verified, code-reviewed) — Phase 13 not started
 Last activity: 2026-06-28
 
-Progress: [██████----] 33% (Phase 11: 3/3 plans built; remote publish deferred)
+Progress: [███████---] 67% (4/6 phases; Phase 12 OTel/OTLP complete — SC#1/2/3 verified in Jaeger+Zipkin)
 
 ## Deferred Items
 
