@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
-status: executing
-stopped_at: Phase 9 context gathered
-last_updated: "2026-06-28T07:23:22.000Z"
-last_activity: 2026-06-28 -- Completed 09-02-PLAN.md (CORR-01 client half)
+status: completed
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-06-28T08:29:19.670Z"
+last_activity: 2026-06-28 -- Phase 09 marked complete
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 17
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 09 (session-correlation-shared-foundation-onb-01-close-out) — EXECUTING
+Phase: 09 — COMPLETE
 Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-06-28 -- Completed 09-02-PLAN.md (CORR-01 client half)
+Status: Phase 09 complete
+Last activity: 2026-06-28 -- Phase 09 marked complete
 
 Progress: [░░░░░░░░░░] 0% (v1.2)
 
@@ -115,6 +115,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 08.5 P02 | ~8 min | 2 tasks | 4 files |
 | Phase 09 P01 | 8min | 4 tasks | 5 files |
 | Phase 09 P02 | ~7min | 2 tasks | 3 files |
+| Phase 09 P03 | 20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -176,6 +177,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 09-01: CorrelationRegistry stores only sessionId; tenant gate deferred to resolveScopedSession (registry stays auth-type-free, core/client JVM-17 pure)
 - [Phase ?]: 09-01: correlation passed as POST /api/sessions query param; resolve 404-until-bound then 200 {sessionId}, cross-tenant 404 never 403; binding evicted via composable addOnSessionClosed
 - [Phase 09, Plan 02]: 09-02 (CORR-01 client half): threaded a trailing defaulted `correlation: String? = null` through VizcoreClient.start() → createSession() → POST /api/sessions; `correlation?.let { parameter("correlation", it) }` emits the param ONLY when supplied (3-arg call sites byte-unchanged). Client forwards an OPAQUE string — zero TenantContext/io.ktor.server import, coroutine-viz-client stays pure JVM-17 (D-12); send()/store path untouched (D-13). SessionBootstrapTest proves presence-when-supplied / absence-when-omitted via an in-process testApplication that captures query params — chose this over ktor-client-mock because MockEngine is not on the client test classpath and adding it = new dependency (T-09-SC block-on-install); no dep added. Client module has NO ktlint/detekt plugin (lint lives at backend root), so the new test style was matched by hand. Gate green under JDK 21. Commits f460eef (feat), f5bf739 (test).
+- [Phase ?]: 09-03: ConnectWizard binds to the real VizcoreClient session via client-minted-UUID + resolve-poll (self-mint removed) — ONB-01 closed
+- [Phase ?]: 09-03: Locked Maven coordinate centralized in frontend/src/lib/dep-snippet.ts so FE snippet + Phase 11 publish cannot drift
 
 ### Pending Todos
 
@@ -208,7 +211,7 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-28T07:23:22.000Z
+Last session: 2026-06-28T07:50:37.561Z
 Stopped at: Completed 09-02-PLAN.md
 Resume file: None
 

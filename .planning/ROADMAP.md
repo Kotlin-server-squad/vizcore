@@ -43,7 +43,7 @@ Full detail archived in `milestones/v1.1-ROADMAP.md`. Requirements: RCO-01..07, 
 
 Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build order. Two governing invariants apply throughout: **(1)** all event emission flows through `VizSession.send()` — the store-write path is sacred (sampling/batching/OTel touch only the post-bus egress); **(2)** `coroutine-viz-core` + `coroutine-viz-client` stay pure-Kotlin JVM-17 (backend-only OTLP/CLI/harness may use JVM 21).
 
-- [ ] **Phase 9: Session Correlation (shared foundation) + ONB-01 close-out** — one in-memory correlation mechanism (`correlation` token + `GET /api/sessions/resolve`) serving both the web ConnectWizard and IntelliJ auto-connect; closes the carried-forward ONB-01 debt
+- [x] **Phase 9: Session Correlation (shared foundation) + ONB-01 close-out** — one in-memory correlation mechanism (`correlation` token + `GET /api/sessions/resolve`) serving both the web ConnectWizard and IntelliJ auto-connect; closes the carried-forward ONB-01 debt (completed 2026-06-28)
 - [ ] **Phase 10: Scale & Resilience (PERF wiring + load harness)** — bus-only sampling, SSE batching, anti-buffering headers, ingest rate-cap, dev-only load harness
 - [ ] **Phase 11: SDK Distribution + JVM-17 guard** — publish core + client to GitHub Packages (reconciled coordinates), CLI fat JAR, `coroutineVizCheck` Gradle task, CI bytecode guard
 - [ ] **Phase 12: Observability Integration (OpenTelemetry/OTLP)** — config-gated causality-based span exporter, zero overhead when off, verified in Jaeger/Zipkin
@@ -72,7 +72,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 09-03-PLAN.md — Frontend: ConnectWizard resolve-poll rewire + resolveCorrelation + locked DEP_SNIPPET coordinate (ONB-01, CORR-02)
+- [x] 09-03-PLAN.md — Frontend: ConnectWizard resolve-poll rewire + resolveCorrelation + locked DEP_SNIPPET coordinate (ONB-01, CORR-02)
 
 **UI hint**: yes
 
@@ -165,7 +165,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.3 Populate timeline source frames (e2e) | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 8.4 Eliminate duplicate-FQN shadowing (CR-01) | v1.1 | 1/1 | Complete | 2026-06-27 |
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
-| 9. Session Correlation + ONB-01 close-out | v1.2 | 2/3 | In Progress|  |
+| 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 0/TBD | Not started | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 0/TBD | Not started | - |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |
