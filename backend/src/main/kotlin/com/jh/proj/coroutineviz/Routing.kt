@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz
 
 import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.UserStore
+import com.jh.proj.coroutineviz.routes.CorrelationRegistry
 import com.jh.proj.coroutineviz.routes.registerAuthRoutes
 import com.jh.proj.coroutineviz.routes.registerComparisonRoutes
 import com.jh.proj.coroutineviz.routes.registerFlowScenarioRoutes
@@ -15,6 +16,7 @@ import com.jh.proj.coroutineviz.routes.registerSyncScenarioRoutes
 import com.jh.proj.coroutineviz.routes.registerTestRoutes
 import com.jh.proj.coroutineviz.routes.registerValidationRoutes
 import com.jh.proj.coroutineviz.routes.registerVizScenarioRoutes
+import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.share.ShareService
 import com.jh.proj.coroutineviz.share.registerShareOwnerRoutes
 import com.jh.proj.coroutineviz.share.registerSharedPublicRoute
@@ -27,6 +29,13 @@ import kotlin.time.ExperimentalTime
 @OptIn(ExperimentalTime::class)
 fun Application.configureRouting() {
     install(SSE)
+
+    // Evict a session's correlation binding when it closes (D-10), so a stale token resolves to
+    // 404 again. Use the COMPOSABLE addOnSessionClosed hook (NOT the single-slot onSessionClosed
+    // var, which is shared and would clobber the metrics/source wiring — RCO-01 "compose, don't
+    // clobber"). Fires in BOTH the backing-store and in-memory delete branches, so eviction is
+    // uniform across persistence modes. No TTL: the map is bounded purely by live-session lifecycle.
+    SessionManager.addOnSessionClosed { sessionId -> CorrelationRegistry.evict(sessionId) }
 
     // Stores built by configureAuth() (runs first in module()); reused for the token endpoint.
     val userStore = attributes.getOrNull(UserStoreKey) ?: UserStore(emptyList())
