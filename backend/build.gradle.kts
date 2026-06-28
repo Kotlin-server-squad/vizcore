@@ -182,6 +182,21 @@ val checkBytecode by tasks.registering {
             for (classFile in classFiles) {
                 val bytes = classFile.readBytes()
                 // 0xCAFEBABE header: magic[0..3], minor[4..5], major[6..7].
+                // A guard that cannot parse a class must fail HARD (treat as an
+                // offender), not crash with IndexOutOfBounds or silently trust it.
+                if (bytes.size < 8) {
+                    offenders += "  - ${classFile.path} (truncated: ${bytes.size} bytes, cannot read class version)"
+                    continue
+                }
+                val magic =
+                    ((bytes[0].toInt() and 0xFF) shl 24) or
+                        ((bytes[1].toInt() and 0xFF) shl 16) or
+                        ((bytes[2].toInt() and 0xFF) shl 8) or
+                        (bytes[3].toInt() and 0xFF)
+                if (magic != -0x35014542) { // 0xCAFEBABE
+                    offenders += "  - ${classFile.path} (bad magic 0x${magic.toUInt().toString(16)}, not a class file)"
+                    continue
+                }
                 val major = ((bytes[6].toInt() and 0xFF) shl 8) or (bytes[7].toInt() and 0xFF)
                 if (major > jvm17Major) {
                     offenders += "  - ${classFile.path} (major $major > $jvm17Major)"
