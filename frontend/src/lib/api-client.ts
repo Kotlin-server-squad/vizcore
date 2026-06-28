@@ -137,7 +137,7 @@ class ApiClient {
   // navigateToLogin). Mirrors getSharedSession's raw-fetch + status-branch idiom.
   // The Bearer is attached when a token exists (resolve sits behind
   // authenticatedApi); auth-off mode sends no Authorization header.
-  async resolveCorrelation(correlation: string): Promise<{ sessionId: string } | undefined> {
+  async resolveCorrelation(correlation: string): Promise<{ sessionId: string } | null> {
     const token = getToken()
     const authHeaders: Record<string, string> = token
       ? { Authorization: `Bearer ${token}` }
@@ -153,8 +153,11 @@ class ApiClient {
       return response.json()
     }
     // 404 (not bound yet OR cross-tenant, indistinguishable — no existence leak)
-    // and any other non-ok status: keep polling, do not throw.
-    return undefined
+    // and any other non-ok status: keep polling, do not throw. MUST return null,
+    // not undefined — TanStack Query rejects an undefined queryFn result ("Query data
+    // cannot be undefined"), which would wedge the poll in an error state and stop the
+    // ConnectWizard from ever auto-navigating once the token binds.
+    return null
   }
 
   async deleteSession(sessionId: string): Promise<{ message: string }> {

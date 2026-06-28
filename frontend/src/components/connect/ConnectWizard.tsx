@@ -56,8 +56,9 @@ export function ConnectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const START_SNIPPET = `VizcoreClient.start(appName = "${APP_NAME}", correlation = "${correlation}")`
 
   // Poll resolve (token-scoped) until the connecting app's session binds to the
-  // correlation token (D-02/D-03). resolveCorrelation returns undefined on 404
-  // (not bound yet) — the queryFn never throws, so the poll just keeps running.
+  // correlation token (D-02/D-03). resolveCorrelation returns null on 404
+  // (not bound yet) — the queryFn never throws or returns undefined, so the poll
+  // keeps running cleanly until a real session id appears.
   const { data } = useQuery({
     queryKey: ['resolve-correlation', correlation],
     queryFn: () => apiClient.resolveCorrelation(correlation),
