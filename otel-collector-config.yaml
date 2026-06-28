@@ -1,0 +1,36 @@
+# OpenTelemetry Collector configuration for the Coroutine Visualizer (SC#3 verification topology).
+#
+# Receives OTLP from the backend (gRPC 4317 / HTTP 4318) and fans ONE traces pipeline out to
+# BOTH Jaeger (otlp/jaeger) and Zipkin — so a single coroutine run is verifiable in both UIs (D-13).
+#
+# Sources: opentelemetry.io/docs/collector/configuration + jaegertracing.io getting-started.
+# Requires the `otel/opentelemetry-collector-contrib` image (the vanilla collector omits the
+# zipkin exporter, A2).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # Jaeger v2 ingests OTLP natively (COLLECTOR_OTLP_ENABLED=true on the jaeger service);
+  # the removed `jaeger` exporter is intentionally NOT used (State of the Art).
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  zipkin:
+    endpoint: http://zipkin:9411/api/v2/spans
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger, zipkin] # BOTH from one pipeline → same run reaches both UIs (SC#3 / D-13)
