@@ -103,7 +103,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Wave 3**
 
-- [ ] 10-05-PLAN.md — Dev-only Gradle-gated load harness; separate store/bus/sampling counters; jar-exclusion guard (PERF-05)
+- [x] 10-05-PLAN.md — Dev-only Gradle-gated load harness; separate store/bus/sampling counters; jar-exclusion guard (PERF-05) ✅ 2026-06-28
 
 ### Phase 11: SDK Distribution + JVM-17 guard
 

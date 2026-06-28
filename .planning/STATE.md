@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: Completed 10-04-PLAN.md
-last_updated: "2026-06-28T15:14:00Z"
-last_activity: 2026-06-28 -- 10-04 complete (FE hybrid SSE consumer: batch-array + dropped-marker listeners reusing shared appendNormalized dedup spine; PERF-02/04 FE half closed)
+stopped_at: Completed 10-05-PLAN.md
+last_updated: "2026-06-28T15:50:00Z"
+last_activity: 2026-06-28 -- 10-05 complete (dev-only loadHarness source set + EgressLoadDriver flooding eventBus.send; 3 separate store/bus/sampling counters; JarExclusionTest jar-exclusion guard; PERF-05 closed → Phase 10 fully covered)
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 35
+  completed_plans: 8
+  percent: 40
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 10 (scale-resilience-perf-wiring-load-harness) — EXECUTING
-Plan: 5 of 5
-Status: Executing Phase 10
-Last activity: 2026-06-28 -- 10-04 complete (FE hybrid SSE consumer: batch-array + dropped-marker listeners reusing shared appendNormalized dedup spine; PERF-02/04 FE half closed)
+Phase: 10 (scale-resilience-perf-wiring-load-harness) — COMPLETE
+Plan: 5 of 5 (done)
+Status: Phase 10 complete (PERF-01…05 covered)
+Last activity: 2026-06-28 -- 10-05 complete (dev-only loadHarness source set + EgressLoadDriver flooding eventBus.send; 3 separate store/bus/sampling counters; JarExclusionTest jar-exclusion guard; PERF-05 closed → Phase 10 fully covered)
 
-Progress: [████████░░] 80% (Phase 10: 4/5 plans)
+Progress: [██████████] 100% (Phase 10: 5/5 plans)
 
 ## Deferred Items
 
@@ -119,6 +119,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 10 P01 | ~8 min | 2 tasks | 4 files |
 | Phase 10 P02 | ~7 min | 2 tasks | 4 files |
 | Phase 10 P03 | ~11 min | 2 tasks | 6 files |
+| Phase 10 P05 | ~30 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,7 @@ Recent decisions affecting current work:
 - [Phase 09, Plan 02]: 09-02 (CORR-01 client half): threaded a trailing defaulted `correlation: String? = null` through VizcoreClient.start() → createSession() → POST /api/sessions; `correlation?.let { parameter("correlation", it) }` emits the param ONLY when supplied (3-arg call sites byte-unchanged). Client forwards an OPAQUE string — zero TenantContext/io.ktor.server import, coroutine-viz-client stays pure JVM-17 (D-12); send()/store path untouched (D-13). SessionBootstrapTest proves presence-when-supplied / absence-when-omitted via an in-process testApplication that captures query params — chose this over ktor-client-mock because MockEngine is not on the client test classpath and adding it = new dependency (T-09-SC block-on-install); no dep added. Client module has NO ktlint/detekt plugin (lint lives at backend root), so the new test style was matched by hand. Gate green under JDK 21. Commits f460eef (feat), f5bf739 (test).
 - [Phase ?]: 09-03: ConnectWizard binds to the real VizcoreClient session via client-minted-UUID + resolve-poll (self-mint removed) — ONB-01 closed
 - [Phase ?]: 09-03: Locked Maven coordinate centralized in frontend/src/lib/dep-snippet.ts so FE snippet + Phase 11 publish cannot drift
+- [Phase 10, Plan 05]: PERF-05 dev-only load harness closed → Phase 10 (PERF-01…05) fully covered. NEW `loadHarness` Gradle source set in `:backend` (compileClasspath/runtimeClasspath extend `main`) + a `loadHarness` JavaExec task; because it is a SEPARATE source set (never added to any jar `from(...)`) it is excluded from jar/shadowJar BY CONSTRUCTION (D-09). The pre-decided smoke-test seam: flood logic lives in `EgressLoadDriver` (in `src/main`, package `harness`) so the `:test` smoke test can call it WITHOUT depending on the loadHarness source-set classpath; `LoadHarnessMain.main()` in `src/loadHarness/` is a THIN wrapper (the ONLY class there). The driver injects synthetic VizEvents (mix of structural create/complete + sheddable suspend/flow-value) STRAIGHT at `session.eventBus.send` (D-10), bypassing `VizSession.send` so the store is never written — that isolation is the point (store-drop counter stays 0). It runs the SAME adaptive-sample → structural-shed egress chain the SSE route uses (reuses EventSampler + StructuralAwareBuffer + StructuralClassifier), awaits a bus subscriber before flooding (replay=0 race, Phase-07 idiom), and floods on `session.sessionScope` (never GlobalScope; session.close() in finally). Reports THREE SEPARATE counters (D-11): store (≈0 by design), bus, sampling. KEY INSIGHT: the EventBus uses `MutableSharedFlow(DROP_OLDEST)` whose `tryEmit` ALWAYS succeeds and silently evicts the oldest — so `EventBus.onDrop` (fires only on a REJECTED tryEmit) NEVER fires during a flood; bus drops are therefore DERIVED honestly as `sent - pumpReceived` after QUIESCENCE detection (the never-completing SharedFlow can't signal done, and overflow loss is silent). Structural protection is asserted against `structuralReceived` (what reached the chain), not `structuralSent`, so the raw-bus DROP_OLDEST (kept upstream in store, D-03) doesn't make the smoke test flaky. JarExclusionTest (a normal `:test`) keys on the `LoadHarnessMain` ENTRYPOINT being absent from the classpath AND every built jar (verified against real backend-0.0.1.jar + backend-all.jar); the `main`-resident `EgressLoadDriver` seam IS in the jar by design (inert plumbing nothing in prod wires up) and is counter-asserted present. detekt: extracted wireEgressChain/flood/awaitQuiescence + a Tallies holder to clear LongMethod/LongParameterList. core/client build files untouched (JVM-17 purity, P6); no new dependency. Full backend gate (compileLoadHarnessKotlin :coroutine-viz-core:test :test ktlintCheck detekt) green under JDK 21. Commits 817ab49 (source set + task + JarExclusionTest + driver seam), 7a9250f (LoadHarnessMain entrypoint + smoke test + completion-model rework).
 - [Phase 10, Plan 01]: StructuralClassifier (PERF-01 spine) — a stateless object with one explicit Set<String> allow-set keyed on the exact `kind` discriminator (replaces EventSampler's leaky lifecycle-SUFFIX heuristic, D-01). isStructural = `kind in STRUCTURAL_KINDS`; unknown kinds → false (sheddable). Borderline low-freq kinds (MutexUnlocked/SemaphorePermitReleased/Select*/Deferred*) default STRUCTURAL (A2 safe-over-protect). Shared verbatim with Plan-02's shed buffer (PERF-04). EventSampler.shouldKeep now early-returns via StructuralClassifier.isStructural; the adaptive gate is OPT-IN (adaptive=false default so all 25 prior EventSamplerTest cases stay byte-equivalent) — below LOAD_THRESHOLD keeps everything (full fidelity), above it the configured per-type rates engage. Two-watermark hysteresis (AdaptiveConfig high=500/s low=300/s) over a 1s sliding ArrayDeque (MetricsProjection evictOlderThan idiom) prevents flapping (Pitfall P8). Throughput = retained-arrivals / windowSeconds (FIXED denominator — robust to same-instant bursts, unlike a first-to-last span). shouldKeep gained a defaulted nowNanos for deterministic tests; deterministicKeep/updateRate/getEffectiveRate preserved byte-for-byte. Two deviations: (1) Rule-1 a literal `/*` inside a KDoc broke compilation → reworded; (2) Rule-3 reworked the throughput math + rewrote the stay-engaged test to a continuous ~450/s stream so it proves hysteresis not collapse-recover. coroutine-viz-core stays JVM-17 pure (zero imports in classifier; only VizEvent+ConcurrentHashMap in sampler), no new dep, store-write path (VizSession.send) untouched (D-03). Core gate (:coroutine-viz-core:test ktlintCheck detekt) green under JDK 21. Commits 511a950 (classifier), 9473817 (adaptive sampler).
 
 ### Pending Todos
@@ -218,9 +220,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-28T12:27:39Z
-Stopped at: Completed 10-01-PLAN.md (StructuralClassifier + adaptive EventSampler)
-Resume file: .planning/phases/10-scale-resilience-perf-wiring-load-harness/10-02-PLAN.md
+Last session: 2026-06-28T15:50:00Z
+Stopped at: Completed 10-05-PLAN.md (dev-only load harness; PERF-05 closed → Phase 10 fully covered)
+Resume file: None — Phase 10 complete; next phase is 11 (SDK Distribution + JVM-17 guard)
 
 ## Operator Next Steps
 
