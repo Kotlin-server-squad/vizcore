@@ -125,7 +125,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 11-02-PLAN.md — `:coroutine-viz-cli` Shadow fat-JAR CLI: `runCli` drives the 5 validators + AntiPatternDetector over a recorded export, non-zero exit on violations; Shadow legitimacy human-verify gate (SDK-02) — non-autonomous
+- [x] 11-02-PLAN.md — `:coroutine-viz-cli` Shadow fat-JAR CLI: `runCli` drives the 5 validators + AntiPatternDetector over a recorded export, non-zero exit on violations; Shadow legitimacy human-verify gate (SDK-02) — non-autonomous
 
 **Wave 3** *(blocked on Waves 1+2)*
 
@@ -193,7 +193,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
-| 11. SDK Distribution + JVM-17 guard | v1.2 | 1/3 | In progress | 11-01 done |
+| 11. SDK Distribution + JVM-17 guard | v1.2 | 2/3 | In Progress|  |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |
 | 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
