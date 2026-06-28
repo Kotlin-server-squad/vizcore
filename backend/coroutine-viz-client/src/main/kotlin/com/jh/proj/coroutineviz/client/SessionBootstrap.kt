@@ -27,16 +27,27 @@ private val bootstrapJson = Json { ignoreUnknownKeys = true }
  * `201 Created` with `{"sessionId": "...", "message": "..."}`; we extract
  * `sessionId` so the caller can build a LOCAL `VizSession` carrying the SERVER id
  * (Pitfall 1 / T-07-03 — ingested events must carry the correct immutable id).
+ *
+ * When a [correlation] token is supplied it is forwarded as an OPTIONAL
+ * `?correlation=` query param (CORR-01 / D-11) so the backend can record it against
+ * the session it creates, letting a separate poller (e.g. the IDE/connect wizard)
+ * converge on this same real session id. The token is an OPAQUE client-minted
+ * string — the client does NOT know about `TenantContext` and adds no server/auth
+ * dependency, keeping this module pure-Kotlin JVM-17 (D-12). Old callers that pass
+ * nothing emit NO `correlation` param (wire-level back-compat). The non-secret token
+ * rides the query string (T-09-05 accept); the JWT credential stays in the header.
  */
 suspend fun createSession(
     httpClient: HttpClient,
     backendUrl: String,
     appName: String,
     token: String,
+    correlation: String? = null,
 ): String {
     val response =
         httpClient.post("$backendUrl/api/sessions") {
             parameter("name", appName)
+            correlation?.let { parameter("correlation", it) }
             header(HttpHeaders.Authorization, "Bearer $token")
         }
     val body = bootstrapJson.parseToJsonElement(response.bodyAsText()).jsonObject
