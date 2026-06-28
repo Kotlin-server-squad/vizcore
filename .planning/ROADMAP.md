@@ -121,7 +121,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 
 **Wave 1** *(independent build config — no module sources change)*
 
-- [ ] 11-01-PLAN.md — Client publish block (MIT POM + sources jar, locked coordinate) + `checkBytecode` guard (JVM-17 floor + io.ktor-free core) + CI JDK 17/21 matrix (SDK-01, PERF-06)
+- [x] 11-01-PLAN.md — Client publish block (MIT POM + sources jar, locked coordinate) + `checkBytecode` guard (JVM-17 floor + io.ktor-free core) + CI JDK 17/21 matrix (SDK-01, PERF-06) ✓ 3/3 tasks
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -193,7 +193,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
-| 11. SDK Distribution + JVM-17 guard | v1.2 | 0/3 | Not started | - |
+| 11. SDK Distribution + JVM-17 guard | v1.2 | 1/3 | In progress | 11-01 done |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |
 | 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |

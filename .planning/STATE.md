@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
-status: completed
-stopped_at: Phase 11 context gathered
-last_updated: "2026-06-28T14:51:31.616Z"
-last_activity: 2026-06-28 -- Phase 10 marked complete
+status: executing
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-06-28T16:26:37Z"
+last_activity: 2026-06-28 -- Phase 11 Plan 01 completed (client publish + checkBytecode guard + CI matrix)
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
-  percent: 33
+  total_plans: 11
+  completed_plans: 9
+  percent: 36
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Phase 10 — scale-resilience-perf-wiring-load-harness
+**Current focus:** Phase 11 — sdk-distribution-jvm-17-guard
 
 ## Current Position
 
-Phase: 10 — COMPLETE
-Plan: 5 of 5 (done)
-Status: Phase 10 complete
-Last activity: 2026-06-28 -- Phase 10 marked complete
+Phase: 11 (sdk-distribution-jvm-17-guard) — EXECUTING
+Plan: 2 of 3
+Status: Executing Phase 11 (Plan 01 complete; Plan 02 next, non-autonomous Shadow gate)
+Last activity: 2026-06-28 -- Phase 11 Plan 01 completed
 
-Progress: [██████████] 100% (Phase 10: 5/5 plans)
+Progress: [███-------] 33% (Phase 11: 1/3 plans)
 
 ## Deferred Items
 
@@ -120,6 +120,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 10 P02 | ~7 min | 2 tasks | 4 files |
 | Phase 10 P03 | ~11 min | 2 tasks | 6 files |
 | Phase 10 P05 | ~30 min | 2 tasks | 5 files |
+| Phase 11 P01 | ~4 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 09-03: ConnectWizard binds to the real VizcoreClient session via client-minted-UUID + resolve-poll (self-mint removed) — ONB-01 closed
 - [Phase ?]: 09-03: Locked Maven coordinate centralized in frontend/src/lib/dep-snippet.ts so FE snippet + Phase 11 publish cannot drift
 - [Phase 10, Plan 05]: PERF-05 dev-only load harness closed → Phase 10 (PERF-01…05) fully covered. NEW `loadHarness` Gradle source set in `:backend` (compileClasspath/runtimeClasspath extend `main`) + a `loadHarness` JavaExec task; because it is a SEPARATE source set (never added to any jar `from(...)`) it is excluded from jar/shadowJar BY CONSTRUCTION (D-09). The pre-decided smoke-test seam: flood logic lives in `EgressLoadDriver` (in `src/main`, package `harness`) so the `:test` smoke test can call it WITHOUT depending on the loadHarness source-set classpath; `LoadHarnessMain.main()` in `src/loadHarness/` is a THIN wrapper (the ONLY class there). The driver injects synthetic VizEvents (mix of structural create/complete + sheddable suspend/flow-value) STRAIGHT at `session.eventBus.send` (D-10), bypassing `VizSession.send` so the store is never written — that isolation is the point (store-drop counter stays 0). It runs the SAME adaptive-sample → structural-shed egress chain the SSE route uses (reuses EventSampler + StructuralAwareBuffer + StructuralClassifier), awaits a bus subscriber before flooding (replay=0 race, Phase-07 idiom), and floods on `session.sessionScope` (never GlobalScope; session.close() in finally). Reports THREE SEPARATE counters (D-11): store (≈0 by design), bus, sampling. KEY INSIGHT: the EventBus uses `MutableSharedFlow(DROP_OLDEST)` whose `tryEmit` ALWAYS succeeds and silently evicts the oldest — so `EventBus.onDrop` (fires only on a REJECTED tryEmit) NEVER fires during a flood; bus drops are therefore DERIVED honestly as `sent - pumpReceived` after QUIESCENCE detection (the never-completing SharedFlow can't signal done, and overflow loss is silent). Structural protection is asserted against `structuralReceived` (what reached the chain), not `structuralSent`, so the raw-bus DROP_OLDEST (kept upstream in store, D-03) doesn't make the smoke test flaky. JarExclusionTest (a normal `:test`) keys on the `LoadHarnessMain` ENTRYPOINT being absent from the classpath AND every built jar (verified against real backend-0.0.1.jar + backend-all.jar); the `main`-resident `EgressLoadDriver` seam IS in the jar by design (inert plumbing nothing in prod wires up) and is counter-asserted present. detekt: extracted wireEgressChain/flood/awaitQuiescence + a Tallies holder to clear LongMethod/LongParameterList. core/client build files untouched (JVM-17 purity, P6); no new dependency. Full backend gate (compileLoadHarnessKotlin :coroutine-viz-core:test :test ktlintCheck detekt) green under JDK 21. Commits 817ab49 (source set + task + JarExclusionTest + driver seam), 7a9250f (LoadHarnessMain entrypoint + smoke test + completion-model rework).
+- [Phase 11, Plan 01]: SDK client publish + JVM-17 bytecode guard (SDK-01 staged, PERF-06 closed). coroutine-viz-client gained a maven-publish block mirrored VERBATIM from coroutine-viz-core (D-02) — `id("maven-publish")` + `withSourcesJar()` + a publishing{} block at the locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.1.0 (MIT POM, GitHubPackages repo, GITHUB_ACTOR/GITHUB_TOKEN env vars), changing ONLY artifactId/POM name/POM description; publishToMavenLocal lays down the POM + a -sources.jar matching dep-snippet.ts exactly. NEW `checkBytecode` verification task in backend/build.gradle.kts re-skins the verifyNoDuplicateSourceFqns idiom but scans COMPILED output: dependsOn(:coroutine-viz-core/:coroutine-viz-client classes), walks each build/classes/kotlin/main, throws GradleException on an EMPTY classes dir (Pitfall 4 — no vacuous pass) and on any class whose major version (raw bytes[6..7] of the 0xCAFEBABE header) > 61 (JVM 17); then greps core src for `import io.ktor` IMPORT LINES (trimStart().startsWith) — NOT a whole-file substring, because three core KDoc comments literally say "no io.ktor" and MUST pass (plan-checker BLOCKER fix; proven by the clean run not flagging them). Wired into check via a second tasks.named("check"){dependsOn}. ci-backend.yml test-build job gained strategy.matrix.java:[17,21] feeding setup-java + a "Bytecode guard (JVM-17 floor)" step running ./gradlew checkBytecode; release.yml/publish-maven.yml untouched (manual publish path preserved, Pitfall 7). Deviation (Rule 3): the new task tripped ktlintKotlinScriptCheck (which DOES lint build.gradle.kts) on indent + chain-method-continuation — fixed via the project's ./gradlew ktlintFormat before committing. No new dependency (maven-publish is a Gradle built-in already on core, T-11-SC). Full wave-merge gate (:coroutine-viz-core:test :coroutine-viz-client:test ktlintCheck detekt checkBytecode) green under JDK 21. Commits fdb5431 (client publish), f6544bf (checkBytecode), 6ae701d (CI matrix).
 - [Phase 10, Plan 01]: StructuralClassifier (PERF-01 spine) — a stateless object with one explicit Set<String> allow-set keyed on the exact `kind` discriminator (replaces EventSampler's leaky lifecycle-SUFFIX heuristic, D-01). isStructural = `kind in STRUCTURAL_KINDS`; unknown kinds → false (sheddable). Borderline low-freq kinds (MutexUnlocked/SemaphorePermitReleased/Select*/Deferred*) default STRUCTURAL (A2 safe-over-protect). Shared verbatim with Plan-02's shed buffer (PERF-04). EventSampler.shouldKeep now early-returns via StructuralClassifier.isStructural; the adaptive gate is OPT-IN (adaptive=false default so all 25 prior EventSamplerTest cases stay byte-equivalent) — below LOAD_THRESHOLD keeps everything (full fidelity), above it the configured per-type rates engage. Two-watermark hysteresis (AdaptiveConfig high=500/s low=300/s) over a 1s sliding ArrayDeque (MetricsProjection evictOlderThan idiom) prevents flapping (Pitfall P8). Throughput = retained-arrivals / windowSeconds (FIXED denominator — robust to same-instant bursts, unlike a first-to-last span). shouldKeep gained a defaulted nowNanos for deterministic tests; deterministicKeep/updateRate/getEffectiveRate preserved byte-for-byte. Two deviations: (1) Rule-1 a literal `/*` inside a KDoc broke compilation → reworded; (2) Rule-3 reworked the throughput math + rewrote the stay-engaged test to a continuous ~450/s stream so it proves hysteresis not collapse-recover. coroutine-viz-core stays JVM-17 pure (zero imports in classifier; only VizEvent+ConcurrentHashMap in sampler), no new dep, store-write path (VizSession.send) untouched (D-03). Core gate (:coroutine-viz-core:test ktlintCheck detekt) green under JDK 21. Commits 511a950 (classifier), 9473817 (adaptive sampler).
 
 ### Pending Todos
@@ -220,9 +222,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-28T14:51:31.608Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-sdk-distribution-jvm-17-guard/11-CONTEXT.md
+Last session: 2026-06-28T16:26:37Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: .planning/phases/11-sdk-distribution-jvm-17-guard/11-02-PLAN.md
 
 ## Operator Next Steps
 
