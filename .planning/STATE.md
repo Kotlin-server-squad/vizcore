@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: Phase 10 context gathered
-last_updated: "2026-06-28T12:19:35.322Z"
-last_activity: 2026-06-28 -- Phase 10 execution started
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-06-28T12:47:45Z"
+last_activity: 2026-06-28 -- 10-02 complete (EventBatcher + StructuralAwareBuffer egress primitives)
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
-  percent: 22
+  completed_plans: 5
+  percent: 25
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 ## Current Position
 
 Phase: 10 (scale-resilience-perf-wiring-load-harness) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Executing Phase 10
-Last activity: 2026-06-28 -- 10-01 complete (StructuralClassifier + adaptive EventSampler)
+Last activity: 2026-06-28 -- 10-02 complete (EventBatcher + StructuralAwareBuffer egress primitives)
 
-Progress: [██░░░░░░░░] 20% (Phase 10: 1/5 plans)
+Progress: [████░░░░░░] 40% (Phase 10: 2/5 plans)
 
 ## Deferred Items
 
@@ -117,6 +117,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 09 P02 | ~7min | 2 tasks | 3 files |
 | Phase 09 P03 | 20min | 2 tasks | 4 files |
 | Phase 10 P01 | ~8 min | 2 tasks | 4 files |
+| Phase 10 P02 | ~7 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,7 @@ Recent decisions affecting current work:
 - Business-model and KPI variants are unresolved — V2 is the working default; not blocking engineering.
 - [Phase 07, Plan 02]: WebSocket ingest is the server half of real-app transport (RCO-05) — installed once via configureWebSockets() (1 MiB frame cap), registered inside authenticatedApi { rateLimit(api) { } }; publishes into the server-resolved session (never the frame's sessionId, T-07-03) so all downstream (EventStore→snapshot→EventBus→SSE→FE) is pure reuse. AUTH-04 cross-tenant refusal + no-Bearer rejection test-proven over an H2 ExposedSessionStore.
 - [Phase 07, Plan 03]: VizcoreClient is the client half of real-app transport (RCO-04) in a NEW coroutine-viz-client gradle module (JVM 17, Ktor client CIO) kept OUT of core (Ktor-client deps would break core's no-web-framework rule). start(appName, backendUrl, token) authenticates via JWT, POSTs /api/sessions for a server sessionId, builds a LOCAL VizSession with the SERVER id (Pitfall 1/T-07-03), drives a DebugProbesSource, and forwards bus.stream() over a client WS using the SHARED core appJson (Pitfall 3 — wire == ingest == SSE/FE). Reconnect loop on a private SupervisorJob (never GlobalScope) with capped exp backoff+jitter (500ms→30s, T-07-08); CancellationException rethrown; stop() idempotently stops source + closes client + cancels scope. JWT always in the Authorization: Bearer header, never the URL (T-07-02). Notes: kotlinx-serialization-json declared directly in the client (core exposes it as implementation); tests use @org.junit.jupiter.api.Test for platform discovery; round-trip proven in-process with a synthetic event landing in the backend session carrying the server id.
+- [Phase 10, Plan 02]: Two pure-core JVM-17 egress primitives built (PERF-02, PERF-04), NOT yet wired (Plan 03 wires at the SSE route). EventBatcher.batched(upstream, count=50, windowMs=100) = count-OR-time hybrid flush via channelFlow + select over a rendezvous inbox and a per-batch single-shot delay() timer; window measured from FIRST pending element so idle streams never emit empty batches; size-1 batches below load keep the SSE wire byte-identical (D-04); lossless. Chose delay()-based timer over TestCoroutineScheduler (test-only type, won't compile in main) — still deterministic under runTest virtual time. StructuralAwareBuffer(shedCapacity=10_000) = two-lane (RESEARCH §3 Option 2): UNLIMITED lifecycle lane (structural NEVER DROP_OLDEST, P5; bounded transitively by EventStore live-coroutine count) + bounded DROP_OLDEST sheddable lane whose onUndeliveredElement increments an observable AtomicLong `dropped` (D-08); stream() drains lifecycle-lane-first each tick (biased select, never starved); forcedStructuralDrops diagnostic ~0. Protection DELEGATED to StructuralClassifier.isStructural (Plan 01 spine) — no reinvented lifecycle check. No store touch (D-03), no new dependency, core stays io.ktor/Micrometer-free (P6). Core gate (test+ktlintCheck+detekt) green under JDK 21.
 - [Phase 07, Plan 04]: CR-01 closed (RCO-04). The 07-03 client lost events emitted before the first WS connect and during every reconnect-backoff window because IngestTransport subscribed the replay=0/DROP_OLDEST EventBus INSIDE the open socket. Fix: a lifetime-scoped OutboundBuffer (bounded Channel<VizEvent>, cap 10k) written by ONE source-side collector (feed) that subscribes the bus exactly once and survives reconnects, drained per-socket (drain); events emitted while disconnected are retained and delivered on the next connect. Startup race closed deterministically — feed() awaits its OWN bus subscription (subscriptionCount STRICTLY above the pre-launch baseline, NOT >=1, because VizSession eagerly subscribes its ProjectionService collector at construction) before returning, and VizcoreClient.start() runs feed-then-source. Overflow is drop-newest-when-full with a surfaced AtomicLong `dropped` counter (observable, never silent) replacing the EventBus silent DROP_OLDEST at the bridge (T-07-08 instrumented). delay(200) removed from VizcoreClientTest, replaced by a zero-loss completeness assertion gated on subscriptionCount>=2 (forced first-attempt drop proves the reconnect window). One additive Ktor-free core change: EventBus.subscriptionCount: StateFlow<Int>. No new dependency. Full gate (ktlintCheck detekt + both module tests + build) green under JDK 21.
 - [Phase 1]: Folded runtime-audit fixes FIX-01..04 into Phase 1 (edited goal/requirements/success criteria); FIX wave executes first, before FND-01 de-fork. Evidence: VERIFICATION.md runtime addendum + SCENARIO-AUDIT.md (2026-06-11).
 - [Phase 1, Plan 02]: ValidationResult renamed to ValidationResponse (no alias) — all consumers must use new name; ValidationWarningCard left in file with local type (unused, backend has no Warning variant); api-client.ts updated as part of type rename (Rule 3).

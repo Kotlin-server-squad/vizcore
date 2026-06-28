@@ -94,7 +94,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 **Wave 1** *(pure-core primitives, no file overlap → parallel)*
 
 - [x] 10-01-PLAN.md — StructuralClassifier (shared spine) + adaptive EventSampler (PERF-01) ✅ 2026-06-28
-- [ ] 10-02-PLAN.md — EventBatcher (count-or-time) + StructuralAwareBuffer (two-lane shedding) (PERF-02, PERF-04)
+- [x] 10-02-PLAN.md — EventBatcher (count-or-time) + StructuralAwareBuffer (two-lane shedding) (PERF-02, PERF-04) ✅ 2026-06-28
 
 **Wave 2** *(egress wiring; route vs FE hook → no file overlap → parallel)*
 
@@ -180,7 +180,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 8.4 Eliminate duplicate-FQN shadowing (CR-01) | v1.1 | 1/1 | Complete | 2026-06-27 |
 | 8.5 Align FE to sketch winners | v1.1 | 3/3 | Complete | 2026-06-27 |
 | 9. Session Correlation + ONB-01 close-out | v1.2 | 3/3 | Complete   | 2026-06-28 |
-| 10. Scale & Resilience (PERF + load harness) | v1.2 | 0/5 | Planned | - |
+| 10. Scale & Resilience (PERF + load harness) | v1.2 | 2/5 | In progress | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 0/TBD | Not started | - |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 0/TBD | Not started | - |
 | 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
