@@ -32,6 +32,10 @@
             instance="com.jh.coroutinevisualizer.settings.VizcoreSettingsConfigurable"
             id="com.jh.coroutinevisualizer.settings.VizcoreSettingsConfigurable"
             displayName="Coroutine Visualizer"/>
+        <toolWindow
+            id="Coroutine Visualizer"
+            anchor="bottom"
+            factoryClass="com.jh.coroutinevisualizer.toolwindow.VizcoreToolWindowFactory"/>
     </extensions>
 
     <actions>
