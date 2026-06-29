@@ -26,12 +26,6 @@ dependencies {
     // Core visualization library
     implementation(project(":coroutine-viz-core"))
 
-    // Lightweight HTTP server for receiving events from instrumented app
-    implementation("io.ktor:ktor-server-core:3.5.0")
-    implementation("io.ktor:ktor-server-cio:3.5.0")
-    implementation("io.ktor:ktor-server-content-negotiation:3.5.0")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.5.0")
-
     intellijPlatform {
         intellijIdeaCommunity("2024.1")
         bundledPlugin("com.intellij.java")
