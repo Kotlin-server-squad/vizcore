@@ -38,7 +38,7 @@ dependencies {
     // shape (configureWebSockets + webSocket) without a live network.
     testImplementation("io.ktor:ktor-server-test-host:$ktor_version")
     testImplementation("io.ktor:ktor-server-websockets:$ktor_version")
-    testImplementation("ch.qos.logback:logback-classic:1.5.32")
+    testImplementation("ch.qos.logback:logback-classic:1.5.37")
 }
 
 tasks.named<Test>("test") {
