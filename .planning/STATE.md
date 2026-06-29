@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: Phase 12 complete (verified)
-last_updated: "2026-06-28T20:56:20.095Z"
-last_activity: 2026-06-28
+stopped_at: Phase 13 context gathered
+last_updated: "2026-06-29T06:03:16.702Z"
+last_activity: 2026-06-29 -- Phase 13 execution started
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 15
+  total_plans: 22
   completed_plans: 15
   percent: 67
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Phase 12 complete — next: Phase 13 (intellij-plugin-delivery)
+**Current focus:** Phase 13 — intellij-plugin-delivery-rebuild-by-deletion
 
 ## Current Position
 
-Phase: 13
-Plan: Not started
-Status: Phase 12 complete (verified, code-reviewed) — Phase 13 not started
-Last activity: 2026-06-28
+Phase: 13 (intellij-plugin-delivery-rebuild-by-deletion) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 13
+Last activity: 2026-06-29 -- Phase 13 execution started
 
 Progress: [███████---] 67% (4/6 phases; Phase 12 OTel/OTLP complete — SC#1/2/3 verified in Jaeger+Zipkin)
 
@@ -228,9 +228,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-06-28T19:08:26.878Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-observability-integration-opentelemetry-otlp/12-CONTEXT.md
+Last session: 2026-06-28T21:12:28.763Z
+Stopped at: Phase 13 context gathered
+Resume file: .planning/phases/13-intellij-plugin-delivery-rebuild-by-deletion/13-CONTEXT.md
 
 ## Operator Next Steps
 

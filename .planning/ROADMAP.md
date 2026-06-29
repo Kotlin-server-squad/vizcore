@@ -161,7 +161,30 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
   3. The tool window auto-connects to the launched app's live session via the shared correlation mechanism (Phase 9), opening directly on the correct session.
   4. The plugin has automated (headless-safe) tests and is packaged for JetBrains Marketplace distribution.
 
-**Plans**: TBD
+**Plans**: 7 plans in 5 waves
+Plans:
+**Wave 1**
+
+- [x] 13-01-PLAN.md — coroutine-viz-agent Shadow fat-jar module (Premain-Class → VizcoreClient.start) + arg-parse test
+- [x] 13-02-PLAN.md — rebuild-by-deletion: delete legacy receiver/Swing UI + io.ktor deps + plugin.xml registrations
+- [x] 13-03-PLAN.md — frontend ?correlation= deep-link entry on the index route (auto-resolve + navigate)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 13-04-PLAN.md — backend-URL settings + health-check + loopback static-SPA/-api-proxy server (+ first headless tests)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 13-05-PLAN.md — JCEF tool window (gated by isSupported) + system-browser fallback (same correlation URL)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 13-06-PLAN.md — launch path: AgentJarExtractor + RunConfigurationExtension (VM args) + RunWithVisualizerAction rebuild + correlation threading
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 13-07-PLAN.md — packaging: agent-jar + frontend-build wires, coroutines-bundling human-verify spike, verifyPlugin/signPlugin, distributable zip
+
 **UI hint**: yes
 
 ### Phase 14: Frontend Testing & Quality
@@ -200,5 +223,5 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 3/3 | Complete    | 2026-06-28 |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
-| 13. IntelliJ Plugin Delivery | v1.2 | 0/TBD | Not started | - |
+| 13. IntelliJ Plugin Delivery | v1.2 | 3/7 | In Progress|  |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
