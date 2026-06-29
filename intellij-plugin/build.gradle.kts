@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel
 
 plugins {
     kotlin("jvm") version "2.3.21"
@@ -74,4 +75,34 @@ intellijPlatform {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+intellijPlatform {
+    pluginVerification {
+        ides {
+            recommended()
+        }
+        // The verifier flags `ToolWindowFactory`'s OWN default methods (getIcon/getAnchor/manage/
+        // isApplicable/isDoNotActivateOnStart) as internal/deprecated/experimental on IDE 241–251:
+        // implementing the public `ToolWindowFactory` extension point (the documented, required way
+        // to register a tool window) makes the Kotlin compiler synthesize DefaultImpls bridges for
+        // those interface defaults, which the verifier then attributes to our class. The per-IDE
+        // verdict is "Compatible"; none of these originate from our method bodies (Pitfall 7 /
+        // T-13-12). We therefore exclude the three interface-inheritance categories so the gate
+        // fails ONLY on genuine compatibility problems / missing dependencies. Plan 07 confirms the
+        // since/until range against this same gate.
+        freeArgs =
+            listOf(
+                "-mute",
+                "InternalApiUsages,DeprecatedApiUsages,ExperimentalApiUsages",
+            )
+        failureLevel =
+            listOf(
+                FailureLevel.COMPATIBILITY_PROBLEMS,
+                FailureLevel.NON_EXTENDABLE_API_USAGES,
+                FailureLevel.PLUGIN_STRUCTURE_WARNINGS,
+                FailureLevel.MISSING_DEPENDENCIES,
+                FailureLevel.INVALID_PLUGIN,
+            )
+    }
 }

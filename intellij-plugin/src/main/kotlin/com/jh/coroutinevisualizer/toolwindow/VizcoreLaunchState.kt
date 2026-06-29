@@ -42,9 +42,9 @@ class VizcoreLaunchState {
 
     /** The deep-linked loopback URL, or `null` if no launch is currently armed. */
     fun viewUrl(): String? {
-        val p = port ?: return null
-        val c = correlation ?: return null
-        return VizcoreViewUrl.build(p, c)
+        val p = port
+        val c = correlation
+        return if (p != null && c != null) VizcoreViewUrl.build(p, c) else null
     }
 
     companion object {
