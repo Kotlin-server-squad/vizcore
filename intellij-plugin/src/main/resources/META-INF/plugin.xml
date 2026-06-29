@@ -26,6 +26,14 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.kotlin</depends>
 
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable
+            parentId="tools"
+            instance="com.jh.coroutinevisualizer.settings.VizcoreSettingsConfigurable"
+            id="com.jh.coroutinevisualizer.settings.VizcoreSettingsConfigurable"
+            displayName="Coroutine Visualizer"/>
+    </extensions>
+
     <actions>
         <action id="com.jh.coroutinevisualizer.RunWithVisualizer"
                 class="com.jh.coroutinevisualizer.actions.RunWithVisualizerAction"
