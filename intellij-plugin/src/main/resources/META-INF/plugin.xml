@@ -26,26 +26,6 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.kotlin</depends>
 
-    <extensions defaultExtensionNs="com.intellij">
-        <!-- Tool Window -->
-        <toolWindow id="Coroutine Visualizer"
-                    secondary="true"
-                    anchor="bottom"
-                    factoryClass="com.jh.coroutinevisualizer.CoroutineVisualizerToolWindowFactory"
-                    icon="AllIcons.Actions.Execute"/>
-
-        <!-- Settings -->
-        <applicationConfigurable
-                parentId="tools"
-                instance="com.jh.coroutinevisualizer.settings.VisualizerSettingsConfigurable"
-                id="com.jh.coroutinevisualizer.settings"
-                displayName="Coroutine Visualizer"/>
-
-        <!-- Startup activity to start event receiver -->
-        <postStartupActivity
-                implementation="com.jh.coroutinevisualizer.CoroutineVisualizerStartupActivity"/>
-    </extensions>
-
     <actions>
         <action id="com.jh.coroutinevisualizer.RunWithVisualizer"
                 class="com.jh.coroutinevisualizer.actions.RunWithVisualizerAction"
