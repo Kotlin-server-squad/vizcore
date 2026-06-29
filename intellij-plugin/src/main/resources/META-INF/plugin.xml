@@ -4,26 +4,29 @@
     <vendor url="https://github.com/hermanngeorge15/visualizer-for-coroutines">JH</vendor>
 
     <description><![CDATA[
-    Visualize Kotlin coroutine execution directly in IntelliJ IDEA.
+    Run any Kotlin/JVM application with live coroutine visualization, directly from IntelliJ IDEA.
 
     <ul>
-        <li>Real-time coroutine hierarchy tree view</li>
-        <li>Timeline visualization with suspension points</li>
-        <li>Event log with filtering and search</li>
-        <li>Integration with VizScope instrumentation library</li>
-        <li>DebugProbes fallback for zero-configuration use</li>
+        <li>One-click <b>Run with Coroutine Visualizer</b> — attaches a bundled Java agent to your run configuration with zero code changes.</li>
+        <li>The agent captures coroutine activity via <code>kotlinx-coroutines</code> DebugProbes and streams it to the visualizer backend.</li>
+        <li>A live React view is embedded in an IDE tool window (JCEF), auto-navigating to your run's session over SSE.</li>
     </ul>
 
     <h3>Getting Started</h3>
     <ol>
-        <li>Add <code>coroutine-viz-core</code> dependency to your project</li>
-        <li>Replace <code>CoroutineScope</code> with <code>VizScope</code></li>
-        <li>Open the Coroutine Visualizer tool window (View → Tool Windows)</li>
-        <li>Run your application — events appear in real-time</li>
+        <li>Open the Coroutine Visualizer settings and point it at your visualizer backend URL.</li>
+        <li>Select a run configuration and choose <b>Run with Coroutine Visualizer</b> (the bundled agent attaches automatically — no dependency or code change).</li>
+        <li>Open the Coroutine Visualizer tool window — it auto-navigates to your run's live session.</li>
     </ol>
+
+    <p><b>Development tool.</b> The embedded view shows coroutine creation-stack source paths and is intended for development/debugging on trusted backends only.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <!-- Java plugin: VizcoreRunConfigurationExtension uses RunConfigurationExtension +
+         JavaParameters (Java functionality was extracted to a separate plugin in 2019.2);
+         verifyPlugin requires this explicit runtime dependency declaration. -->
+    <depends>com.intellij.modules.java</depends>
     <depends>org.jetbrains.kotlin</depends>
 
     <extensions defaultExtensionNs="com.intellij">

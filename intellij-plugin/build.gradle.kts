@@ -54,18 +54,33 @@ intellijPlatform {
         id = "com.jh.coroutine-visualizer"
         name = "Kotlin Coroutine Visualizer"
         version = project.version.toString()
+        // Delivery-vehicle copy (Plan 07 / RESEARCH §State of the Art): the plugin is the
+        // packaging + launch vehicle for the agent-attach pipeline, NOT a VizScope/Swing UI.
+        // The stale "replace CoroutineScope with VizScope" + Tree/Timeline/EventLog tab copy
+        // is removed — those tabs no longer exist (D-11). The live view is an embedded React
+        // SPA fed by the backend over SSE; capture is zero-code via the bundled -javaagent jar
+        // driving DebugProbes. This is a DEVELOPMENT TOOL: it streams coroutine creation-stack
+        // source paths to the configured backend (T-13-19, dev-only info-disclosure mitigation).
         description =
             """
-            Visualize Kotlin coroutine execution directly in IntelliJ IDEA.
+            Run any Kotlin/JVM application with live coroutine visualization, directly from IntelliJ IDEA.
 
-            Features:
-            - Real-time coroutine hierarchy tree view
-            - Timeline visualization with suspension points
-            - Event log with filtering and search
-            - Integration with VizScope instrumentation library
+            <ul>
+              <li>One-click "Run with Coroutine Visualizer" — attaches a bundled Java agent to your run configuration (zero code changes).</li>
+              <li>The agent captures coroutine activity via <code>kotlinx-coroutines</code> DebugProbes and streams it to the visualizer backend.</li>
+              <li>A live React view is embedded in an IDE tool window (JCEF), auto-navigating to your run's session over SSE.</li>
+            </ul>
+
+            <p><b>Development tool.</b> The embedded view shows coroutine creation-stack source paths and is intended for development/debugging on trusted backends only.</p>
             """.trimIndent()
-        changeNotes = "Initial release"
+        changeNotes =
+            """
+            Delivery-vehicle release: bundles the coroutine-capture Java agent and the embedded live view.
+            Adds "Run with Coroutine Visualizer" agent-attach, an IDE tool window hosting the live React SPA over SSE.
+            """.trimIndent()
         ideaVersion {
+            // sinceBuild=241 (2024.1, the resolved compile target); untilBuild=251.* confirmed
+            // acceptable by the verifyPlugin gate below (Plan 07 / RESEARCH Open Q untilBuild).
             sinceBuild = "241"
             untilBuild = "251.*"
         }
@@ -74,6 +89,42 @@ intellijPlatform {
             url = "https://github.com/hermanngeorge15/visualizer-for-coroutines"
         }
     }
+
+    // signPlugin reads the marketplace-zip-signer key material from env/Gradle properties ONLY
+    // (T-13-17, V6). Never commit keys: CERTIFICATE_CHAIN / PRIVATE_KEY / PRIVATE_KEY_PASSWORD
+    // are supplied at sign time (env or -P). When unset, signPlugin is simply skipped and
+    // buildPlugin still produces an UNSIGNED distributable zip (the human signs+uploads, D-12).
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+            .orElse(providers.gradleProperty("certificateChain"))
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+            .orElse(providers.gradleProperty("privateKey"))
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+            .orElse(providers.gradleProperty("privateKeyPassword"))
+    }
+}
+
+// --- Packaging wires (Plan 07, D-07): bundle the agent fat-jar + the frontend SPA into the
+// plugin's resources so buildPlugin produces a self-contained distributable zip. ---
+
+// Agent fat-jar (Plan 01, coroutines scope resolved by the Task 1 spike — BUNDLED, un-relocated):
+// copy the already-correct :coroutine-viz-agent:shadowJar output to /agent/coroutine-viz-agent.jar.
+val agentJar = project(":coroutine-viz-agent").tasks.named("shadowJar")
+
+// Frontend SPA: run `pnpm build` (vite → ../frontend/dist, default base="/" for loopback-root
+// serving — no vite change) and copy dist into /frontend.
+val pnpmBuild by tasks.registering(Exec::class) {
+    workingDir = file("../frontend")
+    commandLine("pnpm", "build")
+}
+
+tasks.named<ProcessResources>("processResources") {
+    dependsOn(agentJar, pnpmBuild)
+    from(agentJar) {
+        into("agent")
+        rename { "coroutine-viz-agent.jar" }
+    }
+    from("../frontend/dist") { into("frontend") }
 }
 
 tasks.named<Test>("test") {
