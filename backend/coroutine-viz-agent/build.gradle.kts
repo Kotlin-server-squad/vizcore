@@ -39,6 +39,16 @@ dependencies {
     implementation("io.ktor:ktor-client-cio:3.3.2")
     implementation("io.ktor:ktor-client-websockets:3.3.2")
     implementation("org.slf4j:slf4j-api:2.0.9")
+    // kotlin-reflect (spike finding, 13-07 Task 1): a Spring Boot executable jar loads the
+    // -javaagent jar on the SYSTEM (parent-first) classloader, so the agent's bundled
+    // kotlin-stdlib shadows the host app's. The host's own kotlin-reflect lives in
+    // BOOT-INF/lib (a child classloader, invisible to the agent's stdlib), so host-triggered
+    // Kotlin reflection (Spring/Jackson) failed with KotlinReflectionNotSupportedError.
+    // Bundling kotlin-reflect at the agent's stdlib version keeps the agent's system-CL
+    // Kotlin runtime a self-consistent stdlib+reflect pair. Pinned to 2.4.0 to match the
+    // serialization-plugin-forced kotlin-stdlib (DebugProbes already requires the agent to
+    // supply the coroutines runtime; this completes the bundled Kotlin runtime, un-relocated).
+    implementation("org.jetbrains.kotlin:kotlin-reflect:2.4.0")
 
     // Test
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
@@ -58,8 +68,20 @@ tasks.shadowJar {
     manifest {
         attributes["Premain-Class"] = "com.jh.proj.coroutineviz.agent.VizcoreAgent"
     }
-    // Shadow configuration is intentionally minimal: keep the default `all` classifier
-    // (yields coroutine-viz-agent-0.1.0-all.jar) and do NOT relocate kotlin.* / kotlinx.* —
+    // Shadow configuration: keep the default `all` classifier (yields
+    // coroutine-viz-agent-0.1.0-all.jar) and do NOT relocate kotlin.* / kotlinx.* —
     // relocating them breaks DebugProbes' byte-buddy package-name introspection at runtime
     // (RESEARCH Pitfall 4). The coroutines packages MUST ship under their real names.
+    //
+    // RELOCATE org.slf4j (spike finding, 13-07 Task 1): the agent is injected via
+    // `-javaagent:` into arbitrary target JVMs, so its bundled libraries share the host
+    // app's system classpath. The transitively-bundled slf4j-api (from VizcoreClient/Ktor +
+    // kotlinx-coroutines-slf4j) shadowed the host's own org.slf4j and broke Spring Boot's
+    // Logback initialisation ("LoggerFactory is not a Logback LoggerContext … competing
+    // implementation … NOPLoggerFactory loaded from coroutine-viz-agent-…-all.jar"),
+    // crashing the demo at startup with zero events captured. Relocating slf4j into a
+    // private package isolates the agent's (silent, NOP-fallback) logging from the host's
+    // logging stack. kotlinx.coroutines.slf4j (MDCContext) refs are rewritten to the shaded
+    // package by Shadow; the host's org.slf4j + Logback are left untouched.
+    relocate("org.slf4j", "com.jh.proj.coroutineviz.agent.shaded.slf4j")
 }
