@@ -40,7 +40,7 @@ dependencies {
         // code instrumentation tools are now added automatically.
     }
 
-    testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.0")
 }
