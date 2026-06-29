@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+
 plugins {
     kotlin("jvm") version "2.3.21"
     id("org.jetbrains.intellij.platform") version "2.16.0"
@@ -32,6 +34,10 @@ dependencies {
         bundledPlugin("org.jetbrains.kotlin")
         // instrumentationTools() removed in IntelliJ Platform Gradle Plugin 2.x —
         // code instrumentation tools are now added automatically.
+
+        // Explicit test framework is a 2.x requirement — enables the headless
+        // BasePlatformTestCase/LightPlatformTestCase fixtures (first plugin tests).
+        testFramework(TestFrameworkType.Platform)
     }
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
