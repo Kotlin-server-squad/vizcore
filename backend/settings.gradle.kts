@@ -18,6 +18,7 @@ pluginManagement {
 include("coroutine-viz-core")
 include("coroutine-viz-client")
 include("coroutine-viz-cli")
+include("coroutine-viz-agent")
 include("intellij-plugin")
 project(":intellij-plugin").projectDir = file("../intellij-plugin")
 
