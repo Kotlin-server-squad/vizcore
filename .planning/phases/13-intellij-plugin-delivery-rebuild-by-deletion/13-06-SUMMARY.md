@@ -120,3 +120,8 @@ None.
 ## Threat Flags
 
 None — no new network endpoints, auth paths, or trust-boundary surface beyond the plan's `<threat_model>` (the action patches only the user's own armed config VM args; the agent jar is the plugin's own classpath resource).
+
+## Self-Check: PASSED
+
+- Files exist: `RunWithVisualizerAction.kt`, `CorrelationThreadingTest.kt`, `13-06-SUMMARY.md` — all FOUND.
+- Commits exist: `396c1ff` (Task 2), `fbc40f4` (SUMMARY), `f2451db` (Task 1, merged via `2161266`) — all FOUND.
