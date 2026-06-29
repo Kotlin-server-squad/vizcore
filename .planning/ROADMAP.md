@@ -47,7 +47,7 @@ Sequenced Scale/SDK-first → IDE/FE-last, honoring the dependency-driven build 
 - [x] **Phase 10: Scale & Resilience (PERF wiring + load harness)** — bus-only sampling, SSE batching, anti-buffering headers, ingest rate-cap, dev-only load harness (completed 2026-06-28; verification 5/5, security 19/19)
 - [x] **Phase 11: SDK Distribution + JVM-17 guard** — publish core + client to GitHub Packages (reconciled coordinates), CLI fat JAR, `coroutineVizCheck` Gradle task, CI bytecode guard *(all 3 plans built; remote publish + SC#1 remote resolution confirmed via `/gsd-verify-work 11`; secured 11/11 threats)* (completed 2026-06-28)
 - [x] **Phase 12: Observability Integration (OpenTelemetry/OTLP)** — config-gated causality-based span exporter, zero overhead when off, verified in Jaeger/Zipkin (completed 2026-06-28)
-- [ ] **Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)** — `RunWithVisualizerAction` javaagent launch, JCEF tool window, correlation auto-connect, plugin tests + Marketplace
+- [x] **Phase 13: IntelliJ Plugin Delivery (rebuild-by-deletion)** — `RunWithVisualizerAction` javaagent launch, JCEF tool window, correlation auto-connect, plugin tests + Marketplace (completed 2026-06-29)
 - [ ] **Phase 14: Frontend Testing & Quality** — actor/select/anti-pattern tests, FE coverage ≥80% gated, Playwright E2E, Storybook + visual regression (parallelizable with Phase 13)
 
 ## Phase Details
@@ -183,7 +183,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 13-07-PLAN.md — packaging: agent-jar + frontend-build wires, coroutines-bundling human-verify spike, verifyPlugin/signPlugin, distributable zip
+- [x] 13-07-PLAN.md — packaging: agent-jar + frontend-build wires, coroutines-bundling human-verify spike, verifyPlugin/signPlugin, distributable zip
 
 **UI hint**: yes
 
@@ -223,5 +223,5 @@ Plans:
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 3/3 | Complete    | 2026-06-28 |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
-| 13. IntelliJ Plugin Delivery | v1.2 | 6/7 | In Progress|  |
+| 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
