@@ -44,6 +44,9 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.0")
+    // Mocks a RunConfigurationBase for the headless un-armed early-return proof in
+    // VizcoreRunConfigurationExtensionTest (no project/fixture needed). Test-only.
+    testImplementation("org.mockito:mockito-core:5.23.0")
 }
 
 intellijPlatform {

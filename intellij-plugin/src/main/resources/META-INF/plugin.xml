@@ -36,6 +36,8 @@
             id="Coroutine Visualizer"
             anchor="bottom"
             factoryClass="com.jh.coroutinevisualizer.toolwindow.VizcoreToolWindowFactory"/>
+        <runConfigurationExtension
+            implementation="com.jh.coroutinevisualizer.run.VizcoreRunConfigurationExtension"/>
     </extensions>
 
     <actions>
