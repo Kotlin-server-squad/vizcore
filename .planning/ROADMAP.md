@@ -171,7 +171,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 13-04-PLAN.md — backend-URL settings + health-check + loopback static-SPA/-api-proxy server (+ first headless tests)
+- [x] 13-04-PLAN.md — backend-URL settings + health-check + loopback static-SPA/-api-proxy server (+ first headless tests)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -223,5 +223,5 @@ Plans:
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 3/3 | Complete    | 2026-06-28 |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
-| 13. IntelliJ Plugin Delivery | v1.2 | 3/7 | In Progress|  |
+| 13. IntelliJ Plugin Delivery | v1.2 | 4/7 | In Progress|  |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
