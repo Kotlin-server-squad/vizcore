@@ -25,6 +25,7 @@ import kotlin.test.assertTrue
  *  3. SPA fallback: an existing bundled resource is served verbatim, an unknown path falls back to
  *     index.html, and `/api` takes precedence over `/`.
  */
+@Suppress("TooManyFunctions") // one focused test per routing/proxy behavior
 class LoopbackFrontendServerTest {
     private var backend: HttpServer? = null
     private var server: LoopbackFrontendServer? = null
@@ -127,7 +128,109 @@ class LoopbackFrontendServerTest {
         assertEquals("STATIC", staticResponse.body(), "non-/api paths are served by the static root")
     }
 
+    @Test
+    fun `rejects path traversal that would escape the frontend root`() {
+        // A resolver that would happily return bytes for ANY path — proving the guard, not the loader,
+        // is what blocks traversal. If `/frontend/../secret` reached the loader it would serve "SECRET".
+        server =
+            LoopbackFrontendServer(
+                backendUrl = "http://127.0.0.1:1",
+                resourceLoader = { path -> if (path.contains("..")) "SECRET".toByteArray() else "<html>ok</html>".toByteArray() },
+            ).also { it.start() }
+
+        val traversal = get("/../secret")
+        assertEquals(HTTP_FORBIDDEN, traversal.statusCode(), "a traversal path must be rejected with 403, never served")
+        assertTrue(!traversal.body().contains("SECRET"), "traversal must NOT leak an out-of-root resource")
+    }
+
+    @Test
+    fun `sets content-type by extension so vite module scripts load`() {
+        val resources =
+            mapOf(
+                "/frontend/index.html" to "<!doctype html>".toByteArray(),
+                "/frontend/assets/app.js" to "export const x=1".toByteArray(),
+                "/frontend/assets/app.css" to ".a{}".toByteArray(),
+            )
+        server = LoopbackFrontendServer(backendUrl = "http://127.0.0.1:1", resourceLoader = { resources[it] }).also { it.start() }
+
+        assertEquals("text/html; charset=utf-8", get("/").headers().firstValue("Content-Type").orElse(""), "index.html must be text/html")
+        assertTrue(
+            get("/assets/app.js")
+                .headers()
+                .firstValue("Content-Type")
+                .orElse("")
+                .startsWith("text/javascript"),
+            "a .js asset must be served as a JS module type (browsers refuse non-JS module scripts)",
+        )
+        assertTrue(
+            get("/assets/app.css")
+                .headers()
+                .firstValue("Content-Type")
+                .orElse("")
+                .startsWith("text/css"),
+            "a .css asset must be text/css",
+        )
+    }
+
+    @Test
+    fun `forwards the upstream content-type on proxied api responses`() {
+        val b = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
+        b.createContext("/api") { ex ->
+            val body = "[]".toByteArray()
+            ex.responseHeaders.set("Content-Type", "application/json")
+            ex.sendResponseHeaders(200, body.size.toLong())
+            ex.responseBody.use { it.write(body) }
+        }
+        b.start()
+        backend = b
+        server = LoopbackFrontendServer(backendUrl = "http://127.0.0.1:${b.address.port}").also { it.start() }
+
+        val response = get("/api/sessions")
+        assertEquals(
+            "application/json",
+            response.headers().firstValue("Content-Type").orElse(""),
+            "the backend's Content-Type must reach the client (the SPA needs it)",
+        )
+        assertEquals("[]", response.body())
+    }
+
+    @Test
+    @org.junit.jupiter.api.Timeout(10)
+    fun `streams a long-lived sse response incrementally instead of buffering`() {
+        // The stub backend writes ONE event, flushes, then BLOCKS on a latch the test only releases
+        // AFTER it has already read that first event from the proxy. If the proxy buffered the body
+        // to EOF (the old readBytes() bug), this test would deadlock and hit the 10s @Timeout: the
+        // proxy would wait for an EOF the backend never sends until the latch, and the latch is only
+        // released once the first event is read — a cycle only a STREAMING proxy can break.
+        val firstEventRead = java.util.concurrent.CountDownLatch(1)
+        val b = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
+        b.createContext("/api") { ex ->
+            ex.responseHeaders.set("Content-Type", "text/event-stream")
+            ex.sendResponseHeaders(200, 0L) // chunked, unbounded
+            ex.responseBody.use { out ->
+                out.write("data: one\n\n".toByteArray())
+                out.flush()
+                firstEventRead.await(8, java.util.concurrent.TimeUnit.SECONDS) // backend stays open
+                out.write("data: two\n\n".toByteArray())
+                out.flush()
+            }
+        }
+        b.start()
+        backend = b
+        server = LoopbackFrontendServer(backendUrl = "http://127.0.0.1:${b.address.port}").also { it.start() }
+
+        val s = requireNotNull(server)
+        val request = HttpRequest.newBuilder(URI("http://127.0.0.1:${s.port}/api/sessions/x/stream")).GET().build()
+        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream())
+        assertEquals("text/event-stream", response.headers().firstValue("Content-Type").orElse(""), "SSE Content-Type must be forwarded")
+        val reader = response.body().bufferedReader()
+        val firstLine = reader.readLine() // arrives only if the proxy streamed the first event live
+        assertEquals("data: one", firstLine, "the first SSE event must arrive BEFORE the backend sends the second (no buffering)")
+        firstEventRead.countDown() // let the backend finish so the connection can close cleanly
+    }
+
     private companion object {
         const val FORMER_FIXED_PORT = 8090
+        const val HTTP_FORBIDDEN = 403
     }
 }

@@ -95,12 +95,18 @@ intellijPlatform {
     // are supplied at sign time (env or -P). When unset, signPlugin is simply skipped and
     // buildPlugin still produces an UNSIGNED distributable zip (the human signs+uploads, D-12).
     signing {
-        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
-            .orElse(providers.gradleProperty("certificateChain"))
-        privateKey = providers.environmentVariable("PRIVATE_KEY")
-            .orElse(providers.gradleProperty("privateKey"))
-        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
-            .orElse(providers.gradleProperty("privateKeyPassword"))
+        certificateChain =
+            providers
+                .environmentVariable("CERTIFICATE_CHAIN")
+                .orElse(providers.gradleProperty("certificateChain"))
+        privateKey =
+            providers
+                .environmentVariable("PRIVATE_KEY")
+                .orElse(providers.gradleProperty("privateKey"))
+        password =
+            providers
+                .environmentVariable("PRIVATE_KEY_PASSWORD")
+                .orElse(providers.gradleProperty("privateKeyPassword"))
     }
 }
 

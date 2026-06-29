@@ -15,6 +15,7 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindowManager
 import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.run.VizcoreRunConfigurationExtension
+import com.jh.coroutinevisualizer.server.LoopbackServerService
 import com.jh.coroutinevisualizer.settings.VizcoreSettings
 import com.jh.coroutinevisualizer.toolwindow.VizcoreLaunchState
 import com.jh.coroutinevisualizer.toolwindow.VizcoreViewUrl
@@ -51,15 +52,19 @@ class RunWithVisualizerAction : AnAction() {
         val correlation = UUID.randomUUID().toString()
 
         // (3) Pre-launch health-check (D-05 / T-13-16): warn and do NOT launch when the backend is down.
-        val health = BackendHealthCheck.check(VizcoreSettings.getInstance().backendUrl)
+        val backendUrl = VizcoreSettings.getInstance().backendUrl
+        val health = BackendHealthCheck.check(backendUrl)
         if (health is BackendHealthCheck.HealthStatus.Down) {
             warn(launch.project, health.message)
             return
         }
 
-        // (4) Arm BOTH halves of the launch state with the SAME correlation (IDE-03 identity).
+        // (4) Start (or reuse) the loopback frontend server, then arm BOTH halves of the launch
+        // state with the SAME correlation AND the REAL bound port — so the tool window loads
+        // http://127.0.0.1:<real-port>/?correlation=<uuid> instead of the dead :0 (CR-01 wiring).
+        val port = LoopbackServerService.getInstance(launch.project).ensureStarted(backendUrl)
         VizcoreLaunchState.armConfiguration(launch.configuration, correlation)
-        VizcoreLaunchState.getInstance(launch.project).arm(loopbackPort(launch.project), correlation)
+        VizcoreLaunchState.getInstance(launch.project).arm(port, correlation)
 
         // (5) Trigger the standard run executor for the selected config; the extension reads the
         // armed per-config state and injects the agent. (6) then opens the tool window.
@@ -117,14 +122,6 @@ class RunWithVisualizerAction : AnAction() {
         ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
     }
 
-    /**
-     * The loopback frontend server port for the view URL. The server lifecycle is owned elsewhere;
-     * until it binds, the tool window shows its "not launched" / fallback panel. A placeholder
-     * port is fine here — the correlation identity (the point of IDE-03) is independent of the
-     * port, and [threadCorrelation] proves it.
-     */
-    private fun loopbackPort(project: Project): Int = VizcoreLaunchState.getInstance(project).port ?: LOOPBACK_PORT_PENDING
-
     private fun warn(
         project: Project,
         message: String,
@@ -139,9 +136,6 @@ class RunWithVisualizerAction : AnAction() {
         internal const val TOOL_WINDOW_ID: String = "Coroutine Visualizer"
         internal const val MESSAGE_TITLE: String = "Run with Coroutine Visualizer"
         internal const val NO_CONFIG_MESSAGE: String = "select a run configuration first"
-
-        /** Placeholder port used until the loopback frontend server binds an ephemeral port. */
-        internal const val LOOPBACK_PORT_PENDING: Int = 0
 
         /**
          * Pure, headless dual-threading seam (IDE-03). Given ONE [correlation] plus the launch

@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -31,6 +32,7 @@ import java.net.URI
  * @param resourceLoader resolves a classpath resource path to its bytes (injectable for tests);
  *   defaults to this class's classloader so the bundled `frontend/` resources are served in prod.
  */
+@Suppress("TooManyFunctions") // static-serve + streaming reverse-proxy legitimately need small focused handlers
 class LoopbackFrontendServer(
     private val backendUrl: String,
     private val resourceLoader: (String) -> ByteArray? = ::loadClasspathResource,
@@ -78,14 +80,60 @@ class LoopbackFrontendServer(
             connection = openProxyConnection(target, exchange)
             val status = connection.responseCode
             val bodyStream = if (status >= HttpURLConnection.HTTP_BAD_REQUEST) connection.errorStream else connection.inputStream
-            val body = bodyStream?.use { it.readBytes() } ?: ByteArray(0)
-            exchange.sendResponseHeaders(status, if (body.isEmpty()) -1L else body.size.toLong())
-            exchange.responseBody.use { if (body.isNotEmpty()) it.write(body) }
+            // Forward the upstream response headers (Content-Type etc.) BEFORE committing the
+            // response, then send with chunked transfer (length 0) and STREAM the body — so an
+            // unbounded SSE response (/api/sessions/<id>/stream: no Content-Length, never EOFs)
+            // is relayed event-by-event instead of buffered to completion, which would deadlock
+            // the live view (CR-02). Length 0 == chunked per HttpServer.sendResponseHeaders.
+            copyResponseHeaders(connection, exchange)
+            exchange.sendResponseHeaders(status, 0L)
+            streamBody(bodyStream, exchange)
         } catch (e: IOException) {
             logger.warn("Proxy to backend failed for ${exchange.requestURI}", e)
             respondPlain(exchange, HttpURLConnection.HTTP_BAD_GATEWAY, "backend proxy error")
         } finally {
             connection?.disconnect()
+        }
+    }
+
+    /**
+     * Copy the upstream response headers to the client (CR-02 / WR-01 — the SPA needs the backend's
+     * `Content-Type`, e.g. `application/json` and `text/event-stream`). The null map key is the HTTP
+     * status line; `Content-Length`/`Transfer-Encoding` are dropped because we re-send chunked.
+     */
+    private fun copyResponseHeaders(
+        connection: HttpURLConnection,
+        exchange: HttpExchange,
+    ) {
+        connection.headerFields.forEach { (name, values) ->
+            if (name != null &&
+                !name.equals("Content-Length", ignoreCase = true) &&
+                !name.equals("Transfer-Encoding", ignoreCase = true)
+            ) {
+                values.forEach { exchange.responseHeaders.add(name, it) }
+            }
+        }
+    }
+
+    /** Stream the upstream body to the client, flushing each chunk so SSE events arrive live (CR-02). */
+    private fun streamBody(
+        bodyStream: InputStream?,
+        exchange: HttpExchange,
+    ) {
+        if (bodyStream == null) {
+            exchange.responseBody.close()
+            return
+        }
+        val buffer = ByteArray(STREAM_BUFFER_BYTES)
+        bodyStream.use { upstream ->
+            exchange.responseBody.use { out ->
+                var read = upstream.read(buffer)
+                while (read != -1) {
+                    out.write(buffer, 0, read)
+                    out.flush()
+                    read = upstream.read(buffer)
+                }
+            }
         }
     }
 
@@ -130,11 +178,24 @@ class LoopbackFrontendServer(
     /** Serve a bundled SPA resource, falling back to index.html for client-side routes. */
     private fun handleStatic(exchange: HttpExchange) {
         try {
-            val path = exchange.requestURI.path.let { if (it == "/" || it.isEmpty()) "/index.html" else it }
-            val bytes = resourceLoader("$FRONTEND_ROOT$path") ?: resourceLoader("$FRONTEND_ROOT/index.html")
+            // Normalize + reject traversal: a raw path like `/../agent/coroutine-viz-agent.jar`
+            // would otherwise escape /frontend via classloader normalization and leak other
+            // classpath resources (CR-03). safeStaticPath strips `.`/`..` and rejects any escape.
+            val safePath = safeStaticPath(exchange.requestURI.path)
+            if (safePath == null) {
+                respondPlain(exchange, HTTP_FORBIDDEN, "forbidden")
+                return
+            }
+            // Serve the requested resource, or fall back to index.html for client-side SPA routes.
+            val requested = resourceLoader("$FRONTEND_ROOT$safePath")
+            val servedPath = if (requested != null) safePath else "/index.html"
+            val bytes = requested ?: resourceLoader("$FRONTEND_ROOT/index.html")
             if (bytes == null) {
                 respondPlain(exchange, HttpURLConnection.HTTP_NOT_FOUND, "not found")
             } else {
+                // Content-Type by extension (CR-03): without it, Vite's `<script type="module">`
+                // entry is refused by the browser's strict module-MIME check and the SPA won't boot.
+                exchange.responseHeaders.set("Content-Type", contentTypeFor(servedPath))
                 exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, bytes.size.toLong())
                 exchange.responseBody.use { it.write(bytes) }
             }
@@ -143,6 +204,23 @@ class LoopbackFrontendServer(
             respondPlain(exchange, HttpURLConnection.HTTP_INTERNAL_ERROR, "static serve error")
         }
     }
+
+    /**
+     * Map a request path to a safe, root-anchored static path, or `null` if it attempts traversal.
+     * `/` and empty → `/index.html`. The path is URI-normalized (collapsing `.`/`..`); any result
+     * that still contains `..` or is not absolute is rejected so it cannot escape `/frontend` once
+     * prefixed (CR-03). Because the normalized path carries no `..`, `"$FRONTEND_ROOT$safePath"`
+     * always stays under the bundled frontend root.
+     */
+    private fun safeStaticPath(rawPath: String): String? {
+        if (rawPath.isEmpty() || rawPath == "/") return "/index.html"
+        val normalized = URI(rawPath).normalize().path
+        return if (normalized.contains("..") || !normalized.startsWith("/")) null else normalized
+    }
+
+    /** Resolve a `Content-Type` from a served path's extension (CR-03); octet-stream when unknown. */
+    private fun contentTypeFor(path: String): String =
+        CONTENT_TYPES[path.substringAfterLast('.', "").lowercase()] ?: "application/octet-stream"
 
     private fun respondPlain(
         exchange: HttpExchange,
@@ -157,7 +235,33 @@ class LoopbackFrontendServer(
     companion object {
         private const val FRONTEND_ROOT = "/frontend"
         private const val PROXY_TIMEOUT_MS = 30_000
+        private const val STREAM_BUFFER_BYTES = 8_192
+
+        /** HTTP 403 — `com.sun.net.httpserver` has no named constant for it. */
+        private const val HTTP_FORBIDDEN = 403
         private val METHODS_WITH_BODY = setOf("POST", "PUT", "PATCH", "DELETE")
+
+        /** Static `Content-Type` by file extension (CR-03). Vite emits ES-module `<script>` tags. */
+        private val CONTENT_TYPES =
+            mapOf(
+                "html" to "text/html; charset=utf-8",
+                "js" to "text/javascript; charset=utf-8",
+                "mjs" to "text/javascript; charset=utf-8",
+                "css" to "text/css; charset=utf-8",
+                "json" to "application/json; charset=utf-8",
+                "map" to "application/json; charset=utf-8",
+                "svg" to "image/svg+xml",
+                "png" to "image/png",
+                "jpg" to "image/jpeg",
+                "jpeg" to "image/jpeg",
+                "gif" to "image/gif",
+                "ico" to "image/x-icon",
+                "webp" to "image/webp",
+                "woff" to "font/woff",
+                "woff2" to "font/woff2",
+                "ttf" to "font/ttf",
+                "txt" to "text/plain; charset=utf-8",
+            )
 
         /** Default classpath resource loader: reads `resourcePath` from this bundle's classloader. */
         private fun loadClasspathResource(resourcePath: String): ByteArray? =
