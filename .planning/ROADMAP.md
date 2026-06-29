@@ -175,7 +175,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 13-05-PLAN.md — JCEF tool window (gated by isSupported) + system-browser fallback (same correlation URL)
+- [x] 13-05-PLAN.md — JCEF tool window (gated by isSupported) + system-browser fallback (same correlation URL)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -223,5 +223,5 @@ Plans:
 | 10. Scale & Resilience (PERF + load harness) | v1.2 | 4/5 | In progress | - |
 | 11. SDK Distribution + JVM-17 guard | v1.2 | 3/3 | Complete    | 2026-06-28 |
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
-| 13. IntelliJ Plugin Delivery | v1.2 | 4/7 | In Progress|  |
+| 13. IntelliJ Plugin Delivery | v1.2 | 5/7 | In Progress|  |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
