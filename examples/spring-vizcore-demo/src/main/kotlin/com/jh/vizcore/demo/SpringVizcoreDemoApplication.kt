@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -41,6 +42,7 @@ class VizcoreDemoRunner(
 	@param:Value("\${vizcore.app-name:spring-vizcore-demo}") private val appName: String,
 	@param:Value("\${vizcore.backend-url:http://localhost:8080}") private val backendUrl: String,
 	@param:Value("\${vizcore.token:demo-token}") private val token: String,
+	@param:Value("\${vizcore.continuous:false}") private val continuous: Boolean,
 ) : CommandLineRunner {
 	private val logger = LoggerFactory.getLogger(VizcoreDemoRunner::class.java)
 
@@ -54,14 +56,26 @@ class VizcoreDemoRunner(
 		// doubles as the validation fixture for the Phase-8 hierarchy reconstruction. A small
 		// number of slow rounds keeps the session legible (tens of coroutines, not thousands).
 		runBlocking {
-			repeat(ROUNDS) { i ->
-				val round = i + 1
-				logger.info("workload round {}/{}", round, ROUNDS)
-				runWorkloadRound(round)
-				delay(ROUND_PAUSE_MS)
+			if (continuous) {
+				// Investigation/UAT mode: never stop. One stable session whose coroutines are
+				// continuously created/suspended/resumed so the live view always has motion.
+				var round = 0
+				while (isActive) {
+					round += 1
+					logger.info("workload round {} (continuous)", round)
+					runWorkloadRound(round)
+					delay(CONTINUOUS_PAUSE_MS)
+				}
+			} else {
+				repeat(ROUNDS) { i ->
+					val round = i + 1
+					logger.info("workload round {}/{}", round, ROUNDS)
+					runWorkloadRound(round)
+					delay(ROUND_PAUSE_MS)
+				}
+				logger.info("workload complete ({} rounds). Holding the client open so the session stays viewable; Ctrl+C to exit.", ROUNDS)
+				awaitCancellation()
 			}
-			logger.info("workload complete ({} rounds). Holding the client open so the session stays viewable; Ctrl+C to exit.", ROUNDS)
-			awaitCancellation()
 		}
 	}
 
@@ -100,5 +114,6 @@ class VizcoreDemoRunner(
 	private companion object {
 		const val ROUNDS = 6
 		const val ROUND_PAUSE_MS = 4000L
+		const val CONTINUOUS_PAUSE_MS = 800L
 	}
 }
