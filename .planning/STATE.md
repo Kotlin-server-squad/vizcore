@@ -30,6 +30,12 @@ Plan: 1 of 7
 Status: Executing Phase 13
 Last activity: 2026-06-29 -- Phase 13 execution started
 
+> **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
+> replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
+> jump-to-source). Driven via superpowers spec/plan on branch `feat/intellij-plugin-native-redesign`
+> (`docs/superpowers/specs|plans/2026-06-30-intellij-plugin-native-redesign*`). To be reconciled into
+> GSD as a new phase after the live UAT. The old JCEF tool window + loopback server are deleted.
+
 Progress: [███████---] 67% (4/6 phases; Phase 12 OTel/OTLP complete — SC#1/2/3 verified in Jaeger+Zipkin)
 
 ## Deferred Items
