@@ -29,6 +29,11 @@ dependencies {
     // Core visualization library
     implementation(project(":coroutine-viz-core"))
 
+    // kotlinx.serialization runtime for the native /api wire DTOs (the serialization compiler
+    // plugin is applied above but the runtime is not transitively visible; pin to the repo-wide
+    // 1.11.0 used by coroutine-viz-core/agent/cli).
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+
     intellijPlatform {
         intellijIdeaCommunity("2024.1")
         bundledPlugin("com.intellij.java")
