@@ -110,27 +110,19 @@ intellijPlatform {
     }
 }
 
-// --- Packaging wires (Plan 07, D-07): bundle the agent fat-jar + the frontend SPA into the
-// plugin's resources so buildPlugin produces a self-contained distributable zip. ---
+// --- Packaging wire (Plan 07, D-07): bundle the agent fat-jar into the plugin's resources so
+// buildPlugin produces a self-contained distributable zip. ---
 
 // Agent fat-jar (Plan 01, coroutines scope resolved by the Task 1 spike — BUNDLED, un-relocated):
 // copy the already-correct :coroutine-viz-agent:shadowJar output to /agent/coroutine-viz-agent.jar.
 val agentJar = project(":coroutine-viz-agent").tasks.named("shadowJar")
 
-// Frontend SPA: run `pnpm build` (vite → ../frontend/dist, default base="/" for loopback-root
-// serving — no vite change) and copy dist into /frontend.
-val pnpmBuild by tasks.registering(Exec::class) {
-    workingDir = file("../frontend")
-    commandLine("pnpm", "build")
-}
-
 tasks.named<ProcessResources>("processResources") {
-    dependsOn(agentJar, pnpmBuild)
+    dependsOn(agentJar)
     from(agentJar) {
         into("agent")
         rename { "coroutine-viz-agent.jar" }
     }
-    from("../frontend/dist") { into("frontend") }
 }
 
 tasks.named<Test>("test") {

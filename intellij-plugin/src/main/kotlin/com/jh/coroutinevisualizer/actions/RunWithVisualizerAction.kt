@@ -15,10 +15,8 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindowManager
 import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.run.VizcoreRunConfigurationExtension
-import com.jh.coroutinevisualizer.server.LoopbackServerService
 import com.jh.coroutinevisualizer.settings.VizcoreSettings
 import com.jh.coroutinevisualizer.toolwindow.VizcoreLaunchState
-import com.jh.coroutinevisualizer.toolwindow.VizcoreViewUrl
 import java.util.UUID
 
 /**
@@ -32,15 +30,13 @@ import java.util.UUID
  *     against a dead backend);
  *  4. arm BOTH halves of [VizcoreLaunchState] with that SAME UUID — the per-config armed state (read
  *     by [VizcoreRunConfigurationExtension.updateJavaParameters] to inject `corr=<uuid>` into the
- *     agent VM-arg) AND the project-scoped view coordinates (read by the tool window to build the
- *     `?correlation=<uuid>` view URL);
+ *     agent VM-arg) AND the project-scoped correlation (consumed by the native tool window);
  *  5. trigger the standard run executor for that configuration;
- *  6. open/activate the Vizcore tool window, which builds its URL from the armed correlation.
+ *  6. open/activate the Vizcore tool window.
  *
- * The single minted UUID therefore flows, byte-identical, into BOTH the agent `corr=` arg and the
- * tool-window URL (IDE-03 identity) — proven headlessly by [threadCorrelation] /
- * `CorrelationThreadingTest`. Never `GlobalScope`; all IDE work runs on the platform-managed EDT
- * via the action callback.
+ * The single minted UUID therefore flows, byte-identical, into the agent `corr=` arg — proven
+ * headlessly by [threadCorrelation] / `CorrelationThreadingTest`. Never `GlobalScope`; all IDE work
+ * runs on the platform-managed EDT via the action callback.
  */
 class RunWithVisualizerAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
@@ -59,12 +55,10 @@ class RunWithVisualizerAction : AnAction() {
             return
         }
 
-        // (4) Start (or reuse) the loopback frontend server, then arm BOTH halves of the launch
-        // state with the SAME correlation AND the REAL bound port — so the tool window loads
-        // http://127.0.0.1:<real-port>/?correlation=<uuid> instead of the dead :0 (CR-01 wiring).
-        val port = LoopbackServerService.getInstance(launch.project).ensureStarted(backendUrl)
+        // (4) Arm BOTH halves of the launch state with the SAME correlation — the per-config armed
+        // state (consumed by the extension to inject the agent) AND the project-scoped correlation.
         VizcoreLaunchState.armConfiguration(launch.configuration, correlation)
-        VizcoreLaunchState.getInstance(launch.project).arm(port, correlation)
+        VizcoreLaunchState.getInstance(launch.project).arm(correlation)
 
         // (5) Trigger the standard run executor for the selected config; the extension reads the
         // armed per-config state and injects the agent. (6) then opens the tool window.
@@ -138,16 +132,14 @@ class RunWithVisualizerAction : AnAction() {
         internal const val NO_CONFIG_MESSAGE: String = "select a run configuration first"
 
         /**
-         * Pure, headless dual-threading seam (IDE-03). Given ONE [correlation] plus the launch
-         * coordinates, returns BOTH the agent VM-arg string (carrying `corr=<correlation>`, built by
-         * the Plan 06 Task 1 [VizcoreRunConfigurationExtension.buildAgentVmArgs]) AND the tool-window
-         * view URL (carrying `?correlation=<correlation>`, built by [VizcoreViewUrl]). The action
-         * mints exactly one correlation and threads it through here, so a test can assert the
-         * correlation substring is byte-identical in both outputs WITHOUT a run executor or a display.
+         * Pure, headless correlation-threading seam (IDE-03). Given ONE [correlation], returns the
+         * agent VM-arg string (carrying `corr=<correlation>`, built by the Plan 06 Task 1
+         * [VizcoreRunConfigurationExtension.buildAgentVmArgs]). The action mints exactly one
+         * correlation and threads it through here, so a test can assert the correlation substring
+         * appears verbatim in the agent arg WITHOUT a run executor or a display.
          */
         internal fun threadCorrelation(
             correlation: String,
-            port: Int,
             configName: String,
             backendUrl: String,
             token: String = VizcoreRunConfigurationExtension.AGENT_TOKEN,
@@ -161,19 +153,16 @@ class RunWithVisualizerAction : AnAction() {
                         token = token,
                         correlation = correlation,
                     ).first { it.startsWith("-javaagent:") }
-            val viewUrl = VizcoreViewUrl.build(port, correlation)
-            return CorrelationThreading(agentVmArg = agentVmArg, viewUrl = viewUrl)
+            return CorrelationThreading(agentVmArg = agentVmArg)
         }
     }
 
     /**
-     * Both sides of the correlation handoff for one launch: the agent `-javaagent:...corr=<uuid>`
-     * VM-arg and the tool-window `http://127.0.0.1:<port>/?correlation=<uuid>` URL. The test asserts
-     * the correlation substring extracted from each is equal (IDE-03 identity).
+     * The agent side of the correlation handoff for one launch: the agent `-javaagent:...corr=<uuid>`
+     * VM-arg. The test asserts the correlation substring extracted from it matches the minted UUID.
      */
     internal data class CorrelationThreading(
         val agentVmArg: String,
-        val viewUrl: String,
     )
 
     /** Resolved launch coordinates for one "Run with Visualizer" invocation. */

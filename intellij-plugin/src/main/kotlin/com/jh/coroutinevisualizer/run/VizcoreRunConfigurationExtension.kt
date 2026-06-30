@@ -72,8 +72,7 @@ class VizcoreRunConfigurationExtension : RunConfigurationExtension() {
          *
          * Extracted so the headless test asserts the exact args (both flags + the threaded backend
          * and correlation values) without invoking a real run executor. The `corr=` value is the
-         * SAME UUID that flows into the view URL via
-         * [com.jh.coroutinevisualizer.toolwindow.VizcoreViewUrl] (IDE-03 identity).
+         * SAME UUID armed by the launch action on the run configuration (IDE-03 identity).
          */
         internal fun buildAgentVmArgs(
             agentPath: String,
