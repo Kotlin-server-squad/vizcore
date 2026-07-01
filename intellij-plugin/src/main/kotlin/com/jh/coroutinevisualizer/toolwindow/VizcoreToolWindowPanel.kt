@@ -2,6 +2,7 @@ package com.jh.coroutinevisualizer.toolwindow
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
@@ -94,19 +95,30 @@ class VizcoreToolWindowPanel(
         // factory on hide/show, so without this a pre-existing panel would stay NOT_LAUNCHED forever.
         project.messageBus
             .connect(parentDisposable)
-            .subscribe(VIZCORE_LAUNCH_TOPIC, VizcoreLaunchListener { correlation -> startFor(correlation) })
+            .subscribe(
+                VIZCORE_LAUNCH_TOPIC,
+                VizcoreLaunchListener { correlation ->
+                    LOG.info("[vizcore-diag] launch event received: correlation=$correlation")
+                    startFor(correlation)
+                },
+            )
 
         // Handle the run-then-open ordering: if a correlation is already armed, start immediately.
         val armed = VizcoreLaunchState.getInstance(project).correlation
+        LOG.info("[vizcore-diag] panel constructed; armed correlation at open = $armed")
         if (armed != null) startFor(armed) else showState(ContentState.NOT_LAUNCHED)
     }
 
     /** Begin (or reuse) polling for [correlation]. Idempotent; safe to call from init AND the topic. */
     private fun startFor(correlation: String) {
-        if (startedCorrelation == correlation) return
+        if (startedCorrelation == correlation) {
+            LOG.info("[vizcore-diag] startFor($correlation) ignored — already polling this correlation")
+            return
+        }
         startedCorrelation = correlation
 
         val health = BackendHealthCheck.check(backendUrl)
+        LOG.info("[vizcore-diag] startFor($correlation) backendUrl=$backendUrl health=$health")
         if (health is BackendHealthCheck.HealthStatus.Down) {
             showState(ContentState.BACKEND_DOWN)
             return
@@ -118,13 +130,15 @@ class VizcoreToolWindowPanel(
         service.setListener(
             onModel = { model ->
                 // Already on the EDT (the service invokeLater's deliveries).
+                LOG.info("[vizcore-diag] model delivered to panel: ${model.hierarchy.size} coroutines -> LIVE")
                 latestModel = model
                 coroutineTreeModel.apply(model.hierarchy, model.leakIds)
                 tiles.update(model.tiles)
                 showState(ContentState.LIVE)
             },
-            onError = {
+            onError = { error ->
                 // Keep the last good model on screen; transient poll failures self-heal next tick.
+                LOG.warn("[vizcore-diag] poll error surfaced to panel", error)
             },
         )
         service.start(correlation)
@@ -220,6 +234,8 @@ class VizcoreToolWindowPanel(
     }
 
     private companion object {
+        private val LOG = Logger.getInstance(VizcoreToolWindowPanel::class.java)
+
         const val NOT_LAUNCHED_TEXT =
             "Run a configuration with \"Run with Coroutine Visualizer\" to open the live view."
         const val CONNECTING_TEXT = "Connecting to your app…"

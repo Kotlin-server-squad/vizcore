@@ -1,5 +1,6 @@
 package com.jh.coroutinevisualizer.poll
 
+import com.intellij.openapi.diagnostic.Logger
 import com.jh.coroutinevisualizer.api.VizcoreApiClient
 import com.jh.coroutinevisualizer.model.SessionModel
 import java.util.concurrent.Executors
@@ -56,12 +57,16 @@ class SessionPoller(
             if (id == null) {
                 // 404 until the agent binds the correlation; resolve() returns null, retried next tick.
                 sessionId = client.resolve(correlation)
+                LOG.info("[vizcore-diag] resolve(correlation=$correlation) -> sessionId=$sessionId")
                 return
             }
-            val model = SessionModel.from(client.hierarchy(id), client.metrics(id))
+            val hierarchy = client.hierarchy(id)
+            val model = SessionModel.from(hierarchy, client.metrics(id))
+            LOG.info("[vizcore-diag] poll session=$id -> ${hierarchy.size} coroutines, ${model.leakIds.size} leaks")
             onModel?.invoke(model)
         } catch (e: Exception) {
             // Never let the scheduled task die; surface and keep polling.
+            LOG.warn("[vizcore-diag] poll tick failed", e)
             onError?.invoke(e)
         }
     }
@@ -77,5 +82,9 @@ class SessionPoller(
     fun stop() {
         future?.cancel(true)
         scheduler.shutdownNow()
+    }
+
+    private companion object {
+        private val LOG = Logger.getInstance(SessionPoller::class.java)
     }
 }
