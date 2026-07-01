@@ -12,6 +12,13 @@ data class SourceRef(
     val reason: String?,
 )
 
+/** A single lifecycle event, with its time expressed relative to the first event. */
+data class InspectorEvent(
+    val kind: String,
+    val reason: String?,
+    val relativeLabel: String,
+)
+
 /**
  * Pure presentation model for the selected-coroutine inspector. All mapping and duration formatting
  * lives here (no Swing) so the logic stays unit-testable. Durations from [TimelineDto] are in
@@ -26,6 +33,11 @@ data class InspectorViewModel(
     val activeLabel: String,
     val suspendedLabel: String,
     val totalLabel: String,
+    val threadName: String?,
+    val dispatcherName: String?,
+    val exceptionType: String?,
+    val exceptionMessage: String?,
+    val events: List<InspectorEvent>,
 ) {
     companion object {
         private const val DASH = "—"
@@ -73,7 +85,27 @@ data class InspectorViewModel(
                 activeLabel = formatApproxNanos(timeline?.activeDuration),
                 suspendedLabel = formatApproxNanos(timeline?.suspendedDuration),
                 totalLabel = formatApproxNanos(timeline?.totalDuration),
+                threadName = node?.currentThreadName,
+                dispatcherName = node?.dispatcherName,
+                exceptionType = node?.exceptionType,
+                exceptionMessage = node?.exceptionMessage,
+                events = inspectorEvents(events),
             )
+        }
+
+        /** Lifecycle events in seq order, each labelled with time since the first event. */
+        private fun inspectorEvents(events: List<TimelineEventDto>): List<InspectorEvent> {
+            if (events.isEmpty()) return emptyList()
+            val firstTsNanos = events.minOf { it.tsNanos }
+            return events
+                .sortedBy { it.seq }
+                .map { event ->
+                    InspectorEvent(
+                        kind = event.kind,
+                        reason = event.reason ?: event.suspensionPoint?.reason,
+                        relativeLabel = formatApproxNanos(event.tsNanos - firstTsNanos),
+                    )
+                }
         }
 
         /** Last event carrying a suspension point → where the coroutine is currently suspended. */

@@ -30,19 +30,15 @@ class InspectorPanel(
     fun show(vm: InspectorViewModel?) {
         removeAll()
         if (vm == null) {
-            add(placeholder(), BorderLayout.CENTER)
+            val label = JBLabel("Select a coroutine")
+            label.horizontalAlignment = SwingConstants.CENTER
+            label.foreground = JBColor.GRAY
+            add(label, BorderLayout.CENTER)
         } else {
             add(content(vm), BorderLayout.NORTH)
         }
         revalidate()
         repaint()
-    }
-
-    private fun placeholder(): Component {
-        val label = JBLabel("Select a coroutine")
-        label.horizontalAlignment = SwingConstants.CENTER
-        label.foreground = JBColor.GRAY
-        return label
     }
 
     private fun content(vm: InspectorViewModel): Component {
@@ -51,10 +47,65 @@ class InspectorPanel(
         column.isOpaque = false
 
         column.add(header(vm))
+        column.add(captionedRow("Runs on", "${vm.threadName ?: EMPTY_VALUE} · ${vm.dispatcherName ?: EMPTY_VALUE}"))
+        if (vm.exceptionType != null) {
+            column.add(exceptionCard(vm))
+        }
         column.add(sourceRow("Suspended at", vm.suspendedAt))
         column.add(sourceRow("Launched at", vm.launchedAt))
-        column.add(timingRow(vm))
+        column.add(
+            captionedRow(
+                "Timing",
+                "active ${vm.activeLabel}  ·  suspended ${vm.suspendedLabel}  ·  total ${vm.totalLabel}",
+            ),
+        )
+        if (vm.events.isNotEmpty()) {
+            column.add(eventsSection(vm))
+        }
         return column
+    }
+
+    private fun exceptionCard(vm: InspectorViewModel): Component {
+        val panel = leftColumn()
+        panel.border =
+            JBUI.Borders.compound(
+                JBUI.Borders.emptyTop(ROW_GAP),
+                JBUI.Borders.customLine(DANGER_COLOR, 0, LEFT_BORDER, 0, 0),
+            )
+
+        val captionLabel = caption("Exception")
+        captionLabel.border = JBUI.Borders.emptyLeft(CARD_INSET)
+        panel.add(captionLabel)
+
+        val type = JBLabel(vm.exceptionType.orEmpty())
+        type.foreground = DANGER_COLOR
+        type.font = type.font.deriveFont(Font.BOLD)
+        type.alignmentX = Component.LEFT_ALIGNMENT
+        type.border = JBUI.Borders.emptyLeft(CARD_INSET)
+        panel.add(type)
+
+        vm.exceptionMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            val label = JBLabel(message)
+            label.alignmentX = Component.LEFT_ALIGNMENT
+            label.border = JBUI.Borders.emptyLeft(CARD_INSET)
+            panel.add(label)
+        }
+        return panel
+    }
+
+    private fun eventsSection(vm: InspectorViewModel): Component {
+        val panel = leftColumn()
+        panel.border = JBUI.Borders.emptyTop(ROW_GAP)
+        panel.add(caption("Events"))
+        vm.events.forEach { event ->
+            val reason =
+                event.reason
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { " · $it" }
+                    .orEmpty()
+            panel.add(value("${event.relativeLabel}  ${event.kind}$reason"))
+        }
+        return panel
     }
 
     private fun header(vm: InspectorViewModel): Component {
@@ -108,11 +159,14 @@ class InspectorPanel(
         return panel
     }
 
-    private fun timingRow(vm: InspectorViewModel): Component {
+    private fun captionedRow(
+        caption: String,
+        text: String,
+    ): Component {
         val panel = leftColumn()
         panel.border = JBUI.Borders.emptyTop(ROW_GAP)
-        panel.add(caption("Timing"))
-        panel.add(value("active ${vm.activeLabel}  ·  suspended ${vm.suspendedLabel}  ·  total ${vm.totalLabel}"))
+        panel.add(caption(caption))
+        panel.add(value(text))
         return panel
     }
 
@@ -124,7 +178,7 @@ class InspectorPanel(
         return panel
     }
 
-    private fun caption(text: String): Component {
+    private fun caption(text: String): JBLabel {
         val label = JBLabel(text)
         label.foreground = JBColor.GRAY
         label.font = label.font.deriveFont(Font.BOLD, SMALL_FONT_SIZE)
@@ -144,5 +198,8 @@ class InspectorPanel(
         const val TITLE_FONT_SIZE = 15f
         const val SMALL_FONT_SIZE = 11f
         const val EMPTY_VALUE = "—"
+        const val LEFT_BORDER = 2
+        const val CARD_INSET = 8
+        val DANGER_COLOR = JBColor(0xD32F2F, 0xFF6B68)
     }
 }
