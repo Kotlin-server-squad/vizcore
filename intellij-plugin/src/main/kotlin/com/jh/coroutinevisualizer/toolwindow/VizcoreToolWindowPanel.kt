@@ -10,6 +10,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.tree.TreeUtil
 import com.jh.coroutinevisualizer.api.VizcoreApiClient
 import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.model.CoroutineRow
@@ -71,6 +72,10 @@ class VizcoreToolWindowPanel(
     private val coroutineTreeModel = CoroutineTreeModel()
     private val tiles = MetricTilesPanel()
     private val inspector = InspectorPanel(onJump = ::onJump)
+    private val tree: Tree = buildTree()
+
+    /** Expand the (invisible) root once the first data arrives, so top-level coroutines are visible. */
+    private var expandedOnce = false
 
     private val backendUrl = VizcoreSettings.getInstance().backendUrl
     private val apiClient = VizcoreApiClient(backendUrl, VizcoreRunConfigurationExtension.AGENT_TOKEN)
@@ -135,10 +140,18 @@ class VizcoreToolWindowPanel(
                     // Transient empty poll (backend blip / stale poller) — keep the last good tree.
                     LOG.info("[vizcore-diag] ignoring empty poll; keeping ${previous.hierarchy.size} coroutines")
                 } else {
-                    LOG.info("[vizcore-diag] model delivered: ${model.hierarchy.size} coroutines -> LIVE")
                     latestModel = model
                     coroutineTreeModel.apply(model.hierarchy, model.leakIds)
                     tiles.update(model.tiles)
+                    if (!expandedOnce && model.hierarchy.isNotEmpty()) {
+                        expandedOnce = true
+                        TreeUtil.expandAll(tree)
+                    }
+                    val rootChildren = (coroutineTreeModel.treeModel.root as DefaultMutableTreeNode).childCount
+                    LOG.info(
+                        "[vizcore-diag] applied ${model.hierarchy.size} coroutines: " +
+                            "root.childCount=$rootChildren tree.rowCount=${tree.rowCount} -> LIVE",
+                    )
                     showState(ContentState.LIVE)
                 }
             },
@@ -198,7 +211,7 @@ class VizcoreToolWindowPanel(
 
     private fun buildSplitter(): OnePixelSplitter {
         val splitter = OnePixelSplitter(false, SPLITTER_PROPORTION)
-        splitter.firstComponent = JBScrollPane(buildTree())
+        splitter.firstComponent = JBScrollPane(tree)
         splitter.secondComponent = inspector
         return splitter
     }
