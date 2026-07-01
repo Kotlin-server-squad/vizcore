@@ -62,7 +62,7 @@ enum class ContentState {
  */
 class VizcoreToolWindowPanel(
     private val project: Project,
-    @Suppress("UnusedPrivateProperty") parentDisposable: Disposable,
+    parentDisposable: Disposable,
 ) : JPanel(BorderLayout()) {
     private val cards = CardLayout()
     private val content = JPanel(cards)
@@ -80,6 +80,9 @@ class VizcoreToolWindowPanel(
     private var frozen = false
     private val freezeButton = JButton("Freeze")
 
+    /** The correlation we've already started polling for; guards [startFor] against double-start. */
+    @Volatile private var startedCorrelation: String? = null
+
     init {
         content.add(placeholder(NOT_LAUNCHED_TEXT), ContentState.NOT_LAUNCHED.name)
         content.add(placeholder(CONNECTING_TEXT), ContentState.CONNECTING.name)
@@ -87,15 +90,21 @@ class VizcoreToolWindowPanel(
         content.add(buildLiveView(), ContentState.LIVE.name)
         add(content, BorderLayout.CENTER)
 
-        wire()
+        // React to a launch armed AFTER this (cached) content was built — IntelliJ never re-runs the
+        // factory on hide/show, so without this a pre-existing panel would stay NOT_LAUNCHED forever.
+        project.messageBus
+            .connect(parentDisposable)
+            .subscribe(VIZCORE_LAUNCH_TOPIC, VizcoreLaunchListener { correlation -> startFor(correlation) })
+
+        // Handle the run-then-open ordering: if a correlation is already armed, start immediately.
+        val armed = VizcoreLaunchState.getInstance(project).correlation
+        if (armed != null) startFor(armed) else showState(ContentState.NOT_LAUNCHED)
     }
 
-    private fun wire() {
-        val correlation = VizcoreLaunchState.getInstance(project).correlation
-        if (correlation == null) {
-            showState(ContentState.NOT_LAUNCHED)
-            return
-        }
+    /** Begin (or reuse) polling for [correlation]. Idempotent; safe to call from init AND the topic. */
+    private fun startFor(correlation: String) {
+        if (startedCorrelation == correlation) return
+        startedCorrelation = correlation
 
         val health = BackendHealthCheck.check(backendUrl)
         if (health is BackendHealthCheck.HealthStatus.Down) {

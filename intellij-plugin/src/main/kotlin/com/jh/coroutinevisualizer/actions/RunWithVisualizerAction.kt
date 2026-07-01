@@ -7,6 +7,7 @@ import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.configurations.RunConfigurationBase
 import com.intellij.execution.executors.DefaultRunExecutor
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.Logger
@@ -16,6 +17,7 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.run.VizcoreRunConfigurationExtension
 import com.jh.coroutinevisualizer.settings.VizcoreSettings
+import com.jh.coroutinevisualizer.toolwindow.VIZCORE_LAUNCH_TOPIC
 import com.jh.coroutinevisualizer.toolwindow.VizcoreLaunchState
 import java.util.UUID
 
@@ -64,7 +66,18 @@ class RunWithVisualizerAction : AnAction() {
         // armed per-config state and injects the agent. (6) then opens the tool window.
         triggerRun(launch.project, launch.settings, launch.configuration)
         openToolWindow(launch.project)
+
+        // (7) Announce the armed launch so an ALREADY-OPEN tool window (whose cached content was built
+        // in the NOT_LAUNCHED state) starts polling — IntelliJ never re-runs the factory on activate,
+        // so the panel can't discover the launch on its own.
+        launch.project.messageBus
+            .syncPublisher(VIZCORE_LAUNCH_TOPIC)
+            .launched(correlation)
     }
+
+    // update() reads the RunManager model; declare BGT so the platform doesn't throw the
+    // "must override getActionUpdateThread" PluginException on 2024.1+.
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     /**
      * Resolve the project and the user's selected, runnable run configuration into a single
