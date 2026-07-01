@@ -34,8 +34,9 @@ class SessionPollingService : Disposable {
         poller?.stop()
         val settings = VizcoreSettings.getInstance()
         val client = VizcoreApiClient(settings.backendUrl, VizcoreRunConfigurationExtension.AGENT_TOKEN)
-        // TODO(T10): read VizcoreSettings.pollIntervalMs once that field exists.
-        val fresh = SessionPoller(client, DEFAULT_INTERVAL_MS)
+        // pollIntervalMs is already clamped by VizcoreSettings; fall back if it ever reads non-positive.
+        val interval = settings.pollIntervalMs.toLong().takeIf { it > 0 } ?: DEFAULT_INTERVAL_MS
+        val fresh = SessionPoller(client, interval)
         poller = fresh
         fresh.start(
             correlation,

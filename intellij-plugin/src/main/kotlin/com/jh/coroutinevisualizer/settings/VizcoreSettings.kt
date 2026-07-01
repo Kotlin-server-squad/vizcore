@@ -26,6 +26,7 @@ import com.intellij.openapi.components.Storage
 class VizcoreSettings : PersistentStateComponent<VizcoreSettings.State> {
     data class State(
         var backendUrl: String = DEFAULT_BACKEND_URL,
+        var pollIntervalMs: Int = DEFAULT_POLL_INTERVAL_MS,
     )
 
     private var myState = State()
@@ -36,6 +37,16 @@ class VizcoreSettings : PersistentStateComponent<VizcoreSettings.State> {
             myState.backendUrl = value
         }
 
+    /**
+     * Live-view poll interval in ms. Clamped on read to a sane minimum so a corrupt persisted
+     * value can never spin the poll loop into a tight busy-loop.
+     */
+    var pollIntervalMs: Int
+        get() = clampPollIntervalMs(myState.pollIntervalMs)
+        set(value) {
+            myState.pollIntervalMs = clampPollIntervalMs(value)
+        }
+
     override fun getState(): State = myState
 
     override fun loadState(state: State) {
@@ -44,6 +55,12 @@ class VizcoreSettings : PersistentStateComponent<VizcoreSettings.State> {
 
     companion object {
         const val DEFAULT_BACKEND_URL: String = "http://localhost:8080"
+        const val DEFAULT_POLL_INTERVAL_MS: Int = 200
+        const val MIN_POLL_INTERVAL_MS: Int = 50
+        const val MAX_POLL_INTERVAL_MS: Int = 5000
+
+        /** Pure clamp so a corrupt/out-of-range persisted value is coerced into the supported range. */
+        fun clampPollIntervalMs(value: Int): Int = value.coerceIn(MIN_POLL_INTERVAL_MS, MAX_POLL_INTERVAL_MS)
 
         fun getInstance(): VizcoreSettings = ApplicationManager.getApplication().getService(VizcoreSettings::class.java)
     }

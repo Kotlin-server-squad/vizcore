@@ -57,16 +57,14 @@ class SessionPoller(
             if (id == null) {
                 // 404 until the agent binds the correlation; resolve() returns null, retried next tick.
                 sessionId = client.resolve(correlation)
-                LOG.info("[vizcore-diag] resolve(correlation=$correlation) -> sessionId=$sessionId")
                 return
             }
             val hierarchy = client.hierarchy(id)
             val model = SessionModel.from(hierarchy, client.metrics(id))
-            LOG.info("[vizcore-diag] poll session=$id -> ${hierarchy.size} coroutines, ${model.leakIds.size} leaks")
             onModel?.invoke(model)
         } catch (e: Exception) {
             // Never let the scheduled task die; surface and keep polling.
-            LOG.warn("[vizcore-diag] poll tick failed", e)
+            LOG.warn("Coroutine visualizer poll failed", e)
             onError?.invoke(e)
         }
     }

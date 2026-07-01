@@ -84,7 +84,10 @@ class VizcoreToolWindowPanel(
     @Volatile private var latestModel: SessionModel? = null
 
     private var frozen = false
-    private val freezeButton = JButton("Freeze")
+    private val freezeButton =
+        JButton("Pause view").apply {
+            toolTipText = "Pauses the live view only — your application keeps running."
+        }
 
     /** The correlation we've already started polling for; guards [startFor] against double-start. */
     @Volatile private var startedCorrelation: String? = null
@@ -103,27 +106,23 @@ class VizcoreToolWindowPanel(
             .subscribe(
                 VIZCORE_LAUNCH_TOPIC,
                 VizcoreLaunchListener { correlation ->
-                    LOG.info("[vizcore-diag] launch event received: correlation=$correlation")
                     startFor(correlation)
                 },
             )
 
         // Handle the run-then-open ordering: if a correlation is already armed, start immediately.
         val armed = VizcoreLaunchState.getInstance(project).correlation
-        LOG.info("[vizcore-diag] panel constructed; armed correlation at open = $armed")
         if (armed != null) startFor(armed) else showState(ContentState.NOT_LAUNCHED)
     }
 
     /** Begin (or reuse) polling for [correlation]. Idempotent; safe to call from init AND the topic. */
     private fun startFor(correlation: String) {
         if (startedCorrelation == correlation) {
-            LOG.info("[vizcore-diag] startFor($correlation) ignored — already polling this correlation")
             return
         }
         startedCorrelation = correlation
 
         val health = BackendHealthCheck.check(backendUrl)
-        LOG.info("[vizcore-diag] startFor($correlation) backendUrl=$backendUrl health=$health")
         if (health is BackendHealthCheck.HealthStatus.Down) {
             showState(ContentState.BACKEND_DOWN)
             return
@@ -138,7 +137,6 @@ class VizcoreToolWindowPanel(
                 val previous = latestModel
                 if (model.hierarchy.isEmpty() && previous != null && previous.hierarchy.isNotEmpty()) {
                     // Transient empty poll (backend blip / stale poller) — keep the last good tree.
-                    LOG.info("[vizcore-diag] ignoring empty poll; keeping ${previous.hierarchy.size} coroutines")
                 } else {
                     latestModel = model
                     coroutineTreeModel.apply(model.hierarchy, model.leakIds)
@@ -147,17 +145,12 @@ class VizcoreToolWindowPanel(
                         expandedOnce = true
                         TreeUtil.expandAll(tree)
                     }
-                    val rootChildren = (coroutineTreeModel.treeModel.root as DefaultMutableTreeNode).childCount
-                    LOG.info(
-                        "[vizcore-diag] applied ${model.hierarchy.size} coroutines: " +
-                            "root.childCount=$rootChildren tree.rowCount=${tree.rowCount} -> LIVE",
-                    )
                     showState(ContentState.LIVE)
                 }
             },
             onError = { error ->
                 // Keep the last good model on screen; transient poll failures self-heal next tick.
-                LOG.warn("[vizcore-diag] poll error surfaced to panel", error)
+                LOG.warn("Coroutine visualizer poll error", error)
             },
         )
         service.start(correlation)
@@ -201,11 +194,11 @@ class VizcoreToolWindowPanel(
         if (frozen) {
             service.unfreeze()
             frozen = false
-            freezeButton.text = "Freeze"
+            freezeButton.text = "Pause view"
         } else {
             service.freeze()
             frozen = true
-            freezeButton.text = "Resume"
+            freezeButton.text = "Resume view"
         }
     }
 
