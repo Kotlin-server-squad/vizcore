@@ -13,7 +13,17 @@ class CoroutineTreeModelTest {
         parentId: String?,
         children: List<String> = emptyList(),
         state: String = "RUNNING",
-    ) = HierarchyNodeDto(id = id, parentId = parentId, children = children, name = id, scopeId = "sc", state = state, jobId = "j-$id")
+        threadName: String? = null,
+    ) = HierarchyNodeDto(
+        id = id,
+        parentId = parentId,
+        children = children,
+        name = id,
+        scopeId = "sc",
+        state = state,
+        jobId = "j-$id",
+        currentThreadName = threadName,
+    )
 
     private fun rowOf(n: DefaultMutableTreeNode) = n.userObject as CoroutineRow
 
@@ -50,6 +60,13 @@ class CoroutineTreeModelTest {
         val m = CoroutineTreeModel()
         m.apply(listOf(node("a", null)), setOf("a"))
         assertTrue(rowOf((m.treeModel.root as DefaultMutableTreeNode).firstChild as DefaultMutableTreeNode).isLeak)
+    }
+
+    @Test fun `populates thread name from the node`() {
+        val m = CoroutineTreeModel()
+        m.apply(listOf(node("a", null, threadName = "DefaultDispatcher-worker-3")), emptySet())
+        val row = rowOf((m.treeModel.root as DefaultMutableTreeNode).firstChild as DefaultMutableTreeNode)
+        assertEquals("DefaultDispatcher-worker-3", row.threadName)
     }
 
     @Test fun `re-parenting moves the node`() {

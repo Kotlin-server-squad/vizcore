@@ -46,21 +46,51 @@ class InspectorPanel(
         column.layout = BoxLayout(column, BoxLayout.Y_AXIS)
         column.isOpaque = false
 
+        val status = if (vm.running) "running" else "completed"
         column.add(header(vm))
-        column.add(captionedRow("Runs on", "${vm.threadName ?: EMPTY_VALUE} · ${vm.dispatcherName ?: EMPTY_VALUE}"))
+        column.add(
+            captionedRows(
+                "Identity",
+                listOf(
+                    "job ${vm.jobId ?: EMPTY_VALUE}",
+                    "scope ${vm.scopeId ?: EMPTY_VALUE}",
+                    "children ${vm.activeChildrenCount} active / ${vm.childrenCount} total",
+                ),
+            ),
+        )
+        column.add(captionedRows("Runs on", listOf("${vm.threadName ?: EMPTY_VALUE} · ${vm.dispatcherName ?: EMPTY_VALUE}")))
         if (vm.exceptionType != null) {
             column.add(exceptionCard(vm))
         }
         column.add(sourceRow("Suspended at", vm.suspendedAt))
         column.add(sourceRow("Launched at", vm.launchedAt))
         column.add(
-            captionedRow(
+            captionedRows(
                 "Timing",
-                "active ${vm.activeLabel}  ·  suspended ${vm.suspendedLabel}  ·  total ${vm.totalLabel}",
+                listOf(
+                    "$status  ·  lifetime ${vm.lifetimeLabel}",
+                    "active ${vm.activeLabel}  ·  suspended ${vm.suspendedLabel}  ·  total ${vm.totalLabel}",
+                ),
             ),
         )
+        if (vm.suspensionHistory.isNotEmpty()) {
+            val history = leftColumn()
+            history.border = JBUI.Borders.emptyTop(ROW_GAP)
+            history.add(caption("Suspension history"))
+            vm.suspensionHistory.forEach { ref -> appendRef(history, ref) }
+            column.add(history)
+        }
         if (vm.events.isNotEmpty()) {
-            column.add(eventsSection(vm))
+            val lines =
+                vm.events.map { event ->
+                    val reason =
+                        event.reason
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { " · $it" }
+                            .orEmpty()
+                    "${event.relativeLabel}  ${event.kind}$reason"
+                }
+            column.add(captionedRows("Events", lines))
         }
         return column
     }
@@ -93,21 +123,6 @@ class InspectorPanel(
         return panel
     }
 
-    private fun eventsSection(vm: InspectorViewModel): Component {
-        val panel = leftColumn()
-        panel.border = JBUI.Borders.emptyTop(ROW_GAP)
-        panel.add(caption("Events"))
-        vm.events.forEach { event ->
-            val reason =
-                event.reason
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { " · $it" }
-                    .orEmpty()
-            panel.add(value("${event.relativeLabel}  ${event.kind}$reason"))
-        }
-        return panel
-    }
-
     private fun header(vm: InspectorViewModel): Component {
         val panel = leftColumn()
 
@@ -132,23 +147,25 @@ class InspectorPanel(
     ): Component {
         val panel = leftColumn()
         panel.border = JBUI.Borders.emptyTop(ROW_GAP)
-
-        val captionLabel = caption(caption)
-        panel.add(captionLabel)
-
+        panel.add(caption(caption))
         if (ref == null) {
             panel.add(value(EMPTY_VALUE))
-            return panel
+        } else {
+            appendRef(panel, ref)
         }
+        return panel
+    }
 
+    /** Appends a source reference (reason + file:line + Jump button) to an existing column. */
+    private fun appendRef(
+        panel: JPanel,
+        ref: SourceRef,
+    ) {
         ref.reason?.takeIf { it.isNotBlank() }?.let { panel.add(value(it)) }
-
         val file = ref.fileName
         val line = ref.lineNumber
         if (file != null && line != null) {
-            val location = JBLabel("$file:$line")
-            location.alignmentX = Component.LEFT_ALIGNMENT
-            panel.add(location)
+            panel.add(value("$file:$line"))
             val jump = JButton("Jump")
             jump.alignmentX = Component.LEFT_ALIGNMENT
             jump.addActionListener { onJump(file, line) }
@@ -156,17 +173,16 @@ class InspectorPanel(
         } else if (file != null) {
             panel.add(value(file))
         }
-        return panel
     }
 
-    private fun captionedRow(
+    private fun captionedRows(
         caption: String,
-        text: String,
+        lines: List<String>,
     ): Component {
         val panel = leftColumn()
         panel.border = JBUI.Borders.emptyTop(ROW_GAP)
         panel.add(caption(caption))
-        panel.add(value(text))
+        lines.forEach { panel.add(value(it)) }
         return panel
     }
 

@@ -10,6 +10,8 @@ data class GraphNode(
     val isLeak: Boolean,
     val x: Int,
     val y: Int,
+    val dispatcherName: String? = null,
+    val threadName: String? = null,
 )
 
 /** A directed parent -> child edge between two positioned nodes. */
@@ -84,6 +86,8 @@ object GraphLayout {
                     isLeak = node.id in leakIds,
                     x = MARGIN + order * COL_GAP,
                     y = MARGIN + depth * ROW_GAP,
+                    dispatcherName = node.dispatcherName,
+                    threadName = node.currentThreadName,
                 )
             }
 

@@ -25,6 +25,8 @@ class CoroutineGraphPanel(
 
     init {
         isOpaque = true
+        // Non-null registers this component with the ToolTipManager; getToolTipText resolves per node.
+        toolTipText = ""
         addMouseListener(
             object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
@@ -42,6 +44,18 @@ class CoroutineGraphPanel(
         preferredSize = Dimension(graph.width.coerceAtLeast(1), graph.height.coerceAtLeast(1))
         revalidate()
         repaint()
+    }
+
+    override fun getToolTipText(e: MouseEvent): String? {
+        val node =
+            graph.nodes.firstOrNull { node ->
+                e.x >= node.x &&
+                    e.x <= node.x + GraphLayout.NODE_W &&
+                    e.y >= node.y &&
+                    e.y <= node.y + GraphLayout.NODE_H
+            } ?: return null
+        val where = node.threadName ?: node.dispatcherName ?: "—"
+        return "${node.name} — ${node.state} — $where"
     }
 
     private fun handleClick(

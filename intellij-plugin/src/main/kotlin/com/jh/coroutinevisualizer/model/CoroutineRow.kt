@@ -6,6 +6,7 @@ data class CoroutineRow(
     val name: String,
     val state: String,
     val dispatcherName: String?,
+    val threadName: String?,
     val ageMs: Long,
     val childCount: Int,
     val isLeak: Boolean,

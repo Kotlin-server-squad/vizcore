@@ -158,4 +158,90 @@ class InspectorViewModelTest {
         val vm = InspectorViewModel.from(null, null)
         assertEquals(emptyList(), vm.events)
     }
+
+    @Test fun `populates identity fields and children counts from the node`() {
+        val node =
+            HierarchyNodeDto(
+                id = "c",
+                parentId = null,
+                children = listOf("a", "b", "d"),
+                name = "x",
+                scopeId = "req-1",
+                state = "RUNNING",
+                jobId = "job-9",
+                activeChildrenCount = 2,
+            )
+        val vm = InspectorViewModel.from(null, node)
+        assertEquals("job-9", vm.jobId)
+        assertEquals("req-1", vm.scopeId)
+        assertEquals(2, vm.activeChildrenCount)
+        assertEquals(3, vm.childrenCount)
+    }
+
+    @Test fun `blank job and scope map to null`() {
+        val node = HierarchyNodeDto(id = "c", parentId = null, name = "x", scopeId = "", state = "RUNNING", jobId = "")
+        val vm = InspectorViewModel.from(null, node)
+        assertEquals(null, vm.jobId)
+        assertEquals(null, vm.scopeId)
+    }
+
+    @Test fun `running flag reflects completedAtNanos`() {
+        val running = HierarchyNodeDto(id = "c", parentId = null, name = "x", scopeId = "s", state = "RUNNING", jobId = "j")
+        assertEquals(true, InspectorViewModel.from(null, running).running)
+        val done =
+            HierarchyNodeDto(
+                id = "c",
+                parentId = null,
+                name = "x",
+                scopeId = "s",
+                state = "COMPLETED",
+                jobId = "j",
+                completedAtNanos = 123,
+            )
+        assertEquals(false, InspectorViewModel.from(null, done).running)
+    }
+
+    @Test fun `lifetime label mirrors total duration`() {
+        val timeline = TimelineDto(coroutineId = "c", name = "x", state = "COMPLETED", totalDuration = 1_200_000_000)
+        val vm = InspectorViewModel.from(timeline, null)
+        assertEquals("~1.2s", vm.lifetimeLabel)
+    }
+
+    @Test fun `builds suspension history from every event with a suspension point`() {
+        val timeline =
+            TimelineDto(
+                coroutineId = "c",
+                name = "x",
+                state = "SUSPENDED",
+                events =
+                    listOf(
+                        TimelineEventDto(seq = 1, kind = "CREATED"),
+                        TimelineEventDto(
+                            seq = 2,
+                            kind = "SUSPENDED",
+                            reason = "delay",
+                            suspensionPoint =
+                                SuspensionPointDto(function = "run", fileName = "A.kt", lineNumber = 10, reason = "delay"),
+                        ),
+                        TimelineEventDto(
+                            seq = 3,
+                            kind = "SUSPENDED",
+                            suspensionPoint =
+                                SuspensionPointDto(function = "recv", fileName = "B.kt", lineNumber = 20, reason = "receive"),
+                        ),
+                    ),
+            )
+        val vm = InspectorViewModel.from(timeline, null)
+        assertEquals(2, vm.suspensionHistory.size)
+        assertEquals("A.kt", vm.suspensionHistory[0].fileName)
+        assertEquals(10, vm.suspensionHistory[0].lineNumber)
+        assertEquals("run · delay", vm.suspensionHistory[0].reason)
+        assertEquals("B.kt", vm.suspensionHistory[1].fileName)
+        assertEquals("recv · receive", vm.suspensionHistory[1].reason)
+    }
+
+    @Test fun `suspension history is empty without suspension points`() {
+        val vm = InspectorViewModel.from(null, null)
+        assertEquals(emptyList(), vm.suspensionHistory)
+    }
 }

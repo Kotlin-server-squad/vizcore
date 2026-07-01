@@ -52,6 +52,10 @@ class CoroutineTreeRenderer : ColoredTreeCellRenderer() {
             append("  @$dispatcher", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
         }
 
+        coroutine.threadName?.takeIf { it.isNotBlank() }?.let { thread ->
+            append("  @$thread", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+        }
+
         val ageLabel = CoroutineStateStyle.ageLabel(coroutine.ageMs)
         if (coroutine.isLeak) {
             append("  ⚠ $ageLabel", SimpleTextAttributes(SimpleTextAttributes.STYLE_SMALLER, CoroutineStateStyle.leakColor()))

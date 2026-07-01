@@ -88,6 +88,7 @@ class CoroutineTreeModel {
             name = dto.name,
             state = dto.state,
             dispatcherName = dto.dispatcherName,
+            threadName = dto.currentThreadName,
             ageMs = ageMs,
             childCount = dto.children.size,
             isLeak = dto.id in leakIds,

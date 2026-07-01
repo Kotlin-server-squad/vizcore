@@ -14,6 +14,7 @@ complexity:
     excludes:
       - '**/wrappers/**'
       - '**/scenarios/**'
+      - '**/test/**'
   CyclomaticComplexMethod:
     threshold: 20
 

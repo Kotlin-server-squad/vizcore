@@ -28,16 +28,23 @@ data class InspectorViewModel(
     val name: String,
     val state: String,
     val identity: String,
+    val jobId: String?,
+    val scopeId: String?,
+    val activeChildrenCount: Int,
+    val childrenCount: Int,
+    val running: Boolean,
     val suspendedAt: SourceRef?,
     val launchedAt: SourceRef?,
     val activeLabel: String,
     val suspendedLabel: String,
     val totalLabel: String,
+    val lifetimeLabel: String,
     val threadName: String?,
     val dispatcherName: String?,
     val exceptionType: String?,
     val exceptionMessage: String?,
     val events: List<InspectorEvent>,
+    val suspensionHistory: List<SourceRef>,
 ) {
     companion object {
         private const val DASH = "—"
@@ -76,22 +83,49 @@ data class InspectorViewModel(
                 ).joinToString(" · ")
 
             val events = timeline?.events.orEmpty()
+            val running = node?.completedAtNanos == null
             return InspectorViewModel(
                 name = name,
                 state = state,
                 identity = identity,
+                jobId = node?.jobId?.takeIf { it.isNotBlank() },
+                scopeId = node?.scopeId?.takeIf { it.isNotBlank() },
+                activeChildrenCount = node?.activeChildrenCount ?: 0,
+                childrenCount = node?.children?.size ?: 0,
+                running = running,
                 suspendedAt = suspendedRef(events),
                 launchedAt = launchedRef(events),
                 activeLabel = formatApproxNanos(timeline?.activeDuration),
                 suspendedLabel = formatApproxNanos(timeline?.suspendedDuration),
                 totalLabel = formatApproxNanos(timeline?.totalDuration),
+                lifetimeLabel = formatApproxNanos(timeline?.totalDuration),
                 threadName = node?.currentThreadName,
                 dispatcherName = node?.dispatcherName,
                 exceptionType = node?.exceptionType,
                 exceptionMessage = node?.exceptionMessage,
                 events = inspectorEvents(events),
+                suspensionHistory = suspensionHistory(events),
             )
         }
+
+        /**
+         * Sequence of suspension sites over the coroutine's life: every timeline event that carries a
+         * [SuspensionPointDto], in seq order, as jump-to-source targets. This is the closest thing to a
+         * suspension "stack" available from the current API — a full multi-frame trace is not exposed.
+         */
+        private fun suspensionHistory(events: List<TimelineEventDto>): List<SourceRef> =
+            events
+                .sortedBy { it.seq }
+                .mapNotNull { event ->
+                    val point = event.suspensionPoint ?: return@mapNotNull null
+                    val reason = point.reason.ifBlank { event.reason }
+                    val label =
+                        listOfNotNull(
+                            point.function.takeIf { it.isNotBlank() },
+                            reason?.takeIf { it.isNotBlank() },
+                        ).joinToString(" · ").ifBlank { null }
+                    SourceRef(point.fileName, point.lineNumber, label)
+                }
 
         /** Lifecycle events in seq order, each labelled with time since the first event. */
         private fun inspectorEvents(events: List<TimelineEventDto>): List<InspectorEvent> {
