@@ -44,6 +44,9 @@ class SessionPollingService : Disposable {
         )
     }
 
+    /** The resolved session id for the active poll, or null until the agent binds the correlation. */
+    fun currentSessionId(): String? = poller?.currentSessionId()
+
     fun freeze() {
         poller?.freeze()
     }

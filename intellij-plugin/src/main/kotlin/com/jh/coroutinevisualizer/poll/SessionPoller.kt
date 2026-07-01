@@ -29,6 +29,9 @@ class SessionPoller(
 
     @Volatile var frozen = false
 
+    /** The resolved session id for the current correlation, or null until the agent binds it. */
+    fun currentSessionId(): String? = sessionId
+
     private var future: ScheduledFuture<*>? = null
     private var onModel: ((SessionModel) -> Unit)? = null
     private var onError: ((Throwable) -> Unit)? = null
