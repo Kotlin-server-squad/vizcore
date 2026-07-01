@@ -43,9 +43,15 @@ class VizcoreApiClient(
         }
     }
 
+    /**
+     * The live coroutine tree for [sessionId]. THROWS on a non-200 so the caller can keep the last
+     * good tree instead of mistaking a transient failure (timeout, 404 during a poll) for an
+     * empty session and wiping the view.
+     */
     fun hierarchy(sessionId: String): List<HierarchyNodeDto> {
         val response = send("/sessions/${enc(sessionId)}/hierarchy")
-        return if (response.statusCode() == HTTP_OK) json.decodeFromString(response.body()) else emptyList()
+        check(response.statusCode() == HTTP_OK) { "hierarchy HTTP ${response.statusCode()} for $sessionId" }
+        return json.decodeFromString(response.body())
     }
 
     fun metrics(sessionId: String): MetricsDto? {

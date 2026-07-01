@@ -130,11 +130,17 @@ class VizcoreToolWindowPanel(
         service.setListener(
             onModel = { model ->
                 // Already on the EDT (the service invokeLater's deliveries).
-                LOG.info("[vizcore-diag] model delivered to panel: ${model.hierarchy.size} coroutines -> LIVE")
-                latestModel = model
-                coroutineTreeModel.apply(model.hierarchy, model.leakIds)
-                tiles.update(model.tiles)
-                showState(ContentState.LIVE)
+                val previous = latestModel
+                if (model.hierarchy.isEmpty() && previous != null && previous.hierarchy.isNotEmpty()) {
+                    // Transient empty poll (backend blip / stale poller) — keep the last good tree.
+                    LOG.info("[vizcore-diag] ignoring empty poll; keeping ${previous.hierarchy.size} coroutines")
+                } else {
+                    LOG.info("[vizcore-diag] model delivered: ${model.hierarchy.size} coroutines -> LIVE")
+                    latestModel = model
+                    coroutineTreeModel.apply(model.hierarchy, model.leakIds)
+                    tiles.update(model.tiles)
+                    showState(ContentState.LIVE)
+                }
             },
             onError = { error ->
                 // Keep the last good model on screen; transient poll failures self-heal next tick.
