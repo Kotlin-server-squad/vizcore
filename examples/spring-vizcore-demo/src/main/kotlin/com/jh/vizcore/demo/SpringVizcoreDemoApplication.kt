@@ -43,13 +43,21 @@ class VizcoreDemoRunner(
 	@param:Value("\${vizcore.backend-url:http://localhost:8080}") private val backendUrl: String,
 	@param:Value("\${vizcore.token:demo-token}") private val token: String,
 	@param:Value("\${vizcore.continuous:false}") private val continuous: Boolean,
+	@param:Value("\${vizcore.embedded-client:true}") private val embeddedClient: Boolean,
 ) : CommandLineRunner {
 	private val logger = LoggerFactory.getLogger(VizcoreDemoRunner::class.java)
 
 	override fun run(vararg args: String) {
-		logger.info("Starting VizcoreClient: app='{}' -> {}", appName, backendUrl)
-		val client = VizcoreClient.start(appName = appName, backendUrl = backendUrl, token = token)
-		Runtime.getRuntime().addShutdownHook(Thread { client.stop() })
+		// When embeddedClient=false (agent-UAT mode) we run ONLY the workload and let an external
+		// `-javaagent` (the IntelliJ plugin's agent) be the sole instrumenter — avoiding the
+		// self-instrumenting double-client hazard. When true (default) the app self-instruments.
+		if (embeddedClient) {
+			logger.info("Starting embedded VizcoreClient: app='{}' -> {}", appName, backendUrl)
+			val client = VizcoreClient.start(appName = appName, backendUrl = backendUrl, token = token)
+			Runtime.getRuntime().addShutdownHook(Thread { client.stop() })
+		} else {
+			logger.info("Embedded VizcoreClient DISABLED (vizcore.embedded-client=false) — expecting an external -javaagent to capture this JVM.")
+		}
 
 		// Bounded, NAMED fixture (not a firehose). Every coroutine carries a CoroutineName so the
 		// labels populate in the UI today, and the parent/child shape is well-defined so this
