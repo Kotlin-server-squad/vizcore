@@ -26,6 +26,7 @@ import java.awt.Color
 import java.awt.FlowLayout
 import javax.swing.JButton
 import javax.swing.JPanel
+import javax.swing.JToggleButton
 import javax.swing.SwingConstants
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreeSelectionModel
@@ -73,6 +74,12 @@ class VizcoreToolWindowPanel(
     private val tiles = MetricTilesPanel()
     private val inspector = InspectorPanel(onJump = ::onJump)
     private val tree: Tree = buildTree()
+    private val graphPanel = CoroutineGraphPanel(onSelect = ::selectCoroutine)
+    private val graphScroll = JBScrollPane(graphPanel)
+
+    /** Swappable left pane: "TREE" (default) and "GRAPH". */
+    private val leftCardLayout = CardLayout()
+    private val leftCards = JPanel(leftCardLayout)
 
     /** Expand the (invisible) root once the first data arrives, so top-level coroutines are visible. */
     private var expandedOnce = false
@@ -140,6 +147,7 @@ class VizcoreToolWindowPanel(
                 } else {
                     latestModel = model
                     coroutineTreeModel.apply(model.hierarchy, model.leakIds)
+                    graphPanel.setModel(GraphLayout.compute(model.hierarchy, model.leakIds))
                     tiles.update(model.tiles)
                     if (!expandedOnce && model.hierarchy.isNotEmpty()) {
                         expandedOnce = true
@@ -179,6 +187,14 @@ class VizcoreToolWindowPanel(
         val liveLabel = JBLabel("● LIVE")
         liveLabel.foreground = LIVE_GREEN
         toolbar.add(liveLabel)
+        val graphToggle =
+            JToggleButton("Graph").apply {
+                toolTipText = "Toggle between the tree view and the parent-child graph view."
+                addActionListener {
+                    leftCardLayout.show(leftCards, if (isSelected) GRAPH_CARD else TREE_CARD)
+                }
+            }
+        toolbar.add(graphToggle)
         freezeButton.addActionListener { toggleFreeze() }
         toolbar.add(freezeButton)
         header.add(toolbar, BorderLayout.EAST)
@@ -203,8 +219,12 @@ class VizcoreToolWindowPanel(
     }
 
     private fun buildSplitter(): OnePixelSplitter {
+        leftCards.add(JBScrollPane(tree), TREE_CARD)
+        leftCards.add(graphScroll, GRAPH_CARD)
+        leftCardLayout.show(leftCards, TREE_CARD)
+
         val splitter = OnePixelSplitter(false, SPLITTER_PROPORTION)
-        splitter.firstComponent = JBScrollPane(tree)
+        splitter.firstComponent = leftCards
         splitter.secondComponent = inspector
         return splitter
     }
@@ -226,12 +246,20 @@ class VizcoreToolWindowPanel(
             inspector.show(null)
             return
         }
+        selectCoroutine(row.id)
+    }
+
+    /**
+     * Shared selection handler for both the tree and the graph: fetches the coroutine's timeline
+     * off the EDT and shows it in the inspector on the EDT. Node is looked up by id from [latestModel].
+     */
+    private fun selectCoroutine(coroutineId: String) {
         val service = SessionPollingService.getInstance(project)
         val model = latestModel
         ApplicationManager.getApplication().executeOnPooledThread {
             val sid = service.currentSessionId()
-            val timeline = if (sid != null) apiClient.timeline(sid, row.id) else null
-            val hierarchyNode = model?.hierarchy?.firstOrNull { it.id == row.id }
+            val timeline = if (sid != null) apiClient.timeline(sid, coroutineId) else null
+            val hierarchyNode = model?.hierarchy?.firstOrNull { it.id == coroutineId }
             ApplicationManager.getApplication().invokeLater {
                 inspector.show(InspectorViewModel.from(timeline, hierarchyNode))
             }
@@ -257,6 +285,9 @@ class VizcoreToolWindowPanel(
         const val HEADER_PADDING = 6
         const val TOOLBAR_GAP = 8
         const val SPLITTER_PROPORTION = 0.6f
+
+        const val TREE_CARD = "TREE"
+        const val GRAPH_CARD = "GRAPH"
 
         val LIVE_GREEN: JBColor = JBColor(Color(0x2E7D32), Color(0x66BB6A))
     }
