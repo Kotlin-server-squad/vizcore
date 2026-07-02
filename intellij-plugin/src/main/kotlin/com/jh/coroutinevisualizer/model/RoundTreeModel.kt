@@ -91,6 +91,19 @@ class RoundTreeModel {
     fun groupNodeFor(rootId: String): DefaultMutableTreeNode? = groupNodesByRootId[rootId]
 
     /**
+     * The coroutine node for [id] in the current snapshot, materializing its owning collapsed group
+     * first (problem-row cross-highlight in All mode, D-08). Null when the id is unknown, its round
+     * is not listed (folded into the summary), or a search visibility filter currently excludes it.
+     */
+    fun nodeFor(id: String): DefaultMutableTreeNode? {
+        coroutineNodesById[id]?.let { return it }
+        if (id !in snapshotById) return null
+        val groupNode = groupNodesByRootId[rootFor(id, snapshotById, HashMap())] ?: return null
+        materialize(groupNode)
+        return coroutineNodesById[id]
+    }
+
+    /**
      * Materialize a collapsed group's subtree on demand (called by the tree's expand listener).
      * No-op unless the group still carries its [Placeholder]. Marks the round user-expanded so the
      * expansion survives subsequent refreshes.

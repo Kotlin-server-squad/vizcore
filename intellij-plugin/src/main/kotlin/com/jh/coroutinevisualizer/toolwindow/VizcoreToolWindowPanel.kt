@@ -561,6 +561,15 @@ class VizcoreToolWindowPanel(
      * fire [onTreeSelection] and swap in the inspector, defeating the "right pane stays on why" rule.
      */
     private fun onProblemHighlight(coroutineId: String) {
+        // Target the tree the user can actually SEE: in All mode that is the history tree — scrolling
+        // and highlighting the hidden Live tree has no visible effect at all.
+        if (viewMode == ViewMode.ALL) {
+            val node = roundTreeModel.nodeFor(coroutineId) ?: return
+            allTreeRenderer.softHighlightId = coroutineId
+            allTree.scrollPathToVisible(TreePath(node.path))
+            allTree.repaint()
+            return
+        }
         val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
         treeRenderer.softHighlightId = coroutineId
         tree.scrollPathToVisible(TreePath(node.path))
@@ -572,6 +581,15 @@ class VizcoreToolWindowPanel(
      * fires [onTreeSelection] → inspector swap. Setting the selection path is the ONLY select call.
      */
     private fun onProblemInspect(coroutineId: String) {
+        // Select in the VISIBLE tree (see onProblemHighlight): both trees route their selection
+        // through onTreeSelection, so the inspector swap behaves identically in either mode.
+        if (viewMode == ViewMode.ALL) {
+            val node = roundTreeModel.nodeFor(coroutineId) ?: return
+            val path = TreePath(node.path)
+            allTree.scrollPathToVisible(path) // expands the owning group so the selection is visible
+            allTree.selectionPath = path
+            return
+        }
         val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
         tree.selectionPath = TreePath(node.path)
     }
