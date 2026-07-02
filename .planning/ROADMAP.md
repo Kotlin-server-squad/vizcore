@@ -235,7 +235,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 15-06-PLAN.md — [Live | All n] toggle, search, graph disable, mode wiring (D-17..21, SC#5)
+- [x] 15-06-PLAN.md — [Live | All n] toggle, search, graph disable, mode wiring (D-17..21, SC#5)
 
 **UI hint**: yes
 
@@ -260,4 +260,4 @@ Plans:
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
-| 15. Plugin Problems + data surfacing | v1.2 | 5/6 | In Progress|  |
+| 15. Plugin Problems + data surfacing | v1.2 | 6/6 | Complete   | 2026-07-02 |
