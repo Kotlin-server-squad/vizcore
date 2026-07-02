@@ -223,7 +223,10 @@ class VizcoreToolWindowPanel(
      */
     private fun onModelDelivered(model: SessionModel) {
         val previous = latestModel
-        if (model.hierarchy.isEmpty() && previous != null && previous.hierarchy.isNotEmpty()) {
+        // Key the guard on the UNFILTERED hierarchy: a backend blip returns nothing at all, while a
+        // quiescent app (all coroutines completed + live window elapsed) still has a fullHierarchy.
+        // Keying on the live-filtered view froze every panel forever once the app went quiet.
+        if (model.fullHierarchy.isEmpty() && previous != null && previous.fullHierarchy.isNotEmpty()) {
             return // Transient empty poll (backend blip / stale poller) — keep the last good tree.
         }
         latestModel = model
