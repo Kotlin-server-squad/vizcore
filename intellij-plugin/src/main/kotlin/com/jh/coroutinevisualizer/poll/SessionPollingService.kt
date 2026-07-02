@@ -31,6 +31,16 @@ class SessionPollingService : Disposable {
         errorListener = onError
     }
 
+    /**
+     * Drops the registered listeners. The panel registers this against its parent disposable —
+     * without it, this project-level service strongly retains the disposed panel (and its whole
+     * Swing subtree) and keeps delivering models into it every poll until project close.
+     */
+    fun clearListener() {
+        listener = null
+        errorListener = null
+    }
+
     fun start(correlation: String) {
         poller?.stop()
         val settings = VizcoreSettings.getInstance()

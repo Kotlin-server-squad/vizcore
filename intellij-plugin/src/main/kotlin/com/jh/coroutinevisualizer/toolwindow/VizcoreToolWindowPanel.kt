@@ -4,6 +4,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
@@ -187,6 +188,12 @@ class VizcoreToolWindowPanel(
                     startFor(correlation)
                 },
             )
+
+        // Detach our listeners when this content is disposed — the project-level polling service
+        // would otherwise retain the dead panel and keep delivering models into it every poll.
+        Disposer.register(parentDisposable) {
+            SessionPollingService.getInstance(project).clearListener()
+        }
 
         // Handle the run-then-open ordering: if a correlation is already armed, start immediately.
         val armed = VizcoreLaunchState.getInstance(project).correlation
