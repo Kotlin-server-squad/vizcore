@@ -221,7 +221,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 15-01-PLAN.md — Problem taxonomy + SuspensionTracker + SessionModel pinning + tile retarget (D-06/07/09/10/11/12/22)
+- [x] 15-01-PLAN.md — Problem taxonomy + SuspensionTracker + SessionModel pinning + tile retarget (D-06/07/09/10/11/12/22)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -260,4 +260,4 @@ Plans:
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
-| 15. Plugin Problems + data surfacing | v1.2 | 0/6 | Not started | - |
+| 15. Plugin Problems + data surfacing | v1.2 | 1/6 | In Progress|  |

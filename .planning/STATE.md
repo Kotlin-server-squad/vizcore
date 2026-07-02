@@ -4,12 +4,12 @@ milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
 stopped_at: Phase 15 context gathered
-last_updated: "2026-07-02T11:55:28.960Z"
-last_activity: 2026-06-29 -- Phase 13 execution started
+last_updated: "2026-07-02T11:59:46.718Z"
+last_activity: 2026-07-02 -- Phase 15 execution started
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 22
+  total_plans: 28
   completed_plans: 22
   percent: 71
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 **Core value:** A developer can SEE and UNDERSTAND coroutine/Flow/structured-concurrency execution that is otherwise invisible — reducing time-to-understand.
-**Current focus:** Phase 13 — intellij-plugin-delivery-rebuild-by-deletion
+**Current focus:** Phase 15 — plugin-problems-data-surfacing
 
 ## Current Position
 
-Phase: 13 (intellij-plugin-delivery-rebuild-by-deletion) — EXECUTING
-Plan: 1 of 7
-Status: Ready to execute
-Last activity: 2026-06-29 -- Phase 13 execution started
+Phase: 15 (plugin-problems-data-surfacing) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 15
+Last activity: 2026-07-02 -- Phase 15 execution started
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
