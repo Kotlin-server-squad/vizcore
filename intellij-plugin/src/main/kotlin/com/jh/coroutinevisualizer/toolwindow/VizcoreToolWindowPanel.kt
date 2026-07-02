@@ -591,12 +591,12 @@ class VizcoreToolWindowPanel(
             allTreeRenderer.softHighlightId = coroutineId
             allTree.scrollPathToVisible(TreePath(node.path))
             allTree.repaint()
-            return
+        } else {
+            val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
+            treeRenderer.softHighlightId = coroutineId
+            tree.scrollPathToVisible(TreePath(node.path))
+            tree.repaint()
         }
-        val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
-        treeRenderer.softHighlightId = coroutineId
-        tree.scrollPathToVisible(TreePath(node.path))
-        tree.repaint()
     }
 
     /**
@@ -611,10 +611,10 @@ class VizcoreToolWindowPanel(
             val path = TreePath(node.path)
             allTree.scrollPathToVisible(path) // expands the owning group so the selection is visible
             allTree.selectionPath = path
-            return
+        } else {
+            val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
+            tree.selectionPath = TreePath(node.path)
         }
-        val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
-        tree.selectionPath = TreePath(node.path)
     }
 
     /**

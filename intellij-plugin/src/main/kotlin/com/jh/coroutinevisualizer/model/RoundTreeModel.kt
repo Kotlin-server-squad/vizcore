@@ -96,11 +96,11 @@ class RoundTreeModel {
      * is not listed (folded into the summary), or a search visibility filter currently excludes it.
      */
     fun nodeFor(id: String): DefaultMutableTreeNode? {
-        coroutineNodesById[id]?.let { return it }
-        if (id !in snapshotById) return null
-        val groupNode = groupNodesByRootId[rootFor(id, snapshotById, HashMap())] ?: return null
-        materialize(groupNode)
-        return coroutineNodesById[id]
+        val existing = coroutineNodesById[id]
+        if (existing == null && id in snapshotById) {
+            groupNodesByRootId[rootFor(id, snapshotById, HashMap())]?.let { materialize(it) }
+        }
+        return existing ?: coroutineNodesById[id]
     }
 
     /**
