@@ -41,6 +41,13 @@ class ProblemsStripPanel(
     fun update(problems: List<Problem>) {
         removeAll()
         val counts = chipCounts(problems)
+        val active = activeCategory
+        if (active != null && counts.getValue(active) == 0) {
+            // The active category emptied: its chip is about to render disabled, so no click can ever
+            // clear the filter again — auto-clear it and notify so the trees leave the empty keep-set.
+            activeCategory = null
+            onFilterChange(null)
+        }
         add(statusLabel(problems))
         currentChips =
             ProblemCategory.entries.map { category ->
