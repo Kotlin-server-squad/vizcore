@@ -143,7 +143,10 @@ class RoundTreeModel {
         }
         val node = summaryNode ?: DefaultMutableTreeNode().also { summaryNode = it }
         setUserObject(node, summary)
-        ensurePlaceholder(node)
+        // The summary has no materialization path ([materialize] bails on a SummaryGroup userObject),
+        // so a placeholder child would draw a permanently unexpandable "…" handle — render it as a
+        // leaf instead. Its only possible child is a placeholder, so a plain detach loop suffices.
+        while (node.childCount > 0) detach(node.getChildAt(0) as DefaultMutableTreeNode)
         return node
     }
 

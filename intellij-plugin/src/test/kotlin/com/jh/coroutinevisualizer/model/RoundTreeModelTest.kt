@@ -103,11 +103,11 @@ class RoundTreeModelTest {
             assertTrue(model.isPlaceholder(collapsed.getChildAt(0) as DefaultMutableTreeNode))
         }
 
-        // Summary node folds the oldest three clean rounds, one placeholder child
+        // Summary node folds the oldest three clean rounds; it is a LEAF (no expand handle — there is
+        // no materialization path for a SummaryGroup, so a placeholder would be a dead "…" row).
         val summary = children.last()
         assertTrue(summary.userObject is SummaryGroup)
-        assertEquals(1, summary.childCount)
-        assertTrue(model.isPlaceholder(summary.getChildAt(0) as DefaultMutableTreeNode))
+        assertEquals(0, summary.childCount)
 
         // D-15 proof: the ONLY materialized coroutine nodes are the in-progress round's
         assertEquals(2, coroutineNodes(root(model)).size)
