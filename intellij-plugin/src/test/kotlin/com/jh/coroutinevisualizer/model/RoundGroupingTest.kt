@@ -123,7 +123,12 @@ class RoundGroupingTest {
 
     @Test fun `the label contains the root name and a tilde start age`() {
         val hierarchy = listOf(node("root-x", name = "HttpHandler", createdAtNanos = nowNanos - 1_200_000_000L))
-        val label = RoundGrouping.plan(hierarchy, emptyList(), nowNanos).listed.single().label
+        val label =
+            RoundGrouping
+                .plan(hierarchy, emptyList(), nowNanos)
+                .listed
+                .single()
+                .label
         assertContains(label, "HttpHandler")
         assertContains(label, CoroutineStateStyle.ageLabel(1_200L))
     }

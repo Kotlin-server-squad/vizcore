@@ -9,8 +9,7 @@ data class RoundCounts(
     val exceptions: Int,
     val amber: Int,
 ) {
-    operator fun plus(other: RoundCounts): RoundCounts =
-        RoundCounts(ok + other.ok, exceptions + other.exceptions, amber + other.amber)
+    operator fun plus(other: RoundCounts): RoundCounts = RoundCounts(ok + other.ok, exceptions + other.exceptions, amber + other.amber)
 }
 
 /**
@@ -206,22 +205,18 @@ object RoundGrouping {
         byId: Map<String, HierarchyNodeDto>,
         rootOf: MutableMap<String, String>,
     ): String {
-        rootOf[startId]?.let { return it }
         val chain = ArrayList<String>()
         var current = startId
-        var root = startId
-        while (true) {
-            rootOf[current]?.let { resolved ->
-                chain.forEach { rootOf[it] = resolved }
-                return resolved
-            }
+        var root = rootOf[current]
+        while (root == null) {
             chain.add(current)
-            val parent = byId[current]?.parentId
-            if (parent == null || parent !in byId) {
+            val parent = byId[current]?.parentId?.takeIf { it in byId }
+            if (parent == null) {
                 root = current
-                break
+            } else {
+                current = parent
+                root = rootOf[parent]
             }
-            current = parent
         }
         chain.forEach { rootOf[it] = root }
         return root
