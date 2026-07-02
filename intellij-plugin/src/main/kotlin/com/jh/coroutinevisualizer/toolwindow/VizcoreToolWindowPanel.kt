@@ -15,6 +15,7 @@ import com.jh.coroutinevisualizer.api.VizcoreApiClient
 import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.model.CoroutineRow
 import com.jh.coroutinevisualizer.model.CoroutineTreeModel
+import com.jh.coroutinevisualizer.model.ProblemCategory
 import com.jh.coroutinevisualizer.model.SessionModel
 import com.jh.coroutinevisualizer.navigation.SourceNavigator
 import com.jh.coroutinevisualizer.poll.SessionPollingService
@@ -24,11 +25,14 @@ import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.FlowLayout
+import java.util.concurrent.ConcurrentHashMap
+import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JPanel
 import javax.swing.JToggleButton
 import javax.swing.SwingConstants
 import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreePath
 import javax.swing.tree.TreeSelectionModel
 
 /** Content-state selector for the native tool window. Pure; the unit gate lives in ToolWindowStateTest. */
@@ -63,6 +67,7 @@ enum class ContentState {
  * Threading: model deliveries arrive on the EDT (the service invokeLater's them). Timeline fetches on
  * tree selection run off the EDT and hop back via invokeLater. Never uses GlobalScope.
  */
+@Suppress("TooManyFunctions") // presentational + wiring host: many small build/handler helpers
 class VizcoreToolWindowPanel(
     private val project: Project,
     parentDisposable: Disposable,
@@ -73,9 +78,31 @@ class VizcoreToolWindowPanel(
     private val coroutineTreeModel = CoroutineTreeModel()
     private val tiles = MetricTilesPanel()
     private val inspector = InspectorPanel(onJump = ::onJump)
+
+    /** Held as a field so cross-highlight (D-08) can set [CoroutineTreeRenderer.softHighlightId]. */
+    private val treeRenderer = CoroutineTreeRenderer()
     private val tree: Tree = buildTree()
     private val graphPanel = CoroutineGraphPanel(onSelect = ::selectCoroutine)
     private val graphScroll = JBScrollPane(graphPanel)
+
+    /** Persistent Problems strip (D-01): healthy line + single-select category chips. */
+    private val strip = ProblemsStripPanel(onFilterChange = ::onFilterChange)
+
+    /** Problems-detail list (D-05): the problems-first default card in the right pane. */
+    private val problemsDetail = ProblemsDetailPanel(onHighlight = ::onProblemHighlight, onInspect = ::onProblemInspect)
+
+    /** Contextual right pane (D-04): problems list (default) OR the selected-coroutine inspector. */
+    private val rightCards = CardLayout()
+    private val rightPane = JPanel(rightCards)
+
+    /** Active problem-category chip filter; null = no filter (D-03). EDT-confined. */
+    private var activeProblemFilter: ProblemCategory? = null
+
+    /** Resolved "file:line" suspension sites by coroutine id (D-06), populated off-EDT. */
+    private val suspensionSites: MutableMap<String, String> = ConcurrentHashMap()
+
+    /** Guards against re-issuing an in-flight suspension-site fetch for the same id (T-15-06). */
+    private val suspensionFetchInFlight = ConcurrentHashMap.newKeySet<String>()
 
     /** Swappable left pane: "TREE" (default) and "GRAPH". */
     private val leftCardLayout = CardLayout()
@@ -149,15 +176,15 @@ class VizcoreToolWindowPanel(
                     // Transient empty poll (backend blip / stale poller) — keep the last good tree.
                 } else {
                     latestModel = model
-                    coroutineTreeModel.apply(model.hierarchy, model.leakIds)
-                    if (graphVisible) {
-                        graphPanel.setModel(GraphLayout.compute(model.hierarchy, model.leakIds))
-                    }
+                    strip.update(model.problems)
+                    problemsDetail.show(model.problems, activeProblemFilter)
+                    applyModelToTree(model)
                     tiles.update(model.tiles)
                     if (!expandedOnce && model.hierarchy.isNotEmpty()) {
                         expandedOnce = true
                         TreeUtil.expandAll(tree)
                     }
+                    resolveSuspensionSites(model)
                     showState(ContentState.LIVE)
                 }
             },
@@ -209,8 +236,15 @@ class VizcoreToolWindowPanel(
         toolbar.add(freezeButton)
         header.add(toolbar, BorderLayout.EAST)
 
+        // D-01: the Problems strip is a full-width row directly under the tiles header, above the
+        // splitter. A vertical Box stacks [header] then [strip] so the strip spans the whole width.
+        val topStack = JPanel()
+        topStack.layout = BoxLayout(topStack, BoxLayout.Y_AXIS)
+        topStack.add(header)
+        topStack.add(strip)
+
         val panel = JPanel(BorderLayout())
-        panel.add(header, BorderLayout.NORTH)
+        panel.add(topStack, BorderLayout.NORTH)
         panel.add(buildSplitter(), BorderLayout.CENTER)
         return panel
     }
@@ -233,15 +267,25 @@ class VizcoreToolWindowPanel(
         leftCards.add(graphScroll, GRAPH_CARD)
         leftCardLayout.show(leftCards, TREE_CARD)
 
+        // D-04/D-05: right pane swaps contextually between the problems list (default) and the
+        // selected-coroutine inspector — no tabs, no vertical stack.
+        rightPane.add(problemsDetail, RIGHT_PROBLEMS)
+        rightPane.add(inspector, RIGHT_INSPECTOR)
+        rightCards.show(rightPane, RIGHT_PROBLEMS)
+
         val splitter = OnePixelSplitter(false, SPLITTER_PROPORTION)
         splitter.firstComponent = leftCards
-        splitter.secondComponent = inspector
+        splitter.secondComponent = rightPane
         return splitter
     }
 
+    private fun showProblemsCard() = rightCards.show(rightPane, RIGHT_PROBLEMS)
+
+    private fun showInspectorCard() = rightCards.show(rightPane, RIGHT_INSPECTOR)
+
     private fun buildTree(): Tree {
         val tree = Tree(coroutineTreeModel.treeModel)
-        tree.cellRenderer = CoroutineTreeRenderer()
+        tree.cellRenderer = treeRenderer
         tree.isRootVisible = false
         tree.showsRootHandles = true
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
@@ -253,10 +297,114 @@ class VizcoreToolWindowPanel(
         val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
         val row = node?.userObject as? CoroutineRow
         if (row == null) {
+            // Selection cleared → back to the problems-first default (D-04/D-05).
             inspector.show(null)
+            showProblemsCard()
             return
         }
+        // A real selection lands → clear the soft highlight and swap in the inspector (D-08).
+        treeRenderer.softHighlightId = null
+        tree.repaint()
+        showInspectorCard()
         selectCoroutine(row.id)
+    }
+
+    /**
+     * Chip filter (D-03): records the active category and immediately re-applies the latest model to
+     * BOTH the tree (ancestor-closed) and the detail list — no wait for the next poll.
+     */
+    private fun onFilterChange(category: ProblemCategory?) {
+        activeProblemFilter = category
+        val model = latestModel ?: return
+        applyModelToTree(model)
+        problemsDetail.show(model.problems, activeProblemFilter)
+    }
+
+    /**
+     * Applies the model to the tree, narrowing to the active problem category (ancestor-closed) when a
+     * chip is selected (D-03). The graph input is intentionally left unfiltered this phase.
+     */
+    private fun applyModelToTree(model: SessionModel) {
+        val treeHierarchy =
+            activeProblemFilter?.let {
+                SessionModel.filterToProblemCategory(model.hierarchy, model.problems, it)
+            } ?: model.hierarchy
+        coroutineTreeModel.apply(treeHierarchy, model.leakIds)
+        if (graphVisible) {
+            graphPanel.setModel(GraphLayout.compute(model.hierarchy, model.leakIds))
+        }
+    }
+
+    /**
+     * Stage 1 of the cross-highlight (D-08): a single problem click scrolls the tree to the coroutine
+     * with a NON-selecting soft highlight. It MUST NOT touch the selection model — a selection would
+     * fire [onTreeSelection] and swap in the inspector, defeating the "right pane stays on why" rule.
+     */
+    private fun onProblemHighlight(coroutineId: String) {
+        val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
+        treeRenderer.softHighlightId = coroutineId
+        tree.scrollPathToVisible(TreePath(node.path))
+        tree.repaint()
+    }
+
+    /**
+     * Stage 2 of the cross-highlight (D-08): a double-click / Inspect selects the coroutine, which
+     * fires [onTreeSelection] → inspector swap. Setting the selection path is the ONLY select call.
+     */
+    private fun onProblemInspect(coroutineId: String) {
+        val node = coroutineTreeModel.nodeFor(coroutineId) ?: return
+        tree.selectionPath = TreePath(node.path)
+    }
+
+    /**
+     * D-06 enrichment: for each long-suspended problem, re-apply a cached file:line site (so it
+     * survives the per-poll rebuild) or fetch it off-EDT when unknown. Bounded — problems are few.
+     */
+    private fun resolveSuspensionSites(model: SessionModel) {
+        val service = SessionPollingService.getInstance(project)
+        val sid = service.currentSessionId() ?: return
+        model.problems
+            .filter { it.category == ProblemCategory.LONG_SUSPENDED }
+            .forEach { problem ->
+                val cached = suspensionSites[problem.coroutineId]
+                if (cached != null) {
+                    problemsDetail.setSuspensionSite(problem.coroutineId, cached)
+                } else {
+                    fetchSuspensionSite(sid, problem.coroutineId)
+                }
+            }
+    }
+
+    private fun fetchSuspensionSite(
+        sessionId: String,
+        coroutineId: String,
+    ) {
+        if (!suspensionFetchInFlight.add(coroutineId)) return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val site = resolveSuspensionSite(sessionId, coroutineId) ?: return@executeOnPooledThread
+                suspensionSites[coroutineId] = site
+                ApplicationManager.getApplication().invokeLater {
+                    problemsDetail.setSuspensionSite(coroutineId, site)
+                }
+            } finally {
+                suspensionFetchInFlight.remove(coroutineId)
+            }
+        }
+    }
+
+    /** Last timeline event whose suspension point carries both a file name and line → "file:line". */
+    private fun resolveSuspensionSite(
+        sessionId: String,
+        coroutineId: String,
+    ): String? {
+        val point =
+            apiClient
+                .timeline(sessionId, coroutineId)
+                ?.events
+                ?.lastOrNull { it.suspensionPoint?.fileName != null && it.suspensionPoint?.lineNumber != null }
+                ?.suspensionPoint
+        return point?.let { "${it.fileName}:${it.lineNumber}" }
     }
 
     /**
@@ -298,6 +446,9 @@ class VizcoreToolWindowPanel(
 
         const val TREE_CARD = "TREE"
         const val GRAPH_CARD = "GRAPH"
+
+        const val RIGHT_PROBLEMS = "PROBLEMS"
+        const val RIGHT_INSPECTOR = "INSPECTOR"
 
         val LIVE_GREEN: JBColor = JBColor(Color(0x2E7D32), Color(0x66BB6A))
     }
