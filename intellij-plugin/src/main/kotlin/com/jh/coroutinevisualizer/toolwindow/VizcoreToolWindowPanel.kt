@@ -90,6 +90,9 @@ class VizcoreToolWindowPanel(
     /** Latest delivered model, kept for tree-selection node lookup. Read/written on the EDT. */
     @Volatile private var latestModel: SessionModel? = null
 
+    /** Whether the graph card is currently showing. EDT-confined, so a plain field suffices. */
+    private var graphVisible = false
+
     private var frozen = false
     private val freezeButton =
         JButton("Pause view").apply {
@@ -147,7 +150,9 @@ class VizcoreToolWindowPanel(
                 } else {
                     latestModel = model
                     coroutineTreeModel.apply(model.hierarchy, model.leakIds)
-                    graphPanel.setModel(GraphLayout.compute(model.hierarchy, model.leakIds))
+                    if (graphVisible) {
+                        graphPanel.setModel(GraphLayout.compute(model.hierarchy, model.leakIds))
+                    }
                     tiles.update(model.tiles)
                     if (!expandedOnce && model.hierarchy.isNotEmpty()) {
                         expandedOnce = true
@@ -191,7 +196,12 @@ class VizcoreToolWindowPanel(
             JToggleButton("Graph").apply {
                 toolTipText = "Toggle between the tree view and the parent-child graph view."
                 addActionListener {
+                    graphVisible = isSelected
                     leftCardLayout.show(leftCards, if (isSelected) GRAPH_CARD else TREE_CARD)
+                    // The graph may be stale if the model updated while it was hidden — recompute now.
+                    if (isSelected) {
+                        latestModel?.let { graphPanel.setModel(GraphLayout.compute(it.hierarchy, it.leakIds)) }
+                    }
                 }
             }
         toolbar.add(graphToggle)
