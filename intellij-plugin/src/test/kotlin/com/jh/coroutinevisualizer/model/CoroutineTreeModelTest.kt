@@ -4,6 +4,9 @@ import com.jh.coroutinevisualizer.api.HierarchyNodeDto
 import org.junit.jupiter.api.Test
 import javax.swing.tree.DefaultMutableTreeNode
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -67,6 +70,29 @@ class CoroutineTreeModelTest {
         m.apply(listOf(node("a", null, threadName = "DefaultDispatcher-worker-3")), emptySet())
         val row = rowOf((m.treeModel.root as DefaultMutableTreeNode).firstChild as DefaultMutableTreeNode)
         assertEquals("DefaultDispatcher-worker-3", row.threadName)
+    }
+
+    @Test fun `rowFrom flags a real exception (D-09 rule)`() {
+        val dto = node("x", null).copy(exceptionType = "java.lang.IllegalStateException")
+        assertTrue(rowFrom(dto, emptySet()).hasException)
+    }
+
+    @Test fun `rowFrom does not flag a cancellation`() {
+        val dto = node("x", null).copy(exceptionType = "kotlinx.coroutines.JobCancellationException")
+        assertFalse(rowFrom(dto, emptySet()).hasException)
+    }
+
+    @Test fun `rowFrom marks a leak id (existing semantics preserved)`() {
+        assertTrue(rowFrom(node("x", null), setOf("x")).isLeak)
+    }
+
+    @Test fun `nodeFor returns the matching node and null for a missing id`() {
+        val m = CoroutineTreeModel()
+        m.apply(listOf(node("known-id", null)), emptySet())
+        val found = m.nodeFor("known-id")
+        assertNotNull(found)
+        assertEquals("known-id", rowOf(found).id)
+        assertNull(m.nodeFor("missing"))
     }
 
     @Test fun `re-parenting moves the node`() {
