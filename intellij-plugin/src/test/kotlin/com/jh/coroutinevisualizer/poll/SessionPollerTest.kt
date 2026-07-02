@@ -59,8 +59,8 @@ class SessionPollerTest {
         try {
             assertTrue(latch.await(5, TimeUnit.SECONDS), "expected a model within 5s")
             val m = assertNotNull(received.get())
-            assertEquals(1, m.tiles.total)
             assertEquals(1, m.tiles.active)
+            assertEquals(1, m.tiles.peak)
         } finally {
             poller.stop()
         }
