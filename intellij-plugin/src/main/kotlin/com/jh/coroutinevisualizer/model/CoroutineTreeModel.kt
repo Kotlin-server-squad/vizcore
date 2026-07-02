@@ -60,6 +60,9 @@ class CoroutineTreeModel {
         }
     }
 
+    /** Public node lookup for cross-highlight scrolling — plan 15-04 needs a [TreePath] to scroll to. */
+    fun nodeFor(id: String): DefaultMutableTreeNode? = nodesById[id]
+
     private fun wireParents(hierarchy: List<HierarchyNodeDto>) {
         for (dto in hierarchy) {
             val node = nodesById.getValue(dto.id)
@@ -76,26 +79,5 @@ class CoroutineTreeModel {
     private fun toRow(
         dto: HierarchyNodeDto,
         leakIds: Set<String>,
-    ): CoroutineRow {
-        val ageMs =
-            if (dto.createdAtNanos > 0) {
-                (System.nanoTime() - dto.createdAtNanos).coerceAtLeast(0) / NANOS_PER_MILLI
-            } else {
-                0
-            }
-        return CoroutineRow(
-            id = dto.id,
-            name = dto.name,
-            state = dto.state,
-            dispatcherName = dto.dispatcherName,
-            threadName = dto.currentThreadName,
-            ageMs = ageMs,
-            childCount = dto.children.size,
-            isLeak = dto.id in leakIds,
-        )
-    }
-
-    private companion object {
-        const val NANOS_PER_MILLI = 1_000_000L
-    }
+    ): CoroutineRow = rowFrom(dto, leakIds)
 }
