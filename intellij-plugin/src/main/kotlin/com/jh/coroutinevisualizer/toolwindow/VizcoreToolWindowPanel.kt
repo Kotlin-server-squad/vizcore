@@ -4,8 +4,10 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
@@ -16,6 +18,8 @@ import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.model.CoroutineRow
 import com.jh.coroutinevisualizer.model.CoroutineTreeModel
 import com.jh.coroutinevisualizer.model.ProblemCategory
+import com.jh.coroutinevisualizer.model.RoundGrouping
+import com.jh.coroutinevisualizer.model.RoundTreeModel
 import com.jh.coroutinevisualizer.model.SessionModel
 import com.jh.coroutinevisualizer.navigation.SourceNavigator
 import com.jh.coroutinevisualizer.poll.SessionPollingService
@@ -28,9 +32,13 @@ import java.awt.FlowLayout
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JToggleButton
 import javax.swing.SwingConstants
+import javax.swing.event.DocumentEvent
+import javax.swing.event.TreeExpansionEvent
+import javax.swing.event.TreeWillExpandListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
 import javax.swing.tree.TreeSelectionModel
@@ -84,6 +92,30 @@ class VizcoreToolWindowPanel(
     private val tree: Tree = buildTree()
     private val graphPanel = CoroutineGraphPanel(onSelect = ::selectCoroutine)
     private val graphScroll = JBScrollPane(graphPanel)
+
+    /** All-mode round-grouped history tree (SC#4); its OWN renderer holds per-tree flash state. */
+    private val roundTreeModel = RoundTreeModel()
+    private val allTreeRenderer = CoroutineTreeRenderer()
+    private val allTree: Tree = buildAllTree()
+
+    /** Live/All segmented control (D-18): two flat toggles manually paired (exactly one active). */
+    private val liveToggle = JToggleButton("Live")
+    private val allToggle = JToggleButton(ViewMode.allLabel(0))
+
+    /** Mode pill (D-18): swaps LIVE↔HISTORY text/color via [setViewMode]. Field so it stays mutable. */
+    private val modePill = JBLabel(LIVE_PILL_TEXT).apply { foreground = LIVE_GREEN }
+
+    /** Tree/graph toggle held as a field so All mode can disable it (D-20). */
+    private val graphToggle = JToggleButton("Graph")
+
+    /** All-mode-only history search (D-17); hidden in Live, shown in All. */
+    private val searchField = SearchTextField()
+
+    /** Active history search query; null = no search (blank field). EDT-confined. */
+    private var activeSearchQuery: String? = null
+
+    /** Current live-view mode (D-21: every session starts Live). EDT-confined. */
+    private var viewMode: ViewMode = ViewMode.LIVE
 
     /** Persistent Problems strip (D-01): healthy line + single-select category chips. */
     private val strip = ProblemsStripPanel(onFilterChange = ::onFilterChange)
@@ -158,6 +190,8 @@ class VizcoreToolWindowPanel(
             return
         }
         startedCorrelation = correlation
+        // D-21: every new session starts in Live; mode never persists across correlations.
+        setViewMode(ViewMode.LIVE)
 
         val health = BackendHealthCheck.check(backendUrl)
         if (health is BackendHealthCheck.HealthStatus.Down) {
@@ -171,22 +205,7 @@ class VizcoreToolWindowPanel(
         service.setListener(
             onModel = { model ->
                 // Already on the EDT (the service invokeLater's deliveries).
-                val previous = latestModel
-                if (model.hierarchy.isEmpty() && previous != null && previous.hierarchy.isNotEmpty()) {
-                    // Transient empty poll (backend blip / stale poller) — keep the last good tree.
-                } else {
-                    latestModel = model
-                    strip.update(model.problems)
-                    problemsDetail.show(model.problems, activeProblemFilter)
-                    applyModelToTree(model)
-                    tiles.update(model.tiles)
-                    if (!expandedOnce && model.hierarchy.isNotEmpty()) {
-                        expandedOnce = true
-                        TreeUtil.expandAll(tree)
-                    }
-                    resolveSuspensionSites(model)
-                    showState(ContentState.LIVE)
-                }
+                onModelDelivered(model)
             },
             onError = { error ->
                 // Keep the last good model on screen; transient poll failures self-heal next tick.
@@ -194,6 +213,35 @@ class VizcoreToolWindowPanel(
             },
         )
         service.start(correlation)
+    }
+
+    /**
+     * Per-poll model delivery (EDT). The transient-empty guard short-circuits BEFORE the mode branch so
+     * a momentary empty poll keeps the last good tree in BOTH modes (Pitfall 4). Strip, tiles, problems
+     * detail, and the "All n" count are full-session in BOTH modes (SC#5/D-12); only the left tree
+     * differs — Live renders the filtered [applyModelToTree], All renders [applyAllModel].
+     */
+    private fun onModelDelivered(model: SessionModel) {
+        val previous = latestModel
+        if (model.hierarchy.isEmpty() && previous != null && previous.hierarchy.isNotEmpty()) {
+            return // Transient empty poll (backend blip / stale poller) — keep the last good tree.
+        }
+        latestModel = model
+        strip.update(model.problems)
+        problemsDetail.show(model.problems, activeProblemFilter)
+        tiles.update(model.tiles)
+        allToggle.text = ViewMode.allLabel(model.fullHierarchy.size)
+        if (viewMode == ViewMode.ALL) {
+            applyAllModel(model)
+        } else {
+            applyModelToTree(model)
+            if (!expandedOnce && model.hierarchy.isNotEmpty()) {
+                expandedOnce = true
+                TreeUtil.expandAll(tree)
+            }
+        }
+        resolveSuspensionSites(model)
+        showState(ContentState.LIVE)
     }
 
     private fun showState(state: ContentState) {
@@ -216,21 +264,10 @@ class VizcoreToolWindowPanel(
 
         val toolbar = JPanel(FlowLayout(FlowLayout.RIGHT, TOOLBAR_GAP, 0))
         toolbar.isOpaque = false
-        val liveLabel = JBLabel("● LIVE")
-        liveLabel.foreground = LIVE_GREEN
-        toolbar.add(liveLabel)
-        val graphToggle =
-            JToggleButton("Graph").apply {
-                toolTipText = "Toggle between the tree view and the parent-child graph view."
-                addActionListener {
-                    graphVisible = isSelected
-                    leftCardLayout.show(leftCards, if (isSelected) GRAPH_CARD else TREE_CARD)
-                    // The graph may be stale if the model updated while it was hidden — recompute now.
-                    if (isSelected) {
-                        latestModel?.let { graphPanel.setModel(GraphLayout.compute(it.hierarchy, it.leakIds)) }
-                    }
-                }
-            }
+        toolbar.add(modePill)
+        // Live/All segmented control sits LEFT of the Graph toggle (D-18).
+        buildModeToggles().forEach { toolbar.add(it) }
+        configureGraphToggle()
         toolbar.add(graphToggle)
         freezeButton.addActionListener { toggleFreeze() }
         toolbar.add(freezeButton)
@@ -249,6 +286,103 @@ class VizcoreToolWindowPanel(
         return panel
     }
 
+    /**
+     * Builds the Live/All segmented control (D-18). Two flat [JToggleButton]s manually paired — each
+     * click funnels through [setViewMode], which re-asserts exactly one selected (clicking the active
+     * one re-selects it). Returned so [buildLiveView] can insert them left of the Graph toggle.
+     */
+    private fun buildModeToggles(): List<JComponent> {
+        liveToggle.isSelected = true
+        liveToggle.addActionListener { setViewMode(ViewMode.LIVE) }
+        allToggle.addActionListener { setViewMode(ViewMode.ALL) }
+        // History search (D-17): All-mode-only affordance beside the mode toggles.
+        searchField.isVisible = false
+        searchField.addDocumentListener(
+            object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) {
+                    activeSearchQuery = searchField.text.trim().ifEmpty { null }
+                    // 2,800 substring checks are trivial — re-render immediately, no debounce.
+                    if (viewMode == ViewMode.ALL) latestModel?.let { applyAllModel(it) }
+                }
+            },
+        )
+        return listOf(liveToggle, allToggle, searchField)
+    }
+
+    /** Wires the tree/graph toggle listener (D-20 disable is applied in [setViewMode]). */
+    private fun configureGraphToggle() {
+        graphToggle.toolTipText = GRAPH_TOOLTIP
+        graphToggle.addActionListener {
+            graphVisible = graphToggle.isSelected
+            leftCardLayout.show(leftCards, if (graphToggle.isSelected) GRAPH_CARD else TREE_CARD)
+            // The graph may be stale if the model updated while it was hidden — recompute now.
+            if (graphToggle.isSelected) {
+                latestModel?.let { graphPanel.setModel(GraphLayout.compute(it.hierarchy, it.leakIds)) }
+            }
+        }
+    }
+
+    /**
+     * Single funnel for every mode effect (D-18/D-19/D-20): toggle selection, REAL poll cadence
+     * ([SessionPollingService.setMode]), pill swap, left card, graph enable/disable, then an immediate
+     * re-render from the latest model so the view never waits for the next poll.
+     */
+    private fun setViewMode(mode: ViewMode) {
+        viewMode = mode
+        liveToggle.isSelected = mode == ViewMode.LIVE
+        allToggle.isSelected = mode == ViewMode.ALL
+        searchField.isVisible = mode == ViewMode.ALL // history search is an All-mode affordance (D-17)
+        SessionPollingService.getInstance(project).setMode(mode)
+        if (mode == ViewMode.ALL) {
+            modePill.text = HISTORY_PILL_TEXT
+            modePill.foreground = HISTORY_AMBER
+            graphVisible = false
+            graphToggle.isSelected = false
+            graphToggle.isEnabled = false
+            graphToggle.toolTipText = GRAPH_DISABLED_TOOLTIP
+            leftCardLayout.show(leftCards, ALL_CARD)
+        } else {
+            modePill.text = LIVE_PILL_TEXT
+            modePill.foreground = LIVE_GREEN
+            graphToggle.isEnabled = ViewMode.graphEnabled(mode)
+            graphToggle.toolTipText = GRAPH_TOOLTIP
+            leftCardLayout.show(leftCards, if (graphToggle.isSelected) GRAPH_CARD else TREE_CARD)
+        }
+        latestModel?.let { if (mode == ViewMode.ALL) applyAllModel(it) else applyModelToTree(it) }
+    }
+
+    /** Renders the All-mode round tree from the UNFILTERED full-session hierarchy (D-18/D-19). */
+    private fun applyAllModel(model: SessionModel) {
+        roundTreeModel.apply(
+            model.fullHierarchy,
+            model.leakIds,
+            model.problems,
+            System.nanoTime(),
+            currentMatchIds(model),
+        )
+    }
+
+    /**
+     * The single D-17/D-03 match-set funnel for the All tree: history search AND the active problem
+     * chip narrow the same way. Both null → null (normal collapse plan); one non-null → it; both →
+     * their intersection. The search query is used ONLY via [RoundGrouping.searchMatchIds] (plain
+     * substring, never a compiled Regex — T-15-03, ASVS V5).
+     */
+    private fun currentMatchIds(model: SessionModel): Set<String>? {
+        val searchIds = activeSearchQuery?.let { RoundGrouping.searchMatchIds(model.fullHierarchy, it) }
+        val chipIds =
+            activeProblemFilter?.let { f ->
+                model.problems
+                    .filter { it.category == f }
+                    .map { it.coroutineId }
+                    .toSet()
+            }
+        return when {
+            searchIds != null && chipIds != null -> searchIds intersect chipIds
+            else -> searchIds ?: chipIds
+        }
+    }
+
     private fun toggleFreeze() {
         val service = SessionPollingService.getInstance(project)
         if (frozen) {
@@ -265,6 +399,7 @@ class VizcoreToolWindowPanel(
     private fun buildSplitter(): OnePixelSplitter {
         leftCards.add(JBScrollPane(tree), TREE_CARD)
         leftCards.add(graphScroll, GRAPH_CARD)
+        leftCards.add(JBScrollPane(allTree), ALL_CARD)
         leftCardLayout.show(leftCards, TREE_CARD)
 
         // D-04/D-05: right pane swaps contextually between the problems list (default) and the
@@ -289,21 +424,54 @@ class VizcoreToolWindowPanel(
         tree.isRootVisible = false
         tree.showsRootHandles = true
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
-        tree.addTreeSelectionListener { onTreeSelection(tree) }
+        tree.addTreeSelectionListener { onTreeSelection(tree, treeRenderer) }
         return tree
     }
 
-    private fun onTreeSelection(tree: Tree) {
+    /**
+     * The All-mode history tree — a SECOND [Tree] over [roundTreeModel] with its OWN renderer (flash
+     * state is per-tree). Coroutine-row selections open the inspector exactly like Live; group / summary
+     * / placeholder rows fall through to the problems card. NEVER expandAll'd — the SC#4 perf bar relies
+     * on lazy materialization (Task 2's TreeWillExpandListener), so only the Live tree eager-expands.
+     */
+    private fun buildAllTree(): Tree {
+        val tree = Tree(roundTreeModel.treeModel)
+        tree.cellRenderer = allTreeRenderer
+        tree.isRootVisible = false
+        tree.showsRootHandles = true
+        tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
+        tree.addTreeSelectionListener { onTreeSelection(tree, allTreeRenderer) }
+        // Lazy materialization (D-15): the ONLY place history subtrees get built — the SC#4 cost model.
+        tree.addTreeWillExpandListener(
+            object : TreeWillExpandListener {
+                override fun treeWillExpand(event: TreeExpansionEvent) {
+                    val node = event.path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    // materialize() no-ops unless the group still carries its placeholder child.
+                    roundTreeModel.materialize(node)
+                }
+
+                override fun treeWillCollapse(event: TreeExpansionEvent) {
+                    // No-op: keep materialized nodes so instance reuse keeps refreshes cheap (D-15).
+                }
+            },
+        )
+        return tree
+    }
+
+    private fun onTreeSelection(
+        tree: Tree,
+        renderer: CoroutineTreeRenderer,
+    ) {
         val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
         val row = node?.userObject as? CoroutineRow
         if (row == null) {
-            // Selection cleared → back to the problems-first default (D-04/D-05).
+            // Selection cleared, or a group/summary/placeholder row → problems-first default (D-04/D-05).
             inspector.show(null)
             showProblemsCard()
             return
         }
         // A real selection lands → clear the soft highlight and swap in the inspector (D-08).
-        treeRenderer.softHighlightId = null
+        renderer.softHighlightId = null
         tree.repaint()
         showInspectorCard()
         selectCoroutine(row.id)
@@ -318,6 +486,8 @@ class VizcoreToolWindowPanel(
         val model = latestModel ?: return
         applyModelToTree(model)
         problemsDetail.show(model.problems, activeProblemFilter)
+        // D-03 in both modes: a chip filters the All tree via the same match-set auto-expand path.
+        if (viewMode == ViewMode.ALL) applyAllModel(model)
     }
 
     /**
@@ -446,10 +616,20 @@ class VizcoreToolWindowPanel(
 
         const val TREE_CARD = "TREE"
         const val GRAPH_CARD = "GRAPH"
+        const val ALL_CARD = "ALL"
 
         const val RIGHT_PROBLEMS = "PROBLEMS"
         const val RIGHT_INSPECTOR = "INSPECTOR"
 
+        const val LIVE_PILL_TEXT = "● LIVE · ~200ms"
+        const val HISTORY_PILL_TEXT = "● HISTORY · ~1.5s"
+
+        const val GRAPH_TOOLTIP = "Toggle between the tree view and the parent-child graph view."
+        const val GRAPH_DISABLED_TOOLTIP = "Graph is live-only"
+
         val LIVE_GREEN: JBColor = JBColor(Color(0x2E7D32), Color(0x66BB6A))
+
+        /** Amber "history" accent for the mode pill in All mode (never the danger red). */
+        val HISTORY_AMBER: JBColor = JBColor(Color(0xF5A524), Color(0xF5A524))
     }
 }
