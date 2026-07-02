@@ -225,8 +225,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 15-02-PLAN.md — Row density + exception badge + soft-highlight primitive + inspector reorder (D-23/24, D-08 primitive)
-- [ ] 15-03-PLAN.md — ViewMode + RoundGrouping collapse economy + poll cadence/tracker wiring (D-13..17/19/21)
+- [x] 15-02-PLAN.md — Row density + exception badge + soft-highlight primitive + inspector reorder (D-23/24, D-08 primitive)
+- [x] 15-03-PLAN.md — ViewMode + RoundGrouping collapse economy + poll cadence/tracker wiring (D-13..17/19/21)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -260,4 +260,4 @@ Plans:
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
-| 15. Plugin Problems + data surfacing | v1.2 | 1/6 | In Progress|  |
+| 15. Plugin Problems + data surfacing | v1.2 | 3/6 | In Progress|  |
