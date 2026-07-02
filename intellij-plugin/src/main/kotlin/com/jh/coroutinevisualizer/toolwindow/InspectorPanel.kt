@@ -18,6 +18,7 @@ import javax.swing.SwingConstants
  *
  * No networking or threading lives here — the tool window drives [show] from the EDT.
  */
+@Suppress("TooManyFunctions") // presentational panel built from many small card/label helpers
 class InspectorPanel(
     private val onJump: (fileName: String, line: Int) -> Unit,
 ) : JPanel(BorderLayout()) {
@@ -46,8 +47,34 @@ class InspectorPanel(
         column.layout = BoxLayout(column, BoxLayout.Y_AXIS)
         column.isOpaque = false
 
+        // D-24 / sketch 005-A most-diagnostic-first order: exception (when thrown) → timing →
+        // suspended-at (+ its suspension history + the future multi-frame stack placeholder) →
+        // launched-at → runs-on → identity → events.
         val status = if (vm.running) "running" else "completed"
         column.add(header(vm))
+        if (vm.exceptionType != null) {
+            column.add(exceptionCard(vm))
+        }
+        column.add(
+            captionedRows(
+                "Timing",
+                listOf(
+                    "$status  ·  lifetime ${vm.lifetimeLabel}",
+                    "active ${vm.activeLabel}  ·  suspended ${vm.suspendedLabel}  ·  total ${vm.totalLabel}",
+                ),
+            ),
+        )
+        column.add(sourceRow("Suspended at", vm.suspendedAt))
+        if (vm.suspensionHistory.isNotEmpty()) {
+            val history = leftColumn()
+            history.border = JBUI.Borders.emptyTop(ROW_GAP)
+            history.add(caption("Suspension history"))
+            vm.suspensionHistory.forEach { ref -> appendRef(history, ref) }
+            column.add(history)
+        }
+        column.add(placeholderCard())
+        column.add(sourceRow("Launched at", vm.launchedAt))
+        column.add(captionedRows("Runs on", listOf("${vm.threadName ?: EMPTY_VALUE} · ${vm.dispatcherName ?: EMPTY_VALUE}")))
         column.add(
             captionedRows(
                 "Identity",
@@ -58,28 +85,6 @@ class InspectorPanel(
                 ),
             ),
         )
-        column.add(captionedRows("Runs on", listOf("${vm.threadName ?: EMPTY_VALUE} · ${vm.dispatcherName ?: EMPTY_VALUE}")))
-        if (vm.exceptionType != null) {
-            column.add(exceptionCard(vm))
-        }
-        column.add(sourceRow("Suspended at", vm.suspendedAt))
-        column.add(sourceRow("Launched at", vm.launchedAt))
-        column.add(
-            captionedRows(
-                "Timing",
-                listOf(
-                    "$status  ·  lifetime ${vm.lifetimeLabel}",
-                    "active ${vm.activeLabel}  ·  suspended ${vm.suspendedLabel}  ·  total ${vm.totalLabel}",
-                ),
-            ),
-        )
-        if (vm.suspensionHistory.isNotEmpty()) {
-            val history = leftColumn()
-            history.border = JBUI.Borders.emptyTop(ROW_GAP)
-            history.add(caption("Suspension history"))
-            vm.suspensionHistory.forEach { ref -> appendRef(history, ref) }
-            column.add(history)
-        }
         if (vm.events.isNotEmpty()) {
             val lines =
                 vm.events.map { event ->
@@ -93,6 +98,22 @@ class InspectorPanel(
             column.add(captionedRows("Events", lines))
         }
         return column
+    }
+
+    /**
+     * Placeholder for the future multi-frame suspension stack (D-24, sketch 005). It sits directly
+     * under the suspension block because that is where the real stack will land once the backend
+     * DebugProbes-stack change ships; for now it is a static, wire-free label (no HTML path).
+     */
+    private fun placeholderCard(): Component {
+        val panel = leftColumn()
+        panel.border = JBUI.Borders.emptyTop(ROW_GAP)
+        panel.add(caption("Stack trace"))
+        val note = JBLabel("Multi-frame suspension stacks coming soon — single frame shown above.")
+        note.foreground = JBColor.GRAY
+        note.alignmentX = Component.LEFT_ALIGNMENT
+        panel.add(note)
+        return panel
     }
 
     private fun exceptionCard(vm: InspectorViewModel): Component {
