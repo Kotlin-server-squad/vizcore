@@ -4,8 +4,10 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
@@ -16,6 +18,7 @@ import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.model.CoroutineRow
 import com.jh.coroutinevisualizer.model.CoroutineTreeModel
 import com.jh.coroutinevisualizer.model.ProblemCategory
+import com.jh.coroutinevisualizer.model.RoundGrouping
 import com.jh.coroutinevisualizer.model.RoundTreeModel
 import com.jh.coroutinevisualizer.model.SessionModel
 import com.jh.coroutinevisualizer.navigation.SourceNavigator
@@ -33,6 +36,9 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JToggleButton
 import javax.swing.SwingConstants
+import javax.swing.event.DocumentEvent
+import javax.swing.event.TreeExpansionEvent
+import javax.swing.event.TreeWillExpandListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
 import javax.swing.tree.TreeSelectionModel
@@ -101,6 +107,12 @@ class VizcoreToolWindowPanel(
 
     /** Tree/graph toggle held as a field so All mode can disable it (D-20). */
     private val graphToggle = JToggleButton("Graph")
+
+    /** All-mode-only history search (D-17); hidden in Live, shown in All. */
+    private val searchField = SearchTextField()
+
+    /** Active history search query; null = no search (blank field). EDT-confined. */
+    private var activeSearchQuery: String? = null
 
     /** Current live-view mode (D-21: every session starts Live). EDT-confined. */
     private var viewMode: ViewMode = ViewMode.LIVE
@@ -283,7 +295,18 @@ class VizcoreToolWindowPanel(
         liveToggle.isSelected = true
         liveToggle.addActionListener { setViewMode(ViewMode.LIVE) }
         allToggle.addActionListener { setViewMode(ViewMode.ALL) }
-        return listOf(liveToggle, allToggle)
+        // History search (D-17): All-mode-only affordance beside the mode toggles.
+        searchField.isVisible = false
+        searchField.addDocumentListener(
+            object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) {
+                    activeSearchQuery = searchField.text.trim().ifEmpty { null }
+                    // 2,800 substring checks are trivial — re-render immediately, no debounce.
+                    if (viewMode == ViewMode.ALL) latestModel?.let { applyAllModel(it) }
+                }
+            },
+        )
+        return listOf(liveToggle, allToggle, searchField)
     }
 
     /** Wires the tree/graph toggle listener (D-20 disable is applied in [setViewMode]). */
@@ -308,6 +331,7 @@ class VizcoreToolWindowPanel(
         viewMode = mode
         liveToggle.isSelected = mode == ViewMode.LIVE
         allToggle.isSelected = mode == ViewMode.ALL
+        searchField.isVisible = mode == ViewMode.ALL // history search is an All-mode affordance (D-17)
         SessionPollingService.getInstance(project).setMode(mode)
         if (mode == ViewMode.ALL) {
             modePill.text = HISTORY_PILL_TEXT
@@ -338,14 +362,26 @@ class VizcoreToolWindowPanel(
         )
     }
 
-    /** Active chip filter as a match-set for the All tree (search is folded in by Task 2). */
-    private fun currentMatchIds(model: SessionModel): Set<String>? =
-        activeProblemFilter?.let { f ->
-            model.problems
-                .filter { it.category == f }
-                .map { it.coroutineId }
-                .toSet()
+    /**
+     * The single D-17/D-03 match-set funnel for the All tree: history search AND the active problem
+     * chip narrow the same way. Both null → null (normal collapse plan); one non-null → it; both →
+     * their intersection. The search query is used ONLY via [RoundGrouping.searchMatchIds] (plain
+     * substring, never a compiled Regex — T-15-03, ASVS V5).
+     */
+    private fun currentMatchIds(model: SessionModel): Set<String>? {
+        val searchIds = activeSearchQuery?.let { RoundGrouping.searchMatchIds(model.fullHierarchy, it) }
+        val chipIds =
+            activeProblemFilter?.let { f ->
+                model.problems
+                    .filter { it.category == f }
+                    .map { it.coroutineId }
+                    .toSet()
+            }
+        return when {
+            searchIds != null && chipIds != null -> searchIds intersect chipIds
+            else -> searchIds ?: chipIds
         }
+    }
 
     private fun toggleFreeze() {
         val service = SessionPollingService.getInstance(project)
@@ -405,6 +441,20 @@ class VizcoreToolWindowPanel(
         tree.showsRootHandles = true
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
         tree.addTreeSelectionListener { onTreeSelection(tree, allTreeRenderer) }
+        // Lazy materialization (D-15): the ONLY place history subtrees get built — the SC#4 cost model.
+        tree.addTreeWillExpandListener(
+            object : TreeWillExpandListener {
+                override fun treeWillExpand(event: TreeExpansionEvent) {
+                    val node = event.path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    // materialize() no-ops unless the group still carries its placeholder child.
+                    roundTreeModel.materialize(node)
+                }
+
+                override fun treeWillCollapse(event: TreeExpansionEvent) {
+                    // No-op: keep materialized nodes so instance reuse keeps refreshes cheap (D-15).
+                }
+            },
+        )
         return tree
     }
 
@@ -436,6 +486,8 @@ class VizcoreToolWindowPanel(
         val model = latestModel ?: return
         applyModelToTree(model)
         problemsDetail.show(model.problems, activeProblemFilter)
+        // D-03 in both modes: a chip filters the All tree via the same match-set auto-expand path.
+        if (viewMode == ViewMode.ALL) applyAllModel(model)
     }
 
     /**
