@@ -90,6 +90,12 @@ class ProblemsStripPanel(
         onFilterChange(activeCategory)
     }
 
+    /** Clears any active chip filter WITHOUT firing [onFilterChange]; used on session switch. */
+    fun clearFilter() {
+        activeCategory = null
+        syncSelection()
+    }
+
     /** Reflects [activeCategory] onto every chip's selected state (setSelected fires no ActionEvent). */
     private fun syncSelection() {
         currentChips.forEach { (category, chip) ->

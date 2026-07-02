@@ -199,6 +199,18 @@ class VizcoreToolWindowPanel(
             return
         }
         startedCorrelation = correlation
+        // A NEW correlation is a new session: drop every piece of session-scoped state, or the old
+        // session's model keeps rendering, the transient-empty guard compares against the OLD
+        // hierarchy, id-colliding caches show wrong sites, and stale search/chip filters narrow the
+        // new session's trees. latestModel goes first — clearing the search field re-renders from it.
+        latestModel = null
+        expandedOnce = false
+        suspensionSites.clear()
+        suspensionFetchInFlight.clear()
+        activeSearchQuery = null
+        searchField.text = ""
+        activeProblemFilter = null
+        strip.clearFilter()
         // D-21: every new session starts in Live; mode never persists across correlations.
         setViewMode(ViewMode.LIVE)
 
