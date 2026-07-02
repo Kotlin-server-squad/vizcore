@@ -104,6 +104,19 @@ class RoundTreeModel {
         treeModel.nodeStructureChanged(groupNode)
     }
 
+    /**
+     * Record that the USER expanded the round (called from the JTree's expand listener). This must
+     * happen at the JTree boundary, not inside [materialize] — materialize no-ops for groups that are
+     * already materialized (in-progress / search-matched rounds), so marking there missed exactly the
+     * rounds whose subtree would later be stripped to a placeholder under a still-expanded path.
+     */
+    fun markUserExpanded(rootId: String) {
+        userExpandedRootIds += rootId
+    }
+
+    /** True when the user manually expanded the round and it should stay materialized. */
+    fun isUserExpanded(rootId: String): Boolean = rootId in userExpandedRootIds
+
     /** True when [node] is a group's dummy placeholder child. */
     fun isPlaceholder(node: DefaultMutableTreeNode): Boolean = node.userObject === Placeholder
 

@@ -18,6 +18,7 @@ import com.jh.coroutinevisualizer.health.BackendHealthCheck
 import com.jh.coroutinevisualizer.model.CoroutineRow
 import com.jh.coroutinevisualizer.model.CoroutineTreeModel
 import com.jh.coroutinevisualizer.model.ProblemCategory
+import com.jh.coroutinevisualizer.model.RoundGroup
 import com.jh.coroutinevisualizer.model.RoundGrouping
 import com.jh.coroutinevisualizer.model.RoundTreeModel
 import com.jh.coroutinevisualizer.model.SessionModel
@@ -142,6 +143,14 @@ class VizcoreToolWindowPanel(
 
     /** Expand the (invisible) root once the first data arrives, so top-level coroutines are visible. */
     private var expandedOnce = false
+
+    /**
+     * True while [applyAllModel] mirrors the plan onto the JTree, so the expand listener can tell a
+     * PLAN-driven expandPath from a genuine user expansion — only the latter is recorded as
+     * user-expanded (a plan-driven mark would pin every in-progress/search round materialized forever,
+     * defeating the D-15 collapse economy). EDT-confined.
+     */
+    private var programmaticExpand = false
 
     private val backendUrl = VizcoreSettings.getInstance().backendUrl
     private val apiClient = VizcoreApiClient(backendUrl, VizcoreRunConfigurationExtension.AGENT_TOKEN)
@@ -378,10 +387,22 @@ class VizcoreToolWindowPanel(
         // Mirror the plan's `expanded` flag onto the JTree (D-15/D-17): without expandPath the
         // in-progress and search-matched rounds are materialized in the model but stay visually
         // collapsed — Swing never auto-expands nodes inserted under a collapsed parent.
-        for (group in plan.listed) {
-            if (!group.expanded) continue
-            val node = roundTreeModel.groupNodeFor(group.rootId) ?: continue
-            allTree.expandPath(TreePath(node.path))
+        programmaticExpand = true
+        try {
+            for (group in plan.listed) {
+                val node = roundTreeModel.groupNodeFor(group.rootId) ?: continue
+                val path = TreePath(node.path)
+                if (group.expanded) {
+                    allTree.expandPath(path)
+                } else if (!roundTreeModel.isUserExpanded(group.rootId) && allTree.isExpanded(path)) {
+                    // The round left its expanded state (finished / search cleared) and the model
+                    // swapped its subtree for a placeholder — collapse the JTree path too, otherwise
+                    // it stays expanded over a bare "…" and treeWillExpand can never fire again.
+                    allTree.collapsePath(path)
+                }
+            }
+        } finally {
+            programmaticExpand = false
         }
     }
 
@@ -469,6 +490,12 @@ class VizcoreToolWindowPanel(
             object : TreeWillExpandListener {
                 override fun treeWillExpand(event: TreeExpansionEvent) {
                     val node = event.path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    // Record user intent HERE, at the JTree boundary — materialize() no-ops for
+                    // already-materialized (in-progress / search) groups, so marking inside it missed
+                    // them and their subtree later collapsed into a stuck "…" placeholder.
+                    if (!programmaticExpand) {
+                        (node.userObject as? RoundGroup)?.let { roundTreeModel.markUserExpanded(it.rootId) }
+                    }
                     // materialize() no-ops unless the group still carries its placeholder child.
                     roundTreeModel.materialize(node)
                 }
