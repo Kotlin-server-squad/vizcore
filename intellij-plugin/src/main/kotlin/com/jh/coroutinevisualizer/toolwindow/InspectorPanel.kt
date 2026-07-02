@@ -128,7 +128,7 @@ class InspectorPanel(
         captionLabel.border = JBUI.Borders.emptyLeft(CARD_INSET)
         panel.add(captionLabel)
 
-        val type = JBLabel(vm.exceptionType.orEmpty())
+        val type = noHtml(JBLabel(vm.exceptionType.orEmpty()))
         type.foreground = DANGER_COLOR
         type.font = type.font.deriveFont(Font.BOLD)
         type.alignmentX = Component.LEFT_ALIGNMENT
@@ -136,7 +136,7 @@ class InspectorPanel(
         panel.add(type)
 
         vm.exceptionMessage?.takeIf { it.isNotBlank() }?.let { message ->
-            val label = JBLabel(message)
+            val label = noHtml(JBLabel(message))
             label.alignmentX = Component.LEFT_ALIGNMENT
             label.border = JBUI.Borders.emptyLeft(CARD_INSET)
             panel.add(label)
@@ -147,13 +147,13 @@ class InspectorPanel(
     private fun header(vm: InspectorViewModel): Component {
         val panel = leftColumn()
 
-        val title = JBLabel("${vm.name}  ·  ${vm.state}")
+        val title = noHtml(JBLabel("${vm.name}  ·  ${vm.state}"))
         title.font = title.font.deriveFont(Font.BOLD, TITLE_FONT_SIZE)
         title.alignmentX = Component.LEFT_ALIGNMENT
         panel.add(title)
 
         if (vm.identity.isNotBlank()) {
-            val identity = JBLabel(vm.identity)
+            val identity = noHtml(JBLabel(vm.identity))
             identity.foreground = JBColor.GRAY
             identity.font = identity.font.deriveFont(SMALL_FONT_SIZE)
             identity.alignmentX = Component.LEFT_ALIGNMENT
@@ -216,7 +216,7 @@ class InspectorPanel(
     }
 
     private fun caption(text: String): JBLabel {
-        val label = JBLabel(text)
+        val label = noHtml(JBLabel(text))
         label.foreground = JBColor.GRAY
         label.font = label.font.deriveFont(Font.BOLD, SMALL_FONT_SIZE)
         label.alignmentX = Component.LEFT_ALIGNMENT
@@ -224,8 +224,17 @@ class InspectorPanel(
     }
 
     private fun value(text: String): Component {
-        val label = JBLabel(text)
+        val label = noHtml(JBLabel(text))
         label.alignmentX = Component.LEFT_ALIGNMENT
+        return label
+    }
+
+    /**
+     * Disables Swing HTML rendering on a wire-fed label (T-15-01): a "&lt;html&gt;…" name, state,
+     * identity, exception message, or event reason stays literal — never markup, never a remote img.
+     */
+    private fun noHtml(label: JBLabel): JBLabel {
+        label.putClientProperty("html.disable", true)
         return label
     }
 
