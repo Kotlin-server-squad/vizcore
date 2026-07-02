@@ -508,19 +508,19 @@ keep += problemIds        // <-- NEW (D-12): leaks ∪ exceptions ∪ longSuspen
 | A6 | Throughput tile format = "12.3/s" (`%.1f/s`) | Code Examples | Cosmetic; discretion per CONTEXT |
 | A7 | `scrollPathToVisible` does not fire the `TreeSelectionListener` (satisfies D-08) | Pattern 4 | If wrong, the soft highlight would swap the pane; standard Swing guarantees selection is separate from scroll — low risk, verify in live UAT |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **CancellationException match rule (A1).**
+1. **CancellationException match rule (A1).** — **RESOLVED:** plan 15-01 adopts `endsWith("CancellationException")` (per D-09) with a unit test over the observed strings (`ProblemDerivationTest`).
    - What we know: sketch says exclude "kotlin/kotlinx CancellationException"; backend sends `exceptionType` as a type name string.
    - What's unclear: exact FQNs the backend emits (does it send simple name or FQN? `JobCancellationException`?).
    - Recommendation: use `endsWith("CancellationException")`; add a unit test with the real strings observed in a live session; confirm during discuss/plan.
 
-2. **"Current round" cardinality (A3).**
+2. **"Current round" cardinality (A3).** — **RESOLVED:** plan 15-03 allows multiple concurrent IN-PROGRESS groups (data-true; test comment "multiple concurrent in-progress groups allowed (A3)").
    - What we know: D-15 says "current round expanded and marked IN PROGRESS" (singular phrasing).
    - What's unclear: whether concurrent roots can produce multiple in-progress rounds.
    - Recommendation: treat every root with active descendants as IN PROGRESS (data-true); revisit if the user wants a single "current."
 
-3. **Soft-highlight persistence: flash vs. outline (D-08 discretion).**
+3. **Soft-highlight persistence: flash vs. outline (D-08 discretion).** — **RESOLVED:** plan 15-02 implements a persistent outline (`softHighlightId` held, not a timed flash).
    - What we know: existing flash Timer self-clears after 1200ms; an outline would persist until the next problem is selected.
    - Recommendation: persistent outline (`softHighlightId` held) reads better for "which coroutine is this problem" than a brief flash; low-cost to switch.
 

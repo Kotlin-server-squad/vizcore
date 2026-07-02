@@ -217,7 +217,26 @@ Plans:
   4. A Live/All view toggle exists per sketch 006 winner A: a segmented `[Live | All n]` control in the header next to Tree/Graph (LIVE ⇄ HISTORY pill swap, refresh indicator ~200ms ⇄ ~1.5s). Live = active + recently-completed (current 5s-window behavior); All = full session history grouped by round (collapsible groups w/ ✓/✗/⚠ counts, current round marked IN PROGRESS, older rounds collapsed into one summary node, history search) with no UI lag at 2,800+ nodes.
   5. Tiles (Active · Throughput · Leaks · Peak) keep showing full-session totals in both view modes.
 
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1**
+
+- [ ] 15-01-PLAN.md — Problem taxonomy + SuspensionTracker + SessionModel pinning + tile retarget (D-06/07/09/10/11/12/22)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 15-02-PLAN.md — Row density + exception badge + soft-highlight primitive + inspector reorder (D-23/24, D-08 primitive)
+- [ ] 15-03-PLAN.md — ViewMode + RoundGrouping collapse economy + poll cadence/tracker wiring (D-13..17/19/21)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 15-04-PLAN.md — Problems strip + detail panel + contextual right pane + cross-highlight (D-01..08)
+- [ ] 15-05-PLAN.md — All-mode lazy RoundTreeModel + group-row rendering (D-13..17 materialization)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 15-06-PLAN.md — [Live | All n] toggle, search, graph disable, mode wiring (D-17..21, SC#5)
+
 **UI hint**: yes
 
 ## Progress
@@ -241,4 +260,4 @@ Plans:
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
-| 15. Plugin Problems + data surfacing | v1.2 | 0/TBD | Not started | - |
+| 15. Plugin Problems + data surfacing | v1.2 | 0/6 | Not started | - |
