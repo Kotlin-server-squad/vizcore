@@ -230,8 +230,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 15-04-PLAN.md — Problems strip + detail panel + contextual right pane + cross-highlight (D-01..08)
-- [ ] 15-05-PLAN.md — All-mode lazy RoundTreeModel + group-row rendering (D-13..17 materialization)
+- [x] 15-04-PLAN.md — Problems strip + detail panel + contextual right pane + cross-highlight (D-01..08)
+- [x] 15-05-PLAN.md — All-mode lazy RoundTreeModel + group-row rendering (D-13..17 materialization)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -260,4 +260,4 @@ Plans:
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
-| 15. Plugin Problems + data surfacing | v1.2 | 3/6 | In Progress|  |
+| 15. Plugin Problems + data surfacing | v1.2 | 5/6 | In Progress|  |
