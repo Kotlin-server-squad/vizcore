@@ -26,6 +26,7 @@ import javax.swing.tree.TreeNode
  * hierarchy while a previous non-empty snapshot exists is the CALLER's guard (panel Pitfall 4), not
  * this model's concern.
  */
+@Suppress("TooManyFunctions") // small single-purpose tree-diff/materialization helpers inflate the count
 class RoundTreeModel {
     private val root = DefaultMutableTreeNode()
     val treeModel: DefaultTreeModel = DefaultTreeModel(root)
