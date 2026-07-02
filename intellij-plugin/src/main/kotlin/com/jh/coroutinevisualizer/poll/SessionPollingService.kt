@@ -8,6 +8,7 @@ import com.jh.coroutinevisualizer.api.VizcoreApiClient
 import com.jh.coroutinevisualizer.model.SessionModel
 import com.jh.coroutinevisualizer.run.VizcoreRunConfigurationExtension
 import com.jh.coroutinevisualizer.settings.VizcoreSettings
+import com.jh.coroutinevisualizer.toolwindow.ViewMode
 
 /**
  * Project-scoped owner of the live poll loop (replaces the deleted loopback/browser path). Builds a
@@ -43,6 +44,21 @@ class SessionPollingService : Disposable {
             onModel = { model -> ApplicationManager.getApplication().invokeLater { listener?.invoke(model) } },
             onError = { e -> ApplicationManager.getApplication().invokeLater { errorListener?.invoke(e) } },
         )
+    }
+
+    /**
+     * Switches the live-view mode, retuning the REAL poll cadence: LIVE keeps the settings interval,
+     * ALL drops to the slow [ViewMode.ALL_INTERVAL_MS] (D-19). The active session is retained — start()
+     * is not rebuilt, so no re-resolve and no second poller thread (Pitfall 5). No-op before start().
+     */
+    fun setMode(mode: ViewMode) {
+        val live =
+            VizcoreSettings
+                .getInstance()
+                .pollIntervalMs
+                .toLong()
+                .takeIf { it > 0 } ?: DEFAULT_INTERVAL_MS
+        poller?.setInterval(ViewMode.intervalMsFor(mode, live))
     }
 
     /** The resolved session id for the active poll, or null until the agent binds the correlation. */
