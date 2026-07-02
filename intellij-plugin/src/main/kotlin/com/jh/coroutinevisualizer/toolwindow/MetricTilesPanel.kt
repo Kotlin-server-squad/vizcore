@@ -8,13 +8,14 @@ import java.awt.Color
 import java.awt.Component
 import java.awt.FlowLayout
 import java.awt.Font
+import java.util.Locale
 import javax.swing.BoxLayout
 import javax.swing.JPanel
 
 /**
- * Header strip of small metric tiles (Coroutines / Active / Suspended / Leak risk / Dispatchers).
- * The label→value mapping lives in the pure [tileValues] helper (unit-tested); this panel only
- * renders those values as theme-aware tiles. The leak-risk tile turns amber when its value is > 0.
+ * Header strip of small metric tiles (Active / Throughput / Leaks / Peak). The label→value mapping
+ * lives in the pure [tileValues] helper (unit-tested); this panel only renders those values as
+ * theme-aware tiles. The Leaks tile turns amber when its value is > 0.
  */
 class MetricTilesPanel : JPanel(FlowLayout(FlowLayout.LEFT, TILE_GAP, TILE_GAP)) {
     init {
@@ -24,7 +25,7 @@ class MetricTilesPanel : JPanel(FlowLayout(FlowLayout.LEFT, TILE_GAP, TILE_GAP))
     /** Re-renders all tiles from the latest session counts. Call on the EDT. */
     fun update(tiles: SessionTiles) {
         removeAll()
-        val isLeak = tiles.leakRisk > 0
+        val isLeak = tiles.leaks > 0
         for ((index, pair) in tileValues(tiles).withIndex()) {
             val (label, value) = pair
             val highlight = index == LEAK_RISK_INDEX && isLeak
@@ -68,7 +69,7 @@ class MetricTilesPanel : JPanel(FlowLayout(FlowLayout.LEFT, TILE_GAP, TILE_GAP))
     companion object {
         private const val TILE_GAP = 6
         private const val TILE_PADDING = 8
-        private const val LEAK_RISK_INDEX = 3
+        private const val LEAK_RISK_INDEX = 2
         private const val VALUE_FONT_SIZE = 16f
         private const val CAPTION_FONT_SIZE = 11f
         private const val AMBER_RGB = 0xF5A524
@@ -77,11 +78,10 @@ class MetricTilesPanel : JPanel(FlowLayout(FlowLayout.LEFT, TILE_GAP, TILE_GAP))
         /** Ordered label→value pairs for the header tiles. Pure; the rendering gate. */
         fun tileValues(tiles: SessionTiles): List<Pair<String, String>> =
             listOf(
-                "Coroutines" to tiles.total.toString(),
                 "Active" to tiles.active.toString(),
-                "Suspended" to tiles.suspended.toString(),
-                "Leak risk" to tiles.leakRisk.toString(),
-                "Dispatchers" to tiles.dispatchers.toString(),
+                "Throughput" to String.format(Locale.ROOT, "%.1f/s", tiles.throughputPerSec),
+                "Leaks" to tiles.leaks.toString(),
+                "Peak" to tiles.peak.toString(),
             )
     }
 }

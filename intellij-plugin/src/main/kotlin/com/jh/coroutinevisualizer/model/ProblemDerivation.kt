@@ -18,8 +18,7 @@ object ProblemDerivation {
      * A real (user) exception — anything except a kotlin/kotlinx/JDK CancellationException, which is
      * normal structured-concurrency cancellation flow, not a problem (D-09, A1 rule).
      */
-    fun isRealException(exceptionType: String?): Boolean =
-        exceptionType != null && !exceptionType.endsWith("CancellationException")
+    fun isRealException(exceptionType: String?): Boolean = exceptionType != null && !exceptionType.endsWith("CancellationException")
 
     /**
      * Builds the ordered problem list: all EXCEPTION problems, then LEAK, then LONG_SUSPENDED (D-07

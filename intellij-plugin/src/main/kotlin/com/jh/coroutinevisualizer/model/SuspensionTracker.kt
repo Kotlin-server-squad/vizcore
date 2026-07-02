@@ -11,7 +11,9 @@ import com.jh.coroutinevisualizer.api.HierarchyNodeDto
  * Accepted caveat (D-11, Pitfall 1): idle-by-design coroutines (actor loops blocked on channel
  * receive) will flag after ~30s — tune the threshold later if noisy.
  */
-class SuspensionTracker(private val thresholdNanos: Long = LONG_SUSPENDED_THRESHOLD_NANOS) {
+class SuspensionTracker(
+    private val thresholdNanos: Long = LONG_SUSPENDED_THRESHOLD_NANOS,
+) {
     private val firstSuspendedAt = mutableMapOf<String, Long>()
 
     /**
@@ -23,7 +25,8 @@ class SuspensionTracker(private val thresholdNanos: Long = LONG_SUSPENDED_THRESH
         nowNanos: Long = System.nanoTime(),
     ): Map<String, Long> {
         val suspendedIds =
-            hierarchy.filter { it.state.equals("SUSPENDED", ignoreCase = true) }
+            hierarchy
+                .filter { it.state.equals("SUSPENDED", ignoreCase = true) }
                 .mapTo(HashSet()) { it.id }
         firstSuspendedAt.keys.retainAll(suspendedIds)
         suspendedIds.forEach { firstSuspendedAt.putIfAbsent(it, nowNanos) }
