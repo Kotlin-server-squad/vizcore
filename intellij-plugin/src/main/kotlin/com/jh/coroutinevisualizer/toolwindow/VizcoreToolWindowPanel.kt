@@ -367,13 +367,22 @@ class VizcoreToolWindowPanel(
 
     /** Renders the All-mode round tree from the UNFILTERED full-session hierarchy (D-18/D-19). */
     private fun applyAllModel(model: SessionModel) {
-        roundTreeModel.apply(
-            model.fullHierarchy,
-            model.leakIds,
-            model.problems,
-            System.nanoTime(),
-            currentMatchIds(model),
-        )
+        val plan =
+            roundTreeModel.apply(
+                model.fullHierarchy,
+                model.leakIds,
+                model.problems,
+                System.nanoTime(),
+                currentMatchIds(model),
+            )
+        // Mirror the plan's `expanded` flag onto the JTree (D-15/D-17): without expandPath the
+        // in-progress and search-matched rounds are materialized in the model but stay visually
+        // collapsed — Swing never auto-expands nodes inserted under a collapsed parent.
+        for (group in plan.listed) {
+            if (!group.expanded) continue
+            val node = roundTreeModel.groupNodeFor(group.rootId) ?: continue
+            allTree.expandPath(TreePath(node.path))
+        }
     }
 
     /**

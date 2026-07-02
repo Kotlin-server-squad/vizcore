@@ -56,7 +56,9 @@ class RoundTreeModel {
      * Reconcile the tree to the collapse plan for [hierarchy]. [matchIds] null is the normal plan;
      * a non-null set is search mode (only matching rounds, all auto-expanded to their match closure,
      * no summary). [leakIds] and [problems] feed row badges and per-round counts; [nowNanos] makes
-     * age deterministic.
+     * age deterministic. Returns the plan so the caller can mirror `expanded` onto the JTree —
+     * Swing keeps nodes inserted under a collapsed parent collapsed, so model-side materialization
+     * alone never auto-expands anything visually.
      */
     fun apply(
         hierarchy: List<HierarchyNodeDto>,
@@ -64,7 +66,7 @@ class RoundTreeModel {
         problems: List<Problem>,
         nowNanos: Long,
         matchIds: Set<String>? = null,
-    ) {
+    ): RoundPlan {
         snapshotById = hierarchy.associateBy { it.id }
         snapshotByRoot = subtreeByRoot(hierarchy, snapshotById)
         snapshotLeakIds = leakIds
@@ -82,7 +84,11 @@ class RoundTreeModel {
 
         removeStaleGroups(liveRootIds)
         reconcileRootChildren(desired)
+        return plan
     }
+
+    /** The reused group node for [rootId], or null if the round is not currently listed. */
+    fun groupNodeFor(rootId: String): DefaultMutableTreeNode? = groupNodesByRootId[rootId]
 
     /**
      * Materialize a collapsed group's subtree on demand (called by the tree's expand listener).
