@@ -204,6 +204,22 @@ Plans:
 
 > **Parallelism note:** Phases 13 and 14 have no shared dependency (13 is backend/plugin + JCEF; 14 is FE/CI only) and may execute concurrently.
 
+### Phase 15: Plugin Problems + data surfacing
+
+**Goal**: The native plugin surfaces problems first and shows all the data it already has — a debugger-grade main view (sketch 004 winner D) and inspector (sketch 005 winner A), plus a Live/All view toggle so past coroutine rounds remain inspectable without re-introducing render lag.
+**Depends on**: Phase 13 (native plugin redesign on branch `feat/intellij-plugin-native-redesign` — tree/graph view, SessionModel live filter, inspector, tiles)
+**Requirements**: TBD (sketch-driven: `.planning/sketches/004-plugin-main-view` winner D, `005-plugin-inspector` winner A — winners marked in MANIFEST/README)
+**Success Criteria** (what must be TRUE):
+
+  1. A persistent Problems strip with filter chips sits above a split tree|problems-detail panel (sketch 004 variant D = join of A+B); selecting a problem cross-highlights the coroutine in the tree.
+  2. Tree rows carry the reco tiering: state · name · ~age · child count · leak/exception badge, with dispatcher/thread dimmed (row-data density pass, exception badge included).
+  3. Inspector is reordered to stacked cards, most-diagnostic-first: timing → suspended-at → runs-on → identity → events (sketch 005 variant A), with a placeholder card for future multi-frame stacks.
+  4. A Live/All view toggle exists: Live = active + recently-completed (current 5s-window behavior); All = full session history including every past round of coroutines, rendered at a slower refresh (~1–2s) with no UI lag at 2,800+ nodes.
+  5. Tiles (Active · Throughput · Leaks · Peak) keep showing full-session totals in both view modes.
+
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -225,3 +241,4 @@ Plans:
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
+| 15. Plugin Problems + data surfacing | v1.2 | 0/TBD | Not started | - |

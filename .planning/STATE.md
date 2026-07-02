@@ -133,6 +133,10 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 15 added (2026-07-02): Plugin Problems + data surfacing — sketch 004-D Problems strip + split detail panel, row-data density pass w/ exception badge, inspector reorder to 005-A stacked cards, Live/All view toggle (All = full history incl. past rounds at ~1–2s refresh, no lag). Depends on Phase 13's native redesign branch `feat/intellij-plugin-native-redesign`.
+
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table (26 Accepted ADRs locked; ADR-010 Proposed/advisory).
