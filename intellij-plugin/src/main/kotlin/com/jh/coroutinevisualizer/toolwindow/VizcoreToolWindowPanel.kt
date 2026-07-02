@@ -193,14 +193,25 @@ class VizcoreToolWindowPanel(
         // D-21: every new session starts in Live; mode never persists across correlations.
         setViewMode(ViewMode.LIVE)
 
-        val health = BackendHealthCheck.check(backendUrl)
-        if (health is BackendHealthCheck.HealthStatus.Down) {
-            showState(ContentState.BACKEND_DOWN)
-            return
-        }
-
         showState(ContentState.CONNECTING)
 
+        // The health probe is blocking HTTP (2s connect + 2s read timeouts) and startFor always runs
+        // on the EDT (init + the synchronous launch-topic publish) — probe on a pooled thread and hop
+        // back for the state switch, or an unreachable backend freezes the whole IDE for ~4s.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val health = BackendHealthCheck.check(backendUrl)
+            ApplicationManager.getApplication().invokeLater {
+                if (health is BackendHealthCheck.HealthStatus.Down) {
+                    showState(ContentState.BACKEND_DOWN)
+                } else {
+                    startPolling(correlation)
+                }
+            }
+        }
+    }
+
+    /** Registers the model/error listeners and starts the poll loop. Call on the EDT. */
+    private fun startPolling(correlation: String) {
         val service = SessionPollingService.getInstance(project)
         service.setListener(
             onModel = { model ->
