@@ -138,6 +138,9 @@ class VizcoreToolWindowPanel(
     /** Guards against re-issuing an in-flight suspension-site fetch for the same id (T-15-06). */
     private val suspensionFetchInFlight = ConcurrentHashMap.newKeySet<String>()
 
+    /** LONG_SUSPENDED ids seen on the previous poll; departures invalidate [suspensionSites]. EDT-confined. */
+    private var lastLongSuspendedIds: Set<String> = emptySet()
+
     /** Swappable left pane: "TREE" (default) and "GRAPH". */
     private val leftCardLayout = CardLayout()
     private val leftCards = JPanel(leftCardLayout)
@@ -214,6 +217,7 @@ class VizcoreToolWindowPanel(
         expandedOnce = false
         suspensionSites.clear()
         suspensionFetchInFlight.clear()
+        lastLongSuspendedIds = emptySet()
         activeSearchQuery = null
         searchField.text = ""
         activeProblemFilter = null
@@ -618,18 +622,26 @@ class VizcoreToolWindowPanel(
      * survives the per-poll rebuild) or fetch it off-EDT when unknown. Bounded — problems are few.
      */
     private fun resolveSuspensionSites(model: SessionModel) {
+        val longSuspended = model.problems.filter { it.category == ProblemCategory.LONG_SUSPENDED }
+        val currentIds = longSuspended.mapTo(HashSet()) { it.coroutineId }
+        // A cached site answers "where is it suspended NOW": once a coroutine leaves the
+        // long-suspended set, drop its entry so a later re-trip at a DIFFERENT suspension point
+        // fetches the fresh site — this also keeps the map from growing without bound.
+        for (departed in lastLongSuspendedIds - currentIds) {
+            suspensionSites.remove(departed)
+        }
+        lastLongSuspendedIds = currentIds
+
         val service = SessionPollingService.getInstance(project)
         val sid = service.currentSessionId() ?: return
-        model.problems
-            .filter { it.category == ProblemCategory.LONG_SUSPENDED }
-            .forEach { problem ->
-                val cached = suspensionSites[problem.coroutineId]
-                if (cached != null) {
-                    problemsDetail.setSuspensionSite(problem.coroutineId, cached)
-                } else {
-                    fetchSuspensionSite(sid, problem.coroutineId)
-                }
+        longSuspended.forEach { problem ->
+            val cached = suspensionSites[problem.coroutineId]
+            if (cached != null) {
+                problemsDetail.setSuspensionSite(problem.coroutineId, cached)
+            } else {
+                fetchSuspensionSite(sid, problem.coroutineId)
             }
+        }
     }
 
     @Suppress("TooGenericExceptionCaught") // any transport/deserialization failure must degrade, not throw
