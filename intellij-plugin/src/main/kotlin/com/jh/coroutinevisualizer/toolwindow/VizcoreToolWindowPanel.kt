@@ -613,6 +613,7 @@ class VizcoreToolWindowPanel(
             }
     }
 
+    @Suppress("TooGenericExceptionCaught") // any transport/deserialization failure must degrade, not throw
     private fun fetchSuspensionSite(
         sessionId: String,
         coroutineId: String,
@@ -625,6 +626,10 @@ class VizcoreToolWindowPanel(
                 ApplicationManager.getApplication().invokeLater {
                     problemsDetail.setSuspensionSite(coroutineId, site)
                 }
+            } catch (e: Exception) {
+                // apiClient propagates transport exceptions; an uncaught throw out of a pooled
+                // runnable surfaces as a platform error. The row simply keeps its un-suffixed why.
+                LOG.warn("Suspension-site fetch failed for $coroutineId", e)
             } finally {
                 suspensionFetchInFlight.remove(coroutineId)
             }
@@ -649,12 +654,20 @@ class VizcoreToolWindowPanel(
      * Shared selection handler for both the tree and the graph: fetches the coroutine's timeline
      * off the EDT and shows it in the inspector on the EDT. Node is looked up by id from [latestModel].
      */
+    @Suppress("TooGenericExceptionCaught") // any transport/deserialization failure must degrade, not throw
     private fun selectCoroutine(coroutineId: String) {
         val service = SessionPollingService.getInstance(project)
         val model = latestModel
         ApplicationManager.getApplication().executeOnPooledThread {
             val sid = service.currentSessionId()
-            val timeline = if (sid != null) apiClient.timeline(sid, coroutineId) else null
+            val timeline =
+                try {
+                    if (sid != null) apiClient.timeline(sid, coroutineId) else null
+                } catch (e: Exception) {
+                    // from(null, node) degrades gracefully — show what the hierarchy node carries.
+                    LOG.warn("Timeline fetch failed for $coroutineId", e)
+                    null
+                }
             // Look up the FULL hierarchy: All-mode selections are usually historical coroutines that
             // aged out of the live window — the live-filtered list would yield null and gut the view.
             val hierarchyNode = model?.fullHierarchy?.firstOrNull { it.id == coroutineId }
