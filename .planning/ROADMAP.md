@@ -208,13 +208,13 @@ Plans:
 
 **Goal**: The native plugin surfaces problems first and shows all the data it already has — a debugger-grade main view (sketch 004 winner D) and inspector (sketch 005 winner A), plus a Live/All view toggle so past coroutine rounds remain inspectable without re-introducing render lag.
 **Depends on**: Phase 13 (native plugin redesign on branch `feat/intellij-plugin-native-redesign` — tree/graph view, SessionModel live filter, inspector, tiles)
-**Requirements**: TBD (sketch-driven: `.planning/sketches/004-plugin-main-view` winner D, `005-plugin-inspector` winner A — winners marked in MANIFEST/README)
+**Requirements**: TBD (sketch-driven: `.planning/sketches/004-plugin-main-view` winner D, `005-plugin-inspector` winner A, `006-plugin-live-all-toggle` winner A — winners marked in MANIFEST/README)
 **Success Criteria** (what must be TRUE):
 
   1. A persistent Problems strip with filter chips sits above a split tree|problems-detail panel (sketch 004 variant D = join of A+B); selecting a problem cross-highlights the coroutine in the tree.
   2. Tree rows carry the reco tiering: state · name · ~age · child count · leak/exception badge, with dispatcher/thread dimmed (row-data density pass, exception badge included).
   3. Inspector is reordered to stacked cards, most-diagnostic-first: timing → suspended-at → runs-on → identity → events (sketch 005 variant A), with a placeholder card for future multi-frame stacks.
-  4. A Live/All view toggle exists: Live = active + recently-completed (current 5s-window behavior); All = full session history including every past round of coroutines, rendered at a slower refresh (~1–2s) with no UI lag at 2,800+ nodes.
+  4. A Live/All view toggle exists per sketch 006 winner A: a segmented `[Live | All n]` control in the header next to Tree/Graph (LIVE ⇄ HISTORY pill swap, refresh indicator ~200ms ⇄ ~1.5s). Live = active + recently-completed (current 5s-window behavior); All = full session history grouped by round (collapsible groups w/ ✓/✗/⚠ counts, current round marked IN PROGRESS, older rounds collapsed into one summary node, history search) with no UI lag at 2,800+ nodes.
   5. Tiles (Active · Throughput · Leaks · Peak) keep showing full-session totals in both view modes.
 
 **Plans**: TBD
