@@ -4,6 +4,10 @@ import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
 import com.jh.coroutinevisualizer.model.CoroutineRow
+import com.jh.coroutinevisualizer.model.RoundCounts
+import com.jh.coroutinevisualizer.model.RoundGroup
+import com.jh.coroutinevisualizer.model.RoundTreeModel
+import com.jh.coroutinevisualizer.model.SummaryGroup
 import java.awt.Color
 import javax.swing.JTree
 import javax.swing.Timer
@@ -39,6 +43,7 @@ class CoroutineTreeRenderer : ColoredTreeCellRenderer() {
         hasFocus: Boolean,
     ) {
         val userObject = (value as? javax.swing.tree.DefaultMutableTreeNode)?.userObject
+        if (renderNonCoroutine(userObject)) return
         val coroutine = userObject as? CoroutineRow ?: return
 
         if (flashTracker.shouldFlash(coroutine.id, coroutine.state)) {
@@ -76,6 +81,61 @@ class CoroutineTreeRenderer : ColoredTreeCellRenderer() {
         }
         coroutine.threadName?.takeIf { it.isNotBlank() }?.let { thread ->
             append("  @$thread", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+        }
+    }
+
+    /**
+     * Renders the non-coroutine node kinds (round group header, folded summary, lazy placeholder) and
+     * returns true when it handled the value — keeping [customizeCellRenderer] within its return budget.
+     */
+    private fun renderNonCoroutine(userObject: Any?): Boolean {
+        when (userObject) {
+            is RoundGroup -> renderGroup(userObject)
+            is SummaryGroup -> renderSummary(userObject)
+            RoundTreeModel.Placeholder -> append("…", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+            else -> return false
+        }
+        return true
+    }
+
+    /**
+     * A round group header: bold label, an IN PROGRESS marker in the RUNNING blue while the round is
+     * live, then the ✓/✗/⚠ counts sharing the strip taxonomy (D-14) — plain text, no HTML (T-15-01).
+     */
+    private fun renderGroup(group: RoundGroup) {
+        append(group.label, SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, null))
+        if (group.inProgress) {
+            append(
+                "  IN PROGRESS",
+                SimpleTextAttributes(SimpleTextAttributes.STYLE_SMALLER, CoroutineStateStyle.color(CoroutineStateStyle.RUNNING)),
+            )
+        }
+        appendCounts(group.counts)
+    }
+
+    /** The folded-history summary node: grayed label plus the same aggregate ✓/✗/⚠ counts (D-15). */
+    private fun renderSummary(summary: SummaryGroup) {
+        append(summary.label, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        appendCounts(summary.counts)
+    }
+
+    /** ✓ green (completed-clean), ✗ red (real exception), ⚠ amber (leak/long-suspended) — never swapped. */
+    private fun appendCounts(counts: RoundCounts) {
+        append(
+            "  ✓ ${counts.ok}",
+            SimpleTextAttributes(SimpleTextAttributes.STYLE_SMALLER, CoroutineStateStyle.color(CoroutineStateStyle.COMPLETED)),
+        )
+        if (counts.exceptions > 0) {
+            append(
+                "  ✗ ${counts.exceptions}",
+                SimpleTextAttributes(SimpleTextAttributes.STYLE_SMALLER, CoroutineStateStyle.color(CoroutineStateStyle.FAILED)),
+            )
+        }
+        if (counts.amber > 0) {
+            append(
+                "  ⚠ ${counts.amber}",
+                SimpleTextAttributes(SimpleTextAttributes.STYLE_SMALLER, CoroutineStateStyle.leakColor()),
+            )
         }
     }
 
