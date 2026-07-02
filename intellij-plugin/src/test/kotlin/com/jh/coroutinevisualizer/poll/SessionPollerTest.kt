@@ -1,7 +1,9 @@
 package com.jh.coroutinevisualizer.poll
 
 import com.jh.coroutinevisualizer.api.VizcoreApiClient
+import com.jh.coroutinevisualizer.model.ProblemCategory
 import com.jh.coroutinevisualizer.model.SessionModel
+import com.jh.coroutinevisualizer.model.SuspensionTracker
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -13,23 +15,29 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SessionPollerTest {
     private var backend: HttpServer? = null
+    private val resolveCalls = AtomicInteger(0)
 
-    private fun startBackend(resolveAfter: Int): String {
-        val calls = AtomicInteger(0)
+    private fun startBackend(
+        resolveAfter: Int,
+        nodeState: String = "RUNNING",
+    ): String {
+        resolveCalls.set(0)
         val b = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
         b.createContext("/api/sessions/resolve") { ex ->
-            val n = calls.incrementAndGet()
+            val n = resolveCalls.incrementAndGet()
             val (code, body) = if (n >= resolveAfter) 200 to """{"sessionId":"s-1"}""" else 404 to """{"error":"x"}"""
             val bytes = body.toByteArray()
             ex.sendResponseHeaders(code, bytes.size.toLong())
             ex.responseBody.use { it.write(bytes) }
         }
         b.createContext("/api/sessions/s-1/hierarchy") { ex ->
-            val body = """[{"id":"a","name":"req","scopeId":"sc","state":"RUNNING","children":[],"jobId":"j"}]""".toByteArray()
+            val body =
+                """[{"id":"a","name":"req","scopeId":"sc","state":"$nodeState","children":[],"jobId":"j"}]""".toByteArray()
             ex.sendResponseHeaders(200, body.size.toLong())
             ex.responseBody.use { it.write(body) }
         }
@@ -80,5 +88,60 @@ class SessionPollerTest {
         } finally {
             poller.stop()
         }
+    }
+
+    @Test fun `setInterval reschedules without dropping the session`() {
+        val url = startBackend(resolveAfter = 1)
+        val poller = SessionPoller(VizcoreApiClient(url), intervalMs = 30)
+        val firstModel = CountDownLatch(1)
+        val afterReschedule = CountDownLatch(2)
+        poller.start("corr", onModel = {
+            firstModel.countDown()
+            afterReschedule.countDown()
+        }, onError = {})
+        try {
+            assertTrue(firstModel.await(5, TimeUnit.SECONDS), "expected a first model")
+            assertEquals("s-1", poller.currentSessionId())
+            val resolvesBefore = resolveCalls.get()
+            poller.setInterval(50)
+            assertTrue(afterReschedule.await(5, TimeUnit.SECONDS), "expected another model after the reschedule")
+            assertEquals("s-1", poller.currentSessionId(), "sessionId must be retained across the reschedule")
+            assertEquals(resolvesBefore, resolveCalls.get(), "reschedule must NOT re-resolve the session (Pitfall 5)")
+        } finally {
+            poller.stop()
+        }
+    }
+
+    @Test fun `long suspended ids flow into the delivered model`() {
+        val url = startBackend(resolveAfter = 1, nodeState = "SUSPENDED")
+        val latch = CountDownLatch(1)
+        val received = AtomicReference<SessionModel?>(null)
+        val poller =
+            SessionPoller(
+                VizcoreApiClient(url),
+                intervalMs = 30,
+                tracker = SuspensionTracker(thresholdNanos = 0),
+            )
+        poller.start("c", onModel = {
+            received.set(it)
+            latch.countDown()
+        }, onError = {})
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "expected a model within 5s")
+            val problems = assertNotNull(received.get()).problems
+            assertTrue(
+                problems.any { it.category == ProblemCategory.LONG_SUSPENDED && it.coroutineId == "a" },
+                "expected a LONG_SUSPENDED problem for id a (D-10 wiring through tick)",
+            )
+        } finally {
+            poller.stop()
+        }
+    }
+
+    @Test fun `setInterval before start only records the interval`() {
+        val url = startBackend(resolveAfter = 1)
+        val poller = SessionPoller(VizcoreApiClient(url), intervalMs = 30)
+        poller.setInterval(100)
+        assertNull(poller.currentSessionId())
     }
 }
