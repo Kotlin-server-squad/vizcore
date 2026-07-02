@@ -18,12 +18,17 @@ import javax.swing.JPanel
  * theme-aware tiles. The Leaks tile turns amber when its value is > 0.
  */
 class MetricTilesPanel : JPanel(FlowLayout(FlowLayout.LEFT, TILE_GAP, TILE_GAP)) {
+    /** The tiles rendered by the last [update]; unchanged counts skip the rebuild (layout churn). */
+    private var lastShown: SessionTiles? = null
+
     init {
         isOpaque = false
     }
 
     /** Re-renders all tiles from the latest session counts. Call on the EDT. */
     fun update(tiles: SessionTiles) {
+        if (tiles == lastShown) return
+        lastShown = tiles
         removeAll()
         val isLeak = tiles.leaks > 0
         for ((index, pair) in tileValues(tiles).withIndex()) {

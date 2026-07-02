@@ -31,6 +31,13 @@ class ProblemsStripPanel(
     /** The chips rendered by the last [update], paired with their category, for selection syncing. */
     private var currentChips: List<Pair<ProblemCategory, JToggleButton>> = emptyList()
 
+    /**
+     * The problems rendered by the last [update]. Skipping no-op rebuilds matters: a rebuild between
+     * a chip's mouse-press and -release replaces the button instance and silently swallows the click
+     * (Swing only fires when press and release land on the SAME component).
+     */
+    private var lastShown: List<Problem>? = null
+
     init {
         isOpaque = false
         preferredSize = Dimension(0, JBUI.scale(STRIP_HEIGHT))
@@ -39,6 +46,8 @@ class ProblemsStripPanel(
 
     /** Rebuilds the status label + three chips from the latest problems. Call on the EDT. */
     fun update(problems: List<Problem>) {
+        if (problems == lastShown) return // unchanged content — keep the live button instances
+        lastShown = problems
         removeAll()
         val counts = chipCounts(problems)
         val active = activeCategory

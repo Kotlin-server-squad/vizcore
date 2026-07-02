@@ -41,6 +41,13 @@ class ProblemsDetailPanel(
     /** Suspension-site suffix labels keyed by coroutine id (LONG_SUSPENDED rows only, D-06). */
     private val siteLabelsById = mutableMapOf<String, JBLabel>()
 
+    /**
+     * The (problems, filter) pair rendered by the last [show]. Skipping no-op rebuilds matters: a
+     * rebuild between an Inspect button's mouse-press and -release replaces the component instance
+     * and silently swallows the click (Swing only fires when press and release hit the SAME instance).
+     */
+    private var lastShown: Pair<List<Problem>, ProblemCategory?>? = null
+
     init {
         add(JBScrollPane(column), BorderLayout.CENTER)
     }
@@ -54,6 +61,9 @@ class ProblemsDetailPanel(
         problems: List<Problem>,
         activeFilter: ProblemCategory?,
     ) {
+        val key = problems to activeFilter
+        if (key == lastShown) return // unchanged content — keep the live row/button instances
+        lastShown = key
         column.removeAll()
         siteLabelsById.clear()
         val visible = if (activeFilter == null) problems else problems.filter { it.category == activeFilter }
