@@ -655,7 +655,9 @@ class VizcoreToolWindowPanel(
         ApplicationManager.getApplication().executeOnPooledThread {
             val sid = service.currentSessionId()
             val timeline = if (sid != null) apiClient.timeline(sid, coroutineId) else null
-            val hierarchyNode = model?.hierarchy?.firstOrNull { it.id == coroutineId }
+            // Look up the FULL hierarchy: All-mode selections are usually historical coroutines that
+            // aged out of the live window — the live-filtered list would yield null and gut the view.
+            val hierarchyNode = model?.fullHierarchy?.firstOrNull { it.id == coroutineId }
             ApplicationManager.getApplication().invokeLater {
                 inspector.show(InspectorViewModel.from(timeline, hierarchyNode))
             }

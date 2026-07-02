@@ -83,7 +83,9 @@ data class InspectorViewModel(
                 ).joinToString(" · ")
 
             val events = timeline?.events.orEmpty()
-            val running = node?.completedAtNanos == null
+            // Unknown node ≠ running: without this, a long-completed coroutine whose hierarchy node
+            // is unavailable would be labelled "running" (null?.completedAtNanos == null is true).
+            val running = node != null && node.completedAtNanos == null
             return InspectorViewModel(
                 name = name,
                 state = state,
