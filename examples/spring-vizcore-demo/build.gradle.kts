@@ -1,8 +1,16 @@
 import org.springframework.boot.gradle.tasks.run.BootRun
 
 plugins {
-	kotlin("jvm") version "2.3.21"
-	kotlin("plugin.spring") version "2.3.21"
+	// Track the backend toolchain that builds the vizcore jars (kotlin jvm 2.3.21 +
+	// serialization 2.4.0 -> jars carry 2.4.0 metadata; a compiler older than 2.3 cannot
+	// read them). NOTE: the visualizer -javaagent MUST NOT be attached to an
+	// exploded-classpath launch of this app (IDE Application/Kotlin run configs) — the app's
+	// ktor/kotlinx jars shadow the agent's bundled copies during premain and its session
+	// bootstrap dies on an empty HTTP body. Launch the agent flow via the Boot fat jar
+	// (`java -javaagent:... -jar build/libs/spring-vizcore-demo-*.jar`), where app libs are
+	// nested and invisible to the system classloader.
+	kotlin("jvm") version "2.4.0"
+	kotlin("plugin.spring") version "2.4.0"
 	id("org.springframework.boot") version "4.1.0"
 	id("io.spring.dependency-management") version "1.1.7"
 }
