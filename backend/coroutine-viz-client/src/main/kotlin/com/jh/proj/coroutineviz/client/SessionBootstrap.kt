@@ -6,6 +6,9 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -37,6 +40,7 @@ private val bootstrapJson = Json { ignoreUnknownKeys = true }
  * nothing emit NO `correlation` param (wire-level back-compat). The non-secret token
  * rides the query string (T-09-05 accept); the JWT credential stays in the header.
  */
+@Suppress("TooGenericExceptionCaught") // bounded retry: any transport/parse failure is retried, then reported
 suspend fun createSession(
     httpClient: HttpClient,
     backendUrl: String,
@@ -44,13 +48,42 @@ suspend fun createSession(
     token: String,
     correlation: String? = null,
 ): String {
-    val response =
-        httpClient.post("$backendUrl/api/sessions") {
-            parameter("name", appName)
-            correlation?.let { parameter("correlation", it) }
-            header(HttpHeaders.Authorization, "Bearer $token")
+    var lastFailure = "no attempt made"
+    repeat(BOOTSTRAP_ATTEMPTS) { attempt ->
+        try {
+            val response =
+                httpClient.post("$backendUrl/api/sessions") {
+                    parameter("name", appName)
+                    correlation?.let { parameter("correlation", it) }
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess() && body.isNotBlank()) {
+                val json = bootstrapJson.parseToJsonElement(body).jsonObject
+                val sessionId = json["sessionId"]?.jsonPrimitive?.content
+                if (sessionId != null) return sessionId
+                lastFailure = "success status but no sessionId in body: ${body.take(BODY_SNIPPET_CHARS)}"
+            } else {
+                val snippet = if (body.isBlank()) "<empty body>" else body.take(BODY_SNIPPET_CHARS)
+                lastFailure = "HTTP ${response.status.value}: $snippet"
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Exception) {
+            lastFailure = "${failure::class.simpleName}: ${failure.message}"
         }
-    val body = bootstrapJson.parseToJsonElement(response.bodyAsText()).jsonObject
-    return body["sessionId"]?.jsonPrimitive?.content
-        ?: error("Session-create response did not contain a sessionId: $body")
+        if (attempt < BOOTSTRAP_ATTEMPTS - 1) delay(BOOTSTRAP_RETRY_DELAY_MS)
+    }
+    error("Session-create failed after $BOOTSTRAP_ATTEMPTS attempts against $backendUrl/api/sessions: $lastFailure")
 }
+
+/**
+ * Bootstrap retry policy. The first attempt often runs at `premain` time, moments into VM
+ * startup, where a transient race can surface as an empty/closed HTTP response from an
+ * otherwise-healthy backend (observed live: same launch alternates crash/success). A short
+ * bounded retry absorbs the race; persistent failures still fail with an actionable message
+ * instead of a bare JSON parse error.
+ */
+private const val BOOTSTRAP_ATTEMPTS = 5
+private const val BOOTSTRAP_RETRY_DELAY_MS = 300L
+private const val BODY_SNIPPET_CHARS = 200

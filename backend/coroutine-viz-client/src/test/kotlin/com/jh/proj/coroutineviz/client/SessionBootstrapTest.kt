@@ -84,6 +84,59 @@ class SessionBootstrapTest {
     }
 
     @Test
+    fun `empty first response is retried and the second attempt's session id is returned`() {
+        // Simulates the observed premain-time race: the first response arrives with a success
+        // status but an EMPTY body; the retry must absorb it and return the server id.
+        val attempts = java.util.concurrent.atomic.AtomicInteger(0)
+        testApplication {
+            routing {
+                post("/api/sessions") {
+                    if (attempts.incrementAndGet() == 1) {
+                        call.respondText("", ContentType.Application.Json, HttpStatusCode.Created)
+                    } else {
+                        call.respondText(
+                            """{"sessionId":"srv-retry","message":"ok"}""",
+                            ContentType.Application.Json,
+                            HttpStatusCode.Created,
+                        )
+                    }
+                }
+            }
+            val httpClient = createClient { }
+            val sessionId =
+                createSession(
+                    httpClient = httpClient,
+                    backendUrl = "",
+                    appName = "retry-app",
+                    token = "",
+                )
+            assertEquals("srv-retry", sessionId, "the retry must recover from an empty-body response")
+        }
+        assertEquals(2, attempts.get(), "exactly one retry after the empty first response")
+    }
+
+    @Test
+    fun `persistent failure surfaces an actionable error - not a bare JSON parse crash`() {
+        testApplication {
+            routing {
+                post("/api/sessions") {
+                    call.respondText("", ContentType.Application.Json, HttpStatusCode.TooManyRequests)
+                }
+            }
+            val httpClient = createClient { }
+            val failure =
+                kotlin.runCatching {
+                    createSession(httpClient = httpClient, backendUrl = "", appName = "doomed", token = "")
+                }.exceptionOrNull()
+            assertNotNull(failure, "persistent failure must throw")
+            assertTrue(
+                failure.message.orEmpty().contains("attempts") && failure.message.orEmpty().contains("429"),
+                "error must say how many attempts were made and the last HTTP status; was: ${failure.message}",
+            )
+        }
+    }
+
+    @Test
     fun `correlation omitted emits no correlation param - back-compat`() {
         val captured = CapturedRequest()
         withCapturingBackend(captured, serverSessionId = "srv-2") { httpClient ->

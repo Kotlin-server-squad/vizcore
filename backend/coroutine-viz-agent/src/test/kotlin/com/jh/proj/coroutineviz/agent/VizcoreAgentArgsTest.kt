@@ -1,19 +1,37 @@
 package com.jh.proj.coroutineviz.agent
 
 import org.junit.jupiter.api.Test
+import java.lang.instrument.Instrumentation
+import java.lang.reflect.Proxy
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Unit proofs for [VizcoreAgent.parseArgs] (IDE-01 agent-args; T-13-01 tamper mitigation).
+ * Unit proofs for [VizcoreAgent.parseArgs] (IDE-01 agent-args; T-13-01 tamper mitigation)
+ * plus the premain fail-soft guarantee.
  *
- * Tests ONLY the pure `parseArgs` logic directly — NEVER [VizcoreAgent.premain], which
- * would attempt a real network start via `VizcoreClient.start`. Uses
- * `@org.junit.jupiter.api.Test` because `kotlin-test-junit` alone is undiscovered under
- * `useJUnitPlatform()` (STATE.md 11-02 / 09-02 precedent).
+ * `parseArgs` is tested as pure logic. [VizcoreAgent.premain] is exercised ONLY for the
+ * fail-soft path against a guaranteed-closed port (no live backend involved) — a propagated
+ * premain exception aborts the host JVM, so "returns normally on failure" is the contract
+ * under test. Uses `@org.junit.jupiter.api.Test` because `kotlin-test-junit` alone is
+ * undiscovered under `useJUnitPlatform()` (STATE.md 11-02 / 09-02 precedent).
  */
 class VizcoreAgentArgsTest {
+    @Test
+    fun `premain fails soft - an unreachable backend must never abort the host JVM`() {
+        val inst =
+            Proxy.newProxyInstance(
+                Instrumentation::class.java.classLoader,
+                arrayOf(Instrumentation::class.java),
+            ) { _, _, _ -> null } as Instrumentation
+
+        // Port 1 -> connection refused on every bootstrap attempt. premain must swallow the
+        // failure (log + run uninstrumented), never propagate: a propagated premain error
+        // kills the host with 'processing of -javaagent failed' (Phase 15 UAT blocker).
+        VizcoreAgent.premain("app=t,backend=http://127.0.0.1:1,token=", inst)
+    }
+
     @Test
     fun `well-formed arg string parses to the four expected key-value pairs`() {
         val parsed = VizcoreAgent.parseArgs("app=svc,backend=http://h:8080,token=t,corr=uuid")

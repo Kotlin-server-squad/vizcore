@@ -32,18 +32,29 @@ object VizcoreAgent {
      * @param inst the JVM-supplied [Instrumentation] handle (unused — we do not transform bytecode)
      */
     @JvmStatic
-    @Suppress("UNUSED_PARAMETER")
+    @Suppress("UNUSED_PARAMETER", "TooGenericExceptionCaught")
     fun premain(
         agentArgs: String?,
         inst: Instrumentation,
     ) {
         val args = parseArgs(agentArgs)
-        VizcoreClient.start(
-            appName = args["app"] ?: "app",
-            backendUrl = args["backend"] ?: "http://localhost:8080",
-            token = args["token"] ?: "",
-            correlation = args["corr"],
-        )
+        val backendUrl = args["backend"] ?: "http://localhost:8080"
+        try {
+            VizcoreClient.start(
+                appName = args["app"] ?: "app",
+                backendUrl = backendUrl,
+                token = args["token"] ?: "",
+                correlation = args["corr"],
+            )
+        } catch (failure: Throwable) {
+            // FAIL SOFT — the agent must NEVER take the host application down. A propagated
+            // premain exception aborts the JVM with 'processing of -javaagent failed'
+            // (observed live, Phase 15 UAT blocker). Log once and let the app run
+            // uninstrumented; the visualizer simply shows no session.
+            System.err.println(
+                "[coroutine-viz-agent] DISABLED — bootstrap against $backendUrl failed: ${failure.message}",
+            )
+        }
     }
 
     /**
