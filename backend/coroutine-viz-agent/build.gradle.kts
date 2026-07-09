@@ -23,6 +23,16 @@ kotlin {
     jvmToolchain(17)
 }
 
+// The Java shim (VizcoreAgentPremain) + child-first loader (AgentClassLoader) live in
+// src/main/java and are compiled by the java plugin (applied transitively by kotlin("jvm")).
+// jvmToolchain(17) above configures the Kotlin compile; pin the Java toolchain to 17 too so the
+// shim's bytecode stays as broadly attachable as the Kotlin bootstrap it invokes.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
 dependencies {
     // The agent reuses VizcoreClient.start — the existing zero-code DebugProbes capture
     // path (D-02). The premain is a thin one-call wrapper; NO bridge code is written here.
@@ -66,12 +76,20 @@ tasks.shadowJar {
     // so the manifest carries ONLY Premain-Class — no Agent-Class / Can-Redefine-Classes /
     // Can-Retransform-Classes.
     manifest {
-        attributes["Premain-Class"] = "com.jh.proj.coroutineviz.agent.VizcoreAgent"
+        attributes["Premain-Class"] = "com.jh.proj.coroutineviz.agent.boot.VizcoreAgentPremain"
     }
     // Shadow configuration: keep the default `all` classifier (yields
     // coroutine-viz-agent-0.1.0-all.jar) and do NOT relocate kotlin.* / kotlinx.* —
     // relocating them breaks DebugProbes' byte-buddy package-name introspection at runtime
     // (RESEARCH Pitfall 4). The coroutines packages MUST ship under their real names.
+    //
+    // ISOLATION (15-13): isolation of the agent's bundled deps from the target app's classpath
+    // is now handled at RUNTIME by boot.AgentClassLoader (a child-first URLClassLoader over this
+    // fat jar, the OpenTelemetry java-agent pattern), NOT by relocation. That is WHY kotlin./
+    // kotlinx.* remain UN-relocated: the loader shares kotlin./kotlinx.coroutines. with the host
+    // (DebugProbes must introspect the HOST coroutines — Pitfall 4) while loading the agent's
+    // ktor/serialization/io stack child-first from this jar. The Java Premain-Class shim builds
+    // that loader before any Kotlin class is touched, then reflectively invokes AgentBootstrap.
     //
     // RELOCATE org.slf4j (spike finding, 13-07 Task 1): the agent is injected via
     // `-javaagent:` into arbitrary target JVMs, so its bundled libraries share the host
