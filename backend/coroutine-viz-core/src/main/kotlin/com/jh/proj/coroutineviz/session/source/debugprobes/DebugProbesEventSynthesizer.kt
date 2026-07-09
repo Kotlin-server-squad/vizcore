@@ -4,8 +4,10 @@ import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.EventContext
 import com.jh.proj.coroutineviz.session.VizSession
+import com.jh.proj.coroutineviz.session.coroutineCancelled
 import com.jh.proj.coroutineviz.session.coroutineCompleted
 import com.jh.proj.coroutineviz.session.coroutineCreated
+import com.jh.proj.coroutineviz.session.coroutineFailed
 import com.jh.proj.coroutineviz.session.coroutineResumed
 import com.jh.proj.coroutineviz.session.coroutineStarted
 import com.jh.proj.coroutineviz.session.coroutineSuspended
@@ -29,9 +31,15 @@ import com.jh.proj.coroutineviz.session.coroutineSuspended
  *   `getHierarchyTree(scopeId)` groups by dispatcher instead of one flat
  *   "debugprobes" bucket.
  *
- * Decisions still locked for v1 (06-RESEARCH.md):
- * - Vanished → [com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted]
- *   only — DebugProbes cannot distinguish completed/cancelled/failed (A3).
+ * Vanished outcome mapping (15-08, supersedes the v1 A3 lock): DebugProbes'
+ * DUMP still cannot distinguish completed/cancelled/failed, but the Job
+ * completion cause can — [CoroutineInfoAdapter] registers
+ * `Job.invokeOnCompletion` per observed Job and records a [CompletionOutcome]
+ * the source consumes at Vanished time. Vanished therefore maps to
+ * [com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed] (failure cause),
+ * [com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled] (cancellation),
+ * or [com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted] (no
+ * recorded outcome — normal completion or no Job in hand).
  *
  * The synthesizer is PURE w.r.t. session lifecycle: it builds an [EventContext]
  * (which calls `session.nextSeq()`) and returns the events; the caller (the
@@ -95,10 +103,16 @@ class DebugProbesEventSynthesizer(
     /**
      * Map one delta to the ordered list of synthesized events for the bound
      * [session].
+     *
+     * @param outcome the coroutine's recorded terminal outcome, consumed by the
+     *   source at Vanished time (null for non-Vanished deltas, or when the
+     *   coroutine completed normally / carried no Job). Trailing + defaulted so
+     *   all pre-15-08 call sites stay source-compatible.
      */
     fun synthesize(
         delta: CoroutineDelta,
         session: VizSession,
+        outcome: CompletionOutcome? = null,
     ): List<VizEvent> =
         when (delta) {
             is CoroutineDelta.Appeared -> {
@@ -133,7 +147,21 @@ class DebugProbesEventSynthesizer(
 
             is CoroutineDelta.Vanished -> {
                 val ctx = contextFor(session, delta.last)
-                listOf(ctx.coroutineCompleted())
+                listOf(vanishedEvent(ctx, outcome))
             }
+        }
+
+    /**
+     * Outcome-aware Vanished mapping (15-08): no outcome → completed (byte-identical
+     * to the pre-15-08 event); cancelled → CoroutineCancelled; else → CoroutineFailed.
+     */
+    private fun vanishedEvent(
+        ctx: EventContext,
+        outcome: CompletionOutcome?,
+    ): VizEvent =
+        when {
+            outcome == null -> ctx.coroutineCompleted()
+            outcome.cancelled -> ctx.coroutineCancelled(cause = outcome.message)
+            else -> ctx.coroutineFailed(exceptionType = outcome.exceptionType, message = outcome.message)
         }
 }
