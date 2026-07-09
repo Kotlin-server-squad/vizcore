@@ -5,6 +5,8 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.events.dispatcher.DispatcherSelected
+import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 import com.jh.proj.coroutineviz.session.VizSession
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -32,6 +34,8 @@ class DebugProbesEventSynthesizerTest {
         lineNumber: Int? = null,
         reason: String? = null,
         parentKey: CoroKey? = null,
+        threadId: Long? = null,
+        threadName: String? = null,
     ) = CoroutineSnapshot(
         key = CoroKey(keyToken),
         state = state,
@@ -42,6 +46,8 @@ class DebugProbesEventSynthesizerTest {
         lineNumber = lineNumber,
         reason = reason,
         parentKey = parentKey,
+        threadId = threadId,
+        threadName = threadName,
     )
 
     @Test
@@ -220,6 +226,96 @@ class DebugProbesEventSynthesizerTest {
             synthesizer.synthesize(CoroutineDelta.Appeared(snap("a", CoroState.CREATED)), s)
 
         assertEquals("debugprobes", (events.single() as CoroutineCreated).scopeId)
+    }
+
+    @Test
+    fun `Appeared RUNNING with an observed thread emits ThreadAssigned with thread and dispatcher`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.Appeared(
+                    snap("a", CoroState.RUNNING, dispatcherName = "Dispatchers.IO", threadId = 7L, threadName = "worker-1"),
+                ),
+                s,
+            )
+
+        val assigned = events.filterIsInstance<ThreadAssigned>().single()
+        assertEquals(7L, assigned.threadId)
+        assertEquals("worker-1", assigned.threadName)
+        assertEquals("Dispatchers.IO", assigned.dispatcherName)
+        // Ordering: thread assignment comes after created/started.
+        assertTrue(
+            events.indexOfFirst { it is CoroutineStarted } < events.indexOf(assigned),
+            "ThreadAssigned must follow CoroutineStarted",
+        )
+    }
+
+    @Test
+    fun `Appeared with a dispatcher emits DispatcherSelected while scopeId routing stays`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.Appeared(snap("a", CoroState.RUNNING, dispatcherName = "Dispatchers.IO")),
+                s,
+            )
+
+        val selected = events.filterIsInstance<DispatcherSelected>().single()
+        assertEquals("Dispatchers.IO", selected.dispatcherName)
+        assertEquals("Dispatchers.IO", selected.dispatcherId)
+        // D-03 dispatcher grouping via scopeId is NOT moved — the dedicated event is additive.
+        assertEquals("Dispatchers.IO", (events.first() as CoroutineCreated).scopeId)
+    }
+
+    @Test
+    fun `StateChanged SUSPENDED to RUNNING with a thread emits Resumed then ThreadAssigned`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.StateChanged(
+                    CoroState.SUSPENDED,
+                    CoroState.RUNNING,
+                    snap("a", CoroState.RUNNING, threadId = 12L, threadName = "main"),
+                ),
+                s,
+            )
+
+        assertEquals(2, events.size)
+        assertTrue(events[0] is CoroutineResumed, "resumed must come first")
+        val assigned = events[1]
+        assertTrue(assigned is ThreadAssigned, "ThreadAssigned must follow resumed")
+        assertEquals(12L, assigned.threadId)
+        assertEquals("main", assigned.threadName)
+    }
+
+    @Test
+    fun `snapshot without thread info emits no ThreadAssigned (no fabricated data)`() {
+        val s = session()
+        val appeared =
+            synthesizer.synthesize(CoroutineDelta.Appeared(snap("a", CoroState.RUNNING)), s)
+        val resumed =
+            synthesizer.synthesize(
+                CoroutineDelta.StateChanged(CoroState.SUSPENDED, CoroState.RUNNING, snap("a", CoroState.RUNNING)),
+                s,
+            )
+
+        assertTrue(appeared.none { it is ThreadAssigned })
+        assertTrue(resumed.none { it is ThreadAssigned })
+    }
+
+    @Test
+    fun `DispatcherSelected is emitted on Appeared only, never on StateChanged`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.StateChanged(
+                    CoroState.SUSPENDED,
+                    CoroState.RUNNING,
+                    snap("a", CoroState.RUNNING, dispatcherName = "Dispatchers.IO", threadId = 3L, threadName = "w"),
+                ),
+                s,
+            )
+
+        assertTrue(events.none { it is DispatcherSelected }, "dispatcher is announced once, at Appeared")
     }
 
     @Test
