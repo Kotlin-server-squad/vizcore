@@ -377,4 +377,78 @@ class ProjectionServiceProblemsDataTest {
             session.close()
         }
     }
+
+    @Test
+    fun `node carries durable creationPoint and lastSuspensionPoint source refs`() {
+        val session = VizSession("proj-durable-refs")
+        try {
+            seq = 0
+            val id = "req-refs"
+            val launch = SuspensionPoint(function = "main", fileName = "App.kt", lineNumber = 10, reason = "launch")
+            val suspend = SuspensionPoint(function = "fetch", fileName = "Repo.kt", lineNumber = 55, reason = "delay")
+            session.projectionService.rebuildFrom(
+                listOf<VizEvent>(
+                    created(session, id, 0, creationPoint = launch),
+                    started(session, id, 1),
+                    suspended(session, id, 2, suspensionPoint = suspend),
+                ),
+            )
+
+            val n = node(session, id)
+            assertEquals(launch, n.creationPoint, "creationPoint (launch site) persists on the node")
+            assertEquals(suspend, n.lastSuspensionPoint, "last suspension frame persists on the node")
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `a later null suspensionPoint does not clear the last non-null lastSuspensionPoint`() {
+        val session = VizSession("proj-refs-keep-last")
+        try {
+            seq = 0
+            val id = "req-keep"
+            val suspend = SuspensionPoint(function = "fetch", fileName = "Repo.kt", lineNumber = 55, reason = "delay")
+            session.projectionService.rebuildFrom(
+                listOf<VizEvent>(
+                    created(session, id, 0),
+                    started(session, id, 1),
+                    suspended(session, id, 2, suspensionPoint = suspend),
+                    resumed(session, id, 3),
+                    // a second suspension with NO frame must NOT wipe the last good ref
+                    suspended(session, id, 4, suspensionPoint = null),
+                ),
+            )
+
+            val n = node(session, id)
+            assertEquals(suspend, n.lastSuspensionPoint, "keep the last non-null suspension frame")
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `durable source refs survive rebuildFrom replay`() {
+        val session = VizSession("proj-refs-replay")
+        try {
+            seq = 0
+            val id = "req-refs-replay"
+            val launch = SuspensionPoint(function = "main", fileName = "App.kt", lineNumber = 10, reason = "launch")
+            val suspend = SuspensionPoint(function = "fetch", fileName = "Repo.kt", lineNumber = 55, reason = "delay")
+            val events =
+                listOf<VizEvent>(
+                    created(session, id, 0, creationPoint = launch),
+                    started(session, id, 1),
+                    suspended(session, id, 2, suspensionPoint = suspend),
+                )
+            session.projectionService.rebuildFrom(events)
+            session.projectionService.rebuildFrom(events)
+
+            val n = node(session, id)
+            assertEquals(launch, n.creationPoint)
+            assertEquals(suspend, n.lastSuspensionPoint)
+        } finally {
+            session.close()
+        }
+    }
 }
