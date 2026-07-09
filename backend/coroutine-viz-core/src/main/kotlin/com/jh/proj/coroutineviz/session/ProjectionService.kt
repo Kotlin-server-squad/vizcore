@@ -154,10 +154,17 @@ class ProjectionService(
 
             is CoroutineFailed -> {
                 coroutines[event.coroutineId]?.let { node ->
+                    // Copy the failure detail onto the node so /hierarchy carries it on BOTH
+                    // paths (VizScope wrapper + agent). The plugin's whole EXCEPTION pipeline
+                    // (ProblemDerivation.isRealException, row badge, inspector card) keys on
+                    // node.exceptionType — CoroutineCancelled deliberately does NOT set it
+                    // because cancellation is normal structured-concurrency flow (D-09).
                     coroutines[event.coroutineId] =
                         node.copy(
                             state = "FAILED",
                             completedAtNanos = event.tsNanos,
+                            exceptionType = event.exceptionType,
+                            exceptionMessage = event.message,
                         )
                 }
             }
