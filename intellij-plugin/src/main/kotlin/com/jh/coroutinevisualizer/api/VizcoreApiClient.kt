@@ -32,7 +32,13 @@ class VizcoreApiClient(
 
     private fun send(path: String): HttpResponse<String> = http.send(request(path), HttpResponse.BodyHandlers.ofString())
 
-    private fun enc(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
+    /**
+     * Path-segment-safe encoding. URLEncoder is application/x-www-form-urlencoded (space -> '+'),
+     * but Ktor's server decodes PATH segments with plusIsSpace=false, so a '+' stays literal and a
+     * spacey sessionId lookup 404s on every poll. '%20' decodes correctly in BOTH path and query
+     * positions, so this single helper stays shared by [resolve] (query) and the path call sites.
+     */
+    private fun enc(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
 
     fun resolve(correlation: String): String? {
         val response = send("/sessions/resolve?correlation=${enc(correlation)}")

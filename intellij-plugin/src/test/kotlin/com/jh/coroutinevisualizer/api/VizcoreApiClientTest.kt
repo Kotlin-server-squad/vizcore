@@ -47,6 +47,19 @@ class VizcoreApiClientTest {
         assertEquals("RUNNING", nodes[0].state)
     }
 
+    @Test fun `hierarchy encodes a spacey sessionId as percent-20 path segments never plus`() {
+        // Ktor's server decodes path segments with plusIsSpace=false: a form-encoded '+' stays a
+        // literal '+', so 'demo+boot+jar-123' looks up the wrong session and 404s on every poll.
+        var captured: String? = null
+        val url =
+            start { uri ->
+                captured = uri
+                200 to "[]"
+            }
+        VizcoreApiClient(url).hierarchy("demo boot jar-123")
+        assertEquals("/api/sessions/demo%20boot%20jar-123/hierarchy", captured)
+    }
+
     @Test fun `metrics parses leaks`() {
         val url =
             start {
