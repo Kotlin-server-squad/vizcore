@@ -4,10 +4,17 @@ import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.models.CoroutineTimeline
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
@@ -94,10 +101,87 @@ class ProjectionServiceProblemsDataTest {
             cause = cause,
         )
 
+    private fun suspended(
+        session: VizSession,
+        id: String,
+        tsNanos: Long,
+        suspensionPoint: SuspensionPoint? = null,
+    ): CoroutineSuspended =
+        CoroutineSuspended(
+            sessionId = session.sessionId,
+            seq = ++seq,
+            tsNanos = tsNanos,
+            coroutineId = id,
+            jobId = "job-$id",
+            parentCoroutineId = null,
+            scopeId = "io",
+            label = id,
+            reason = "delay",
+            suspensionPoint = suspensionPoint,
+        )
+
+    private fun resumed(
+        session: VizSession,
+        id: String,
+        tsNanos: Long,
+    ): CoroutineResumed =
+        CoroutineResumed(
+            sessionId = session.sessionId,
+            seq = ++seq,
+            tsNanos = tsNanos,
+            coroutineId = id,
+            jobId = "job-$id",
+            parentCoroutineId = null,
+            scopeId = "io",
+            label = id,
+        )
+
+    private fun completed(
+        session: VizSession,
+        id: String,
+        tsNanos: Long,
+    ): CoroutineCompleted =
+        CoroutineCompleted(
+            sessionId = session.sessionId,
+            seq = ++seq,
+            tsNanos = tsNanos,
+            coroutineId = id,
+            jobId = "job-$id",
+            parentCoroutineId = null,
+            scopeId = "io",
+            label = id,
+        )
+
     private fun node(
         session: VizSession,
         id: String,
     ) = session.projectionService.getHierarchyTree().single { it.id == id }
+
+    /**
+     * Live-drive: send [events] through the real bus/store the route reads from, then poll
+     * until the projection has observed the last event (the collector runs async on
+     * sessionScope). Returns the computed timeline. Mirrors [CoroutineTimelineSourceFramesTest].
+     */
+    private fun driveTimeline(
+        session: VizSession,
+        id: String,
+        events: List<VizEvent>,
+        expectedEventCount: Int,
+    ): CoroutineTimeline {
+        runBlocking {
+            events.forEach { session.send(it) }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (System.nanoTime() < deadline) {
+                val t = session.projectionService.getCoroutineTimeline(id)
+                if (t != null && t.events.size >= expectedEventCount) break
+                Thread.sleep(10)
+            }
+        }
+        return assertNotNull(
+            session.projectionService.getCoroutineTimeline(id),
+            "timeline must be non-null for a known coroutine",
+        )
+    }
 
     @Test
     fun `CoroutineFailed copies exceptionType and message onto the hierarchy node`() {
@@ -171,6 +255,124 @@ class ProjectionServiceProblemsDataTest {
             val n = node(session, id)
             assertEquals("java.io.IOException", n.exceptionType)
             assertEquals("disk", n.exceptionMessage)
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `durations are folded from same-clock started-suspended-resumed-completed pairs`() {
+        val session = VizSession("proj-durations-terminal")
+        try {
+            seq = 0
+            val id = "req-timed"
+            val ms = 1_000_000L
+            // started(0) -> suspended(100ms) -> resumed(300ms) -> completed(350ms)
+            // active = (100-0) + (350-300) = 150ms ; suspended = (300-100) = 200ms
+            val timeline =
+                driveTimeline(
+                    session,
+                    id,
+                    listOf(
+                        created(session, id, 0),
+                        started(session, id, 0),
+                        suspended(session, id, 100 * ms),
+                        resumed(session, id, 300 * ms),
+                        completed(session, id, 350 * ms),
+                    ),
+                    // created + started + suspended (started/suspended are summarised; created too now)
+                    expectedEventCount = 3,
+                )
+
+            assertEquals(150 * ms, timeline.activeDuration, "active = 150ms of running")
+            assertEquals(200 * ms, timeline.suspendedDuration, "suspended = 200ms")
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `a live coroutine accumulates only closed intervals - the open tail is excluded`() {
+        val session = VizSession("proj-durations-live")
+        try {
+            seq = 0
+            val id = "req-live"
+            val ms = 1_000_000L
+            // started(0) -> suspended(100ms) -> resumed(300ms), NO terminal event.
+            // active = (100-0) = 100ms (the open ACTIVE tail after resume is NOT extrapolated).
+            // suspended = (300-100) = 200ms.
+            val timeline =
+                driveTimeline(
+                    session,
+                    id,
+                    listOf(
+                        created(session, id, 0),
+                        started(session, id, 0),
+                        suspended(session, id, 100 * ms),
+                        resumed(session, id, 300 * ms),
+                    ),
+                    expectedEventCount = 3,
+                )
+
+            assertEquals(100 * ms, timeline.activeDuration, "only the CLOSED active interval counts")
+            assertEquals(200 * ms, timeline.suspendedDuration, "the one closed suspended interval")
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `an evicted event list degrades both durations to null`() {
+        val session = VizSession("proj-durations-evicted")
+        try {
+            seq = 0
+            val id = "req-evicted"
+            // rebuildFrom populates the projection node but NOT the store; getCoroutineTimeline
+            // reads its raw events from the store, so this mirrors the 10k DROP_OLDEST eviction
+            // where the node survives but the per-coroutine event list has emptied out.
+            session.projectionService.rebuildFrom(
+                listOf<VizEvent>(
+                    created(session, id, 0),
+                    started(session, id, 1),
+                ),
+            )
+
+            val timeline =
+                assertNotNull(session.projectionService.getCoroutineTimeline(id))
+            assertNull(timeline.activeDuration, "no closed interval on an evicted list -> null (not 0)")
+            assertNull(timeline.suspendedDuration, "no closed interval on an evicted list -> null (not 0)")
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `timeline first summary is coroutine-created carrying the launch frame`() {
+        val session = VizSession("proj-created-summary")
+        try {
+            seq = 0
+            val id = "req-created"
+            val launch =
+                SuspensionPoint(
+                    function = "handleRequest",
+                    fileName = "DemoApplication.kt",
+                    lineNumber = 42,
+                    reason = "launch",
+                )
+            val timeline =
+                driveTimeline(
+                    session,
+                    id,
+                    listOf(
+                        created(session, id, 0, creationPoint = launch),
+                        started(session, id, 1),
+                    ),
+                    expectedEventCount = 2,
+                )
+
+            val first = timeline.events.first()
+            assertEquals("coroutine.created", first.kind, "the earliest summary is coroutine.created")
+            assertEquals(launch, first.suspensionPoint, "coroutine.created carries the launch frame")
         } finally {
             session.close()
         }
