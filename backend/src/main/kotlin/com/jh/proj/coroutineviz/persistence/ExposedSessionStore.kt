@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.persistence.tables.EventsTable
 import com.jh.proj.coroutineviz.persistence.tables.SessionsTable
 import com.jh.proj.coroutineviz.session.SessionStoreInterface
 import com.jh.proj.coroutineviz.session.VizSession
+import com.jh.proj.coroutineviz.session.slugifySessionName
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
@@ -57,8 +58,11 @@ class ExposedSessionStore(
         name: String?,
         tenant: TenantContext,
     ): VizSession {
+        // Slugify the name into the id (shared core helper — both minting sites use
+        // ONE sanitizer so they cannot drift). The RAW name is preserved untouched in
+        // the `name` column below; only the URL-embedded id is made URL-safe.
         val sessionId =
-            name?.let { "$it-${System.currentTimeMillis()}" }
+            name?.let { "${slugifySessionName(it)}-${System.currentTimeMillis()}" }
                 ?: "session-${System.currentTimeMillis()}"
 
         // Persist the owning tenant id when the caller is scoped; Admin/Unscoped

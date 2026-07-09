@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.persistence.tables.SharesTable
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -67,6 +68,34 @@ class ExposedSessionStoreTest {
         assertEquals(session.sessionId, loaded.sessionId)
 
         assertNull(store.getSession("does-not-exist"))
+    }
+
+    @Test
+    fun `createSession slugifies a spacey name into a url-safe id but keeps the raw name`() {
+        // GAP-SESSIONID-SPACES: an IDE run-config name with spaces must mint a
+        // URL-safe id (embedded in URL path segments by three consumers), while the
+        // display name column keeps the raw value untouched.
+        val store = ExposedSessionStore(db)
+        val session = runBlocking { store.createSession("demo boot jar") }
+
+        assertTrue(
+            session.sessionId.matches(Regex("^demo-boot-jar-\\d+$")),
+            "expected a slugified id, got '${session.sessionId}'",
+        )
+        assertTrue(
+            session.sessionId.matches(Regex("^[A-Za-z0-9._-]+$")),
+            "minted id contains a char outside [A-Za-z0-9._-]: '${session.sessionId}'",
+        )
+
+        // The RAW display name is preserved in the name column — only the id is slugified.
+        transaction(db) {
+            val name =
+                SessionsTable
+                    .selectAll()
+                    .where { SessionsTable.id eq session.sessionId }
+                    .single()[SessionsTable.name]
+            assertEquals("demo boot jar", name)
+        }
     }
 
     @Test
