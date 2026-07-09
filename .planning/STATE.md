@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: Phase 15 context gathered
-last_updated: "2026-07-02T11:59:46.718Z"
-last_activity: 2026-07-02 -- Phase 15 execution started
+stopped_at: 15-07-PLAN.md complete (sessionId slugify + encoded ingest URL)
+last_updated: "2026-07-09T00:00:00.000Z"
+last_activity: 2026-07-09 -- Phase 15 plan 15-07 (sessionId slugify) complete
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 28
-  completed_plans: 22
+  total_plans: 35
+  completed_plans: 29
   percent: 71
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 15 (plugin-problems-data-surfacing) — EXECUTING
-Plan: 1 of 6
+Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
+Plan: 15-07 complete (gap closure)
 Status: Executing Phase 15
-Last activity: 2026-07-02 -- Phase 15 execution started
+Last activity: 2026-07-09 -- Phase 15 plan 15-07 (sessionId slugify) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
@@ -130,6 +130,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 10 P05 | ~30 min | 2 tasks | 5 files |
 | Phase 11 P01 | ~4 min | 3 tasks | 3 files |
 | Phase 11 P02 | ~12 min | 2 tasks | 6 files |
+| Phase 15 P07 | ~12 min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -205,6 +206,7 @@ Recent decisions affecting current work:
 - [Phase 10, Plan 01]: StructuralClassifier (PERF-01 spine) — a stateless object with one explicit Set<String> allow-set keyed on the exact `kind` discriminator (replaces EventSampler's leaky lifecycle-SUFFIX heuristic, D-01). isStructural = `kind in STRUCTURAL_KINDS`; unknown kinds → false (sheddable). Borderline low-freq kinds (MutexUnlocked/SemaphorePermitReleased/Select*/Deferred*) default STRUCTURAL (A2 safe-over-protect). Shared verbatim with Plan-02's shed buffer (PERF-04). EventSampler.shouldKeep now early-returns via StructuralClassifier.isStructural; the adaptive gate is OPT-IN (adaptive=false default so all 25 prior EventSamplerTest cases stay byte-equivalent) — below LOAD_THRESHOLD keeps everything (full fidelity), above it the configured per-type rates engage. Two-watermark hysteresis (AdaptiveConfig high=500/s low=300/s) over a 1s sliding ArrayDeque (MetricsProjection evictOlderThan idiom) prevents flapping (Pitfall P8). Throughput = retained-arrivals / windowSeconds (FIXED denominator — robust to same-instant bursts, unlike a first-to-last span). shouldKeep gained a defaulted nowNanos for deterministic tests; deterministicKeep/updateRate/getEffectiveRate preserved byte-for-byte. Two deviations: (1) Rule-1 a literal `/*` inside a KDoc broke compilation → reworded; (2) Rule-3 reworked the throughput math + rewrote the stay-engaged test to a continuous ~450/s stream so it proves hysteresis not collapse-recover. coroutine-viz-core stays JVM-17 pure (zero imports in classifier; only VizEvent+ConcurrentHashMap in sampler), no new dep, store-write path (VizSession.send) untouched (D-03). Core gate (:coroutine-viz-core:test ktlintCheck detekt) green under JDK 21. Commits 511a950 (classifier), 9473817 (adaptive sampler).
 - [Phase 11, Plan 03]: SDK distribution docs + local publish proofs (SDK-03 closed; SDK-01 PARTIAL). docs/guides/sdk-distribution.md documents the consume snippet (locked coordinate + read:packages repo), the developer publish command (write:packages PAT), the CLI build+run with exit semantics, the coroutineVizCheck consumer snippet (D-06 — a JavaExec wrapping the published coroutine-viz-cli-0.1.0-all.jar whose non-zero exit fails the consumer build; zero rule duplication), and the checkBytecode pre-push guard. scripts/verify-pom.sh runs publishToMavenLocal for core+client then greps each ~/.m2 POM for the literal MIT string (POM renders <name>MIT License</name>) + exact groupId/artifactId/version — proves the coordinate BEFORE the immutable remote one-shot. scripts/fresh-consumer/ is a standalone Gradle project (own settings.gradle.kts, NOT the backend composite; mavenLocal() first then the GitHub Packages repo) resolving the EXACT dep-snippet.ts:13 coordinate — proven from mavenLocal under JDK 21 (BUILD SUCCESSFUL, transitively pulls coroutine-viz-core:0.1.0). publish-maven.yml's existing MANUAL workflow_dispatch publish step now runs :coroutine-viz-core:publish :coroutine-viz-client:publish (+ a client test step); NO on-tag automation added, the human gate is preserved (D-01/D-03). Tasks 1-3 committed atomically (f25b690 docs+verify-pom, b689a63 ci publish-maven client, a311f35 fresh-consumer); all local verifies PASS under JDK 21. **Task 4 (HUMAN remote GitHub Packages publish + remote fresh-consumer resolution proof, SC#1) DEFERRED to /gsd-verify-work 11** per human decision — the agent NEVER published (D-03; holds no write:packages credential); 0.1.0 is IMMUTABLE so it was asserted locally first. SDK-01 remains PARTIAL until the remote publish + remote resolution land. SUMMARY.md stays on disk only (.planning gitignored, Phase-10 precedent).
 - [Phase ?]: [Phase 11, Plan 02]: SDK-02 Shadow fat-JAR CLI. NEW :coroutine-viz-cli module (JVM-21-free, D-09) — runCli(path):Int decodes a bare List<VizEvent> export via core appJson (PolymorphicSerializer, default 'type' discriminator) and drives the EXACT ValidationRoutes:49-53 validators (3 List + 2 single SequenceChecker via +=) PLUS AntiPatternDetector (NEW vs route, A3/SC#3: replay seq-sorted events through EventApplier(snapshot) + feed EventRecorder, then detectAll()). Exit policy (resolved A2): 1 on any Fail OR any ERROR/WARNING anti-pattern, 2 on usage/parse error (SerializationException try/catch, V5), 0 clean (INFO-only does NOT fail). Shadow pinned EXACTLY 9.4.3 in settings.gradle.kts pluginManagement (NOT inline) + applied unversioned in the module — Rule 3 fix: org.jetbrains.intellij.platform already puts Shadow on the build classpath with an unknown version so an inline version fails resolution; pluginManagement preserves the T-11-SC exact-version pin. No kotlin.*/kotlinx.* relocation (Pitfall 6/T-11-05 — proven: java -jar over events-bad.json decodes + exits 1). CLI tests use @org.junit.jupiter.api.Test (kotlin-test-junit alone is undiscovered under useJUnitPlatform, Rule 3). Wave-merge gate green under JDK 21 (checkBytecode still passes — CLI not scanned). Commits bab6a59 (feat), 121566e (test).
+- [Phase 15, Plan 07]: Gap closure GAP-SESSIONID-SPACES / SC4 — session names with spaces (e.g. "demo boot jar") minted `"$name-<millis>"` ids at BOTH sites (SessionManager + ExposedSessionStore), breaking two consumers (client WS request line malformed → Netty drops socket → eventCount 0; plugin polls 404 via `+` form-encoding — plugin half fixed in 15-10). Killed at the source: new top-level `slugifySessionName(name)` in core SessionManager replaces every char outside the allowlist `[A-Za-z0-9._-]` with `-` (pure char-class substitution, no run-collapse/trim so safe names pass byte-identical; allowlist never blocklist, T-15-07-01); applied at BOTH minting sites via ONE shared helper (no drift). RAW display name preserved in the DB `name` column — only the id is slugified. Client hardened for legacy ids: IngestTransport now builds the ingest URL via `url { takeFrom(wsBackendUrl); appendPathSegments("api","sessions",sessionId,"ingest") }` (percent-encodes each segment, space→%20) instead of raw `"$wsBackendUrl/api/sessions/$sessionId/ingest"` interpolation; scheme-less relative case (blank backendUrl, in-process test) skips takeFrom; Authorization stays in the header (T-07-02). Agent fat-jar rebuilt (bundles coroutine-viz-client) so the fix ships on the attach path. Regression tests: core SessionManagerSlugifyTest (spacey→`^demo-boot-jar-\d+$`, safe round-trip, unicode/`/`/`%`/`#`→`-`) + ExposedSessionStoreTest spacey-name (slugified id + raw name preserved). Full backend gate + shadowJar green under JDK 21. ROADMAP.md deliberately NOT modified (plan Task 3 explicit directive; gap plans 07-13 tracked as a closure track, not ROADMAP rows). Commits 78cda12 (slugify), e6a73d8 (encoded ingest URL).
 
 ### Pending Todos
 
@@ -238,9 +240,9 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-07-02T11:17:02.686Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-plugin-problems-data-surfacing/15-CONTEXT.md
+Last session: 2026-07-09T00:00:00.000Z
+Stopped at: 15-07-PLAN.md complete (sessionId slugify + encoded ingest URL)
+Resume file: None
 
 ## Operator Next Steps
 
