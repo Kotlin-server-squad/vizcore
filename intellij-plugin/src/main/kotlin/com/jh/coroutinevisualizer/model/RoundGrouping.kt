@@ -69,6 +69,7 @@ data class RoundPlan(
  * no recursion over children lists (T-15-02). The user query is only ever used via String.contains —
  * never compiled as a Regex (T-15-03, ASVS V5).
  */
+@Suppress("TooManyFunctions") // small single-purpose anchor/classification/plan helpers inflate the count
 object RoundGrouping {
     /** The most recent finished rounds shown individually (collapsed) before older ones fold (D-15). */
     const val RECENT_ROUNDS_LISTED = 5
@@ -212,16 +213,20 @@ object RoundGrouping {
         hierarchy: List<HierarchyNodeDto>,
         childrenOf: Map<String, List<String>>,
         byId: Map<String, HierarchyNodeDto>,
-    ): Set<String> {
-        val containers = HashSet<String>()
-        for (root in hierarchy) {
-            if (root.parentId != null || root.completedAtNanos != null) continue
-            val directChildren = childrenOf[root.id] ?: continue
-            if (directChildren.size < CONTAINER_MIN_CHILD_SUBTREES) continue
-            val completedSubtrees = directChildren.count { subtreeFullyCompleted(it, childrenOf, byId) }
-            if (completedSubtrees * 2 >= directChildren.size) containers += root.id
-        }
-        return containers
+    ): Set<String> =
+        hierarchy
+            .filter { isContainerRoot(it, childrenOf, byId) }
+            .mapTo(HashSet()) { it.id }
+
+    private fun isContainerRoot(
+        root: HierarchyNodeDto,
+        childrenOf: Map<String, List<String>>,
+        byId: Map<String, HierarchyNodeDto>,
+    ): Boolean {
+        if (root.parentId != null || root.completedAtNanos != null) return false
+        val directChildren = childrenOf[root.id].orEmpty()
+        val completedSubtrees = directChildren.count { subtreeFullyCompleted(it, childrenOf, byId) }
+        return directChildren.size >= CONTAINER_MIN_CHILD_SUBTREES && completedSubtrees * 2 >= directChildren.size
     }
 
     /** True when every node in [startId]'s subtree has completed (iterative, cycle-guarded, no recursion). */
@@ -234,11 +239,11 @@ object RoundGrouping {
         val visited = HashSet<String>()
         stack.addLast(startId)
         while (stack.isNotEmpty()) {
-            val id = stack.removeLast()
-            if (!visited.add(id)) continue
-            val node = byId[id] ?: continue
-            if (node.completedAtNanos == null) return false
-            childrenOf[id]?.forEach { stack.addLast(it) }
+            val node = stack.removeLast().takeIf { visited.add(it) }?.let { byId[it] }
+            if (node != null) {
+                if (node.completedAtNanos == null) return false
+                childrenOf[node.id]?.forEach { stack.addLast(it) }
+            }
         }
         return true
     }

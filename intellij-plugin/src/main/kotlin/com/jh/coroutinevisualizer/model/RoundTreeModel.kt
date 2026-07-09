@@ -22,6 +22,12 @@ import javax.swing.tree.TreeNode
  * `userObject`s in place and diffs children — a live JTree's expansion and selection survive the
  * 1.5s poll cadence.
  *
+ * Anchor consistency (GAP-ALL-MODE-MEGA-GROUP): subtree assignment and the owning-group lookup both
+ * flow through the SAME [RoundGrouping] anchor functions the plan uses — the model never re-derives
+ * grouping locally, so a collapsed promoted round's nodes can never drift to the container root. With
+ * container promotion the permanently-expanded set is {container singleton + current in-progress round},
+ * so per-poll reconciliation touches ~tens of rows, not the thousands a never-completing mega-root held.
+ *
  * Transient-empty semantics: [apply] renders exactly what it is given. Suppressing a momentary empty
  * hierarchy while a previous non-empty snapshot exists is the CALLER's guard (panel Pitfall 4), not
  * this model's concern.
@@ -44,6 +50,7 @@ class RoundTreeModel {
 
     private var snapshotByRoot: Map<String, List<HierarchyNodeDto>> = emptyMap()
     private var snapshotById: Map<String, HierarchyNodeDto> = emptyMap()
+    private var snapshotAnchors: Set<String> = emptySet()
     private var snapshotLeakIds: Set<String> = emptySet()
     private var snapshotNowNanos: Long = 0
 
@@ -68,7 +75,8 @@ class RoundTreeModel {
         matchIds: Set<String>? = null,
     ): RoundPlan {
         snapshotById = hierarchy.associateBy { it.id }
-        snapshotByRoot = subtreeByRoot(hierarchy, snapshotById)
+        snapshotAnchors = RoundGrouping.anchorIds(hierarchy, snapshotById)
+        snapshotByRoot = RoundGrouping.subtreeByAnchor(hierarchy, snapshotById, snapshotAnchors)
         snapshotLeakIds = leakIds
         snapshotNowNanos = nowNanos
 
@@ -98,7 +106,7 @@ class RoundTreeModel {
     fun nodeFor(id: String): DefaultMutableTreeNode? {
         val existing = coroutineNodesById[id]
         if (existing == null && id in snapshotById) {
-            groupNodesByRootId[rootFor(id, snapshotById, HashMap())]?.let { materialize(it) }
+            groupNodesByRootId[RoundGrouping.anchorFor(id, snapshotById, snapshotAnchors, HashMap())]?.let { materialize(it) }
         }
         return existing ?: coroutineNodesById[id]
     }
@@ -329,41 +337,7 @@ class RoundTreeModel {
         return out
     }
 
-    // --- snapshot grouping (mirrors RoundGrouping's O(n) parent-chain pass) ----------------------
-
-    private fun subtreeByRoot(
-        hierarchy: List<HierarchyNodeDto>,
-        byId: Map<String, HierarchyNodeDto>,
-    ): Map<String, List<HierarchyNodeDto>> {
-        val rootOf = HashMap<String, String>()
-        val out = HashMap<String, MutableList<HierarchyNodeDto>>()
-        for (node in hierarchy) {
-            out.getOrPut(rootFor(node.id, byId, rootOf)) { mutableListOf() }.add(node)
-        }
-        return out
-    }
-
-    private fun rootFor(
-        startId: String,
-        byId: Map<String, HierarchyNodeDto>,
-        rootOf: MutableMap<String, String>,
-    ): String {
-        val chain = ArrayList<String>()
-        var current = startId
-        var resolved = rootOf[current]
-        while (resolved == null) {
-            chain += current
-            val parent = byId[current]?.parentId?.takeIf { it in byId }
-            if (parent == null) {
-                resolved = current
-            } else {
-                current = parent
-                resolved = rootOf[parent]
-            }
-        }
-        chain.forEach { rootOf[it] = resolved }
-        return resolved
-    }
+    // --- snapshot helpers -----------------------------------------------------------------------
 
     private fun depthOf(dto: HierarchyNodeDto): Int {
         var depth = 0
