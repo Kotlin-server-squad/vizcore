@@ -5,7 +5,10 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.header
+import io.ktor.client.request.url
 import io.ktor.http.HttpHeaders
+import io.ktor.http.appendPathSegments
+import io.ktor.http.takeFrom
 import io.ktor.websocket.Frame
 import io.ktor.websocket.send
 import kotlinx.serialization.PolymorphicSerializer
@@ -25,6 +28,10 @@ import kotlinx.serialization.PolymorphicSerializer
  * either, the buffer and its retained events SURVIVE for the next socket. The caller
  * ([VizcoreClient]) owns the reconnect/backoff loop around this call and feeds the
  * buffer exactly once for the client lifetime.
+ *
+ * Path segments are appended via [appendPathSegments] (each segment percent-encoded)
+ * so a legacy pre-slugify session id containing spaces cannot malform the HTTP
+ * request line and get the socket dropped by the backend (Netty).
  */
 suspend fun stream(
     httpClient: HttpClient,
@@ -44,8 +51,23 @@ suspend fun stream(
             else -> backendUrl
         }
     httpClient.webSocket(
-        urlString = "$wsBackendUrl/api/sessions/$sessionId/ingest",
-        request = { header(HttpHeaders.Authorization, "Bearer $token") },
+        request = {
+            // Build the ingest URL from ENCODED path segments: Ktor's takeFrom(String)
+            // treats a raw string as pre-encoded and client-CIO writes the path verbatim
+            // into the request line, so a space in a legacy id would malform it (RFC 7230)
+            // and Netty would drop the socket. appendPathSegments percent-encodes each
+            // segment (space -> %20), so even a spacey id yields a well-formed request.
+            url {
+                // A scheme-less value ("" in the in-process round-trip test) must stay a
+                // relative URL; takeFrom("") is skipped so the default builder + segments
+                // resolve against the test client's host.
+                if (wsBackendUrl.isNotBlank()) {
+                    takeFrom(wsBackendUrl)
+                }
+                appendPathSegments("api", "sessions", sessionId, "ingest")
+            }
+            header(HttpHeaders.Authorization, "Bearer $token")
+        },
     ) {
         buffer.drain { event ->
             send(Frame.Text(appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)))
