@@ -177,4 +177,111 @@ class RoundGroupingTest {
         assertTrue(plan.listed.isEmpty())
         assertNull(plan.summary)
     }
+
+    // --- container-root promotion (agent / DebugProbes real-app shape, GAP-ALL-MODE-MEGA-GROUP) ----
+
+    /**
+     * The canonical real-app shape: ONE long-lived never-completing root ("main") whose workload
+     * rounds are its DIRECT children. Eight children each own a completed 3-node subtree
+     * (child + 2 grandchildren); the ninth child is still in progress.
+     */
+    private fun agentHierarchy(): List<HierarchyNodeDto> =
+        buildList {
+            add(node("main", state = "RUNNING", completedAtNanos = null, createdAtNanos = 1))
+            for (i in 1..8) {
+                val c = i * 10L
+                add(node("child$i", parentId = "main", createdAtNanos = c, completedAtNanos = c + 5))
+                add(node("g${i}a", parentId = "child$i", createdAtNanos = c + 1, completedAtNanos = c + 4))
+                add(node("g${i}b", parentId = "child$i", createdAtNanos = c + 2, completedAtNanos = c + 4))
+            }
+            add(node("child9", parentId = "main", state = "RUNNING", completedAtNanos = null, createdAtNanos = 200))
+            add(node("g9a", parentId = "child9", state = "RUNNING", completedAtNanos = null, createdAtNanos = 201))
+        }
+
+    @Test fun `agent shape promotes direct children to rounds and renders the container as a singleton`() {
+        val hierarchy = agentHierarchy()
+        val byId = hierarchy.associateBy { it.id }
+        // The container root is a SINGLETON anchor — its round holds only itself, not the whole app.
+        assertEquals(listOf("main"), RoundGrouping.subtreeByAnchor(hierarchy, byId).getValue("main").map { it.id })
+
+        val plan = RoundGrouping.plan(hierarchy, emptyList(), nowNanos)
+        // container singleton + in-progress child + 5 recent completed = 7 listed
+        assertEquals(7, plan.listed.size)
+
+        val mainGroup = plan.listed.single { it.rootId == "main" }
+        assertTrue(mainGroup.inProgress)
+        assertTrue(mainGroup.expanded)
+        assertEquals(RoundCounts(0, 0, 0), mainGroup.counts)
+
+        val inProgressChild = plan.listed.single { it.rootId == "child9" }
+        assertTrue(inProgressChild.inProgress)
+        assertTrue(inProgressChild.expanded)
+
+        // The 5 recent completed child rounds are collapsed; summary folds the 3 oldest clean child rounds.
+        assertEquals(5, plan.listed.count { !it.expanded })
+        val summary = assertNotNull(plan.summary)
+        assertEquals(listOf("child1", "child2", "child3"), summary.rootIds)
+        assertEquals(9, summary.counts.ok)
+    }
+
+    @Test fun `vizscope shaped completing roots are never promoted to containers`() {
+        val hierarchy =
+            buildList {
+                for (i in 1..4) {
+                    add(node("root$i", createdAtNanos = i.toLong()))
+                    add(node("k$i", parentId = "root$i", createdAtNanos = i.toLong() + 100))
+                }
+            }
+        val byId = hierarchy.associateBy { it.id }
+        assertEquals(setOf("root1", "root2", "root3", "root4"), RoundGrouping.anchorIds(hierarchy, byId))
+        val plan = RoundGrouping.plan(hierarchy, emptyList(), nowNanos)
+        assertEquals(setOf("root1", "root2", "root3", "root4"), plan.listed.map { it.rootId }.toSet())
+        assertNull(plan.summary) // 4 finished rounds <= RECENT_ROUNDS_LISTED, so none fold
+    }
+
+    @Test fun `a never completing root with two children stays one round below the container threshold`() {
+        val hierarchy =
+            listOf(
+                node("main", state = "RUNNING", completedAtNanos = null, createdAtNanos = 1),
+                node("a", parentId = "main", createdAtNanos = 2),
+                node("b", parentId = "main", createdAtNanos = 3),
+            )
+        val byId = hierarchy.associateBy { it.id }
+        assertEquals(setOf("main"), RoundGrouping.anchorIds(hierarchy, byId))
+        val plan = RoundGrouping.plan(hierarchy, emptyList(), nowNanos)
+        val group = plan.listed.single()
+        assertEquals("main", group.rootId)
+        assertTrue(group.inProgress)
+        assertEquals(
+            setOf("main", "a", "b"),
+            RoundGrouping.subtreeByAnchor(hierarchy, byId).getValue("main").mapTo(HashSet()) { it.id },
+        )
+    }
+
+    @Test fun `searching inside a promoted child round surfaces that child round not the container`() {
+        val hierarchy =
+            buildList {
+                add(node("main", state = "RUNNING", completedAtNanos = null, createdAtNanos = 1))
+                for (i in 1..8) {
+                    val c = i * 10L
+                    add(node("child$i", parentId = "main", createdAtNanos = c, completedAtNanos = c + 5))
+                    add(
+                        node(
+                            "g$i",
+                            parentId = "child$i",
+                            createdAtNanos = c + 1,
+                            completedAtNanos = c + 4,
+                            name = if (i == 5) "special-target" else "g$i",
+                        ),
+                    )
+                }
+            }
+        val match = RoundGrouping.searchMatchIds(hierarchy, "special-target")
+        val plan = RoundGrouping.plan(hierarchy, emptyList(), nowNanos, matchIds = match)
+        assertNull(plan.summary)
+        val group = plan.listed.single()
+        assertEquals("child5", group.rootId) // the anchor owning the match, NOT the container root
+        assertTrue(group.expanded)
+        assertEquals(setOf("child5", "g5"), group.visibleNodeIds)
+    }
 }
