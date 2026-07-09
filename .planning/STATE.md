@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-08-PLAN.md complete (agent-path wire gaps: failure outcomes + thread/dispatcher + frame semantics)
-last_updated: "2026-07-09T11:45:00.000Z"
-last_activity: 2026-07-09 -- Phase 15 plan 15-08 (agent-path wire gaps) complete
+stopped_at: 15-10-PLAN.md complete (inspector scroll viewport + %20 path-segment encoding)
+last_updated: "2026-07-09T20:45:00.000Z"
+last_activity: 2026-07-09 -- Phase 15 plan 15-10 (inspector scroll + path encoding) complete
 progress:
   total_phases: 7
   completed_phases: 5
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 ## Current Position
 
 Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
-Plan: 15-08 complete (gap closure)
+Plan: 15-10 complete (gap closure)
 Status: Executing Phase 15
-Last activity: 2026-07-09 -- Phase 15 plan 15-08 (agent-path wire gaps) complete
+Last activity: 2026-07-09 -- Phase 15 plan 15-10 (inspector scroll + path encoding) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
@@ -132,6 +132,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 11 P02 | ~12 min | 2 tasks | 6 files |
 | Phase 15 P07 | ~12 min | 3 tasks | 5 files |
 | Phase 15 P08 | ~22 min | 3 tasks | 12 files |
+| Phase 15 P10 | ~45 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -211,6 +212,8 @@ Recent decisions affecting current work:
 
 - [Phase 15, Plan 08]: Gap closure GAP-EXCEPTIONS-BLIND / GAP-ENRICHMENT-EMPTY / GAP-JUMP-WRONG-FRAME (SC2/SC3) — the agent/DebugProbes wire now carries all three missing data classes. (1) Failure outcomes: CoroutineInfoAdapter registers EXACTLY ONE `Job.invokeOnCompletion` handler per observed Job (identityHashCode DisposableHandle guard, disposed on reset(), T-15-08-03) recording a consume-once CompletionOutcome; DebugProbesSource passes it into synthesize at Vanished → CoroutineFailed(exceptionType,message) / CoroutineCancelled(cause) / byte-identical CoroutineCompleted (v1 A3 tradeoff superseded; WR-02 per-delta commit untouched). (2) Thread/dispatcher: snapshots carry threadId/threadName; synthesizer emits ThreadAssigned on Appeared(RUNNING/SUSPENDED) + every transition INTO RUNNING (never fabricated), and DispatcherSelected ONCE per coroutine at Appeared (dispatcherId = normalized name); scopeId D-03 routing unmoved. KEY DEVIATION (Rule 3): the plan's assumed `CoroutineInfo.lastObservedThread` does NOT exist — the public wrapper drops the thread; it lives only on Kotlin-internal/JVM-public DebugCoroutineInfo. Fixed via NEW DebugProbesImplBridge.java (same package, javac ignores Kotlin metadata) mapping DebugProbesImpl.dumpCoroutinesInfo() straight into RawInfo; source default dump switched to the bridge. (3) Frame semantics: coroutine.suspended now derives its SuspensionPoint from lastObservedStackTrace's first user frame (creation-derived FALLBACK — a frame is never lost); the launch site rides NEW CoroutineCreated.creationPoint (LAST defaulted param, createdAtEpochMs compat precedent; legacy JSON decodes to null; VizScope wrapper path byte-unchanged); SourceAttribution.fromStack generic extraction added. Full backend gate + :coroutine-viz-agent:shadowJar green under JDK 21 (agent bundles core — rebuild done). NOTE for re-UAT: DEBUG-exceptions-blind Link 2 (ProjectionService never copies exceptionType/message into HierarchyNode) is OUT of 15-08 scope — must land via its sibling gap plan or the plugin exception pipeline stays dark despite the wire fix. Commits f98d864/ce273d4 (T1), d7af2bf/504d632 (T2), 0251ad1/610a5fd (T3).
 
+- [Phase 15, Plan 10]: Gap closure GAP-INSPECTOR-SCROLL / GAP-SESSIONID-SPACES (plugin half) — (1) InspectorPanel now hosts ONE persistent borderless JBScrollPane (unitIncrement 16, no horizontal bar) around a top-anchoring BorderLayout wrapper; show(vm) swaps content INSIDE the wrapper (cards NORTH, placeholder CENTER) and resets viewport to top, so every D-24 stacked card is wheel-reachable at any pane height (internal wrap, mirror ProblemsDetailPanel — VizcoreToolWindowPanel untouched). KEY DEVIATION (Rule 3, orchestrator-directed): a bare macOS unit test CANNOT construct JBScrollPane (MacScrollBarUI asserts JNA in Foundation.<clinit>; JnaLoader reflection, java.awt.headless, and ApplicationExtension all fail — the last hangs the worker in loadAppInUnitTestMode). Added a `scrollPaneFactory` constructor seam: production defaults to JBScrollPane (sole caller unchanged), InspectorPanelScrollTest injects plain JScrollPane and asserts viewport-present / placeholder-in-viewport / persistent-instance. Repo convention holds: NO plugin unit test boots the platform. (2) VizcoreApiClient.enc() = URLEncoder + `.replace("+","%20")` — Ktor decodes path segments with plusIsSpace=false so form '+' 404ed legacy spacey ids on every hierarchy/metrics/timeline poll; %20 decodes in BOTH path and query so the single helper stays shared by resolve(). Regression test asserts raw path `/api/sessions/demo%20boot%20jar-123/hierarchy`. Full plugin gate (127 tests, ktlint, detekt) green under JDK 21. Commits c089c6e (T1), 0e7a4fd (T2).
+
 ### Pending Todos
 
 11 pending in `.planning/todos/pending/` — review with `/gsd-capture --list`. Includes 4 captured from the 2026-06-21 runtime audit: WR-02 admin cross-tenant share mint, share-UI silent no-op in memory mode, cors quoted-default config fragility, and DB-mode empty coroutine projection.
@@ -243,8 +246,8 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-07-09T11:45:00.000Z
-Stopped at: 15-08-PLAN.md complete (agent-path wire gaps: failure outcomes + thread/dispatcher + frame semantics)
+Last session: 2026-07-09T20:45:00.000Z
+Stopped at: 15-10-PLAN.md complete (inspector scroll viewport + %20 path-segment encoding)
 Resume file: None
 
 ## Operator Next Steps
