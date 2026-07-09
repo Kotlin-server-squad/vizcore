@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-11-PLAN.md complete (container-root promotion — All-mode mega-group gap closed)
-last_updated: "2026-07-09T21:30:00.000Z"
-last_activity: 2026-07-09 -- Phase 15 plan 15-11 (container-root promotion + anchor-consistent tree model) complete
+stopped_at: 15-13-PLAN.md complete (agent child-first classloader isolation — exploded-cp attach now streams)
+last_updated: "2026-07-09T22:15:00.000Z"
+last_activity: 2026-07-09 -- Phase 15 plan 15-13 (child-first AgentClassLoader + exploded-attach repro harness + agent-UAT guide) complete
 progress:
   total_phases: 7
   completed_phases: 5
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 ## Current Position
 
 Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
-Plan: 15-11 complete (gap closure)
+Plan: 15-13 complete (gap closure)
 Status: Executing Phase 15
-Last activity: 2026-07-09 -- Phase 15 plan 15-11 (container-root promotion + anchor-consistent tree model) complete
+Last activity: 2026-07-09 -- Phase 15 plan 15-13 (child-first AgentClassLoader + exploded-attach repro harness + agent-UAT guide) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
@@ -134,6 +134,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 15 P08 | ~22 min | 3 tasks | 12 files |
 | Phase 15 P10 | ~45 min | 2 tasks | 4 files |
 | Phase 15 P11 | ~20 min | 2 tasks | 4 files |
+| Phase 15 P13 | ~20 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 Decisions are logged in PROJECT.md Key Decisions table (26 Accepted ADRs locked; ADR-010 Proposed/advisory).
 Recent decisions affecting current work:
 
+- [Phase 15, Plan 13]: Agent exploded-classpath attach is now durable — a child-first boot.AgentClassLoader (OTel java-agent pattern) over the fat jar, built by a dependency-free Java Premain-Class shim (boot.VizcoreAgentPremain) that reflectively invokes AgentBootstrap.run through it. io.ktor./kotlinx.serialization./kotlinx.io./com.jh.proj.coroutineviz./shaded-slf4j load CHILD-FIRST from the jar (the fix — no longer resolving from the app's -cp, which was mis-reading Content-Length keep-alive responses into empty bodies); kotlin./kotlinx.coroutines. stay SYSTEM-FIRST with child fallback (shared host class space so DebugProbes instruments the host + Function1 callbacks stay one class space; fallback covers pure-Java hosts). kotlin./kotlinx.* remain UN-relocated because the loader (not relocation) provides isolation — relocation would break DebugProbes byte-buddy introspection (Pitfall 4). Fail-soft doubled (shim + bootstrap catch, 8c7d67c preserved). scripts/agent-attach-repro.sh proves it 2/2 (eventCount 35/4) against a live backend on :8090; docs/guides/agent-attach-uat.md documents both launch paths + the rebuild-before-jump line-drift guard.
 - Treat the duplicate `session/` fork removal as the first work item — it is the root cause of the unbounded-store (gap 2) and unwired-perf (gap 3) findings.
 - Persistence (ADR-015) and route-level auth (ADR-016) are designed-but-unimplemented; current deployment is in-memory/ephemeral (ADR-009).
 - Business-model and KPI variants are unresolved — V2 is the working default; not blocking engineering.
