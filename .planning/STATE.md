@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-07-PLAN.md complete (sessionId slugify + encoded ingest URL)
-last_updated: "2026-07-09T00:00:00.000Z"
-last_activity: 2026-07-09 -- Phase 15 plan 15-07 (sessionId slugify) complete
+stopped_at: 15-08-PLAN.md complete (agent-path wire gaps: failure outcomes + thread/dispatcher + frame semantics)
+last_updated: "2026-07-09T11:45:00.000Z"
+last_activity: 2026-07-09 -- Phase 15 plan 15-08 (agent-path wire gaps) complete
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 35
-  completed_plans: 29
-  percent: 71
+  completed_plans: 30
+  percent: 73
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 ## Current Position
 
 Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
-Plan: 15-07 complete (gap closure)
+Plan: 15-08 complete (gap closure)
 Status: Executing Phase 15
-Last activity: 2026-07-09 -- Phase 15 plan 15-07 (sessionId slugify) complete
+Last activity: 2026-07-09 -- Phase 15 plan 15-08 (agent-path wire gaps) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
@@ -131,6 +131,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 11 P01 | ~4 min | 3 tasks | 3 files |
 | Phase 11 P02 | ~12 min | 2 tasks | 6 files |
 | Phase 15 P07 | ~12 min | 3 tasks | 5 files |
+| Phase 15 P08 | ~22 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -208,6 +209,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 11, Plan 02]: SDK-02 Shadow fat-JAR CLI. NEW :coroutine-viz-cli module (JVM-21-free, D-09) — runCli(path):Int decodes a bare List<VizEvent> export via core appJson (PolymorphicSerializer, default 'type' discriminator) and drives the EXACT ValidationRoutes:49-53 validators (3 List + 2 single SequenceChecker via +=) PLUS AntiPatternDetector (NEW vs route, A3/SC#3: replay seq-sorted events through EventApplier(snapshot) + feed EventRecorder, then detectAll()). Exit policy (resolved A2): 1 on any Fail OR any ERROR/WARNING anti-pattern, 2 on usage/parse error (SerializationException try/catch, V5), 0 clean (INFO-only does NOT fail). Shadow pinned EXACTLY 9.4.3 in settings.gradle.kts pluginManagement (NOT inline) + applied unversioned in the module — Rule 3 fix: org.jetbrains.intellij.platform already puts Shadow on the build classpath with an unknown version so an inline version fails resolution; pluginManagement preserves the T-11-SC exact-version pin. No kotlin.*/kotlinx.* relocation (Pitfall 6/T-11-05 — proven: java -jar over events-bad.json decodes + exits 1). CLI tests use @org.junit.jupiter.api.Test (kotlin-test-junit alone is undiscovered under useJUnitPlatform, Rule 3). Wave-merge gate green under JDK 21 (checkBytecode still passes — CLI not scanned). Commits bab6a59 (feat), 121566e (test).
 - [Phase 15, Plan 07]: Gap closure GAP-SESSIONID-SPACES / SC4 — session names with spaces (e.g. "demo boot jar") minted `"$name-<millis>"` ids at BOTH sites (SessionManager + ExposedSessionStore), breaking two consumers (client WS request line malformed → Netty drops socket → eventCount 0; plugin polls 404 via `+` form-encoding — plugin half fixed in 15-10). Killed at the source: new top-level `slugifySessionName(name)` in core SessionManager replaces every char outside the allowlist `[A-Za-z0-9._-]` with `-` (pure char-class substitution, no run-collapse/trim so safe names pass byte-identical; allowlist never blocklist, T-15-07-01); applied at BOTH minting sites via ONE shared helper (no drift). RAW display name preserved in the DB `name` column — only the id is slugified. Client hardened for legacy ids: IngestTransport now builds the ingest URL via `url { takeFrom(wsBackendUrl); appendPathSegments("api","sessions",sessionId,"ingest") }` (percent-encodes each segment, space→%20) instead of raw `"$wsBackendUrl/api/sessions/$sessionId/ingest"` interpolation; scheme-less relative case (blank backendUrl, in-process test) skips takeFrom; Authorization stays in the header (T-07-02). Agent fat-jar rebuilt (bundles coroutine-viz-client) so the fix ships on the attach path. Regression tests: core SessionManagerSlugifyTest (spacey→`^demo-boot-jar-\d+$`, safe round-trip, unicode/`/`/`%`/`#`→`-`) + ExposedSessionStoreTest spacey-name (slugified id + raw name preserved). Full backend gate + shadowJar green under JDK 21. ROADMAP.md deliberately NOT modified (plan Task 3 explicit directive; gap plans 07-13 tracked as a closure track, not ROADMAP rows). Commits 78cda12 (slugify), e6a73d8 (encoded ingest URL).
 
+- [Phase 15, Plan 08]: Gap closure GAP-EXCEPTIONS-BLIND / GAP-ENRICHMENT-EMPTY / GAP-JUMP-WRONG-FRAME (SC2/SC3) — the agent/DebugProbes wire now carries all three missing data classes. (1) Failure outcomes: CoroutineInfoAdapter registers EXACTLY ONE `Job.invokeOnCompletion` handler per observed Job (identityHashCode DisposableHandle guard, disposed on reset(), T-15-08-03) recording a consume-once CompletionOutcome; DebugProbesSource passes it into synthesize at Vanished → CoroutineFailed(exceptionType,message) / CoroutineCancelled(cause) / byte-identical CoroutineCompleted (v1 A3 tradeoff superseded; WR-02 per-delta commit untouched). (2) Thread/dispatcher: snapshots carry threadId/threadName; synthesizer emits ThreadAssigned on Appeared(RUNNING/SUSPENDED) + every transition INTO RUNNING (never fabricated), and DispatcherSelected ONCE per coroutine at Appeared (dispatcherId = normalized name); scopeId D-03 routing unmoved. KEY DEVIATION (Rule 3): the plan's assumed `CoroutineInfo.lastObservedThread` does NOT exist — the public wrapper drops the thread; it lives only on Kotlin-internal/JVM-public DebugCoroutineInfo. Fixed via NEW DebugProbesImplBridge.java (same package, javac ignores Kotlin metadata) mapping DebugProbesImpl.dumpCoroutinesInfo() straight into RawInfo; source default dump switched to the bridge. (3) Frame semantics: coroutine.suspended now derives its SuspensionPoint from lastObservedStackTrace's first user frame (creation-derived FALLBACK — a frame is never lost); the launch site rides NEW CoroutineCreated.creationPoint (LAST defaulted param, createdAtEpochMs compat precedent; legacy JSON decodes to null; VizScope wrapper path byte-unchanged); SourceAttribution.fromStack generic extraction added. Full backend gate + :coroutine-viz-agent:shadowJar green under JDK 21 (agent bundles core — rebuild done). NOTE for re-UAT: DEBUG-exceptions-blind Link 2 (ProjectionService never copies exceptionType/message into HierarchyNode) is OUT of 15-08 scope — must land via its sibling gap plan or the plugin exception pipeline stays dark despite the wire fix. Commits f98d864/ce273d4 (T1), d7af2bf/504d632 (T2), 0251ad1/610a5fd (T3).
+
 ### Pending Todos
 
 11 pending in `.planning/todos/pending/` — review with `/gsd-capture --list`. Includes 4 captured from the 2026-06-21 runtime audit: WR-02 admin cross-tenant share mint, share-UI silent no-op in memory mode, cors quoted-default config fragility, and DB-mode empty coroutine projection.
@@ -240,8 +243,8 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-07-09T00:00:00.000Z
-Stopped at: 15-07-PLAN.md complete (sessionId slugify + encoded ingest URL)
+Last session: 2026-07-09T11:45:00.000Z
+Stopped at: 15-08-PLAN.md complete (agent-path wire gaps: failure outcomes + thread/dispatcher + frame semantics)
 Resume file: None
 
 ## Operator Next Steps
