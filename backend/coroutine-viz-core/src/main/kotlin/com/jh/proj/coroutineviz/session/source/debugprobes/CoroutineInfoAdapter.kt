@@ -52,6 +52,12 @@ class CoroutineInfoAdapter {
         val context: CoroutineContext,
         val creationStackTrace: List<StackTraceElement>,
         val lastObservedStackTrace: List<StackTraceElement>,
+        /**
+         * The thread last observed running this coroutine (15-08 Task 2, from
+         * `CoroutineInfo.lastObservedThread`). Defaulted null so hand-built
+         * fixtures stay source-compatible; null = DebugProbes had no thread.
+         */
+        val lastObservedThread: Thread? = null,
     )
 
     // job identity-hash -> assigned key token (stable while the Job is referenced).
@@ -162,6 +168,10 @@ class CoroutineInfoAdapter {
     /** Map a fakeable [RawInfo] (the unit-tested path) to a [CoroutineSnapshot]. */
     fun toSnapshot(raw: RawInfo): CoroutineSnapshot {
         val location = SourceAttribution.fromCreationStack(raw.creationStackTrace)
+
+        // Thread#getId(): threadId() is JDK 19+; core pins JVM 17 (15-08 Task 2).
+        @Suppress("DEPRECATION")
+        val observedThreadId = raw.lastObservedThread?.id
         return CoroutineSnapshot(
             key = keyFor(raw.job, raw.creationStackTrace, raw.lastObservedStackTrace),
             state = raw.state,
@@ -172,10 +182,19 @@ class CoroutineInfoAdapter {
             lineNumber = location.lineNumber,
             reason = SourceAttribution.reason(raw.lastObservedStackTrace),
             lastObservedStackTrace = raw.lastObservedStackTrace,
+            threadId = observedThreadId,
+            threadName = raw.lastObservedThread?.name,
         )
     }
 
-    /** Map a real [CoroutineInfo] by forwarding into the unit-tested [RawInfo] core. */
+    /**
+     * Map a real [CoroutineInfo] by forwarding into the unit-tested [RawInfo] core.
+     *
+     * NOTE (15-08 Task 2): the PUBLIC [CoroutineInfo] wrapper DROPS the observed
+     * thread (its fields are context/state/stacks only), so this path leaves
+     * `lastObservedThread` null. The thread-aware production path is
+     * [DebugProbesImplBridge.dumpRawInfos] into the [RawInfo]-based [toSnapshots].
+     */
     fun toSnapshot(info: CoroutineInfo): CoroutineSnapshot =
         toSnapshot(
             RawInfo(

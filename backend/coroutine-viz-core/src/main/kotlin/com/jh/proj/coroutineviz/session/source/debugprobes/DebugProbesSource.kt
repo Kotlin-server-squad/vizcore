@@ -71,7 +71,12 @@ class DebugProbesSource(
         // each snapshot carries parentKey (nearest observed ancestor) keyed by the
         // SAME jobKeys cache — pollTick stays unchanged (still List<CoroutineSnapshot>
         // keyed by it.key).
-        adapter.toSnapshots(DebugProbes.dumpCoroutinesInfo())
+        //
+        // Impl-level dump (15-08 Task 2): the public CoroutineInfo wrapper DROPS
+        // lastObservedThread, so the Java bridge maps the unwrapped impl dump
+        // straight into RawInfo — keeping the observed thread for ThreadAssigned
+        // synthesis.
+        adapter.toSnapshots(DebugProbesImplBridge.dumpRawInfos())
     },
 ) : InstrumentationSource {
     private val logger = LoggerFactory.getLogger(DebugProbesSource::class.java)

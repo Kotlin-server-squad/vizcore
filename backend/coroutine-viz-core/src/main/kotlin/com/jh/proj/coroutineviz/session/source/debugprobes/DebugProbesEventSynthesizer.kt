@@ -11,6 +11,8 @@ import com.jh.proj.coroutineviz.session.coroutineFailed
 import com.jh.proj.coroutineviz.session.coroutineResumed
 import com.jh.proj.coroutineviz.session.coroutineStarted
 import com.jh.proj.coroutineviz.session.coroutineSuspended
+import com.jh.proj.coroutineviz.session.dispatcherSelected
+import com.jh.proj.coroutineviz.session.threadAssigned
 
 /**
  * Maps a [CoroutineDelta] to the existing `VizEvent` subtypes via the
@@ -30,6 +32,16 @@ import com.jh.proj.coroutineviz.session.coroutineSuspended
  * - `scopeId` = `snapshot.dispatcherName ?: sourceId` (D-03 / Open Q1 default), so
  *   `getHierarchyTree(scopeId)` groups by dispatcher instead of one flat
  *   "debugprobes" bucket.
+ *
+ * Thread/dispatcher enrichment (15-08 Task 2, GAP-ENRICHMENT-EMPTY):
+ * ProjectionService populates hierarchy `currentThread*`/`dispatcher*` ONLY from
+ * ThreadAssigned/DispatcherSelected events. This synthesizer now emits both on
+ * the agent path: ThreadAssigned on Appeared (RUNNING/SUSPENDED) and on every
+ * transition INTO RUNNING, when the snapshot carries an observed thread (never
+ * fabricated); DispatcherSelected ONCE per coroutine, at Appeared, with
+ * `dispatcherId = dispatcherName` (the stable normalized name is the only id
+ * DebugProbes has). The `scopeId` dispatcher routing above is NOT moved — the
+ * dedicated events are additive (MetricsProjection keys on scopeId).
  *
  * Vanished outcome mapping (15-08, supersedes the v1 A3 lock): DebugProbes'
  * DUMP still cannot distinguish completed/cancelled/failed, but the Job
@@ -101,6 +113,32 @@ class DebugProbesEventSynthesizer(
         )
 
     /**
+     * ThreadAssigned when BOTH thread id and name were observed (15-08 Task 2);
+     * empty otherwise — thread data is never fabricated.
+     */
+    private fun threadEvents(
+        ctx: EventContext,
+        snapshot: CoroutineSnapshot,
+    ): List<VizEvent> {
+        val threadId = snapshot.threadId ?: return emptyList()
+        val threadName = snapshot.threadName ?: return emptyList()
+        return listOf(ctx.threadAssigned(threadId, threadName, snapshot.dispatcherName))
+    }
+
+    /**
+     * DispatcherSelected once per coroutine, at Appeared only (15-08 Task 2).
+     * `dispatcherId = dispatcherName`: the stable normalized name from
+     * [SourceAttribution.dispatcherName] is the only id DebugProbes has.
+     */
+    private fun dispatcherEvents(
+        ctx: EventContext,
+        snapshot: CoroutineSnapshot,
+    ): List<VizEvent> =
+        snapshot.dispatcherName
+            ?.let { listOf(ctx.dispatcherSelected(dispatcherId = it, dispatcherName = it)) }
+            .orEmpty()
+
+    /**
      * Map one delta to the ordered list of synthesized events for the bound
      * [session].
      *
@@ -115,40 +153,50 @@ class DebugProbesEventSynthesizer(
         outcome: CompletionOutcome? = null,
     ): List<VizEvent> =
         when (delta) {
-            is CoroutineDelta.Appeared -> {
-                val ctx = contextFor(session, delta.now)
-                when (delta.now.state) {
-                    CoroState.CREATED -> listOf(ctx.coroutineCreated())
-                    CoroState.RUNNING -> listOf(ctx.coroutineCreated(), ctx.coroutineStarted())
-                    CoroState.SUSPENDED ->
-                        listOf(ctx.coroutineCreated(), ctx.coroutineStarted()) + suspendedEvents(ctx, delta.now)
-                }
-            }
+            is CoroutineDelta.Appeared -> appearedEvents(contextFor(session, delta.now), delta.now)
+            is CoroutineDelta.StateChanged -> stateChangedEvents(contextFor(session, delta.now), delta)
+            is CoroutineDelta.Vanished -> listOf(vanishedEvent(contextFor(session, delta.last), outcome))
+        }
 
-            is CoroutineDelta.StateChanged -> {
-                val ctx = contextFor(session, delta.now)
-                when {
-                    delta.from == CoroState.CREATED && delta.to == CoroState.RUNNING ->
-                        listOf(ctx.coroutineStarted())
-                    // A coroutine observed jumping CREATED→SUSPENDED (it started and
-                    // parked between polls) must emit started BEFORE suspended, else
-                    // the FE sees a suspend with no prior start (WR-01). This case
-                    // must precede the generic `to == SUSPENDED` branch below.
-                    delta.from == CoroState.CREATED && delta.to == CoroState.SUSPENDED ->
-                        listOf(ctx.coroutineStarted()) + suspendedEvents(ctx, delta.now)
-                    delta.to == CoroState.SUSPENDED -> suspendedEvents(ctx, delta.now)
-                    delta.from == CoroState.SUSPENDED && delta.to == CoroState.RUNNING ->
-                        listOf(ctx.coroutineResumed())
-                    // Defensive: any other transition into RUNNING treated as a start.
-                    delta.to == CoroState.RUNNING -> listOf(ctx.coroutineStarted())
-                    else -> emptyList()
-                }
-            }
+    /**
+     * Appeared mapping: created/started per observed state, then the one-shot
+     * DispatcherSelected (once per coroutine), then ThreadAssigned (RUNNING/
+     * SUSPENDED with an observed thread), then suspended last (15-08 Task 2).
+     */
+    private fun appearedEvents(
+        ctx: EventContext,
+        snapshot: CoroutineSnapshot,
+    ): List<VizEvent> {
+        val dispatcher = dispatcherEvents(ctx, snapshot)
+        return when (snapshot.state) {
+            CoroState.CREATED -> listOf<VizEvent>(ctx.coroutineCreated()) + dispatcher
+            CoroState.RUNNING ->
+                listOf(ctx.coroutineCreated(), ctx.coroutineStarted()) + dispatcher + threadEvents(ctx, snapshot)
+            CoroState.SUSPENDED ->
+                listOf(ctx.coroutineCreated(), ctx.coroutineStarted()) + dispatcher +
+                    threadEvents(ctx, snapshot) + suspendedEvents(ctx, snapshot)
+        }
+    }
 
-            is CoroutineDelta.Vanished -> {
-                val ctx = contextFor(session, delta.last)
-                listOf(vanishedEvent(ctx, outcome))
-            }
+    private fun stateChangedEvents(
+        ctx: EventContext,
+        delta: CoroutineDelta.StateChanged,
+    ): List<VizEvent> =
+        when {
+            delta.from == CoroState.CREATED && delta.to == CoroState.RUNNING ->
+                listOf(ctx.coroutineStarted()) + threadEvents(ctx, delta.now)
+            // A coroutine observed jumping CREATED→SUSPENDED (it started and
+            // parked between polls) must emit started BEFORE suspended, else
+            // the FE sees a suspend with no prior start (WR-01). This case
+            // must precede the generic `to == SUSPENDED` branch below.
+            delta.from == CoroState.CREATED && delta.to == CoroState.SUSPENDED ->
+                listOf(ctx.coroutineStarted()) + suspendedEvents(ctx, delta.now)
+            delta.to == CoroState.SUSPENDED -> suspendedEvents(ctx, delta.now)
+            delta.from == CoroState.SUSPENDED && delta.to == CoroState.RUNNING ->
+                listOf(ctx.coroutineResumed()) + threadEvents(ctx, delta.now)
+            // Defensive: any other transition into RUNNING treated as a start.
+            delta.to == CoroState.RUNNING -> listOf(ctx.coroutineStarted()) + threadEvents(ctx, delta.now)
+            else -> emptyList()
         }
 
     /**

@@ -216,7 +216,9 @@ class DebugProbesEventSynthesizerTest {
                 s,
             )
 
-        assertEquals("Dispatchers.IO", (events.single() as CoroutineCreated).scopeId)
+        // Since 15-08 an Appeared with a dispatcher also announces DispatcherSelected;
+        // the created event (first) still carries the D-03 scopeId grouping.
+        assertEquals("Dispatchers.IO", (events.first() as CoroutineCreated).scopeId)
     }
 
     @Test
