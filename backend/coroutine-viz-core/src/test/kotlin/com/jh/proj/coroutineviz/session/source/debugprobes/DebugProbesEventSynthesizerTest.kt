@@ -36,6 +36,7 @@ class DebugProbesEventSynthesizerTest {
         parentKey: CoroKey? = null,
         threadId: Long? = null,
         threadName: String? = null,
+        lastObservedStackTrace: List<StackTraceElement>? = null,
     ) = CoroutineSnapshot(
         key = CoroKey(keyToken),
         state = state,
@@ -45,6 +46,7 @@ class DebugProbesEventSynthesizerTest {
         fileName = fileName,
         lineNumber = lineNumber,
         reason = reason,
+        lastObservedStackTrace = lastObservedStackTrace,
         parentKey = parentKey,
         threadId = threadId,
         threadName = threadName,
@@ -318,6 +320,85 @@ class DebugProbesEventSynthesizerTest {
             )
 
         assertTrue(events.none { it is DispatcherSelected }, "dispatcher is announced once, at Appeared")
+    }
+
+    @Test
+    fun `suspended carries the true suspension frame while created carries the launch site`() {
+        val s = session()
+        // Creation-derived fields say Bar.kt:7 (launch site); the last observed
+        // stack's first user frame says Foo.kt:42 (true suspension point).
+        val lastObserved =
+            listOf(
+                StackTraceElement("kotlinx.coroutines.DelayKt", "delay", "Delay.kt", 5),
+                StackTraceElement("com.example.Foo", "fetch", "Foo.kt", 42),
+            )
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.Appeared(
+                    snap(
+                        "a",
+                        CoroState.SUSPENDED,
+                        function = "startWork",
+                        fileName = "Bar.kt",
+                        lineNumber = 7,
+                        reason = "delay",
+                        lastObservedStackTrace = lastObserved,
+                    ),
+                ),
+                s,
+            )
+
+        val created = events.first() as CoroutineCreated
+        assertEquals("startWork", created.creationPoint?.function, "created carries the launch site")
+        assertEquals("Bar.kt", created.creationPoint?.fileName)
+        assertEquals(7, created.creationPoint?.lineNumber)
+
+        val suspended = events.last() as CoroutineSuspended
+        assertEquals("fetch", suspended.suspensionPoint?.function, "suspended carries the TRUE suspension frame")
+        assertEquals("Foo.kt", suspended.suspensionPoint?.fileName)
+        assertEquals(42, suspended.suspensionPoint?.lineNumber)
+    }
+
+    @Test
+    fun `suspended falls back to the creation frame when the last observed stack has no user frame`() {
+        val s = session()
+        val allInfra =
+            listOf(
+                StackTraceElement("kotlinx.coroutines.DelayKt", "delay", "Delay.kt", 5),
+                StackTraceElement("kotlin.coroutines.jvm.internal.BaseContinuationImpl", "resumeWith", "ContinuationImpl.kt", 33),
+            )
+        val events =
+            synthesizer.synthesize(
+                CoroutineDelta.StateChanged(
+                    CoroState.RUNNING,
+                    CoroState.SUSPENDED,
+                    snap(
+                        "a",
+                        CoroState.SUSPENDED,
+                        function = "startWork",
+                        fileName = "Bar.kt",
+                        lineNumber = 7,
+                        reason = "delay",
+                        lastObservedStackTrace = allInfra,
+                    ),
+                ),
+                s,
+            )
+
+        val suspended = events.single() as CoroutineSuspended
+        // Degrade, never null-out an available frame: creation-derived fallback.
+        assertEquals("startWork", suspended.suspensionPoint?.function)
+        assertEquals("Bar.kt", suspended.suspensionPoint?.fileName)
+        assertEquals(7, suspended.suspensionPoint?.lineNumber)
+    }
+
+    @Test
+    fun `created without creation-derived fields carries a null creationPoint (no regression)`() {
+        val s = session()
+        val events =
+            synthesizer.synthesize(CoroutineDelta.Appeared(snap("a", CoroState.CREATED)), s)
+
+        assertNull((events.single() as CoroutineCreated).creationPoint)
     }
 
     @Test
