@@ -190,6 +190,82 @@ class RoundTreeModelTest {
         assertNull(rootChildren(model).firstOrNull { it.userObject is SummaryGroup })
     }
 
+    // --- container-root promotion (agent shape, GAP-ALL-MODE-MEGA-GROUP) -------------------------
+
+    /**
+     * Agent shape: one never-completing container root "main" whose 8 completed direct children each
+     * own a 3-node subtree (child + 2 grandchildren), plus one in-progress child9 subtree.
+     */
+    private fun agentHierarchy(): List<HierarchyNodeDto> =
+        buildList {
+            add(node("main", state = "RUNNING", completedAtNanos = null, createdAtNanos = 1))
+            for (i in 1..8) {
+                val c = i * 10L
+                add(node("child$i", parentId = "main", createdAtNanos = c, completedAtNanos = c + 5))
+                add(node("g${i}a", parentId = "child$i", createdAtNanos = c + 1, completedAtNanos = c + 4))
+                add(node("g${i}b", parentId = "child$i", createdAtNanos = c + 2, completedAtNanos = c + 4))
+            }
+            add(node("child9", parentId = "main", state = "RUNNING", completedAtNanos = null, createdAtNanos = 200))
+            add(node("g9a", parentId = "child9", state = "RUNNING", completedAtNanos = null, createdAtNanos = 201))
+        }
+
+    private fun groupNode(
+        model: RoundTreeModel,
+        rootId: String,
+    ) = rootChildren(model).single { (it.userObject as? RoundGroup)?.rootId == rootId }
+
+    @Test fun `agent shape materializes only the in-progress round and the container singleton`() {
+        val model = RoundTreeModel()
+        model.apply(agentHierarchy(), emptySet(), emptyList(), nowNanos)
+
+        val children = rootChildren(model)
+        // container singleton + in-progress child + 5 recent collapsed = 7 groups + 1 summary
+        assertEquals(8, children.size)
+
+        // The container root renders as a thin SINGLETON (its own row only), never the whole app.
+        assertEquals(setOf("main"), coroutineRows(groupNode(model, "main")).mapTo(HashSet()) { it.id })
+        // The in-progress child round is materialized.
+        assertEquals(setOf("child9", "g9a"), coroutineRows(groupNode(model, "child9")).mapTo(HashSet()) { it.id })
+
+        // The 5 recent collapsed promoted rounds each carry exactly one placeholder and zero coroutine nodes.
+        val collapsed = children.filter { (it.userObject as? RoundGroup)?.expanded == false }
+        assertEquals(5, collapsed.size)
+        for (node in collapsed) {
+            assertEquals(1, node.childCount)
+            assertTrue(model.isPlaceholder(node.getChildAt(0) as DefaultMutableTreeNode))
+        }
+
+        // Perf property: ONLY the container singleton (1) + the in-progress round (2) are materialized.
+        assertEquals(3, coroutineNodes(root(model)).size)
+    }
+
+    @Test fun `nodeFor a grandchild in a collapsed promoted round materializes its own round not the container`() {
+        val model = RoundTreeModel()
+        model.apply(agentHierarchy(), emptySet(), emptyList(), nowNanos)
+
+        // g4a lives in child4's round (one of the 5 recent, collapsed).
+        val node = model.nodeFor("g4a")
+        assertEquals("g4a", (node?.userObject as CoroutineRow).id)
+
+        // Its OWN round (child4) is now materialized...
+        assertTrue(coroutineRows(groupNode(model, "child4")).any { it.id == "g4a" })
+        // ...and the container singleton stays a singleton (NOT expanded to the whole app).
+        assertEquals(setOf("main"), coroutineRows(groupNode(model, "main")).mapTo(HashSet()) { it.id })
+    }
+
+    @Test fun `expanding a promoted round survives a subsequent apply refresh`() {
+        val model = RoundTreeModel()
+        val hierarchy = agentHierarchy()
+        model.apply(hierarchy, emptySet(), emptyList(), nowNanos)
+
+        model.materialize(groupNode(model, "child5"))
+        assertEquals(setOf("child5", "g5a", "g5b"), coroutineRows(groupNode(model, "child5")).mapTo(HashSet()) { it.id })
+
+        // A poll refresh must keep the user-expanded promoted round materialized (userExpandedRootIds by anchor).
+        model.apply(hierarchy, emptySet(), emptyList(), nowNanos)
+        assertEquals(setOf("child5", "g5a", "g5b"), coroutineRows(groupNode(model, "child5")).mapTo(HashSet()) { it.id })
+    }
+
     @Test fun `clearing the match restores the normal collapse layout`() {
         val hierarchy =
             buildList {
