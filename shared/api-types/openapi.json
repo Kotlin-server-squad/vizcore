@@ -1288,6 +1288,12 @@
           "activeChildrenCount": {
             "type": "integer",
             "default": 0
+          },
+          "creationPoint": {
+            "$ref": "#/components/schemas/SuspensionPoint"
+          },
+          "lastSuspensionPoint": {
+            "$ref": "#/components/schemas/SuspensionPoint"
           }
         }
       },

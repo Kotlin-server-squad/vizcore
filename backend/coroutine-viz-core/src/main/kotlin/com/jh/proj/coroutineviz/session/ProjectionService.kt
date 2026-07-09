@@ -84,6 +84,8 @@ class ProjectionService(
                         state = "CREATED",
                         createdAtNanos = event.tsNanos,
                         jobId = event.jobId,
+                        // Durable launch site (15-08 creationPoint) — survives EventStore eviction.
+                        creationPoint = event.creationPoint,
                     )
 
                 // Add to parent's children list
@@ -128,7 +130,14 @@ class ProjectionService(
 
             is CoroutineSuspended -> {
                 coroutines[event.coroutineId]?.let { node ->
-                    coroutines[event.coroutineId] = node.copy(state = "SUSPENDED")
+                    coroutines[event.coroutineId] =
+                        node.copy(
+                            state = "SUSPENDED",
+                            // Keep the LAST non-null suspension frame — a later frameless
+                            // suspension must not wipe a good jump target that eviction would
+                            // otherwise erase from the per-coroutine timeline.
+                            lastSuspensionPoint = event.suspensionPoint ?: node.lastSuspensionPoint,
+                        )
                 }
             }
 

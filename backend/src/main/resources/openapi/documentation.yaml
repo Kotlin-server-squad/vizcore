@@ -1845,6 +1845,10 @@ components:
         activeChildrenCount:
           type: integer
           description: Number of currently active children
+        creationPoint:
+          $ref: "#/components/schemas/SuspensionPoint"
+        lastSuspensionPoint:
+          $ref: "#/components/schemas/SuspensionPoint"
 
     ThreadEvent:
       type: object

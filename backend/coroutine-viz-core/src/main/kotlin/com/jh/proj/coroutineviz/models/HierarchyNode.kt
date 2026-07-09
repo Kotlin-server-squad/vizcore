@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.models
 
+import com.jh.proj.coroutineviz.events.SuspensionPoint
 import kotlinx.serialization.Serializable
 
 /**
@@ -24,6 +25,8 @@ import kotlinx.serialization.Serializable
  * @property jobId Associated Job identifier
  * @property exceptionType Type of exception if failed
  * @property exceptionMessage Exception message if failed
+ * @property creationPoint Launch site (first user frame of the creation stack), durable
+ * @property lastSuspensionPoint Last observed suspension frame, durable across eviction
  */
 @Serializable
 data class HierarchyNode(
@@ -50,4 +53,10 @@ data class HierarchyNode(
     val exceptionMessage: String? = null,
     val activeChildrenIds: List<String> = emptyList(),
     val activeChildrenCount: Int = 0,
+    // Durable source refs. The EventStore is a 10k DROP_OLDEST ring; per-coroutine timelines
+    // empty out for older coroutines (events: [] observed live at exactly 10000 events),
+    // erasing "Suspended at"/"Launched at"/jump targets. The projection node is the durable
+    // home so those survive eviction (UAT: enrichment-empty item 4, jump-to-source aggravator).
+    val creationPoint: SuspensionPoint? = null,
+    val lastSuspensionPoint: SuspensionPoint? = null,
 )
