@@ -18,10 +18,16 @@ import com.jh.proj.coroutineviz.session.threadAssigned
  * Maps a [CoroutineDelta] to the existing `VizEvent` subtypes via the
  * [EventContext] extension functions (Research §"Don't Hand-Roll": reuse
  * EventContext so seq/ts are filled and events are byte-for-byte what the FE
- * renders). RCO-03 attribution rides EXISTING event fields — no new VizEvent
- * field is added:
+ * renders). RCO-03 attribution rides the event fields:
  * - `CoroutineName` → `label`
- * - function/file:line + reason → `SuspensionPoint(function, fileName, lineNumber, reason)`
+ * - the TRUE suspension frame (first user frame of `lastObservedStackTrace`) +
+ *   reason → `SuspensionPoint(function, fileName, lineNumber, reason)` on
+ *   `coroutine.suspended`, falling back to the creation-derived frame when the
+ *   observed stack has no user frame (15-08 Task 3 — a frame is never lost)
+ * - the launch site (creation-derived frame) → `CoroutineCreated.creationPoint`
+ *   (GAP-JUMP-WRONG-FRAME: the creation frame used to be stamped onto every
+ *   suspended event as its SuspensionPoint, making "Suspended at" structurally
+ *   the launch site; the two frames now ride separate fields)
  *
  * Hierarchy + grouping (Phase 8, D-01/D-02/D-03 — supersedes the v1 flat locks):
  * - `parentCoroutineId` = the nearest-observed-ancestor's id, derived as
@@ -65,6 +71,9 @@ class DebugProbesEventSynthesizer(
 
         /** Default suspension reason when the snapshot carries none (IN-05). */
         private const val DEFAULT_REASON: String = "suspend"
+
+        /** Reason marking a creationPoint as a launch-site ref (15-08 Task 3). */
+        private const val CREATION_REASON: String = "launch"
     }
 
     /** Derive a stable coroutine/job id from the opaque key token. */
@@ -90,14 +99,47 @@ class DebugProbesEventSynthesizer(
             label = snapshot.label,
         )
 
+    /**
+     * The TRUE suspension frame: first user frame of the last observed stack
+     * (15-08 Task 3). When that yields no user frame (empty/all-infrastructure
+     * stack, or another party pre-installed DebugProbes differently), FALL BACK
+     * to the creation-derived snapshot fields so an available frame is never
+     * lost — degrade, never null-out.
+     */
     private fun suspensionPointOf(snapshot: CoroutineSnapshot): SuspensionPoint? {
-        // Only build a point when we have at least a function name to attribute.
+        val observed = snapshot.lastObservedStackTrace?.let { SourceAttribution.fromStack(it) }
+        val observedFunction = observed?.function
+        if (observedFunction != null) {
+            return SuspensionPoint(
+                function = observedFunction,
+                fileName = observed.fileName,
+                lineNumber = observed.lineNumber,
+                reason = snapshot.reason ?: DEFAULT_REASON,
+            )
+        }
+        // Fallback: creation-derived fields (the pre-15-08 behavior).
         val function = snapshot.function ?: return null
         return SuspensionPoint(
             function = function,
             fileName = snapshot.fileName,
             lineNumber = snapshot.lineNumber,
             reason = snapshot.reason ?: DEFAULT_REASON,
+        )
+    }
+
+    /**
+     * The launch site (creation-derived frame) riding CoroutineCreated.creationPoint
+     * (15-08 Task 3). Null when creation stacks are unavailable (e.g. a foreign
+     * DebugProbes install without creation stacks) — nothing regresses, the
+     * suspended events still carry the last-observed frame.
+     */
+    private fun creationPointOf(snapshot: CoroutineSnapshot): SuspensionPoint? {
+        val function = snapshot.function ?: return null
+        return SuspensionPoint(
+            function = function,
+            fileName = snapshot.fileName,
+            lineNumber = snapshot.lineNumber,
+            reason = CREATION_REASON,
         )
     }
 
@@ -168,12 +210,13 @@ class DebugProbesEventSynthesizer(
         snapshot: CoroutineSnapshot,
     ): List<VizEvent> {
         val dispatcher = dispatcherEvents(ctx, snapshot)
+        val created = ctx.coroutineCreated(creationPoint = creationPointOf(snapshot))
         return when (snapshot.state) {
-            CoroState.CREATED -> listOf<VizEvent>(ctx.coroutineCreated()) + dispatcher
+            CoroState.CREATED -> listOf<VizEvent>(created) + dispatcher
             CoroState.RUNNING ->
-                listOf(ctx.coroutineCreated(), ctx.coroutineStarted()) + dispatcher + threadEvents(ctx, snapshot)
+                listOf(created, ctx.coroutineStarted()) + dispatcher + threadEvents(ctx, snapshot)
             CoroState.SUSPENDED ->
-                listOf(ctx.coroutineCreated(), ctx.coroutineStarted()) + dispatcher +
+                listOf(created, ctx.coroutineStarted()) + dispatcher +
                     threadEvents(ctx, snapshot) + suspendedEvents(ctx, snapshot)
         }
     }

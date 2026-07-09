@@ -58,7 +58,7 @@ data class EventContext(
 // Coroutine Lifecycle Events
 // ============================================================================
 
-fun EventContext.coroutineCreated(): CoroutineCreated =
+fun EventContext.coroutineCreated(creationPoint: SuspensionPoint? = null): CoroutineCreated =
     CoroutineCreated(
         sessionId = sessionId,
         seq = nextSeq(),
@@ -69,6 +69,7 @@ fun EventContext.coroutineCreated(): CoroutineCreated =
         scopeId = scopeId,
         label = label,
         createdAtEpochMs = epochMillis(),
+        creationPoint = creationPoint,
     )
 
 fun EventContext.coroutineStarted(): CoroutineStarted =
