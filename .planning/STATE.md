@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-09-PLAN.md complete (projection: exception copy, durations, eviction-durable source refs + OpenAPI sync)
-last_updated: "2026-07-09T22:15:00.000Z"
-last_activity: 2026-07-10 -- Phase 15 plan 15-09 (HierarchyNode exceptionType/message + active/suspended durations + durable creationPoint/lastSuspensionPoint) complete
+stopped_at: 15-12-PLAN.md complete (plugin: launchedRef wire kinds + eviction fallbacks + live lifetime + problems-detail durable site)
+last_updated: "2026-07-10T00:00:00.000Z"
+last_activity: 2026-07-10 -- Phase 15 plan 15-12 (plugin half: HierarchyNodeDto creationPoint/lastSuspensionPoint, launchedRef coroutine.created/started kinds, eviction fallbacks, live lifetime, problems-detail site fallback) complete
 progress:
   total_phases: 7
   completed_phases: 5
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 ## Current Position
 
 Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
-Plan: 15-09 complete (gap closure; wave 2 done — 15-12 remaining)
+Plan: 15-12 complete (gap closure; wave 3 done — plugin consumes the 15-08/15-09 wire)
 Status: Executing Phase 15
-Last activity: 2026-07-10 -- Phase 15 plan 15-09 (HierarchyNode exceptionType/message + active/suspended durations + durable creationPoint/lastSuspensionPoint) complete
+Last activity: 2026-07-10 -- Phase 15 plan 15-12 (plugin half: launchedRef wire kinds, eviction fallbacks, live lifetime, problems-detail durable site) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
@@ -147,6 +147,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 Decisions are logged in PROJECT.md Key Decisions table (26 Accepted ADRs locked; ADR-010 Proposed/advisory).
 Recent decisions affecting current work:
 
+- [Phase 15, Plan 12]: Plugin half of inspector-enrichment + jump-to-source gaps. launchedRef filtered dead kinds "CREATED"/"STARTED" — corrected to the REAL wire strings "coroutine.created"/"coroutine.started" (15-08 rides the launch frame on coroutine.created). HierarchyNodeDto gains additive-defaulted creationPoint/lastSuspensionPoint mirroring the 15-09 node fields; InspectorViewModel.from now fresh-first (timeline) with a durable node fallback via SuspensionPointDto.toSourceRef so Launched at / Suspended at / jump targets survive the 10k DROP_OLDEST eviction. Live lifetime: from() gains an injectable nowNanos; a running coroutine with no completion-only totalDuration shows formatApproxNanos(nowNanos - node.createdAtNanos) on the SAME same-machine System.nanoTime basis rowFrom uses for row ages (consistent numbers); totalLabel stays completion-only (honest). VizcoreToolWindowPanel.resolveSuspensionSite falls back to node.lastSuspensionPoint (fullHierarchy lookup) so the problems-detail "at File.kt:NN" suffix survives eviction. detekt ReturnCount forced lifetimeLabel into a single when-return. Full plugin suite + ktlint + detekt green under JDK 21; backend untouched (core test UP-TO-DATE). Process guard for next live UAT: rebuild the demo bootjar from the editor's tree before jump-to-source verification — stale-build line drift silently misplaces every jump.
 - [Phase 15, Plan 13]: Agent exploded-classpath attach is now durable — a child-first boot.AgentClassLoader (OTel java-agent pattern) over the fat jar, built by a dependency-free Java Premain-Class shim (boot.VizcoreAgentPremain) that reflectively invokes AgentBootstrap.run through it. io.ktor./kotlinx.serialization./kotlinx.io./com.jh.proj.coroutineviz./shaded-slf4j load CHILD-FIRST from the jar (the fix — no longer resolving from the app's -cp, which was mis-reading Content-Length keep-alive responses into empty bodies); kotlin./kotlinx.coroutines. stay SYSTEM-FIRST with child fallback (shared host class space so DebugProbes instruments the host + Function1 callbacks stay one class space; fallback covers pure-Java hosts). kotlin./kotlinx.* remain UN-relocated because the loader (not relocation) provides isolation — relocation would break DebugProbes byte-buddy introspection (Pitfall 4). Fail-soft doubled (shim + bootstrap catch, 8c7d67c preserved). scripts/agent-attach-repro.sh proves it 2/2 (eventCount 35/4) against a live backend on :8090; docs/guides/agent-attach-uat.md documents both launch paths + the rebuild-before-jump line-drift guard.
 - Treat the duplicate `session/` fork removal as the first work item — it is the root cause of the unbounded-store (gap 2) and unwired-perf (gap 3) findings.
 - Persistence (ADR-015) and route-level auth (ADR-016) are designed-but-unimplemented; current deployment is in-memory/ephemeral (ADR-009).
