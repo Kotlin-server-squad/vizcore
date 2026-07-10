@@ -1,6 +1,7 @@
 package com.jh.coroutinevisualizer.toolwindow
 
 import com.jh.coroutinevisualizer.api.HierarchyNodeDto
+import com.jh.coroutinevisualizer.api.SuspensionPointDto
 import com.jh.coroutinevisualizer.api.TimelineDto
 import com.jh.coroutinevisualizer.api.TimelineEventDto
 import java.util.Locale
@@ -66,12 +67,17 @@ data class InspectorViewModel(
         }
 
         /**
-         * Builds a view model from the (optional) timeline and hierarchy node. Falls back to node
-         * fields when the timeline is absent so a coroutine can always be inspected.
+         * Builds a view model from the (optional) timeline and hierarchy node. Durations come from the
+         * timeline; source refs are fresh-first (timeline events) with a durable node fallback
+         * ([HierarchyNodeDto.creationPoint] / [HierarchyNodeDto.lastSuspensionPoint]) so Launched at /
+         * Suspended at / jump targets survive the EventStore's 10k DROP_OLDEST eviction. A running
+         * coroutine gets a live lifetime computed from [HierarchyNodeDto.createdAtNanos]; [nowNanos] is
+         * injectable so that computation is deterministic under test.
          */
         fun from(
             timeline: TimelineDto?,
             node: HierarchyNodeDto?,
+            nowNanos: Long = System.nanoTime(),
         ): InspectorViewModel {
             val name = timeline?.name ?: node?.name ?: DASH
             val state = timeline?.state ?: node?.state ?: DASH
@@ -95,12 +101,12 @@ data class InspectorViewModel(
                 activeChildrenCount = node?.activeChildrenCount ?: 0,
                 childrenCount = node?.children?.size ?: 0,
                 running = running,
-                suspendedAt = suspendedRef(events),
-                launchedAt = launchedRef(events),
+                suspendedAt = suspendedRef(events) ?: node?.lastSuspensionPoint?.toSourceRef(),
+                launchedAt = launchedRef(events) ?: node?.creationPoint?.toSourceRef(),
                 activeLabel = formatApproxNanos(timeline?.activeDuration),
                 suspendedLabel = formatApproxNanos(timeline?.suspendedDuration),
                 totalLabel = formatApproxNanos(timeline?.totalDuration),
-                lifetimeLabel = formatApproxNanos(timeline?.totalDuration),
+                lifetimeLabel = lifetimeLabel(running, timeline, node, nowNanos),
                 threadName = node?.currentThreadName,
                 dispatcherName = node?.dispatcherName,
                 exceptionType = node?.exceptionType,
@@ -151,14 +157,53 @@ data class InspectorViewModel(
                 SourceRef(point.fileName, point.lineNumber, point.reason.ifBlank { event.reason })
             }
 
-        /** First creation/start event with a suspension point → best-effort launch site. */
+        /**
+         * First creation/start event with a suspension point → best-effort launch site. The kinds are
+         * the REAL wire strings ("coroutine.created" / "coroutine.started"); 15-08/15-09 make
+         * coroutine.created carry the launch frame in [TimelineEventDto.suspensionPoint].
+         */
         private fun launchedRef(events: List<TimelineEventDto>): SourceRef? =
             events
                 .firstOrNull {
-                    it.suspensionPoint != null && (it.kind == "CREATED" || it.kind == "STARTED")
+                    it.suspensionPoint != null &&
+                        (it.kind == "coroutine.created" || it.kind == "coroutine.started")
                 }?.let { event ->
                     val point = event.suspensionPoint ?: return@let null
                     SourceRef(point.fileName, point.lineNumber, point.reason.ifBlank { event.reason })
                 }
+
+        /**
+         * Maps a durable node source ref ([HierarchyNodeDto.creationPoint] /
+         * [HierarchyNodeDto.lastSuspensionPoint]) into the inspector's [SourceRef], using the same
+         * "function · reason" label idiom the timeline path uses.
+         */
+        private fun SuspensionPointDto.toSourceRef(): SourceRef {
+            val label =
+                listOfNotNull(
+                    function.takeIf { it.isNotBlank() },
+                    reason.takeIf { it.isNotBlank() },
+                ).joinToString(" · ").ifBlank { null }
+            return SourceRef(fileName, lineNumber, label)
+        }
+
+        /**
+         * Lifetime label: the timeline's completion-only totalDuration when present; otherwise, for a
+         * running coroutine, a live lifetime from [HierarchyNodeDto.createdAtNanos] using the same
+         * same-machine System.nanoTime approximation rowFrom (CoroutineRow.kt:32-39) already uses for
+         * row ages — so the row and the inspector show consistent numbers. totalLabel stays
+         * completion-only (honest).
+         */
+        private fun lifetimeLabel(
+            running: Boolean,
+            timeline: TimelineDto?,
+            node: HierarchyNodeDto?,
+            nowNanos: Long,
+        ): String {
+            timeline?.totalDuration?.let { return formatApproxNanos(it) }
+            if (running && node != null && node.createdAtNanos > 0) {
+                return formatApproxNanos((nowNanos - node.createdAtNanos).coerceAtLeast(0))
+            }
+            return DASH
+        }
     }
 }
