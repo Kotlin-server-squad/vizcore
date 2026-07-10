@@ -117,13 +117,17 @@ data class InspectorViewModel(
         }
 
         /**
-         * Sequence of suspension sites over the coroutine's life: every timeline event that carries a
-         * [SuspensionPointDto], in seq order, as jump-to-source targets. This is the closest thing to a
-         * suspension "stack" available from the current API — a full multi-frame trace is not exposed.
+         * Sequence of suspension sites over the coroutine's life: every coroutine.suspended timeline
+         * event that carries a [SuspensionPointDto], in seq order, as jump-to-source targets. The
+         * coroutine.created launch frame (15-08/15-09 rides it in [TimelineEventDto.suspensionPoint])
+         * is excluded — "Suspended at" must mean suspended, never the launch site. This is the closest
+         * thing to a suspension "stack" available from the current API — a full multi-frame trace is
+         * not exposed.
          */
         private fun suspensionHistory(events: List<TimelineEventDto>): List<SourceRef> =
             events
                 .sortedBy { it.seq }
+                .filter { it.kind == "coroutine.suspended" }
                 .mapNotNull { event ->
                     val point = event.suspensionPoint ?: return@mapNotNull null
                     val reason = point.reason.ifBlank { event.reason }
@@ -150,9 +154,13 @@ data class InspectorViewModel(
                 }
         }
 
-        /** Last event carrying a suspension point → where the coroutine is currently suspended. */
+        /**
+         * Last coroutine.suspended event carrying a suspension point → where the coroutine is
+         * currently suspended. The kind filter excludes the coroutine.created launch frame so the
+         * inspector never captions the launch site as "Suspended at".
+         */
         private fun suspendedRef(events: List<TimelineEventDto>): SourceRef? =
-            events.lastOrNull { it.suspensionPoint != null }?.let { event ->
+            events.lastOrNull { it.kind == "coroutine.suspended" && it.suspensionPoint != null }?.let { event ->
                 val point = event.suspensionPoint ?: return@let null
                 SourceRef(point.fileName, point.lineNumber, point.reason.ifBlank { event.reason })
             }
