@@ -244,4 +244,123 @@ class InspectorViewModelTest {
         val vm = InspectorViewModel.from(null, null)
         assertEquals(emptyList(), vm.suspensionHistory)
     }
+
+    @Test fun `launchedAt matches the real coroutine-created wire kind`() {
+        val timeline =
+            TimelineDto(
+                coroutineId = "c",
+                name = "worker",
+                state = "RUNNING",
+                events =
+                    listOf(
+                        TimelineEventDto(
+                            seq = 1,
+                            kind = "coroutine.created",
+                            suspensionPoint =
+                                SuspensionPointDto(
+                                    function = "launchWork",
+                                    fileName = "Worker.kt",
+                                    lineNumber = 42,
+                                    reason = "launch",
+                                ),
+                        ),
+                    ),
+            )
+        val vm = InspectorViewModel.from(timeline, null)
+        assertEquals("Worker.kt", vm.launchedAt?.fileName)
+        assertEquals(42, vm.launchedAt?.lineNumber)
+    }
+
+    @Test fun `falls back to node creation and last-suspension points when the timeline is evicted`() {
+        val node =
+            HierarchyNodeDto(
+                id = "c",
+                parentId = null,
+                name = "x",
+                scopeId = "s",
+                state = "SUSPENDED",
+                jobId = "j",
+                creationPoint =
+                    SuspensionPointDto(function = "main", fileName = "App.kt", lineNumber = 5, reason = "launch"),
+                lastSuspensionPoint =
+                    SuspensionPointDto(function = "await", fileName = "Svc.kt", lineNumber = 88, reason = "await"),
+            )
+        val vm = InspectorViewModel.from(null, node)
+        assertEquals("App.kt", vm.launchedAt?.fileName)
+        assertEquals(5, vm.launchedAt?.lineNumber)
+        assertEquals("Svc.kt", vm.suspendedAt?.fileName)
+        assertEquals(88, vm.suspendedAt?.lineNumber)
+    }
+
+    @Test fun `running coroutine shows a live lifetime computed from createdAtNanos`() {
+        val node =
+            HierarchyNodeDto(
+                id = "c",
+                parentId = null,
+                name = "x",
+                scopeId = "s",
+                state = "RUNNING",
+                jobId = "j",
+                createdAtNanos = 1_000_000_000,
+            )
+        val vm = InspectorViewModel.from(null, node, nowNanos = 1_340_000_000)
+        assertEquals("~340ms", vm.lifetimeLabel)
+    }
+
+    @Test fun `completed coroutine keeps its total-duration lifetime`() {
+        val timeline = TimelineDto(coroutineId = "c", name = "x", state = "COMPLETED", totalDuration = 1_200_000_000)
+        val node =
+            HierarchyNodeDto(
+                id = "c",
+                parentId = null,
+                name = "x",
+                scopeId = "s",
+                state = "COMPLETED",
+                jobId = "j",
+                completedAtNanos = 123,
+                createdAtNanos = 1,
+            )
+        val vm = InspectorViewModel.from(timeline, node, nowNanos = 9_999_999_999)
+        assertEquals("~1.2s", vm.lifetimeLabel)
+    }
+
+    @Test fun `timeline refs win over durable node fallbacks`() {
+        val timeline =
+            TimelineDto(
+                coroutineId = "c",
+                name = "x",
+                state = "SUSPENDED",
+                events =
+                    listOf(
+                        TimelineEventDto(
+                            seq = 1,
+                            kind = "coroutine.created",
+                            suspensionPoint =
+                                SuspensionPointDto(function = "f", fileName = "Fresh.kt", lineNumber = 1, reason = "launch"),
+                        ),
+                        TimelineEventDto(
+                            seq = 2,
+                            kind = "SUSPENDED",
+                            suspensionPoint =
+                                SuspensionPointDto(function = "g", fileName = "FreshSusp.kt", lineNumber = 2, reason = "delay"),
+                        ),
+                    ),
+            )
+        val node =
+            HierarchyNodeDto(
+                id = "c",
+                parentId = null,
+                name = "x",
+                scopeId = "s",
+                state = "SUSPENDED",
+                jobId = "j",
+                creationPoint =
+                    SuspensionPointDto(function = "old", fileName = "Stale.kt", lineNumber = 99, reason = "launch"),
+                lastSuspensionPoint =
+                    SuspensionPointDto(function = "old", fileName = "StaleSusp.kt", lineNumber = 98, reason = "await"),
+            )
+        val vm = InspectorViewModel.from(timeline, node)
+        assertEquals("Fresh.kt", vm.launchedAt?.fileName)
+        assertEquals("FreshSusp.kt", vm.suspendedAt?.fileName)
+    }
 }
