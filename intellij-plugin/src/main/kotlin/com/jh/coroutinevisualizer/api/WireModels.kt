@@ -24,6 +24,10 @@ import kotlinx.serialization.Serializable
     val exceptionMessage: String? = null,
     val activeChildrenIds: List<String> = emptyList(),
     val activeChildrenCount: Int = 0,
+    // Durable source refs that survive EventStore eviction (15-09).
+    val creationPoint: SuspensionPointDto? = null,
+    // Durable source refs that survive EventStore eviction (15-09).
+    val lastSuspensionPoint: SuspensionPointDto? = null,
 )
 
 @Serializable data class LeakDto(
