@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-13-PLAN.md complete (agent child-first classloader isolation — exploded-cp attach now streams)
+stopped_at: 15-09-PLAN.md complete (projection: exception copy, durations, eviction-durable source refs + OpenAPI sync)
 last_updated: "2026-07-09T22:15:00.000Z"
-last_activity: 2026-07-09 -- Phase 15 plan 15-13 (child-first AgentClassLoader + exploded-attach repro harness + agent-UAT guide) complete
+last_activity: 2026-07-10 -- Phase 15 plan 15-09 (HierarchyNode exceptionType/message + active/suspended durations + durable creationPoint/lastSuspensionPoint) complete
 progress:
   total_phases: 7
   completed_phases: 5
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 ## Current Position
 
 Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
-Plan: 15-13 complete (gap closure)
+Plan: 15-09 complete (gap closure; wave 2 done — 15-12 remaining)
 Status: Executing Phase 15
-Last activity: 2026-07-09 -- Phase 15 plan 15-13 (child-first AgentClassLoader + exploded-attach repro harness + agent-UAT guide) complete
+Last activity: 2026-07-10 -- Phase 15 plan 15-09 (HierarchyNode exceptionType/message + active/suspended durations + durable creationPoint/lastSuspensionPoint) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
