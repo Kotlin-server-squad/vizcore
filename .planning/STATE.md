@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-12-PLAN.md complete (plugin: launchedRef wire kinds + eviction fallbacks + live lifetime + problems-detail durable site)
-last_updated: "2026-07-10T00:00:00.000Z"
-last_activity: 2026-07-10 -- Phase 15 plan 15-12 (plugin half: HierarchyNodeDto creationPoint/lastSuspensionPoint, launchedRef coroutine.created/started kinds, eviction fallbacks, live lifetime, problems-detail site fallback) complete
+stopped_at: 15-14-PLAN.md planned + checker-passed (gap closure: suspension-site kind filter, WR-01)
+last_updated: "2026-07-10T17:48:34.320Z"
+last_activity: "2026-07-10 -- Phase 15 gap plan 15-14 planned (kind == coroutine.suspended filter in suspendedRef/suspensionHistory/resolveSuspensionSite + regression tests); checker passed iter 1"
 progress:
   total_phases: 7
   completed_phases: 5
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
 Plan: 15-12 complete (gap closure; wave 3 done — plugin consumes the 15-08/15-09 wire)
-Status: Executing Phase 15
+Status: Ready to execute
 Last activity: 2026-07-10 -- Phase 15 plan 15-12 (plugin half: launchedRef wire kinds, eviction fallbacks, live lifetime, problems-detail durable site) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
