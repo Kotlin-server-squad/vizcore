@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-14-PLAN.md planned + checker-passed (gap closure: suspension-site kind filter, WR-01)
-last_updated: "2026-07-10T17:48:34.320Z"
-last_activity: "2026-07-10 -- Phase 15 gap plan 15-14 planned (kind == coroutine.suspended filter in suspendedRef/suspensionHistory/resolveSuspensionSite + regression tests); checker passed iter 1"
+stopped_at: 15-10-PLAN.md complete (inspector scroll viewport + %20 path-segment encoding)
+last_updated: "2026-07-10T18:02:08.539Z"
+last_activity: 2026-07-10 -- Phase 15 execution started
 progress:
   total_phases: 7
-  completed_phases: 5
-  total_plans: 35
-  completed_plans: 30
-  percent: 73
+  completed_phases: 6
+  total_plans: 36
+  completed_plans: 36
+  percent: 86
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-13)
-Plan: 15-12 complete (gap closure; wave 3 done — plugin consumes the 15-08/15-09 wire)
+Phase: 15 (plugin-problems-data-surfacing) — EXECUTING
+Plan: 2 of 14
 Status: Ready to execute
-Last activity: 2026-07-10 -- Phase 15 plan 15-12 (plugin half: launchedRef wire kinds, eviction fallbacks, live lifetime, problems-detail durable site) complete
+Last activity: 2026-07-10 -- Phase 15 execution started
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
@@ -135,6 +135,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 | Phase 15 P10 | ~45 min | 2 tasks | 4 files |
 | Phase 15 P11 | ~20 min | 2 tasks | 4 files |
 | Phase 15 P13 | ~20 min | 3 tasks | 7 files |
+| Phase 15 P14 | ~10 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -218,6 +219,7 @@ Recent decisions affecting current work:
 - [Phase 15, Plan 08]: Gap closure GAP-EXCEPTIONS-BLIND / GAP-ENRICHMENT-EMPTY / GAP-JUMP-WRONG-FRAME (SC2/SC3) — the agent/DebugProbes wire now carries all three missing data classes. (1) Failure outcomes: CoroutineInfoAdapter registers EXACTLY ONE `Job.invokeOnCompletion` handler per observed Job (identityHashCode DisposableHandle guard, disposed on reset(), T-15-08-03) recording a consume-once CompletionOutcome; DebugProbesSource passes it into synthesize at Vanished → CoroutineFailed(exceptionType,message) / CoroutineCancelled(cause) / byte-identical CoroutineCompleted (v1 A3 tradeoff superseded; WR-02 per-delta commit untouched). (2) Thread/dispatcher: snapshots carry threadId/threadName; synthesizer emits ThreadAssigned on Appeared(RUNNING/SUSPENDED) + every transition INTO RUNNING (never fabricated), and DispatcherSelected ONCE per coroutine at Appeared (dispatcherId = normalized name); scopeId D-03 routing unmoved. KEY DEVIATION (Rule 3): the plan's assumed `CoroutineInfo.lastObservedThread` does NOT exist — the public wrapper drops the thread; it lives only on Kotlin-internal/JVM-public DebugCoroutineInfo. Fixed via NEW DebugProbesImplBridge.java (same package, javac ignores Kotlin metadata) mapping DebugProbesImpl.dumpCoroutinesInfo() straight into RawInfo; source default dump switched to the bridge. (3) Frame semantics: coroutine.suspended now derives its SuspensionPoint from lastObservedStackTrace's first user frame (creation-derived FALLBACK — a frame is never lost); the launch site rides NEW CoroutineCreated.creationPoint (LAST defaulted param, createdAtEpochMs compat precedent; legacy JSON decodes to null; VizScope wrapper path byte-unchanged); SourceAttribution.fromStack generic extraction added. Full backend gate + :coroutine-viz-agent:shadowJar green under JDK 21 (agent bundles core — rebuild done). NOTE for re-UAT: DEBUG-exceptions-blind Link 2 (ProjectionService never copies exceptionType/message into HierarchyNode) is OUT of 15-08 scope — must land via its sibling gap plan or the plugin exception pipeline stays dark despite the wire fix. Commits f98d864/ce273d4 (T1), d7af2bf/504d632 (T2), 0251ad1/610a5fd (T3).
 
 - [Phase 15, Plan 10]: Gap closure GAP-INSPECTOR-SCROLL / GAP-SESSIONID-SPACES (plugin half) — (1) InspectorPanel now hosts ONE persistent borderless JBScrollPane (unitIncrement 16, no horizontal bar) around a top-anchoring BorderLayout wrapper; show(vm) swaps content INSIDE the wrapper (cards NORTH, placeholder CENTER) and resets viewport to top, so every D-24 stacked card is wheel-reachable at any pane height (internal wrap, mirror ProblemsDetailPanel — VizcoreToolWindowPanel untouched). KEY DEVIATION (Rule 3, orchestrator-directed): a bare macOS unit test CANNOT construct JBScrollPane (MacScrollBarUI asserts JNA in Foundation.<clinit>; JnaLoader reflection, java.awt.headless, and ApplicationExtension all fail — the last hangs the worker in loadAppInUnitTestMode). Added a `scrollPaneFactory` constructor seam: production defaults to JBScrollPane (sole caller unchanged), InspectorPanelScrollTest injects plain JScrollPane and asserts viewport-present / placeholder-in-viewport / persistent-instance. Repo convention holds: NO plugin unit test boots the platform. (2) VizcoreApiClient.enc() = URLEncoder + `.replace("+","%20")` — Ktor decodes path segments with plusIsSpace=false so form '+' 404ed legacy spacey ids on every hierarchy/metrics/timeline poll; %20 decodes in BOTH path and query so the single helper stays shared by resolve(). Regression test asserts raw path `/api/sessions/demo%20boot%20jar-123/hierarchy`. Full plugin gate (127 tests, ktlint, detekt) green under JDK 21. Commits c089c6e (T1), 0e7a4fd (T2).
+- [Phase ?]: [Phase 15, Plan 14]: Closed last Phase 15 gap (VERIFICATION truth 22 PARTIAL / REVIEW WR-01). Strict it.kind == coroutine.suspended filters added to InspectorViewModel.suspendedRef + suspensionHistory and VizcoreToolWindowPanel.resolveSuspensionSite so the launch frame 15-08/15-09 ride on coroutine.created is never captioned 'Suspended at'. Durable node.lastSuspensionPoint fallbacks (15-12) intact; fixture sweep to real wire strings; named plain-unit subset + ktlint + detekt green under JDK 21.
 
 ### Pending Todos
 
@@ -251,7 +253,7 @@ Verified gaps from the 2026-06-11 codebase audit (Phase 1 addresses 1–3; auth 
 
 ## Session Continuity
 
-Last session: 2026-07-09T20:45:00.000Z
+Last session: 2026-07-10T18:01:58.619Z
 Stopped at: 15-10-PLAN.md complete (inspector scroll viewport + %20 path-segment encoding)
 Resume file: None
 

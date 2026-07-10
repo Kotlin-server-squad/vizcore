@@ -260,4 +260,4 @@ Plans:
 | 12. Observability Integration (OTEL/OTLP) | v1.2 | 4/4 | Complete    | 2026-06-28 |
 | 13. IntelliJ Plugin Delivery | v1.2 | 7/7 | Complete   | 2026-06-29 |
 | 14. Frontend Testing & Quality | v1.2 | 0/TBD | Not started | - |
-| 15. Plugin Problems + data surfacing | v1.2 | 6/6 | Complete   | 2026-07-02 |
+| 15. Plugin Problems + data surfacing | v1.2 | 14/14 | Complete   | 2026-07-10 |
