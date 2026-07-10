@@ -668,10 +668,12 @@ class VizcoreToolWindowPanel(
     }
 
     /**
-     * A coroutine's current suspension site as "file:line": the last timeline event carrying a full
-     * suspension point, falling back to the node's durable [HierarchyNodeDto.lastSuspensionPoint] when
-     * the timeline has been evicted (same fullHierarchy lookup idiom as [selectCoroutine]) so the
-     * "… at File.kt:NN" suffix survives eviction.
+     * A coroutine's current suspension site as "file:line": the last coroutine.suspended timeline
+     * event carrying a full suspension point, falling back to the node's durable
+     * [HierarchyNodeDto.lastSuspensionPoint] when the timeline has been evicted (same fullHierarchy
+     * lookup idiom as [selectCoroutine]) so the "… at File.kt:NN" suffix survives eviction. The kind
+     * filter (WR-01) excludes the coroutine.created launch frame so the suffix can only ever name a
+     * true suspension site.
      */
     private fun resolveSuspensionSite(
         sessionId: String,
@@ -681,8 +683,11 @@ class VizcoreToolWindowPanel(
             apiClient
                 .timeline(sessionId, coroutineId)
                 ?.events
-                ?.lastOrNull { it.suspensionPoint?.fileName != null && it.suspensionPoint?.lineNumber != null }
-                ?.suspensionPoint
+                ?.lastOrNull {
+                    it.kind == "coroutine.suspended" &&
+                        it.suspensionPoint?.fileName != null &&
+                        it.suspensionPoint?.lineNumber != null
+                }?.suspensionPoint
         val point =
             timelinePoint
                 ?: latestModel?.fullHierarchy?.firstOrNull { it.id == coroutineId }?.lastSuspensionPoint
