@@ -14,7 +14,7 @@ class InspectorViewModelTest {
         assertEquals("—", InspectorViewModel.formatApproxNanos(null))
     }
 
-    @Test fun `extracts suspended-at from latest event with a suspension point`() {
+    @Test fun `extracts suspended-at from the latest coroutine-suspended event`() {
         val timeline =
             TimelineDto(
                 coroutineId = "c",
@@ -25,10 +25,10 @@ class InspectorViewModelTest {
                 totalDuration = 420_000_000,
                 events =
                     listOf(
-                        TimelineEventDto(seq = 1, kind = "CREATED"),
+                        TimelineEventDto(seq = 1, kind = "coroutine.created"),
                         TimelineEventDto(
                             seq = 2,
-                            kind = "SUSPENDED",
+                            kind = "coroutine.suspended",
                             reason = "delay",
                             suspensionPoint =
                                 SuspensionPointDto(
@@ -115,20 +115,20 @@ class InspectorViewModelTest {
                 state = "SUSPENDED",
                 events =
                     listOf(
-                        TimelineEventDto(seq = 1, tsNanos = 1_000_000_000, kind = "CREATED"),
+                        TimelineEventDto(seq = 1, tsNanos = 1_000_000_000, kind = "coroutine.created"),
                         TimelineEventDto(
                             seq = 2,
                             tsNanos = 1_340_000_000,
-                            kind = "SUSPENDED",
+                            kind = "coroutine.suspended",
                             reason = "delay",
                         ),
                     ),
             )
         val vm = InspectorViewModel.from(timeline, null)
         assertEquals(2, vm.events.size)
-        assertEquals("CREATED", vm.events[0].kind)
+        assertEquals("coroutine.created", vm.events[0].kind)
         assertEquals("~0ms", vm.events[0].relativeLabel)
-        assertEquals("SUSPENDED", vm.events[1].kind)
+        assertEquals("coroutine.suspended", vm.events[1].kind)
         assertEquals("delay", vm.events[1].reason)
         assertEquals("~340ms", vm.events[1].relativeLabel)
     }
@@ -144,7 +144,7 @@ class InspectorViewModelTest {
                         TimelineEventDto(
                             seq = 1,
                             tsNanos = 5,
-                            kind = "SUSPENDED",
+                            kind = "coroutine.suspended",
                             suspensionPoint =
                                 SuspensionPointDto(function = "run", reason = "receive"),
                         ),
@@ -207,7 +207,7 @@ class InspectorViewModelTest {
         assertEquals("~1.2s", vm.lifetimeLabel)
     }
 
-    @Test fun `builds suspension history from every event with a suspension point`() {
+    @Test fun `builds suspension history from coroutine-suspended events only`() {
         val timeline =
             TimelineDto(
                 coroutineId = "c",
@@ -215,17 +215,22 @@ class InspectorViewModelTest {
                 state = "SUSPENDED",
                 events =
                     listOf(
-                        TimelineEventDto(seq = 1, kind = "CREATED"),
+                        TimelineEventDto(
+                            seq = 1,
+                            kind = "coroutine.created",
+                            suspensionPoint =
+                                SuspensionPointDto(function = "launch", fileName = "Launch.kt", lineNumber = 5, reason = "launch"),
+                        ),
                         TimelineEventDto(
                             seq = 2,
-                            kind = "SUSPENDED",
+                            kind = "coroutine.suspended",
                             reason = "delay",
                             suspensionPoint =
                                 SuspensionPointDto(function = "run", fileName = "A.kt", lineNumber = 10, reason = "delay"),
                         ),
                         TimelineEventDto(
                             seq = 3,
-                            kind = "SUSPENDED",
+                            kind = "coroutine.suspended",
                             suspensionPoint =
                                 SuspensionPointDto(function = "recv", fileName = "B.kt", lineNumber = 20, reason = "receive"),
                         ),
@@ -242,6 +247,67 @@ class InspectorViewModelTest {
 
     @Test fun `suspension history is empty without suspension points`() {
         val vm = InspectorViewModel.from(null, null)
+        assertEquals(emptyList(), vm.suspensionHistory)
+    }
+
+    @Test fun `never-suspended timeline falls back to the durable node suspension point`() {
+        val timeline =
+            TimelineDto(
+                coroutineId = "c",
+                name = "worker",
+                state = "RUNNING",
+                events =
+                    listOf(
+                        TimelineEventDto(
+                            seq = 1,
+                            kind = "coroutine.created",
+                            suspensionPoint =
+                                SuspensionPointDto(function = "launchWork", fileName = "Worker.kt", lineNumber = 42, reason = "launch"),
+                        ),
+                        TimelineEventDto(seq = 2, kind = "coroutine.started"),
+                    ),
+            )
+        val node =
+            HierarchyNodeDto(
+                id = "c",
+                parentId = null,
+                name = "worker",
+                scopeId = "s",
+                state = "RUNNING",
+                jobId = "j",
+                lastSuspensionPoint =
+                    SuspensionPointDto(function = "await", fileName = "Svc.kt", lineNumber = 88, reason = "await"),
+            )
+        val vm = InspectorViewModel.from(timeline, node)
+        // The launch frame riding coroutine.created must NOT be captioned "Suspended at";
+        // suspendedAt falls back to the durable node point (Svc.kt:88, not Worker.kt:42).
+        assertEquals("Svc.kt", vm.suspendedAt?.fileName)
+        assertEquals(88, vm.suspendedAt?.lineNumber)
+        assertEquals(emptyList(), vm.suspensionHistory)
+        // launchedRef stays unregressed — the launch frame still resolves as Launched at.
+        assertEquals("Worker.kt", vm.launchedAt?.fileName)
+        assertEquals(42, vm.launchedAt?.lineNumber)
+    }
+
+    @Test fun `never-suspended timeline without a durable point shows no suspended-at`() {
+        val timeline =
+            TimelineDto(
+                coroutineId = "c",
+                name = "worker",
+                state = "RUNNING",
+                events =
+                    listOf(
+                        TimelineEventDto(
+                            seq = 1,
+                            kind = "coroutine.created",
+                            suspensionPoint =
+                                SuspensionPointDto(function = "launchWork", fileName = "Worker.kt", lineNumber = 42, reason = "launch"),
+                        ),
+                        TimelineEventDto(seq = 2, kind = "coroutine.started"),
+                    ),
+            )
+        val vm = InspectorViewModel.from(timeline, null)
+        assertEquals(null, vm.suspendedAt)
         assertEquals(emptyList(), vm.suspensionHistory)
     }
 
@@ -340,7 +406,7 @@ class InspectorViewModelTest {
                         ),
                         TimelineEventDto(
                             seq = 2,
-                            kind = "SUSPENDED",
+                            kind = "coroutine.suspended",
                             suspensionPoint =
                                 SuspensionPointDto(function = "g", fileName = "FreshSusp.kt", lineNumber = 2, reason = "delay"),
                         ),
