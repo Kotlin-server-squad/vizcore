@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production Hardening, SDK & IDE Delivery
 status: executing
-stopped_at: 15-10-PLAN.md complete (inspector scroll viewport + %20 path-segment encoding)
-last_updated: "2026-07-10T18:02:08.539Z"
-last_activity: 2026-07-10 -- Phase 15 execution started
+stopped_at: 15-14-PLAN.md complete (suspension-site kind filter, WR-01 / GAP-JUMP-WRONG-FRAME)
+last_updated: "2026-07-10T18:30:00.000Z"
+last_activity: 2026-07-10 -- Phase 15 gap plan 15-14 (kind-filtered suspension selectors) complete
 progress:
   total_phases: 7
   completed_phases: 6
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-27 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 15 (plugin-problems-data-surfacing) — EXECUTING
-Plan: 2 of 14
-Status: Ready to execute
-Last activity: 2026-07-10 -- Phase 15 execution started
+Phase: 15 (plugin-problems-data-surfacing) — EXECUTING (gap closure 15-07..15-14 complete)
+Plan: 15-14 complete (final gap-closure plan; phase code done — pending re-UAT + secure-phase)
+Status: Gap closure complete; next re-UAT jump-to-source (rebuild demo bootjar first) then /gsd-secure-phase 15
+Last activity: 2026-07-10 -- Phase 15 gap plan 15-14 (kind == coroutine.suspended filter in suspendedRef/suspensionHistory/resolveSuspensionSite + regression tests) complete
 
 > **2026-06-30 — SUPERSEDE NOTE:** Phase 13's JCEF/loopback embedded-frontend delivery is being
 > replaced by a fully NATIVE IntelliJ plugin (live coroutine tree + debugging inspector +
@@ -148,6 +148,7 @@ Last activity: 2026-06-27 — Milestone v1.1 completed and archived
 Decisions are logged in PROJECT.md Key Decisions table (26 Accepted ADRs locked; ADR-010 Proposed/advisory).
 Recent decisions affecting current work:
 
+- [Phase 15, Plan 14]: Closed the last Phase 15 gap (VERIFICATION truth 22 PARTIAL / REVIEW WR-01 / GAP-JUMP-WRONG-FRAME). All three plugin suspension-site selectors — InspectorViewModel.suspendedRef, InspectorViewModel.suspensionHistory, VizcoreToolWindowPanel.resolveSuspensionSite — gained a strict `it.kind == "coroutine.suspended"` filter (the same exact-literal pattern launchedRef already uses against the ProjectionService.kt:385 wire mint). Since 15-08/15-09 ride the LAUNCH frame on coroutine.created's suspensionPoint, a never-suspended agent coroutine (timeline [created(point), started]) was mislabeling its launch site as "Suspended at" and prepending it to suspension history; the filter excludes it so "Suspended at" means suspended, falling back to node.lastSuspensionPoint (or null). launchedRef and the fresh-first→durable fallback chains (InspectorViewModel.kt:104-105, panel fullHierarchy fallback) are untouched — no regression. TDD: 2 new regression tests (durable-fallback + null-node variants) + 3 locking tests corrected to real wire kinds (incl. the third at :327 that VERIFICATION's missing-list omitted) + fixture sweep of fake CREATED/SUSPENDED kinds. Named plain-unit subset + ktlintCheck + detekt green under JDK 21 (Azul 21); backend untouched. Commits ecc2fa1 (RED), 36b1006 (GREEN Task 1), fe9d2dd (Task 2). Next: re-UAT jump-to-source (rebuild demo bootjar first — line-drift guard) then /gsd-secure-phase 15.
 - [Phase 15, Plan 12]: Plugin half of inspector-enrichment + jump-to-source gaps. launchedRef filtered dead kinds "CREATED"/"STARTED" — corrected to the REAL wire strings "coroutine.created"/"coroutine.started" (15-08 rides the launch frame on coroutine.created). HierarchyNodeDto gains additive-defaulted creationPoint/lastSuspensionPoint mirroring the 15-09 node fields; InspectorViewModel.from now fresh-first (timeline) with a durable node fallback via SuspensionPointDto.toSourceRef so Launched at / Suspended at / jump targets survive the 10k DROP_OLDEST eviction. Live lifetime: from() gains an injectable nowNanos; a running coroutine with no completion-only totalDuration shows formatApproxNanos(nowNanos - node.createdAtNanos) on the SAME same-machine System.nanoTime basis rowFrom uses for row ages (consistent numbers); totalLabel stays completion-only (honest). VizcoreToolWindowPanel.resolveSuspensionSite falls back to node.lastSuspensionPoint (fullHierarchy lookup) so the problems-detail "at File.kt:NN" suffix survives eviction. detekt ReturnCount forced lifetimeLabel into a single when-return. Full plugin suite + ktlint + detekt green under JDK 21; backend untouched (core test UP-TO-DATE). Process guard for next live UAT: rebuild the demo bootjar from the editor's tree before jump-to-source verification — stale-build line drift silently misplaces every jump.
 - [Phase 15, Plan 13]: Agent exploded-classpath attach is now durable — a child-first boot.AgentClassLoader (OTel java-agent pattern) over the fat jar, built by a dependency-free Java Premain-Class shim (boot.VizcoreAgentPremain) that reflectively invokes AgentBootstrap.run through it. io.ktor./kotlinx.serialization./kotlinx.io./com.jh.proj.coroutineviz./shaded-slf4j load CHILD-FIRST from the jar (the fix — no longer resolving from the app's -cp, which was mis-reading Content-Length keep-alive responses into empty bodies); kotlin./kotlinx.coroutines. stay SYSTEM-FIRST with child fallback (shared host class space so DebugProbes instruments the host + Function1 callbacks stay one class space; fallback covers pure-Java hosts). kotlin./kotlinx.* remain UN-relocated because the loader (not relocation) provides isolation — relocation would break DebugProbes byte-buddy introspection (Pitfall 4). Fail-soft doubled (shim + bootstrap catch, 8c7d67c preserved). scripts/agent-attach-repro.sh proves it 2/2 (eventCount 35/4) against a live backend on :8090; docs/guides/agent-attach-uat.md documents both launch paths + the rebuild-before-jump line-drift guard.
 - Treat the duplicate `session/` fork removal as the first work item — it is the root cause of the unbounded-store (gap 2) and unwired-perf (gap 3) findings.
