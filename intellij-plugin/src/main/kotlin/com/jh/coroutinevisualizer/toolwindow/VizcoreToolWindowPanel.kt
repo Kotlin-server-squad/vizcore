@@ -667,18 +667,28 @@ class VizcoreToolWindowPanel(
         }
     }
 
-    /** Last timeline event whose suspension point carries both a file name and line → "file:line". */
+    /**
+     * A coroutine's current suspension site as "file:line": the last timeline event carrying a full
+     * suspension point, falling back to the node's durable [HierarchyNodeDto.lastSuspensionPoint] when
+     * the timeline has been evicted (same fullHierarchy lookup idiom as [selectCoroutine]) so the
+     * "… at File.kt:NN" suffix survives eviction.
+     */
     private fun resolveSuspensionSite(
         sessionId: String,
         coroutineId: String,
     ): String? {
-        val point =
+        val timelinePoint =
             apiClient
                 .timeline(sessionId, coroutineId)
                 ?.events
                 ?.lastOrNull { it.suspensionPoint?.fileName != null && it.suspensionPoint?.lineNumber != null }
                 ?.suspensionPoint
-        return point?.let { "${it.fileName}:${it.lineNumber}" }
+        val point =
+            timelinePoint
+                ?: latestModel?.fullHierarchy?.firstOrNull { it.id == coroutineId }?.lastSuspensionPoint
+        return point
+            ?.takeIf { it.fileName != null && it.lineNumber != null }
+            ?.let { "${it.fileName}:${it.lineNumber}" }
     }
 
     /**

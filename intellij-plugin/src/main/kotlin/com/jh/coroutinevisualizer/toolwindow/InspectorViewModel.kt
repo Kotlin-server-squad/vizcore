@@ -199,11 +199,14 @@ data class InspectorViewModel(
             node: HierarchyNodeDto?,
             nowNanos: Long,
         ): String {
-            timeline?.totalDuration?.let { return formatApproxNanos(it) }
-            if (running && node != null && node.createdAtNanos > 0) {
-                return formatApproxNanos((nowNanos - node.createdAtNanos).coerceAtLeast(0))
+            val total = timeline?.totalDuration
+            val liveLifetime = node?.takeIf { running && it.createdAtNanos > 0 }
+            return when {
+                total != null -> formatApproxNanos(total)
+                liveLifetime != null ->
+                    formatApproxNanos((nowNanos - liveLifetime.createdAtNanos).coerceAtLeast(0))
+                else -> DASH
             }
-            return DASH
         }
     }
 }
