@@ -28,6 +28,13 @@ describe('tailwind/heroui theme', () => {
     expect(source).toContain("from './src/styles/palette'")
   })
 
+  it('maps secondary onto the palette rather than leaving HeroUI purple', () => {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const source = readFileSync(resolve(here, '../../tailwind.config.ts'), 'utf8')
+    expect(source).toContain('secondary:')
+    expect(source).not.toMatch(/#(7828c8|9353d3|c9a9e9)/i)
+  })
+
   it('sources semantic colours from the palette module', () => {
     expect(palette.primary).toBe('#006fee')
     expect(palette.warning).toBe('#f5a524')

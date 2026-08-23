@@ -266,7 +266,7 @@ pnpm format
 The app uses Tailwind CSS with the HeroUI component library:
 
 - Dark/light mode support (class-based toggle)
-- Primary color: `#6366f1` (Indigo light) / `#818cf8` (dark)
+- Primary color: `#006fee` (vizcore blue, dark-first). Defined once in `src/styles/palette.ts`.
 - Responsive design with mobile-first approach
 - Custom container utilities (`container-custom`)
 - Framer Motion for smooth animations

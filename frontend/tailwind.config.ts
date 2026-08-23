@@ -10,6 +10,13 @@ import { palette } from './src/styles/palette'
  */
 const semantic = {
   primary: { DEFAULT: palette.primary, foreground: '#ffffff' },
+  // vizcore's palette has no secondary hue. HeroUI's default is purple, which
+  // reads as off-brand, so `color="secondary"` maps to the neutral, bordered
+  // treatment the sketch theme uses for secondary actions (`.btn.ghost`).
+  // A bare hex (not a {DEFAULT,foreground} object) lets HeroUI generate the
+  // full 50-900 scale, so derived shades — which `variant="flat"` uses for its
+  // text — stay neutral too.
+  secondary: palette['text-muted'],
   success: { DEFAULT: palette.success, foreground: '#00110a' },
   warning: { DEFAULT: palette.warning, foreground: '#1a1200' },
   danger: { DEFAULT: palette.danger, foreground: '#ffffff' },
