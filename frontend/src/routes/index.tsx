@@ -1,124 +1,30 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { Button, Card, CardBody, CardHeader } from '@heroui/react'
-import { FiPlay, FiLayers, FiActivity } from 'react-icons/fi'
+import { useState } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
 import { Layout } from '@/components/Layout'
-import { useSessions } from '@/hooks/use-sessions'
+import { SessionsHome } from '@/components/sessions/SessionsHome'
+import { ConnectWizard } from '@/components/connect/ConnectWizard'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
 })
 
-function HomePage() {
-  const { data: sessions, isLoading } = useSessions()
+/**
+ * The product's front door (D-1). Previously a marketing hero with feature
+ * cards; now the badged sessions list, because the first screen should be the
+ * way into the work rather than an advertisement for it.
+ *
+ * Exported so it can be rendered directly in tests without binding to the
+ * generated file-route instance.
+ */
+export function HomePage() {
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   return (
     <Layout>
       <div className="container-custom py-8">
-        {/* Hero Section */}
-        <div className="mb-12 text-center">
-          <h1 className="mb-4 text-5xl font-bold">Coroutine Visualizer</h1>
-          <p className="mx-auto max-w-2xl text-xl text-default-600">
-            Real-time visualization of Kotlin coroutine lifecycle, hierarchy, and execution flow
-          </p>
-          <div className="mt-8 flex items-center justify-center gap-4">
-            <Link to="/sessions">
-              <Button color="primary" size="lg" startContent={<FiLayers />}>
-                View Sessions
-              </Button>
-            </Link>
-            <Link to="/scenarios">
-              <Button color="secondary" size="lg" variant="flat" startContent={<FiPlay />}>
-                Run Scenarios
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Features */}
-        <div className="mb-12 grid gap-6 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <FiActivity className="mr-2 h-6 w-6" />
-              <h3 className="text-lg font-semibold">Real-time Tracking</h3>
-            </CardHeader>
-            <CardBody>
-              <p className="text-default-600">
-                Monitor coroutine lifecycle events as they happen with live SSE streaming
-              </p>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <FiLayers className="mr-2 h-6 w-6" />
-              <h3 className="text-lg font-semibold">Hierarchy Visualization</h3>
-            </CardHeader>
-            <CardBody>
-              <p className="text-default-600">
-                See parent-child relationships and structured concurrency in action
-              </p>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <FiPlay className="mr-2 h-6 w-6" />
-              <h3 className="text-lg font-semibold">Test Scenarios</h3>
-            </CardHeader>
-            <CardBody>
-              <p className="text-default-600">
-                Run pre-built scenarios to explore different coroutine patterns
-              </p>
-            </CardBody>
-          </Card>
-        </div>
-
-        {/* Recent Sessions */}
-        <div>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-bold">Recent Sessions</h2>
-            <Link to="/sessions">
-              <Button variant="light" size="sm">
-                View All
-              </Button>
-            </Link>
-          </div>
-
-          {isLoading ? (
-            <div className="text-center text-default-400">Loading sessions...</div>
-          ) : !sessions || sessions.length === 0 ? (
-            <Card>
-              <CardBody>
-                <p className="text-center text-default-500">
-                  No sessions yet. Create one or run a scenario to get started!
-                </p>
-              </CardBody>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {sessions.slice(0, 6).map(session => (
-                <Link
-                  key={session.sessionId}
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: session.sessionId }}
-                >
-                  <Card isPressable isHoverable>
-                    <CardBody>
-                      <div className="mb-2 font-mono text-sm text-default-500">
-                        {session.sessionId}
-                      </div>
-                      <div className="text-lg font-semibold">
-                        {session.coroutineCount} coroutines
-                      </div>
-                    </CardBody>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+        <SessionsHome onConnect={() => setWizardOpen(true)} />
       </div>
+      <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
     </Layout>
   )
 }
-

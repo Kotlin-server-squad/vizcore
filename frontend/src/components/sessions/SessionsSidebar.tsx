@@ -20,9 +20,12 @@ import { SessionRow } from './SessionRow'
 export function SessionsSidebar({
   onConnect,
   selectedSessionId,
+  className = 'w-[320px] shrink-0',
 }: {
   onConnect: () => void
   selectedSessionId?: string
+  /** Width/placement is the caller's decision — sidebar at /sessions, full-width at /. */
+  className?: string
 }) {
   const { data: sessions, isLoading } = useSessions()
   const navigate = useNavigate()
@@ -40,7 +43,7 @@ export function SessionsSidebar({
   const isEmpty = !isLoading && live.length === 0 && demo.length === 0
 
   return (
-    <Card className="w-[320px] shrink-0">
+    <Card className={className}>
       <CardBody className="gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Sessions</h2>
