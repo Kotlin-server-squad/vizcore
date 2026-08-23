@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Button, Card, CardBody, CardHeader, Spinner, Chip } from '@heroui/react'
 import { FiPlay, FiPlusCircle, FiClock, FiZap } from 'react-icons/fi'
 import { Layout } from '@/components/Layout'
@@ -9,6 +9,11 @@ import { useNavigate } from '@tanstack/react-router'
 import type { Scenario } from '@/types/api'
 
 export const Route = createFileRoute('/scenarios/')({
+  // Scenarios is an action reachable from the sessions home, not a place (D-2).
+  // The URL still resolves so old links do not 404.
+  beforeLoad: () => {
+    throw redirect({ to: '/' })
+  },
   component: ScenariosPage,
 })
 

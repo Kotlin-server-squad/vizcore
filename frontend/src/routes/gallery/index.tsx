@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import {
   Button,
   Card,
@@ -23,6 +23,11 @@ import { useCreateSession } from '@/hooks/use-sessions'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/gallery/')({
+  // Gallery is an action reachable from the sessions home, not a place (D-2).
+  // The URL still resolves so old links do not 404.
+  beforeLoad: () => {
+    throw redirect({ to: '/' })
+  },
   component: GalleryPage,
 })
 
