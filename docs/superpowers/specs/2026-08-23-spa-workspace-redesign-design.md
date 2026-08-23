@@ -213,6 +213,25 @@ design debate and makes every later change visible in the real app rather than i
   replay, share, export and scenario-specific views are currently entangled. Mitigation: port tests
   first, decompose behind the existing route.
 
+## Carried into sub-project 3 (found during sub-project 2)
+
+Two colour decisions surfaced while implementing the token layer. Both were deliberately **not**
+made there, because both are component-level decisions wearing token-level clothing.
+
+**C-1 — `secondary` has no vizcore meaning but 79 live references.** The palette defines no
+secondary hue, yet `color="secondary"` is used across ~15 components, and
+`src/lib/coroutine-state-colors.ts` maps `WAITING_FOR_CHILDREN` onto it. Neutralising the token
+flattens that state into the same grey as `CREATED` and `CANCELLED` — a real loss of information in
+the tree and graph. Retiring `secondary` means deciding, per call site, whether it should become a
+neutral variant or a palette colour. Existing tests assert Tailwind class names, not resolved
+colour, so they do not catch this class of regression.
+
+**C-2 — `coroutine-state-colors.ts` is not palette-backed and returns only Tailwind classes.** It
+predates the token layer and diverges from the validated direction in two places: `CANCELLED` is
+grey where the direction says amber, and `WAITING_FOR_CHILDREN` is purple. It also cannot serve the
+canvas or SVG, which need resolved hex rather than class names. Sub-project 3 should extend this one
+module with palette-backed hex accessors rather than adding a second module beside it.
+
 ## Open questions
 
 1. Deadline or audience event (defense, demo, Marketplace release)? Affects sequencing only.

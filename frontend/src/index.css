@@ -39,11 +39,4 @@ body {
   .container-custom {
     @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
   }
-
-  /* Ids, file:line references, durations and code. Tabular figures keep
-     columns of numbers aligned in the tree and inspector. */
-  .font-mono-viz {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
 }

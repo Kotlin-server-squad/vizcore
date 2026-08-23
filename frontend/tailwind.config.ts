@@ -10,13 +10,12 @@ import { palette } from './src/styles/palette'
  */
 const semantic = {
   primary: { DEFAULT: palette.primary, foreground: '#ffffff' },
-  // vizcore's palette has no secondary hue. HeroUI's default is purple, which
-  // reads as off-brand, so `color="secondary"` maps to the neutral, bordered
-  // treatment the sketch theme uses for secondary actions (`.btn.ghost`).
-  // A bare hex (not a {DEFAULT,foreground} object) lets HeroUI generate the
-  // full 50-900 scale, so derived shades — which `variant="flat"` uses for its
-  // text — stay neutral too.
-  secondary: palette['text-muted'],
+  // NOTE: `secondary` is deliberately left at the HeroUI default. vizcore's
+  // palette has no secondary hue, but `secondary` is load-bearing across ~15
+  // components (79 references) and `coroutine-state-colors` maps
+  // WAITING_FOR_CHILDREN onto it — neutralising it here silently flattens that
+  // state into the same grey as CREATED and CANCELLED. Retiring `secondary`
+  // is a component-level decision, not a token-level one; see sub-project 3.
   success: { DEFAULT: palette.success, foreground: '#00110a' },
   warning: { DEFAULT: palette.warning, foreground: '#1a1200' },
   danger: { DEFAULT: palette.danger, foreground: '#ffffff' },
