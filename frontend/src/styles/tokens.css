@@ -1,0 +1,43 @@
+/**
+ * vizcore design tokens.
+ *
+ * Names match `.planning/sketches/themes/default.css` verbatim so validated
+ * sketches port with no renaming. Values are mirrored from `palette.ts` and
+ * guarded by `tokens.test.ts`.
+ */
+:root {
+  /* surfaces */
+  --bg: #0a0a0b;
+  --surface: #131316;
+  --surface-2: #18181b;
+  --surface-3: #1f1f23;
+  --border: #27272a;
+  --border-2: #323237;
+
+  /* text */
+  --text: #fafafa;
+  --text-muted: #a1a1aa;
+  --text-faint: #71717a;
+
+  /* semantic */
+  --primary: #006fee;
+  --success: #17c964;
+  --warning: #f5a524;
+  --danger: #f31260;
+  --created: #8b8b94;
+
+  /* soft fills for badges and chips */
+  --primary-soft: rgba(0, 111, 238, 0.16);
+  --success-soft: rgba(23, 201, 100, 0.15);
+  --warning-soft: rgba(245, 165, 36, 0.15);
+  --danger-soft: rgba(243, 18, 96, 0.15);
+
+  /* type */
+  --font-sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* shape */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
