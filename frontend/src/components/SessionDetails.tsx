@@ -269,11 +269,10 @@ export function SessionDetails({
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
-  const { activeCoroutines, completedCount, shownCoroutines, moreCount } = useMemo(() => {
+  const { completedCount, shownCoroutines, moreCount } = useMemo(() => {
     const active = panelCoroutines.filter(c => !TERMINAL_STATES.has(c.state as CoroutineState))
     const shown = active.slice(0, NODE_CAP)
     return {
-      activeCoroutines: active,
       completedCount: panelCoroutines.length - active.length,
       shownCoroutines: shown,
       moreCount: active.length - shown.length,
@@ -770,11 +769,22 @@ export function SessionDetails({
                     )}
                   </div>
 
-                  {activeCoroutines.length === 0 && !showCompleted ? (
-                    <EmptyState
-                      title="No live coroutines yet"
-                      description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
-                    />
+                  {/* Gate on what the canvas will actually render, not on the
+                      active set — a state filter can select terminal coroutines,
+                      and gating on activeCoroutines hid them behind the
+                      "no app connected" empty state. */}
+                  {renderedCoroutines.length === 0 ? (
+                    stateFilter === 'all' ? (
+                      <EmptyState
+                        title="No live coroutines yet"
+                        description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
+                      />
+                    ) : (
+                      <EmptyState
+                        title={`No ${stateFilter} coroutines`}
+                        description="Nothing in this session matches the selected state. Pick another state, or clear the filter to see everything."
+                      />
+                    )
                   ) : (
                     <Card>
                       <CardBody className="overflow-auto">

@@ -810,6 +810,38 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
     expect(graph).toHaveAttribute('data-ids', 'a-active,b-suspended')
   })
 
+  it('surfaces a filtered state even when every coroutine is terminal', async () => {
+    // Regression: the empty state was gated on activeCoroutines, which ignores
+    // the filter — so picking "Failed" on an all-terminal session kept showing
+    // "No live coroutines yet" instead of the failed coroutines.
+    mountSession([
+      coro('a-failed', 'FAILED'),
+      coro('b-failed', 'FAILED'),
+      coro('c-cancelled', 'CANCELLED'),
+    ])
+
+    expect(screen.getByText('No live coroutines yet')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Failed 2' }))
+
+    expect(screen.queryByText('No live coroutines yet')).not.toBeInTheDocument()
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
+      'data-ids',
+      'a-failed,b-failed'
+    )
+  })
+
+  it('explains an empty result as a filter miss, not a missing app', async () => {
+    mountSession([coro('a-active', 'ACTIVE'), coro('b-failed', 'FAILED')])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Failed 1' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'b-failed')
+
+    // Suspended has no members here, so the canvas is empty for a different
+    // reason than "no app connected".
+    expect(screen.queryByRole('button', { name: /Suspended/ })).toBeNull()
+  })
+
   it('renders the state bar with counts over the whole snapshot', () => {
     mountSession([
       coro('a-active', 'ACTIVE'),
