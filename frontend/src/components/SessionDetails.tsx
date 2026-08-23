@@ -23,6 +23,7 @@ import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
 import { useReplay } from '@/hooks/use-replay'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
+import { deriveStateCounts, matchesFilter, type StateFilter } from '@/lib/state-counts'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { CoroutineTree } from './CoroutineTree'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
@@ -32,6 +33,7 @@ import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
 import { LiveDockPanel } from './LiveDockPanel'
+import { StateBar } from './StateBar'
 import { EmptyState } from './EmptyState'
 import { ChannelPanel } from './channels/ChannelPanel'
 import { FlowPanel } from './flow/FlowPanel'
@@ -112,6 +114,9 @@ export function SessionDetails({
   // Active-only "What's running now" view (D-08): completed coroutines collapse
   // into an expandable aggregate, toggled off by default.
   const [showCompleted, setShowCompleted] = useState(false)
+  // The state bar's active chip (D-4). 'all' is the resting state and preserves
+  // the pre-bar behaviour exactly: active-only unless showCompleted is on.
+  const [stateFilter, setStateFilter] = useState<StateFilter>('all')
   // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
   // the read-only shared view (ADR-019: no re-sharing from a shared link).
   const [sharesOpen, setSharesOpen] = useState(false)
@@ -276,10 +281,20 @@ export function SessionDetails({
   }, [panelCoroutines])
   // What the tree/graph render: the capped active set, or — when the user expands
   // the completed aggregate — the full set (active + completed) up to the cap.
-  const renderedCoroutines = useMemo(
-    () => (showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines),
-    [showCompleted, panelCoroutines, shownCoroutines],
-  )
+  const renderedCoroutines = useMemo(() => {
+    // A named chip selects that state explicitly across the whole snapshot, and
+    // bypasses the active-only default — you asked for completed, you get
+    // completed. With no chip active, behaviour is exactly as before the bar.
+    if (stateFilter !== 'all') {
+      return panelCoroutines
+        .filter(c => matchesFilter(c.state as CoroutineState, stateFilter))
+        .slice(0, NODE_CAP)
+    }
+    return showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines
+  }, [stateFilter, showCompleted, panelCoroutines, shownCoroutines])
+
+  /** Counts for the state bar — the whole snapshot, never the capped subset. */
+  const stateCounts = useMemo(() => deriveStateCounts(panelCoroutines), [panelCoroutines])
 
   // Close the source drawer if its coroutine leaves the session entirely (e.g. a
   // replay cursor moving before its creation, or a session reset). A terminal or
@@ -723,6 +738,9 @@ export function SessionDetails({
       {scenarioId === 'user-registration' && allEvents.length > 0 && (
         <RegistrationFlowView events={allEvents} />
       )}
+
+      {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
+      <StateBar counts={stateCounts} filter={stateFilter} onFilterChange={setStateFilter} />
 
       {/* Main Tabs */}
       <Tabs aria-label="Session tabs" variant="bordered" fullWidth>

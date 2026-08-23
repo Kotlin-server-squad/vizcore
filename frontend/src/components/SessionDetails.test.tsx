@@ -810,6 +810,52 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
     expect(graph).toHaveAttribute('data-ids', 'a-active,b-suspended')
   })
 
+  it('renders the state bar with counts over the whole snapshot', () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('b-suspended', 'SUSPENDED'),
+      coro('c-completed', 'COMPLETED'),
+      coro('d-failed', 'FAILED'),
+    ])
+    // Counts cover every coroutine, not just the ones the canvas renders.
+    expect(screen.getByRole('button', { name: 'Running 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Suspended 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Completed 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Failed 1' })).toBeInTheDocument()
+  })
+
+  it('narrows the canvas to the chosen state, including terminal ones', async () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('b-suspended', 'SUSPENDED'),
+      coro('c-completed', 'COMPLETED'),
+      coro('d-failed', 'FAILED'),
+    ])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Completed 1' }))
+    // A named chip bypasses the active-only default — asking for completed
+    // must actually show completed.
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'c-completed')
+  })
+
+  it('restores the default view when the active chip is clicked again', async () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('b-suspended', 'SUSPENDED'),
+      coro('c-completed', 'COMPLETED'),
+    ])
+
+    const completed = screen.getByRole('button', { name: 'Completed 1' })
+    await userEvent.click(completed)
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'c-completed')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Completed 1' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
+      'data-ids',
+      'a-active,b-suspended'
+    )
+  })
+
   it('shows the "What\'s running now" section title', () => {
     mountSession([coro('a-active', 'ACTIVE')])
     expect(screen.getByText("What's running now")).toBeInTheDocument()
