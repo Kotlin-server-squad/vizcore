@@ -3,6 +3,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Layout } from '@/components/Layout'
 import { SessionsHome } from '@/components/sessions/SessionsHome'
 import { ConnectWizard } from '@/components/connect/ConnectWizard'
+import { NewDemoSessionModal } from '@/components/sessions/NewDemoSessionModal'
+import { CompareOverlay } from '@/components/sessions/CompareOverlay'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -18,13 +20,21 @@ export const Route = createFileRoute('/')({
  */
 export function HomePage() {
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [demoOpen, setDemoOpen] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
 
   return (
     <Layout>
       <div className="container-custom py-8">
-        <SessionsHome onConnect={() => setWizardOpen(true)} />
+        <SessionsHome
+          onConnect={() => setWizardOpen(true)}
+          onNewDemo={() => setDemoOpen(true)}
+          onCompare={() => setCompareOpen(true)}
+        />
       </div>
       <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <NewDemoSessionModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
+      <CompareOverlay isOpen={compareOpen} onClose={() => setCompareOpen(false)} />
     </Layout>
   )
 }

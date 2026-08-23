@@ -27,6 +27,12 @@ vi.mock('@/hooks/use-sessions', () => ({
 vi.mock('@/components/connect/ConnectWizard', () => ({
   ConnectWizard: () => null,
 }))
+vi.mock('@/components/sessions/NewDemoSessionModal', () => ({
+  NewDemoSessionModal: () => null,
+}))
+vi.mock('@/components/sessions/CompareOverlay', () => ({
+  CompareOverlay: () => null,
+}))
 
 import { HomePage } from './index'
 
@@ -49,5 +55,12 @@ describe('root route', () => {
   it('lists the connected sessions', () => {
     render(<HomePage />)
     expect(screen.getByText('order-service-1')).toBeInTheDocument()
+  })
+
+  it('offers the re-hosted demo and compare actions alongside Connect', () => {
+    render(<HomePage />)
+    expect(screen.getByRole('button', { name: /new demo session/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^compare$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /connect/i })).toBeInTheDocument()
   })
 })
