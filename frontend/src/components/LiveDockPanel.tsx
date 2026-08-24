@@ -16,8 +16,8 @@ interface LiveDockPanelProps {
   readOnly: boolean
   /**
    * The live "what's running now" list (CoroutineTree/Graph + Show-completed
-   * controls), derived and passed in by SessionDetails so the dock stays a
-   * presentational shell (Pitfall 2 — keep SessionDetails legible).
+   * controls), derived and passed in by SessionWorkspace so the dock stays a
+   * presentational shell (Pitfall 2 — keep SessionWorkspace legible).
    */
   liveList: ReactNode
   /**
@@ -36,7 +36,7 @@ interface LiveDockPanelProps {
  * the left column hosting the live list and a single inline amber `LeakList`,
  * the right column reserving the ~320px source/metrics slot.
  *
- * Mounted ONLY in the live branch of SessionDetails (`!replayActive && !readOnly`)
+ * Mounted ONLY in the live branch of SessionWorkspace (`!replayActive && !readOnly`)
  * — replay/shared keep the existing tabbed layout (PD-01).
  *
  * Leak placement (PD-02, LOCKED): the header strip is tiles-only

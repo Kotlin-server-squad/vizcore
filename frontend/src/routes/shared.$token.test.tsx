@@ -14,13 +14,13 @@ import { SharedSessionPage } from './shared.$token'
 import type { SharedSessionResult } from '@/types/share'
 import type { SessionSnapshot } from '@/types/api'
 
-// SessionDetails is mocked to a thin probe so the route test focuses on the
+// SessionWorkspace is mocked to a thin probe so the route test focuses on the
 // shell behaviour (status branching, no-chrome, read-only wiring) rather than
-// re-testing the full viewer (covered in SessionDetails.test.tsx).
-vi.mock('@/components/SessionDetails', () => ({
-  SessionDetails: ({ sessionId, readOnly }: { sessionId: string; readOnly?: boolean }) => (
+// re-testing the full viewer (covered in SessionWorkspace.test.tsx).
+vi.mock('@/components/SessionWorkspace', () => ({
+  SessionWorkspace: ({ sessionId, readOnly }: { sessionId: string; readOnly?: boolean }) => (
     <div data-testid="session-details" data-session-id={sessionId} data-read-only={String(!!readOnly)}>
-      SessionDetails
+      SessionWorkspace
     </div>
   ),
 }))
@@ -82,7 +82,7 @@ afterEach(() => {
 })
 
 describe('/shared/$token route', () => {
-  it('renders SessionDetails in read-only mode for a valid token', async () => {
+  it('renders SessionWorkspace in read-only mode for a valid token', async () => {
     getSharedSession.mockResolvedValue({
       status: 'ok',
       data: { session: makeSession(), events: [] },

@@ -81,7 +81,7 @@ const SESSION_REFETCH_MAX_WAIT_MS = 1500
  */
 const NODE_CAP = 200
 
-interface SessionDetailsProps {
+interface SessionWorkspaceProps {
   sessionId: string
   scenarioId?: string
   scenarioName?: string
@@ -99,12 +99,12 @@ interface SessionDetailsProps {
   readOnly?: boolean
 }
 
-export function SessionDetails({
+export function SessionWorkspace({
   sessionId,
   scenarioId,
   scenarioName,
   readOnly = false,
-}: SessionDetailsProps) {
+}: SessionWorkspaceProps) {
   const { data: session, isLoading, refetch } = useSession(sessionId)
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)

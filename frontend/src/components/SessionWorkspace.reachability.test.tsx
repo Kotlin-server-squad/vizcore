@@ -3,10 +3,10 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { SessionDetails } from './SessionDetails'
+import { SessionWorkspace } from './SessionWorkspace'
 import type { SessionSnapshot, CoroutineState, CoroutineTimeline } from '@/types/api'
 
-// RCO-06 reachability proof. Unlike the sibling SessionDetails.test.tsx (which
+// RCO-06 reachability proof. Unlike the sibling SessionWorkspace.test.tsx (which
 // stubs CoroutineTree/Graph to isolate wiring), this file renders the REAL live
 // CoroutineTree + the REAL inline CoroutineSourceStack (mounted in the dock's
 // right-column sourcePanel slot), and only mocks the per-coroutine timeline
@@ -65,7 +65,7 @@ vi.mock('@/lib/api-client', () => ({
 // Toast is fired by jump-to-code; mock it so HeroUI's ToastProvider is not needed.
 vi.mock('@/lib/toast', () => ({ toastSuccess: vi.fn(), toastError: vi.fn() }))
 
-// Heavy/irrelevant panels stubbed so SessionDetails mounts in jsdom without
+// Heavy/irrelevant panels stubbed so SessionWorkspace mounts in jsdom without
 // pulling in html2canvas / MediaRecorder / framer MotionValue loops. The live
 // CoroutineTree and the inline CoroutineSourceStack are LEFT REAL.
 vi.mock('./CoroutineTreeGraph', () => ({
@@ -196,7 +196,7 @@ function makeTimeline(): CoroutineTimeline {
   }
 }
 
-describe('SessionDetails — live source-attribution reachability (RCO-06)', () => {
+describe('SessionWorkspace — live source-attribution reachability (RCO-06)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedApiClient.getThreadActivity.mockResolvedValue({})
@@ -210,7 +210,7 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
   })
 
   it('clicking a live node renders the inline source panel with a real file:line frame', async () => {
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     // No CoroutineSourceDrawer is mounted in the live view — the source is inline
     // in the dock's right column (PD-05). The retired Drawer would render a
@@ -242,7 +242,7 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
   })
 
   it('highlights the selected node with ring-2 ring-primary while its inline source is shown', async () => {
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     await userEvent.click(screen.getByRole('button', { name: /list view/i }))
 
@@ -261,7 +261,7 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
   })
 
   it('shows the placeholder + does not fetch the timeline until a node is clicked (no eager fetch)', () => {
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     // Before any selection the inline source slot shows its muted placeholder and
     // no timeline is fetched (the enabled-guard keeps the query disabled while
@@ -274,7 +274,7 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
   // ── Surface 001 IDE-dock reconcile (Task 2) ──────────────────────────────
 
   it('renders the LiveDockPanel (metric strip + live list) in the live view, with a single inline leak list', async () => {
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     // The dock header strip mounts the metric tiles + LIVE/DEMO pill (un-buried
     // from the Threads tab). Mounted exactly once.
@@ -291,7 +291,7 @@ describe('SessionDetails — live source-attribution reachability (RCO-06)', () 
   })
 
   it('renders the existing tabs with NO dock and no source affordances in the read-only shared view', async () => {
-    render(<SessionDetails sessionId="session-1" readOnly />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
 
     // PD-01 back-compat: the read-only shared view keeps the standalone tabbed
     // layout — the dock metric strip + LIVE pill are NOT mounted.

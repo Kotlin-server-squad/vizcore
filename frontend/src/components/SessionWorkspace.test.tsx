@@ -3,7 +3,7 @@ import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { SessionDetails } from './SessionDetails'
+import { SessionWorkspace } from './SessionWorkspace'
 import type { SessionSnapshot, CoroutineState, ThreadActivity } from '@/types/api'
 
 // Mock all hooks the component depends on
@@ -51,7 +51,7 @@ vi.mock('@/hooks/use-event-categories', () => ({
   })),
 }))
 
-// Mock child components to isolate SessionDetails. The graph/list/events mocks
+// Mock child components to isolate SessionWorkspace. The graph/list/events mocks
 // expose the props they receive so replay-vs-live data-source tests can assert
 // what was fed to them.
 vi.mock('./CoroutineTree', () => ({
@@ -129,7 +129,7 @@ vi.mock('./validation/ValidationPanel', () => ({
 }))
 
 // ReplayController mocked to a thin shim exposing whether replay is active and
-// the toggle target index, so SessionDetails replay wiring can be tested
+// the toggle target index, so SessionWorkspace replay wiring can be tested
 // without the real framer-motion MotionValue loop.
 vi.mock('./replay/ReplayController', () => ({
   ReplayController: ({
@@ -146,7 +146,7 @@ vi.mock('./replay/ReplayController', () => ({
 }))
 
 // useRecordReplay mocked to an inert shim — the scripted WebM pipeline is unit-
-// tested in use-record-replay.test.ts; here we only need SessionDetails to mount
+// tested in use-record-replay.test.ts; here we only need SessionWorkspace to mount
 // without touching MediaRecorder/captureStream (absent in jsdom). The shim's
 // isArming/isRecording flags are overridable per-test so the CR-01 D-03 gate
 // (suppress the auto-seek-to-end while a recording is arming) can be exercised.
@@ -167,7 +167,7 @@ vi.mock('@/hooks/use-record-replay', () => ({
   useRecordReplay: () => recordReplayShim,
 }))
 
-// RecordConfirmModal mocked to a no-op so SessionDetails mounts without HeroUI
+// RecordConfirmModal mocked to a no-op so SessionWorkspace mounts without HeroUI
 // Modal portal machinery in these wiring tests.
 vi.mock('./replay/RecordConfirmModal', () => ({
   RecordConfirmModal: () => null,
@@ -231,7 +231,7 @@ function makeSession(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot 
   }
 }
 
-describe('SessionDetails', () => {
+describe('SessionWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -243,7 +243,7 @@ describe('SessionDetails', () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useSession>)
 
-    render(<SessionDetails sessionId="session-1" />, {
+    render(<SessionWorkspace sessionId="session-1" />, {
       wrapper: createWrapper(),
     })
 
@@ -258,7 +258,7 @@ describe('SessionDetails', () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useSession>)
 
-    render(<SessionDetails sessionId="nonexistent" />, {
+    render(<SessionWorkspace sessionId="nonexistent" />, {
       wrapper: createWrapper(),
     })
 
@@ -278,7 +278,7 @@ describe('SessionDetails', () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useSession>)
 
-    render(<SessionDetails sessionId="session-abc" />, {
+    render(<SessionWorkspace sessionId="session-abc" />, {
       wrapper: createWrapper(),
     })
 
@@ -298,7 +298,7 @@ describe('SessionDetails', () => {
     } as unknown as ReturnType<typeof useSession>)
 
     render(
-      <SessionDetails
+      <SessionWorkspace
         sessionId="session-1"
         scenarioId="sc-1"
         scenarioName="Producer-Consumer"
@@ -318,7 +318,7 @@ describe('SessionDetails', () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useSession>)
 
-    render(<SessionDetails sessionId="session-1" />, {
+    render(<SessionWorkspace sessionId="session-1" />, {
       wrapper: createWrapper(),
     })
 
@@ -338,7 +338,7 @@ describe('SessionDetails', () => {
     } as unknown as ReturnType<typeof useSession>)
 
     render(
-      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
       { wrapper: createWrapper() },
     )
 
@@ -377,7 +377,7 @@ describe('SessionDetails', () => {
     } as unknown as ReturnType<typeof useSession>)
 
     render(
-      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
       { wrapper: createWrapper() },
     )
 
@@ -417,7 +417,7 @@ describe('SessionDetails', () => {
     } as unknown as ReturnType<typeof useSession>)
 
     render(
-      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
       { wrapper: createWrapper() },
     )
 
@@ -434,7 +434,7 @@ describe('SessionDetails', () => {
     } as unknown as ReturnType<typeof useSession>)
 
     render(
-      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
       { wrapper: createWrapper() },
     )
 
@@ -472,7 +472,7 @@ describe('SessionDetails', () => {
     const confirmSpy = vi.spyOn(window, 'confirm')
 
     render(
-      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
       { wrapper: createWrapper() },
     )
 
@@ -496,7 +496,7 @@ describe('SessionDetails', () => {
   })
 })
 
-describe('SessionDetails - session refetch max-wait under sustained stream (CR-02)', () => {
+describe('SessionWorkspace - session refetch max-wait under sustained stream (CR-02)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
@@ -532,7 +532,7 @@ describe('SessionDetails - session refetch max-wait under sustained stream (CR-0
 
     // scenarioId auto-enables the live stream (streamEnabled -> true)
     const { rerender } = render(
-      <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
       { wrapper: createWrapper() },
     )
 
@@ -543,7 +543,7 @@ describe('SessionDetails - session refetch max-wait under sustained stream (CR-0
     for (let i = 0; i < 8; i++) {
       liveEvents.push({ kind: 'CoroutineCreated' })
       rerender(
-        <SessionDetails sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+        <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
       )
       act(() => {
         vi.advanceTimersByTime(250)
@@ -554,7 +554,7 @@ describe('SessionDetails - session refetch max-wait under sustained stream (CR-0
   })
 })
 
-describe('SessionDetails - Threads tab wire shape (UAT gap 1)', () => {
+describe('SessionWorkspace - Threads tab wire shape (UAT gap 1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -579,7 +579,7 @@ describe('SessionDetails - Threads tab wire shape (UAT gap 1)', () => {
     }
     mockedApiClient.getThreadActivity.mockResolvedValue(wireMap)
 
-    render(<SessionDetails sessionId="session-1" />, {
+    render(<SessionWorkspace sessionId="session-1" />, {
       wrapper: createWrapper(),
     })
 
@@ -598,7 +598,7 @@ describe('SessionDetails - Threads tab wire shape (UAT gap 1)', () => {
   })
 })
 
-describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
+describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedUseEventStream.mockImplementation(() => ({
@@ -653,7 +653,7 @@ describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
       isLoading: false,
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useSession>)
-    return render(<SessionDetails sessionId="session-1" />, {
+    return render(<SessionWorkspace sessionId="session-1" />, {
       wrapper: createWrapper(),
     })
   }
@@ -681,7 +681,7 @@ describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
       typeof useSessionEvents
     >)
 
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
@@ -705,7 +705,7 @@ describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
       typeof useSessionEvents
     >)
 
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
     // At end: both c1 and c2 projected from the events (not session.coroutines,
@@ -725,7 +725,7 @@ describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
       typeof useSessionEvents
     >)
 
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
     // Validation tab is projection-backed and always present.
@@ -756,7 +756,7 @@ describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
       clearEvents: vi.fn(),
     }) as unknown as ReturnType<typeof useEventStream>)
 
-    render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
     // 2 events arrived after the frozen snapshot of 3.
@@ -772,7 +772,7 @@ describe('SessionDetails - replay mode (RPLY-01/02/03, D-01..18)', () => {
   })
 })
 
-describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)', () => {
+describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -794,7 +794,7 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
       isLoading: false,
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useSession>)
-    return render(<SessionDetails sessionId={sessionId} />, { wrapper: createWrapper() })
+    return render(<SessionWorkspace sessionId={sessionId} />, { wrapper: createWrapper() })
   }
 
   it('renders only non-terminal coroutines in the graph by default', () => {

@@ -7,7 +7,7 @@ import { LiveDataNotice } from './LiveDataNotice'
 import type { UseReplayReturn } from '@/hooks/use-replay'
 
 // framer-motion stubbed to plain DOM so MotionValues do not need a real
-// animation loop in jsdom (mirrors SessionDetails.test.tsx).
+// animation loop in jsdom (mirrors SessionWorkspace.test.tsx).
 vi.mock('framer-motion', () => ({
   motion: {
     div: ({ children, ...props }: Record<string, unknown>) => (
