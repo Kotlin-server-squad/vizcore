@@ -159,6 +159,31 @@ describe('Inspector', () => {
     expect(within(runsOn).getAllByText('not reported').length).toBe(2)
   })
 
+  it("times events relative to the coroutine's first event, not the epoch", async () => {
+    // Absolute epoch-ish timestamps, 250ms apart.
+    getCoroutineTimeline.mockResolvedValue(
+      timeline({
+        events: [
+          { seq: 1, tsNanos: 1_700_000_000_000_000_000, kind: 'coroutine.created' },
+          { seq: 2, tsNanos: 1_700_000_000_250_000_000, kind: 'coroutine.suspended' },
+        ],
+      }),
+    )
+
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, {
+      wrapper: createWrapper(),
+    })
+
+    await screen.findByText('coroutine.suspended')
+    const events = screen.getByTestId('events-card')
+    // tsNanos is an ABSOLUTE timestamp. Formatted as a duration it reads as a
+    // wall-clock epoch offset (~1.7 billion seconds), which is meaningless
+    // here. Rows are offsets from the coroutine's own first event.
+    expect(within(events).getByText('+250.00ms')).toBeInTheDocument()
+    expect(within(events).getByText('+0.00ms')).toBeInTheDocument()
+    expect(within(events).queryByText(/\d{6,}/)).toBeNull()
+  })
+
   it('shows identity without any fetch', async () => {
     render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, {
       wrapper: createWrapper(),

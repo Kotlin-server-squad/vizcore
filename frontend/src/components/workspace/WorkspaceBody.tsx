@@ -84,11 +84,15 @@ export function WorkspaceBody({
         </div>
       )}
 
-      {/* Two-column dock body: 1fr live list + 320px source/metrics slot. */}
-      <div className="grid grid-cols-[1fr_320px] gap-8 p-6">
-        {/* Left column — the live "what's running now" list + the single
-            inline amber LeakList (mounted exactly once in the dock). */}
-        <div className="space-y-4">
+      {/* Two-column body: canvas + 320px inspector.
+          `minmax(0, 1fr)` rather than `1fr`, and `min-w-0` on the column: a
+          grid track sized `1fr` still expands past its container when its
+          content has a large min-content width, and the coroutine graph does.
+          Without this the canvas overruns the grid and covers the inspector. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-8 p-6">
+        {/* Left column — the canvas + the single inline amber LeakList
+            (mounted exactly once). */}
+        <div className="min-w-0 space-y-4">
           {liveList}
           {showMetrics && metrics && metrics.leaks.length > 0 && (
             <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
