@@ -15,6 +15,7 @@ import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
 import { useWorkspaceReplay } from '@/hooks/use-workspace-replay'
 import { useSessionRefetch } from '@/hooks/use-session-refetch'
+import { useValidation } from '@/hooks/use-validation'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
 import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/state-counts'
 import { deriveRung } from '@/lib/fidelity-rung'
@@ -27,11 +28,10 @@ import { WorkspaceBody } from './workspace/WorkspaceBody'
 import { Inspector } from './workspace/Inspector/Inspector'
 import { EventsDrawer } from './workspace/EventsDrawer'
 import { EvidencePanels } from './workspace/EvidencePanels'
+import { ChecksModal, countFailedChecks } from './workspace/ChecksModal'
 import { ScenarioControls } from './workspace/ScenarioControls'
 import { StateBar } from './StateBar'
-import { ValidationPanel } from './validation/ValidationPanel'
 import { ReplayController } from './replay/ReplayController'
-import { LiveDataNotice } from './replay/LiveDataNotice'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
 import { ManageShares } from './share/ManageShares'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
@@ -95,6 +95,11 @@ export function SessionWorkspace({
   // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
   // the read-only shared view (ADR-019: no re-sharing from a shared link).
   const [sharesOpen, setSharesOpen] = useState(false)
+  // Session checks (M-3). The hook is owned here rather than inside the modal
+  // so a run survives the modal closing, and so the state bar can report it.
+  const [checksOpen, setChecksOpen] = useState(false)
+  const validation = useValidation(sessionId)
+  const failedChecks = countFailedChecks(validation.data)
   // Panel ref for ExportMenu (captures the active visualization region lazily).
   const panelRef = useRef<HTMLDivElement | null>(null)
   // Pass isLive=streamEnabled so thread-activity does not poll every 2s while
@@ -267,6 +272,7 @@ export function SessionWorkspace({
         onViewModeChange={setViewMode}
         onRefetch={() => refetch()}
         onOpenShares={() => setSharesOpen(true)}
+        onOpenChecks={() => setChecksOpen(true)}
         panelRef={panelRef}
         panelEvents={panelEvents}
         onRecord={recordReplay.canRecord ? recordReplay.startRecording : undefined}
@@ -298,6 +304,14 @@ export function SessionWorkspace({
           </ModalContent>
         </Modal>
       )}
+
+      {/* Session checks (M-3) — the retired Validation tab, on demand. */}
+      <ChecksModal
+        sessionId={sessionId}
+        isOpen={checksOpen}
+        onOpenChange={setChecksOpen}
+        validation={validation}
+      />
 
       {/* D-26 long-recording confirm (>120s estimate). */}
       <RecordConfirmModal
@@ -332,7 +346,18 @@ export function SessionWorkspace({
       )}
 
       {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
-      <StateBar counts={stateCounts} filter={stateFilter} onFilterChange={setStateFilter} />
+      <StateBar
+        counts={stateCounts}
+        filter={stateFilter}
+        onFilterChange={setStateFilter}
+        // Shown only once a run has actually failed something (M-3): a chip
+        // reading zero for a session nobody validated is a claim we cannot make.
+        action={
+          failedChecks > 0
+            ? { label: 'Checks', count: failedChecks, onPress: () => setChecksOpen(true) }
+            : undefined
+        }
+      />
 
       {/* Main Tabs */}
       <Tabs aria-label="Session tabs" variant="bordered" fullWidth>
@@ -401,13 +426,6 @@ export function SessionWorkspace({
           </div>
         </Tab>
 
-        {/* Validation tab - always shown */}
-        <Tab key="validation" title="Validation">
-          <div className="space-y-2 pt-2">
-            {replayActive && <LiveDataNotice />}
-            <ValidationPanel sessionId={sessionId} />
-          </div>
-        </Tab>
       </Tabs>
 
       {/* The evidence section (M-1/M-2): what this session can show beyond the

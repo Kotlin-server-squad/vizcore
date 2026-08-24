@@ -7,7 +7,7 @@ import {
   Button,
   Tooltip,
 } from '@heroui/react'
-import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiShare2 } from 'react-icons/fi'
+import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiShare2, FiCheckSquare } from 'react-icons/fi'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCapabilities } from '@/hooks/use-capabilities'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
@@ -43,6 +43,8 @@ interface SessionHeaderProps {
   onViewModeChange: (next: 'graph' | 'list') => void
   onRefetch: () => void
   onOpenShares: () => void
+  /** Opens the session-checks report (M-3) — validation, no longer a tab. */
+  onOpenChecks: () => void
   /** ExportMenu wiring (ADR-018 / EXPT-01/02 / D-22). */
   panelRef: RefObject<HTMLDivElement | null>
   panelEvents: VizEvent[]
@@ -67,6 +69,7 @@ export function SessionHeader({
   onViewModeChange,
   onRefetch,
   onOpenShares,
+  onOpenChecks,
   panelRef,
   panelEvents,
   onRecord,
@@ -208,6 +211,16 @@ export function SessionHeader({
                 </span>
               </Tooltip>
             )}
+
+            {/* Session checks (M-3) — validation is an action, not a tab. */}
+            <Button
+              size="sm"
+              variant="bordered"
+              startContent={<FiCheckSquare />}
+              onPress={onOpenChecks}
+            >
+              Checks
+            </Button>
 
             {/* Export menu (ADR-018 / EXPT-01/02 / D-22). */}
             <ExportMenu
