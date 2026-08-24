@@ -2,7 +2,7 @@
 
 **Read this first on a cold start.** Updated after every completed plan.
 
-**Last updated:** 2026-08-24, after plan 4 (workspace decomposition + tab migration).
+**Last updated:** 2026-08-24, after plan 5 (plan-4 debt cleanup).
 
 ---
 
@@ -17,16 +17,21 @@ their own code the developer changed.
 - **Spec:** `docs/superpowers/specs/2026-08-23-spa-workspace-redesign-design.md` — read this before anything else. Eight decisions (D-1..D-8), each with the rejected alternative.
 - **Plans:** `docs/superpowers/plans/2026-08-2*.md`, one per executed step.
 
-## Branch stack (bottom to top)
+## Branches — NOT a stack
 
-| Branch | Contains | Pushed? |
-|---|---|---|
-| `main` | — | — |
-| `feat/spa-design-tokens` | sub-project 2: token layer | **PR #102**, open, unreviewed |
-| `feat/spa-shell-ia` | plans 1–4: IA, state bar, rung + locked panels, workspace decomposition | local only |
-| `feat/intellij-plugin-native-redesign` | the user's Phase-15 work, plus one redesign commit `fd479d0` | local only |
+Corrected 2026-08-24. These are **divergent lines off different points**, and
+the earlier "bottom to top" framing here was wrong:
 
-A review that changes the token layer means rebasing the branches above it.
+| Branch | vs `main` | Contains | Pushed? |
+|---|---|---|---|
+| `feat/spa-design-tokens` | 8 ahead | sub-project 2: token layer. Genuinely an ancestor of `spa-shell-ia` | **PR #102**, open, unreviewed |
+| `feat/spa-shell-ia` | 41 ahead, **113 behind** | plans 1–5: IA, state bar, rung + locked panels, workspace decomposition, debt cleanup | local only |
+| `feat/intellij-plugin-native-redesign` | 117 ahead, 0 behind | the user's Phase-15 work, plus one redesign commit `fd479d0`. **Descended from main, not from us.** | local only |
+
+Only `feat/spa-design-tokens` is actually beneath us, so only a token-layer
+review forces a rebase here. The other two need a real integration, and the
+conflict surface between our branch and the plugin branch is small:
+`frontend/src/routes/index.tsx` and its test.
 
 ## Done
 
@@ -63,11 +68,33 @@ replay and read-only (M-4) — there is no second layout any more.
 - **The checks chip only appears after a failing run.** Validation is on-demand; a chip reading zero for a session nobody validated is a claim the app cannot make.
 - **`Inspector` renders identity only in read-only mode.** Every other card is timeline-backed, and the shared shell carries no Bearer.
 
-## Next: sub-project 4 — shared domain projections
+6. **Plan-4 debt** — `stateColor()` (the palette-backed hex accessor `palette.ts` had named since the token layer but which was never built), the canvas reconciled with the state bar, `Runs on` filled from thread activity, and the checks modal down to one heading. Suite 617 → 637.
+
+### What plan 5 landed
+
+- **One definition of what a state looks like.** `coroutine-state-colors.ts` disagreed with `state-counts.ts` on two states, so clicking the amber **Cancelled** chip filtered the canvas to coroutines the canvas then drew *grey*. `CANCELLED` is now amber and `WAITING_FOR_CHILDREN` is the running hue (kept tellable from `ACTIVE` by its clock icon and slower pulse). The guard derives each expected hue from `state-counts` rather than restating it, so they cannot drift again.
+- **`stateColor(state)`** returns resolved palette hex for canvas/SVG. Its test asserts every returned value is a member of `palette` — the guard against a second colour source appearing beside it.
+- **`resolveRunsOn`** (`src/lib/runs-on.ts`) reads `/threads`, tracking `RELEASED` as well as `ASSIGNED` so the card cannot name a thread the coroutine has left.
+- **`ValidationPanel` gained `showHeading`**, default `true`, so its standalone use is unchanged.
+
+## Next: sub-project 4 — shared domain projections — **BLOCKED**
 
 Move `ProblemDerivation.kt` into `coroutine-viz-core` and expose it on the session API,
 so the plugin and SPA stop computing the same domain twice (spec D-8). Then sub-project 5
 aligns the plugin to the new IA.
+
+**This cannot start on `feat/spa-shell-ia`.** `ProblemDerivation.kt` is not reachable
+from here — it lives only on `feat/intellij-plugin-native-redesign`, along with the
+`HierarchyNodeDto`, `CoroutineStateStyle` and `SuspensionTracker` it depends on. On this
+branch the plugin has no `model/`, `api/` or `toolwindow/` package at all. Writing a
+second implementation here would create exactly the duplication the sub-project exists
+to remove, so it waits on the integration decision above.
+
+**When it does start, it is not a clean lift.** `ProblemDerivation` calls
+`CoroutineStateStyle.ageLabel` from the **toolwindow** (UI) package and takes its
+`longSuspended` map from a plugin-side stateful tracker. Moving it to core means first
+splitting the domain — which coroutines are problems, in what order — from the
+presentation: age labels and "why" strings.
 
 ## Decisions that are settled — do not relitigate
 
@@ -79,10 +106,9 @@ aligns the plugin to the new IA.
 
 ## Carried debt
 
-- **`RunsOnCard` reads "not reported" against a real backend.** The timeline projection is source-only (D-02 stub) and carries no per-event `threadName`/`dispatcherName`, even though `/threads` has the data. Either extend the timeline projection or feed the card from thread activity. The card is honest today, but it is empty.
-- **`ChecksModal` shows two headings** — its own "Session checks" and `ValidationPanel`'s "Session Validation" card. Cosmetic; the panel was re-hosted verbatim.
-- **C-1 — `secondary` has no vizcore meaning but 79 live references.** Neutralising the token flattens `WAITING_FOR_CHILDREN` (which `coroutine-state-colors` maps onto it) into the same grey as CREATED and CANCELLED. Retiring it is a per-call-site decision.
-- **C-2 — `coroutine-state-colors.ts` is not palette-backed** and returns only Tailwind classes, so it cannot serve canvas/SVG. Extend that one module rather than adding a second beside it.
+- **C-1 — `secondary` still has ~78 live references.** ✅ *Partly closed by plan 5*: the one call site the spec flagged as carrying real meaning (`WAITING_FOR_CHILDREN` in `coroutine-state-colors`) is retired, and no coroutine state maps onto the token any more. The rest — the comparison "B only" delta ring, chips across ~25 components — remain a per-call-site decision.
+- **C-2 — palette-backed state colour.** ✅ CLOSED by plan 5: `stateColor()` returns resolved palette hex, in the existing module rather than a second one beside it.
+- **The backend reports no per-coroutine active/suspended durations.** The inspector's Timing card correctly says "not reported" for two of its three rows, because the timeline projection is a deferred stub (D-02). Filling those is a backend change.
 - Four hardcoded `#6366f1` remain in `FlowParticlePath.tsx` and `animation-variants.ts` — a five-colour flow-operator scheme the palette does not define.
 - `/scenarios/builder` (410-line `ScenarioBuilder`) still resolves; its fate is an open question in the spec.
 
@@ -100,7 +126,9 @@ aligns the plugin to the new IA.
 ## Working agreements that have paid off
 
 - **Always run the app.** Five real defects have now been found live that the suite could not catch: filtered states hidden behind the empty state, a purple `secondary` leak across ~15 components, `LivePill` labelling a paused stream as "DEMO" against an ATTACHED badge, the coroutine graph overrunning a `1fr` grid track and covering the inspector entirely, and `EventsCard` rendering an absolute epoch timestamp as an elapsed duration.
-- **Mutation-test any test written after its implementation.** Break the logic, confirm the test fails, restore. Done six times now; every time it proved the tests real.
+- **Mutation-test any test written after its implementation.** Break the logic, confirm the test fails, restore. Done nine times now; every time it proved the tests real.
+- **A drift guard should derive the other side, not restate it.** Plan 5's colour test reads the expected hue out of `state-counts` instead of hardcoding a list, so the two modules cannot disagree again without the test noticing. A guard that restates both sides only catches the half you remember to update.
+- **Check a plan's task split survives contact.** Plan 5 split "add hex" from "reassign states"; they turned out to be one change, because the palette has no `secondary` entry to give `WAITING_FOR_CHILDREN` a hex from. Say so and merge the commit rather than faking the split.
 - **A behaviour-preserving refactor gets NO test edits.** Plan 4's first five tasks cut a 1004-line file into components and hooks with the suite frozen at 575 passing. Any red during those tasks is an extraction bug, and that is the whole signal.
 - **jsdom lacks `IntersectionObserver` and `matchMedia`.** Both are stubbed in `src/test/setup.ts`. They only bit once `EventsList` mounted outside a lazily-rendered tab panel — a tab bar hides this class of gap.
 - **Check for a pre-existing module before writing a new one.** A duplicate `state-color.ts` was created alongside `coroutine-state-colors.ts` and had to be reverted.
