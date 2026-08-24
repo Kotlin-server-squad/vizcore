@@ -20,7 +20,6 @@ import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/sta
 import { deriveRung } from '@/lib/fidelity-rung'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
-import { CoroutineSourceStack } from './CoroutineSourceStack'
 import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
@@ -28,6 +27,7 @@ import { DispatcherOverview } from './DispatcherOverview'
 import { SessionHeader } from './workspace/SessionHeader'
 import { CoroutineCanvas } from './workspace/CoroutineCanvas'
 import { WorkspaceBody } from './workspace/WorkspaceBody'
+import { Inspector } from './workspace/Inspector/Inspector'
 import { ScenarioControls } from './workspace/ScenarioControls'
 import { StateBar } from './StateBar'
 import { LockedPanel } from './LockedPanel'
@@ -189,6 +189,12 @@ export function SessionWorkspace({
   const stateCounts = useMemo(
     () => deriveStateCounts(panelCoroutines, leakIds),
     [panelCoroutines, leakIds],
+  )
+
+  /** The selected coroutine itself — what the inspector reads (D-7). */
+  const selectedCoroutine = useMemo(
+    () => panelCoroutines.find(c => c.id === selectedCoroutineId) ?? null,
+    [panelCoroutines, selectedCoroutineId],
   )
 
   // Close the source drawer if its coroutine leaves the session entirely (e.g. a
@@ -420,16 +426,11 @@ export function SessionWorkspace({
                   liveList={liveList}
                   showMetrics
                   inspector={
-                    selectedCoroutineId ? (
-                      <CoroutineSourceStack
-                        sessionId={sessionId}
-                        coroutineId={selectedCoroutineId}
-                      />
-                    ) : (
-                      <div className="text-sm text-default-400">
-                        Select a coroutine to view its source
-                      </div>
-                    )
+                    <Inspector
+                      sessionId={sessionId}
+                      coroutine={selectedCoroutine}
+                      readOnly={readOnly}
+                    />
                   }
                 />
               ) : (

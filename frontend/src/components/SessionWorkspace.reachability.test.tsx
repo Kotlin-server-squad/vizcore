@@ -263,10 +263,10 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
   it('shows the placeholder + does not fetch the timeline until a node is clicked (no eager fetch)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
-    // Before any selection the inline source slot shows its muted placeholder and
-    // no timeline is fetched (the enabled-guard keeps the query disabled while
+    // Before any selection the inspector shows its muted placeholder and no
+    // timeline is fetched (the enabled-guard keeps the query disabled while
     // coroutineId is null, D-08). No retired-Drawer title appears.
-    expect(screen.getByText('Select a coroutine to view its source')).toBeInTheDocument()
+    expect(screen.getByText('Select a coroutine to inspect it')).toBeInTheDocument()
     expect(screen.queryByText(/Coroutine source —/)).toBeNull()
     expect(mockedApiClient.getCoroutineTimeline).not.toHaveBeenCalled()
   })
