@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { CoroutineState, type CoroutineNode } from '@/types/api'
-import { deriveStateCounts, matchesFilter } from './state-counts'
+import { deriveStateCounts, matchesFilter, selectCoroutines } from './state-counts'
 
 const node = (state: CoroutineState, id = Math.random().toString()): CoroutineNode =>
   ({ id, jobId: id, parentId: null, scopeId: 's', label: null, state }) as CoroutineNode
@@ -15,6 +15,7 @@ describe('deriveStateCounts', () => {
       cancelled: 0,
       failed: 0,
       total: 0,
+      leaks: 0,
     })
   })
 
@@ -72,5 +73,41 @@ describe('matchesFilter', () => {
   it('keeps cancelled out of the failed filter', () => {
     expect(matchesFilter(CoroutineState.CANCELLED, 'failed')).toBe(false)
     expect(matchesFilter(CoroutineState.CANCELLED, 'cancelled')).toBe(true)
+  })
+})
+
+describe('selectCoroutines', () => {
+  const nodes = [
+    node(CoroutineState.ACTIVE, 'a'),
+    node(CoroutineState.SUSPENDED, 'b'),
+    node(CoroutineState.COMPLETED, 'c'),
+  ]
+
+  it('returns everything under "all"', () => {
+    expect(selectCoroutines(nodes, 'all').map((n) => n.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('returns only the chosen state', () => {
+    expect(selectCoroutines(nodes, 'suspended').map((n) => n.id)).toEqual(['b'])
+  })
+
+  it('resolves the leak filter against the id set, not the state', () => {
+    expect(selectCoroutines(nodes, 'leaks', new Set(['a', 'c'])).map((n) => n.id)).toEqual([
+      'a',
+      'c',
+    ])
+  })
+
+  it('returns nothing for the leak filter when no leaks are known', () => {
+    expect(selectCoroutines(nodes, 'leaks')).toEqual([])
+    expect(selectCoroutines(nodes, 'leaks', new Set())).toEqual([])
+  })
+
+  it('counts leaks separately from the state buckets', () => {
+    const counts = deriveStateCounts(nodes, new Set(['a']))
+    expect(counts.leaks).toBe(1)
+    // The leaked coroutine is still ACTIVE, so it is also counted as running.
+    expect(counts.running).toBe(1)
+    expect(counts.total).toBe(3)
   })
 })
