@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Card,
   CardBody,
@@ -11,10 +11,10 @@ import {
   ModalBody,
 } from '@heroui/react'
 import { useSession, useSessionEvents } from '@/hooks/use-sessions'
-import { useEventStream } from '@/hooks/use-event-stream'
 import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
-import { useReplay } from '@/hooks/use-replay'
+import { useWorkspaceReplay } from '@/hooks/use-workspace-replay'
+import { useSessionRefetch } from '@/hooks/use-session-refetch'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
 import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/state-counts'
 import { deriveRung } from '@/lib/fidelity-rung'
@@ -40,10 +40,9 @@ import { ReplayController } from './replay/ReplayController'
 import { LiveDataNotice } from './replay/LiveDataNotice'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
 import { ManageShares } from './share/ManageShares'
-import { useRecordReplay } from '@/hooks/use-record-replay'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
-import type { JobStateChangedEvent, ThreadActivity, VizEvent } from '@/types/api'
+import type { JobStateChangedEvent, ThreadActivity } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 
 /** Terminal coroutine states — no further transitions expected. */
@@ -52,17 +51,6 @@ const TERMINAL_STATES = new Set<CoroutineState>([
   CoroutineState.CANCELLED,
   CoroutineState.FAILED,
 ])
-
-/** Debounce window for coalescing live-event-driven session refetches (ms). */
-const SESSION_REFETCH_DEBOUNCE_MS = 500
-
-/**
- * Max-wait cap for the session-refetch debounce (ms). Under a sustained event
- * stream whose inter-event gap stays below SESSION_REFETCH_DEBOUNCE_MS, a pure
- * trailing-edge debounce would never fire; this cap guarantees the session
- * snapshot refetches at least once per SESSION_REFETCH_MAX_WAIT_MS.
- */
-const SESSION_REFETCH_MAX_WAIT_MS = 1500
 
 /**
  * Max number of live coroutine nodes rendered before collapsing the overflow
@@ -113,16 +101,6 @@ export function SessionWorkspace({
   // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
   // the read-only shared view (ADR-019: no re-sharing from a shared link).
   const [sharesOpen, setSharesOpen] = useState(false)
-  // Replay mode (D-01): when active, panels render from the frozen snapshot's
-  // replay cursor instead of the live/stored events. The snapshot is captured
-  // at replay entry so live SSE events do not mutate the frozen view (D-02).
-  const [replayActive, setReplayActive] = useState(false)
-  const [replaySnapshot, setReplaySnapshot] = useState<VizEvent[]>([])
-  const { events: liveEvents, isConnected, clearEvents } = useEventStream(
-    sessionId,
-    streamEnabled,
-    replayActive,
-  )
   // Panel ref for ExportMenu (captures the active visualization region lazily).
   const panelRef = useRef<HTMLDivElement | null>(null)
   // Pass isLive=streamEnabled so thread-activity does not poll every 2s while
@@ -142,119 +120,40 @@ export function SessionWorkspace({
     () => new Set((metrics?.leaks ?? []).map(l => l.coroutineId)),
     [metrics?.leaks],
   )
-  // Debounce ref: reset on each new live event; only the trailing edge refetches.
-  const sessionRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Timestamp of the first un-flushed live event in the current debounce
-  // window — used to enforce the max-wait cap.
-  const firstSessionRefetchAtRef = useRef<number | null>(null)
+
+  // Replay + scripted recording (D-01..04, D-23). One hook because the cursor
+  // and the recorder freeze the same snapshot and contend for the same seek.
+  const {
+    liveEvents,
+    isConnected,
+    clearEvents,
+    replayActive,
+    enterReplay,
+    exitReplay,
+    replay,
+    recordReplay,
+    newEventsCount,
+  } = useWorkspaceReplay({
+    sessionId,
+    streamEnabled,
+    storedEvents,
+    getPanelEl: () => panelRef.current,
+  })
+
+  // Coalesced session refetch (CR-02). Suspended while replaying so the frozen
+  // panels are not refetched out from under the cursor (D-02).
+  useSessionRefetch({
+    enabled: streamEnabled && !replayActive,
+    eventCount: liveEvents.length,
+    refetch,
+    streamEnabled,
+  })
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
   const hasScenario = !!scenarioId
   // Live-view gate (PD-01): the Surface-001 IDE-dock is LIVE-ONLY. Replay and
   // read-only shared modes keep the existing tabbed, non-interactive layout.
   const isLiveView = !replayActive && !readOnly
-
-  // Replay drives over the FROZEN snapshot taken at entry (never the live
-  // `allEvents`), so live SSE events buffer for the badge without re-rendering
-  // the replay panels (D-02).
-  const replay = useReplay(replaySnapshot)
-  const { seekTo: replaySeekTo } = replay
-
-  // Number of live events appended since replay entry — drives the "● N new
-  // events" badge (D-02). The SSE stream stays connected during replay (the
-  // gate only suppresses invalidation, not the EventSource), so any live
-  // events beyond the frozen snapshot are buffered and counted here.
-  const newEventsCount = replayActive
-    ? Math.max(liveEvents.length - replaySnapshot.length, 0)
-    : 0
-
-  // Enter replay: freeze the given snapshot and activate replay. The seek to
-  // the end (D-03) is performed by the effect below once useReplay has applied
-  // the new snapshot (it resets to index 0 on events-identity change, so the
-  // seek must follow that reset).
-  //
-  // The snapshot is passed EXPLICITLY (WR-08): the replay-toggle button computes
-  // it inline from the latest closure, while the recorder computes it ONCE from
-  // a ref at click time and passes the SAME list here — so the frozen view and
-  // the recorder's auto-stop boundary can never diverge.
-  const enterReplay = useCallback(
-    (snapshot?: readonly VizEvent[]) => {
-      // Defensive: only honor an explicit array snapshot (a stray PressEvent
-      // from an onPress handler must fall through to the closure source). The
-      // explicit snapshot is copied into a mutable array — it is frozen on
-      // entry and never mutated, but `replaySnapshot`/`useReplay` are typed
-      // mutable, so a defensive copy keeps the readonly hook contract intact.
-      const frozen: VizEvent[] = Array.isArray(snapshot)
-        ? [...snapshot]
-        : streamEnabled
-          ? liveEvents
-          : storedEvents || []
-      setReplaySnapshot(frozen)
-      setReplayActive(true)
-    },
-    [streamEnabled, liveEvents, storedEvents],
-  )
-
-  // Exit replay: drop the cursor and apply buffered events (the gated
-  // useEventStream flush re-validates the live panels) — D-04.
-  const exitReplay = useCallback(() => {
-    setReplayActive(false)
-    setReplaySnapshot([])
-  }, [])
-
-  // Scripted WebM recording (EXPT-02, plan 02-08): the ExportMenu Record item
-  // drives this one-click pipeline — enter replay → seek 0 → record the active
-  // panel at 2x while auto-playing → auto-stop at the last event → download.
-  // The estimate + auto-stop read whichever events will be frozen on entry: the
-  // live snapshot if already replaying, otherwise the source the toggle would
-  // freeze (so a one-click record from the live view records the full timeline).
-  //
-  // WR-08: keep the snapshot source behind a ref so the hook reads it ONCE at
-  // click time and freezes exactly that list (rather than two independently
-  // closed-over sources that can drift apart by any events arriving in between).
-  const recordEvents = replayActive
-    ? replaySnapshot
-    : streamEnabled
-      ? liveEvents
-      : storedEvents || []
-  const recordEventsRef = useRef<VizEvent[]>(recordEvents)
-  recordEventsRef.current = recordEvents
-  const recordReplay = useRecordReplay({
-    getPanelEl: () => panelRef.current,
-    getRecordSnapshot: () => recordEventsRef.current,
-    replay,
-    enterReplay,
-    sessionId,
-  })
-
-  // On entering replay (snapshot applied), jump to the end and stay paused
-  // (D-03). Keyed on the snapshot identity so re-entry re-seeks; useReplay's
-  // own reset-to-0 effect runs first on the same identity change.
-  //
-  // CR-01: this auto-seek-to-end MUST be suppressed while a recording is being
-  // armed or is active. The record flow freezes the SAME snapshot and then
-  // seeks to 0 to record the full timeline; if this effect also fired it would
-  // clobber the cursor to the LAST index and the recorder would capture only
-  // the final frame (a ~0-duration video). Gating on isArming/isRecording lets
-  // the record run own the post-enter seek.
-  const seekedSnapshotRef = useRef<VizEvent[] | null>(null)
-  useEffect(() => {
-    if (!replayActive) {
-      seekedSnapshotRef.current = null
-      return
-    }
-    if (recordReplay.isArming || recordReplay.isRecording) return
-    if (replaySnapshot.length === 0) return
-    if (seekedSnapshotRef.current === replaySnapshot) return
-    seekedSnapshotRef.current = replaySnapshot
-    replaySeekTo(replaySnapshot.length - 1)
-  }, [
-    replayActive,
-    replaySnapshot,
-    replaySeekTo,
-    recordReplay.isArming,
-    recordReplay.isRecording,
-  ])
 
   // Panel data source: replay cursor view-models vs. live snapshot (D-17).
   const panelEvents = replayActive ? replay.visibleEvents : allEvents
@@ -323,64 +222,6 @@ export function SessionWorkspace({
     })
     return states
   }, [allEvents])
-
-  // Coalesced session refetch: debounce so a burst of SSE events triggers at
-  // most one refetch per SESSION_REFETCH_DEBOUNCE_MS window (trailing edge),
-  // with a max-wait cap so a sustained stream still refetches at least once
-  // per SESSION_REFETCH_MAX_WAIT_MS (the trailing edge can never be starved).
-  useEffect(() => {
-    // D-02: while replay is active the frozen panels must not be refetched out
-    // from under the cursor. The buffered events apply on exit (useEventStream
-    // exit flush).
-    if (!streamEnabled || replayActive || liveEvents.length === 0) return
-
-    const flushRefetch = () => {
-      sessionRefetchTimerRef.current = null
-      // Reset the window so the next event starts a fresh max-wait clock.
-      firstSessionRefetchAtRef.current = null
-      refetch()
-    }
-
-    if (firstSessionRefetchAtRef.current === null) {
-      firstSessionRefetchAtRef.current = Date.now()
-    }
-    const elapsed = Date.now() - firstSessionRefetchAtRef.current
-
-    if (sessionRefetchTimerRef.current !== null) {
-      clearTimeout(sessionRefetchTimerRef.current)
-    }
-    if (elapsed >= SESSION_REFETCH_MAX_WAIT_MS) {
-      flushRefetch()
-    } else {
-      sessionRefetchTimerRef.current = setTimeout(
-        flushRefetch,
-        Math.min(SESSION_REFETCH_DEBOUNCE_MS, SESSION_REFETCH_MAX_WAIT_MS - elapsed),
-      )
-    }
-
-    return () => {
-      // NOTE: this cleanup runs between every liveEvents.length change, so it
-      // must NOT reset firstSessionRefetchAtRef here — doing so would restart
-      // the max-wait clock on every event and reintroduce starvation. The
-      // window ref is reset on flush (above) and on stream teardown (below).
-      if (sessionRefetchTimerRef.current !== null) {
-        clearTimeout(sessionRefetchTimerRef.current)
-        sessionRefetchTimerRef.current = null
-      }
-    }
-  }, [streamEnabled, replayActive, liveEvents.length, refetch])
-
-  // Teardown for the max-wait window: reset the debounce refs only when the
-  // stream toggles or the component unmounts (not between individual events).
-  useEffect(() => {
-    return () => {
-      if (sessionRefetchTimerRef.current !== null) {
-        clearTimeout(sessionRefetchTimerRef.current)
-        sessionRefetchTimerRef.current = null
-      }
-      firstSessionRefetchAtRef.current = null
-    }
-  }, [streamEnabled])
 
   // Auto-enable live stream ONCE when a scenario is present (WR-04). The
   // effect must NOT depend on streamEnabled: re-running on every toggle
