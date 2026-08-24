@@ -77,7 +77,7 @@ aligns the plugin to the new IA.
 - **`hasJobs` does not promote a session to instrumented.** Job events are not confirmed wrapper-only; over-reporting the rung promises panels the session cannot fill.
 - **A potential leak is amber, never red.**
 
-## Carried debt (recorded in the spec, do in plan 4+)
+## Carried debt
 
 - **`RunsOnCard` reads "not reported" against a real backend.** The timeline projection is source-only (D-02 stub) and carries no per-event `threadName`/`dispatcherName`, even though `/threads` has the data. Either extend the timeline projection or feed the card from thread activity. The card is honest today, but it is empty.
 - **`ChecksModal` shows two headings** — its own "Session checks" and `ValidationPanel`'s "Session Validation" card. Cosmetic; the panel was re-hosted verbatim.
@@ -99,7 +99,7 @@ aligns the plugin to the new IA.
 
 ## Working agreements that have paid off
 
-- **Always run the app.** Three real defects were found in the live app that the test suite could not catch: filtered states hidden behind the empty state, a purple `secondary` leak across ~15 components, and `LivePill` labelling a paused stream as "DEMO" against an ATTACHED badge.
+- **Always run the app.** Five real defects have now been found live that the suite could not catch: filtered states hidden behind the empty state, a purple `secondary` leak across ~15 components, `LivePill` labelling a paused stream as "DEMO" against an ATTACHED badge, the coroutine graph overrunning a `1fr` grid track and covering the inspector entirely, and `EventsCard` rendering an absolute epoch timestamp as an elapsed duration.
 - **Mutation-test any test written after its implementation.** Break the logic, confirm the test fails, restore. Done six times now; every time it proved the tests real.
 - **A behaviour-preserving refactor gets NO test edits.** Plan 4's first five tasks cut a 1004-line file into components and hooks with the suite frozen at 575 passing. Any red during those tasks is an extraction bug, and that is the whole signal.
 - **jsdom lacks `IntersectionObserver` and `matchMedia`.** Both are stubbed in `src/test/setup.ts`. They only bit once `EventsList` mounted outside a lazily-rendered tab panel — a tab bar hides this class of gap.
