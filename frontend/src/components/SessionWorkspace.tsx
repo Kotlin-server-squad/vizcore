@@ -11,10 +11,8 @@ import {
   ModalHeader,
   ModalBody,
 } from '@heroui/react'
-import { FiPlay, FiRotateCcw, FiTrash2 } from 'react-icons/fi'
-import { useSession, useSessionEvents, useDeleteSession } from '@/hooks/use-sessions'
+import { useSession, useSessionEvents } from '@/hooks/use-sessions'
 import { useEventStream } from '@/hooks/use-event-stream'
-import { useRunScenario } from '@/hooks/use-scenarios'
 import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
 import { useReplay } from '@/hooks/use-replay'
@@ -32,6 +30,7 @@ import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
 import { LiveDockPanel } from './LiveDockPanel'
 import { SessionHeader } from './workspace/SessionHeader'
+import { ScenarioControls } from './workspace/ScenarioControls'
 import { StateBar } from './StateBar'
 import { LockedPanel } from './LockedPanel'
 import { EmptyState } from './EmptyState'
@@ -47,7 +46,6 @@ import { ManageShares } from './share/ManageShares'
 import { useRecordReplay } from '@/hooks/use-record-replay'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
-import { useNavigate } from '@tanstack/react-router'
 import type { JobStateChangedEvent, ThreadActivity, VizEvent } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 
@@ -147,9 +145,6 @@ export function SessionWorkspace({
     () => new Set((metrics?.leaks ?? []).map(l => l.coroutineId)),
     [metrics?.leaks],
   )
-  const runScenario = useRunScenario()
-  const deleteSession = useDeleteSession()
-  const navigate = useNavigate()
   // Debounce ref: reset on each new live event; only the trailing edge refetches.
   const sessionRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Timestamp of the first un-flushed live event in the current debounce
@@ -320,18 +315,6 @@ export function SessionWorkspace({
     return threadActivity
   }, [replayActive, readOnly, replay.visibleEvents, allEvents, threadActivity])
 
-  // Three-state scenario derivation:
-  //   notStarted — coroutineCount === 0 (no coroutines seen yet)
-  //   running    — coroutines exist but at least one is non-terminal
-  //   completed  — coroutines exist and ALL are in a terminal state
-  const scenarioState: 'notStarted' | 'running' | 'completed' = useMemo(() => {
-    if (!session || session.coroutineCount === 0 || session.coroutines.length === 0) {
-      return 'notStarted'
-    }
-    const allTerminal = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
-    return allTerminal ? 'completed' : 'running'
-  }, [session])
-
   // Track job states from JobStateChanged events
   const jobStates = useMemo(() => {
     const states = new Map<string, JobStateChangedEvent>()
@@ -414,45 +397,6 @@ export function SessionWorkspace({
       setStreamEnabled(true)
     }
   }, [hasScenario])
-
-  const handleRunScenario = async () => {
-    if (!scenarioId) return
-
-    try {
-      await runScenario.mutateAsync({ scenarioId, sessionId })
-      // Refetch immediately after running
-      setTimeout(() => refetch(), 500)
-    } catch {
-      // Error is handled by the mutation's error state
-    }
-  }
-
-  // Clear ONLY empties the live event list (WR-05) — it must never delete
-  // the session. Reset (below) remains the destructive delete-and-navigate.
-  const handleClear = () => {
-    clearEvents()
-    refetch()
-  }
-
-  const handleReset = async () => {
-    if (!confirm('Reset this session? This will clear all coroutines and start fresh.')) {
-      return
-    }
-
-    try {
-      // Delete current session
-      await deleteSession.mutateAsync(sessionId)
-
-      // Navigate back to scenarios or create new session
-      if (hasScenario) {
-        navigate({ to: '/scenarios' })
-      } else {
-        navigate({ to: '/sessions' })
-      }
-    } catch {
-      // Error is handled by the mutation's error state
-    }
-  }
 
   if (isLoading) {
     return (
@@ -540,64 +484,14 @@ export function SessionWorkspace({
 
       {/* Scenario Control Panel — Run/Reset/Clear are mutations, gated OFF in
           the read-only shared view (T-03-22). */}
-      {hasScenario && !readOnly && (
-        <Card>
-          <CardBody>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="mb-1 text-lg font-semibold">Scenario Controls</h3>
-                <p className="text-sm text-default-500">
-                  {scenarioState === 'notStarted' && 'Ready to run the scenario'}
-                  {scenarioState === 'running' && 'Scenario is running'}
-                  {scenarioState === 'completed' && 'Scenario completed'}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {scenarioState === 'completed' ? (
-                  <Button
-                    color="success"
-                    size="lg"
-                    variant="flat"
-                    startContent={<FiPlay />}
-                    isDisabled
-                  >
-                    Scenario Completed
-                  </Button>
-                ) : (
-                <Button
-                  color="primary"
-                  size="lg"
-                  startContent={<FiPlay />}
-                  onPress={handleRunScenario}
-                  isLoading={runScenario.isPending}
-                  isDisabled={scenarioState === 'running'}
-                >
-                  {scenarioState === 'running' ? 'Scenario Running' : 'Run Scenario'}
-                </Button>
-                )}
-                <Button
-                  color="warning"
-                  size="lg"
-                  variant="flat"
-                  startContent={<FiRotateCcw />}
-                  onPress={handleReset}
-                  isLoading={deleteSession.isPending}
-                >
-                  Reset
-                </Button>
-                <Button
-                  color="danger"
-                  size="lg"
-                  variant="light"
-                  startContent={<FiTrash2 />}
-                  onPress={handleClear}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+      {scenarioId && !readOnly && (
+        <ScenarioControls
+          sessionId={sessionId}
+          scenarioId={scenarioId}
+          session={session}
+          onClearEvents={clearEvents}
+          onRefetch={refetch}
+        />
       )}
 
       {/* Structured Concurrency Info - Show when session has coroutines */}
