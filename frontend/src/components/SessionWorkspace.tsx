@@ -5,7 +5,6 @@ import {
   Tabs,
   Tab,
   Spinner,
-  Button,
   Modal,
   ModalContent,
   ModalHeader,
@@ -21,8 +20,6 @@ import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/sta
 import { deriveRung } from '@/lib/fidelity-rung'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
-import { CoroutineTree } from './CoroutineTree'
-import { CoroutineTreeGraph } from './CoroutineTreeGraph'
 import { CoroutineSourceStack } from './CoroutineSourceStack'
 import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
@@ -30,10 +27,10 @@ import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
 import { LiveDockPanel } from './LiveDockPanel'
 import { SessionHeader } from './workspace/SessionHeader'
+import { CoroutineCanvas } from './workspace/CoroutineCanvas'
 import { ScenarioControls } from './workspace/ScenarioControls'
 import { StateBar } from './StateBar'
 import { LockedPanel } from './LockedPanel'
-import { EmptyState } from './EmptyState'
 import { ChannelPanel } from './channels/ChannelPanel'
 import { FlowPanel } from './flow/FlowPanel'
 import { SyncPanel } from './sync/SyncPanel'
@@ -550,69 +547,18 @@ export function SessionWorkspace({
                 it renders standalone in the existing tabbed layout. */}
             {(() => {
               const liveList = (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">What&apos;s running now</h3>
-                    {completedCount > 0 && (
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        onPress={() => setShowCompleted(prev => !prev)}
-                      >
-                        {showCompleted
-                          ? `Hide completed (${completedCount})`
-                          : `Show completed (${completedCount})`}
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Gate on what the canvas will actually render, not on the
-                      active set — a state filter can select terminal coroutines,
-                      and gating on activeCoroutines hid them behind the
-                      "no app connected" empty state. */}
-                  {renderedCoroutines.length === 0 ? (
-                    stateFilter === 'all' ? (
-                      <EmptyState
-                        title="No live coroutines yet"
-                        description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
-                      />
-                    ) : (
-                      <EmptyState
-                        title={`No ${stateFilter} coroutines`}
-                        description="Nothing in this session matches the selected state. Pick another state, or clear the filter to see everything."
-                      />
-                    )
-                  ) : (
-                    <Card>
-                      <CardBody className="overflow-auto">
-                        <div ref={panelRef}>
-                          {/* Source-selection is LIVE-ONLY (PD-01): omit
-                              onSelect/selectedNodeId in replay/shared so those
-                              renders stay presentational with no added
-                              interactivity (Pitfall 1 back-compat). */}
-                          {viewMode === 'graph' ? (
-                            <CoroutineTreeGraph
-                              coroutines={renderedCoroutines}
-                              onSelect={isLiveView ? setSelectedCoroutineId : undefined}
-                              selectedNodeId={isLiveView ? selectedCoroutineId : undefined}
-                            />
-                          ) : (
-                            <CoroutineTree
-                              coroutines={renderedCoroutines}
-                              onSelect={isLiveView ? setSelectedCoroutineId : undefined}
-                              selectedNodeId={isLiveView ? selectedCoroutineId : undefined}
-                            />
-                          )}
-                        </div>
-                        {moreCount > 0 && (
-                          <div className="text-xs text-default-500 mt-2">
-                            {moreCount} more coroutines
-                          </div>
-                        )}
-                      </CardBody>
-                    </Card>
-                  )}
-                </div>
+                <CoroutineCanvas
+                  coroutines={renderedCoroutines}
+                  viewMode={viewMode}
+                  completedCount={completedCount}
+                  showCompleted={showCompleted}
+                  onToggleCompleted={() => setShowCompleted(prev => !prev)}
+                  moreCount={moreCount}
+                  stateFilter={stateFilter}
+                  selectedCoroutineId={selectedCoroutineId}
+                  onSelect={isLiveView ? setSelectedCoroutineId : undefined}
+                  panelRef={panelRef}
+                />
               )
 
               // Surface 001 (PD-01): LIVE view → IDE-dock; replay/shared → the
