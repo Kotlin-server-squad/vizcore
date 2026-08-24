@@ -554,12 +554,12 @@ describe('SessionWorkspace - session refetch max-wait under sustained stream (CR
   })
 })
 
-describe('SessionWorkspace - Threads tab wire shape (UAT gap 1)', () => {
+describe('SessionWorkspace - threads evidence wire shape (UAT gap 1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('Threads tab renders thread activity from the real Map wire shape (UAT gap 1)', async () => {
+  it('the threads evidence panel renders thread activity from the real Map wire shape (UAT gap 1)', async () => {
     mockedUseSession.mockReturnValue({
       data: makeSession(),
       isLoading: false,
@@ -583,9 +583,7 @@ describe('SessionWorkspace - Threads tab wire shape (UAT gap 1)', () => {
       wrapper: createWrapper(),
     })
 
-    // Activate the Threads tab
-    await userEvent.click(screen.getByRole('tab', { name: 'Threads' }))
-
+    // The threads panel is evidence now, not a tab — reachable with no click.
     // 2. Thread names from the wire map are rendered (values, not test names)
     expect(await screen.findByText('worker-1')).toBeInTheDocument()
     expect(screen.getByText('worker-2')).toBeInTheDocument()
@@ -728,9 +726,10 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
-    // Validation tab is projection-backed and always present.
-    await userEvent.click(screen.getByRole('tab', { name: 'Validation' }))
-    expect(screen.getByTestId('live-data-notice')).toBeInTheDocument()
+    // The evidence panels query the live session rather than the replay cursor,
+    // so each one says so while replaying. They are always present, so no
+    // navigation is needed to reach the notice.
+    expect(screen.getAllByTestId('live-data-notice').length).toBeGreaterThan(0)
   })
 
   it('shows a clickable new-events badge for events buffered during replay; clicking exits (D-02/D-04)', async () => {
@@ -953,15 +952,13 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
   })
 
-  it('no longer renders SessionMetrics under the Threads tab (Delta L1 removal)', async () => {
+  it('keeps thread lanes and the metric strip on one screen, with a single SessionMetrics (Delta L1)', () => {
     mountSession([coro('a-active', 'ACTIVE')])
-    await userEvent.click(screen.getByRole('tab', { name: /threads/i }))
-    // HeroUI renders only the selected tab panel: on Threads, the live-region
-    // dock (which now owns SessionMetrics) is unmounted, so no SessionMetrics
-    // appears here. The Threads tab itself must NOT add one back.
-    expect(screen.queryByTestId('session-metrics')).toBeNull()
-    // DispatcherOverview (thread lanes) may remain under Threads.
+    // Threads stopped being a tab, so the lanes are reachable with no
+    // navigation — and the workspace body still owns exactly ONE metric strip,
+    // which is the guarantee the tabbed version of this test was protecting.
     expect(screen.getByTestId('dispatcher-overview')).toBeInTheDocument()
+    expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
   })
 
   it('shows the "No live coroutines yet" empty state when nothing is active', () => {

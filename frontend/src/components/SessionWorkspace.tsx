@@ -21,20 +21,14 @@ import { deriveRung } from '@/lib/fidelity-rung'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
-import { ThreadTimeline } from './ThreadTimeline'
-import { DispatcherOverview } from './DispatcherOverview'
 import { SessionHeader } from './workspace/SessionHeader'
 import { CoroutineCanvas } from './workspace/CoroutineCanvas'
 import { WorkspaceBody } from './workspace/WorkspaceBody'
 import { Inspector } from './workspace/Inspector/Inspector'
 import { EventsDrawer } from './workspace/EventsDrawer'
+import { EvidencePanels } from './workspace/EvidencePanels'
 import { ScenarioControls } from './workspace/ScenarioControls'
 import { StateBar } from './StateBar'
-import { LockedPanel } from './LockedPanel'
-import { ChannelPanel } from './channels/ChannelPanel'
-import { FlowPanel } from './flow/FlowPanel'
-import { SyncPanel } from './sync/SyncPanel'
-import { JobPanel } from './jobs/JobPanel'
 import { ValidationPanel } from './validation/ValidationPanel'
 import { ReplayController } from './replay/ReplayController'
 import { LiveDataNotice } from './replay/LiveDataNotice'
@@ -42,7 +36,7 @@ import { RecordConfirmModal } from './replay/RecordConfirmModal'
 import { ManageShares } from './share/ManageShares'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
-import type { JobStateChangedEvent, ThreadActivity } from '@/types/api'
+import type { ThreadActivity } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 
 /** Terminal coroutine states — no further transitions expected. */
@@ -217,18 +211,6 @@ export function SessionWorkspace({
     return threadActivity
   }, [replayActive, readOnly, replay.visibleEvents, allEvents, threadActivity])
 
-  // Track job states from JobStateChanged events
-  const jobStates = useMemo(() => {
-    const states = new Map<string, JobStateChangedEvent>()
-    allEvents.forEach(event => {
-      if (event.kind === 'JobStateChanged') {
-        const jobEvent = event as JobStateChangedEvent
-        states.set(jobEvent.jobId, jobEvent)
-      }
-    })
-    return states
-  }, [allEvents])
-
   // Auto-enable live stream ONCE when a scenario is present (WR-04). The
   // effect must NOT depend on streamEnabled: re-running on every toggle
   // created a fight-loop where disabling the stream instantly re-enabled it
@@ -352,36 +334,6 @@ export function SessionWorkspace({
       {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
       <StateBar counts={stateCounts} filter={stateFilter} onFilterChange={setStateFilter} />
 
-      {/* Rung-aware locked panels (D-5). A wrapper-only capability that is
-          absent on a REAL session is absent because of the rung, not because
-          anything is wrong — so say what it would show and how to get it.
-          A demo session already has full fidelity, so nothing is locked there. */}
-      {rung !== 'demo' && (
-        <div className="grid gap-3 md:grid-cols-3">
-          {!eventCategories.hasSyncPrimitives && (
-            <LockedPanel
-              title="Lock contention"
-              whatYouWouldSee="Who holds each mutex and semaphore, who is queued behind it, and for how long."
-              unlockWith="Swap Mutex() for VizMutex() in the code you want to watch."
-            />
-          )}
-          {!eventCategories.hasFlowOps && (
-            <LockedPanel
-              title="Flow backpressure"
-              whatYouWouldSee="Emissions, operator stages, and where a slow collector is stalling the producer."
-              unlockWith="Wrap the flow you care about with .instrumented()."
-            />
-          )}
-          {!eventCategories.hasChannels && (
-            <LockedPanel
-              title="Channel traffic"
-              whatYouWouldSee="Send and receive pairs, buffer occupancy, and which side is waiting."
-              unlockWith="Create the channel with InstrumentedChannel(...)."
-            />
-          )}
-        </div>
-      )}
-
       {/* Main Tabs */}
       <Tabs aria-label="Session tabs" variant="bordered" fullWidth>
         {/* Coroutines tab - Graph/List view toggle. In replay, renders the
@@ -449,76 +401,6 @@ export function SessionWorkspace({
           </div>
         </Tab>
 
-        {/* Threads tab - thread activity and dispatcher overview. In replay,
-            derive lanes from the replay cursor via projectThreadActivity. */}
-        <Tab key="threads" title="Threads">
-          <div className="space-y-4 pt-2">
-            {panelThreadActivity ? (
-              <ThreadTimeline threadActivity={panelThreadActivity} />
-            ) : (
-              <Card>
-                <CardBody>
-                  <div className="text-center text-default-400 py-4">
-                    <Spinner size="sm" className="mb-2" />
-                    <p>Loading thread activity...</p>
-                  </div>
-                </CardBody>
-              </Card>
-            )}
-
-            {/* Delta L1: SessionMetrics moved out of the Threads tab into the
-                static docked panel below the live canvas. Thread lanes
-                (DispatcherOverview) remain here per UI-SPEC line 125. */}
-            <div className="py-2 space-y-4">
-              <DispatcherOverview
-                sessionId={sessionId}
-                isLive={streamEnabled}
-                enabled={!readOnly}
-              />
-            </div>
-          </div>
-        </Tab>
-
-        {/* Channels tab - shown when channel events are present */}
-        {eventCategories.hasChannels && (
-          <Tab key="channels" title="Channels">
-            <div className="space-y-2 pt-2">
-              {replayActive && <LiveDataNotice />}
-              <ChannelPanel sessionId={sessionId} />
-            </div>
-          </Tab>
-        )}
-
-        {/* Flow tab - shown when flow events are present */}
-        {eventCategories.hasFlowOps && (
-          <Tab key="flow" title="Flow">
-            <div className="space-y-2 pt-2">
-              {replayActive && <LiveDataNotice />}
-              <FlowPanel sessionId={sessionId} />
-            </div>
-          </Tab>
-        )}
-
-        {/* Sync tab - shown when sync primitive events are present */}
-        {eventCategories.hasSyncPrimitives && (
-          <Tab key="sync" title="Sync">
-            <div className="space-y-2 pt-2">
-              {replayActive && <LiveDataNotice />}
-              <SyncPanel sessionId={sessionId} />
-            </div>
-          </Tab>
-        )}
-
-        {/* Jobs tab - shown when job events are present */}
-        {eventCategories.hasJobs && (
-          <Tab key="jobs" title={`Jobs (${jobStates.size})`}>
-            <div className="space-y-2 pt-2">
-              {replayActive && <LiveDataNotice />}
-              <JobPanel sessionId={sessionId} />
-            </div>
-          </Tab>
-        )}
-
         {/* Validation tab - always shown */}
         <Tab key="validation" title="Validation">
           <div className="space-y-2 pt-2">
@@ -527,6 +409,18 @@ export function SessionWorkspace({
           </div>
         </Tab>
       </Tabs>
+
+      {/* The evidence section (M-1/M-2): what this session can show beyond the
+          tree, and — where the rung is the reason it cannot — what unlocks it. */}
+      <EvidencePanels
+        sessionId={sessionId}
+        rung={rung}
+        categories={eventCategories}
+        replayActive={replayActive}
+        readOnly={readOnly}
+        streamEnabled={streamEnabled}
+        threadActivity={panelThreadActivity}
+      />
     </div>
   )
 }
