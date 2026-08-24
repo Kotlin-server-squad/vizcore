@@ -9,9 +9,12 @@ describe('LivePill', () => {
     expect(screen.getByText('~150ms poll')).toBeInTheDocument()
   })
 
-  it('renders DEMO and no poll sub-label when not streamEnabled', () => {
+  it('renders NOT LIVE and no poll sub-label when not streamEnabled', () => {
     render(<LivePill streamEnabled={false} />)
-    expect(screen.getByText('DEMO')).toBeInTheDocument()
+    expect(screen.getByText('NOT LIVE')).toBeInTheDocument()
+    // Must not say DEMO: that word belongs to the fidelity rung, and a real
+    // attached session is not a demo just because streaming is off.
+    expect(screen.queryByText('DEMO')).toBeNull()
     expect(screen.queryByText('~150ms poll')).not.toBeInTheDocument()
   })
 })
