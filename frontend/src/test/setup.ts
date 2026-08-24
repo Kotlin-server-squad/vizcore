@@ -14,7 +14,12 @@ class IntersectionObserverStub implements IntersectionObserver {
   readonly rootMargin: string = ''
   readonly thresholds: ReadonlyArray<number> = []
 
-  constructor(private readonly callback: IntersectionObserverCallback) {}
+  // Named via ConstructorParameters rather than IntersectionObserverCallback:
+  // that is a type-only DOM name, and the lint config's browser globals only
+  // carry runtime values, so spelling it out trips no-undef.
+  constructor(
+    private readonly callback: ConstructorParameters<typeof IntersectionObserver>[0],
+  ) {}
 
   observe(target: Element): void {
     this.callback(
