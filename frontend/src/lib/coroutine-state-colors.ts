@@ -1,19 +1,31 @@
 /**
- * Centralized color configuration for the 7 coroutine states.
+ * The single definition of what a coroutine state looks like.
  *
- * Color assignments:
- *   CREATED              → slate    (neutral, not yet started)
- *   ACTIVE               → indigo   (energetic, running)
- *   SUSPENDED            → amber    (paused, waiting for external)
- *   WAITING_FOR_CHILDREN → purple   (semi-active, structured concurrency)
- *   COMPLETED            → emerald  (success, finished)
- *   CANCELLED            → gray     (dimmed, stopped)
- *   FAILED               → rose     (error, attention needed)
+ * Colour assignments, and why each one:
+ *   CREATED              → neutral  (not yet started)
+ *   ACTIVE               → primary  (running)
+ *   WAITING_FOR_CHILDREN → primary  (also running — the body has finished but
+ *                                    the scope has not, so this is still live
+ *                                    work; told apart from ACTIVE by its clock
+ *                                    icon and its own animation, not by hue)
+ *   SUSPENDED            → warning  (paused, waiting on something external)
+ *   CANCELLED            → warning  (stopped deliberately — neither success
+ *                                    nor error; dimmed, but not neutral)
+ *   COMPLETED            → success  (finished)
+ *   FAILED               → danger   (error, attention needed)
+ *
+ * This map must agree with `STATE_BUCKET` in `state-counts.ts`, which decides
+ * which chip a coroutine is counted under. When they disagreed, clicking the
+ * amber "Cancelled" chip filtered the canvas to coroutines the canvas then drew
+ * grey. `coroutine-state-colors.test.ts` asserts the pairing so it cannot
+ * regress.
  *
  * Every component that needs state-dependent visuals should import from here
- * instead of maintaining its own switch/case mapping.
+ * instead of maintaining its own switch/case mapping — and `stateColor()` is
+ * the accessor for canvas/SVG, which need resolved hex rather than classes.
  */
 import type { ComponentType } from 'react'
+import { palette } from '@/styles/palette'
 import {
   FiCircle,
   FiPlay,
@@ -38,6 +50,12 @@ export type StateAnimation =
 export interface StateColorConfig {
   /** HeroUI semantic chip color */
   chipColor: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'danger'
+  /**
+   * Resolved palette hex for this state. Canvas and SVG cannot consume Tailwind
+   * class names, and this lives in the same record as the classes so the two
+   * cannot drift apart.
+   */
+  hue: string
   /** Tailwind text-* class */
   text: string
   /** Tailwind bg-* class for icon circle backgrounds */
@@ -59,6 +77,7 @@ export interface StateColorConfig {
 const stateColorMap: Record<string, StateColorConfig> = {
   CREATED: {
     chipColor: 'default',
+    hue: palette.created,
     text: 'text-default-400',
     iconBg: 'bg-default-100',
     border: 'border-default-300',
@@ -69,6 +88,7 @@ const stateColorMap: Record<string, StateColorConfig> = {
   },
   ACTIVE: {
     chipColor: 'primary',
+    hue: palette.primary,
     text: 'text-primary',
     iconBg: 'bg-primary/10',
     border: 'border-primary',
@@ -79,6 +99,7 @@ const stateColorMap: Record<string, StateColorConfig> = {
   },
   SUSPENDED: {
     chipColor: 'warning',
+    hue: palette.warning,
     text: 'text-warning',
     iconBg: 'bg-warning/10',
     border: 'border-warning',
@@ -87,18 +108,22 @@ const stateColorMap: Record<string, StateColorConfig> = {
     animation: 'pulse-slow',
     Icon: FiPause,
   },
+  // Running, like ACTIVE — but with its own icon and a slower pulse, so the
+  // state stays readable without needing a hue the palette does not define.
   WAITING_FOR_CHILDREN: {
-    chipColor: 'secondary',
-    text: 'text-secondary',
-    iconBg: 'bg-secondary/10',
-    border: 'border-secondary/60',
-    line: 'bg-secondary/30',
-    bgTint: 'bg-secondary/5',
+    chipColor: 'primary',
+    hue: palette.primary,
+    text: 'text-primary',
+    iconBg: 'bg-primary/10',
+    border: 'border-primary/60',
+    line: 'bg-primary/30',
+    bgTint: 'bg-primary/5',
     animation: 'pulse-medium',
     Icon: FiClock,
   },
   COMPLETED: {
     chipColor: 'success',
+    hue: palette.success,
     text: 'text-success',
     iconBg: 'bg-success/10',
     border: 'border-success',
@@ -107,18 +132,23 @@ const stateColorMap: Record<string, StateColorConfig> = {
     animation: 'fade-once',
     Icon: FiCheckCircle,
   },
+  // Amber, not grey: a cancellation is neither success nor error, and the state
+  // bar has drawn it amber since the bar existed. Still dimmed — deliberately
+  // stopped work should not compete with work that is running.
   CANCELLED: {
-    chipColor: 'default',
-    text: 'text-default-400',
-    iconBg: 'bg-default-100',
-    border: 'border-default-300',
-    line: 'bg-default-300',
-    bgTint: 'bg-default-50',
+    chipColor: 'warning',
+    hue: palette.warning,
+    text: 'text-warning',
+    iconBg: 'bg-warning/10',
+    border: 'border-warning/60',
+    line: 'bg-warning/30',
+    bgTint: 'bg-warning/5',
     animation: 'dim',
     Icon: FiXCircle,
   },
   FAILED: {
     chipColor: 'danger',
+    hue: palette.danger,
     text: 'text-danger',
     iconBg: 'bg-danger/10',
     border: 'border-danger',
@@ -136,6 +166,18 @@ const defaultColors: StateColorConfig = stateColorMap.CREATED!
 /** Get the full color config for a coroutine state string. */
 export function getStateColors(state: string): StateColorConfig {
   return stateColorMap[state] ?? defaultColors
+}
+
+/**
+ * The resolved palette hex for a state — what canvas and SVG need, since
+ * neither can consume a Tailwind class name.
+ *
+ * Falls back to the neutral CREATED hue for an unrecognised state: this is
+ * called per node during render, so a state the backend adds later must
+ * degrade to a colour, never to a crash.
+ */
+export function stateColor(state: string): string {
+  return getStateColors(state).hue
 }
 
 /** True for states where the coroutine's Job is still active. */
