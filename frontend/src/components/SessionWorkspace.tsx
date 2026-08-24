@@ -25,9 +25,9 @@ import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
-import { LiveDockPanel } from './LiveDockPanel'
 import { SessionHeader } from './workspace/SessionHeader'
 import { CoroutineCanvas } from './workspace/CoroutineCanvas'
+import { WorkspaceBody } from './workspace/WorkspaceBody'
 import { ScenarioControls } from './workspace/ScenarioControls'
 import { StateBar } from './StateBar'
 import { LockedPanel } from './LockedPanel'
@@ -413,12 +413,13 @@ export function SessionWorkspace({
               // timeline is fetched/mounted exactly once (Pitfall 5). A muted
               // placeholder renders until a coroutine is selected.
               return isLiveView ? (
-                <LiveDockPanel
+                <WorkspaceBody
                   sessionId={sessionId}
                   streamEnabled={streamEnabled}
                   readOnly={readOnly}
                   liveList={liveList}
-                  sourcePanel={
+                  showMetrics
+                  inspector={
                     selectedCoroutineId ? (
                       <CoroutineSourceStack
                         sessionId={sessionId}
