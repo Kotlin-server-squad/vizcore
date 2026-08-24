@@ -20,7 +20,6 @@ import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/sta
 import { deriveRung } from '@/lib/fidelity-rung'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
-import { EventsList } from './EventsList'
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
@@ -28,6 +27,7 @@ import { SessionHeader } from './workspace/SessionHeader'
 import { CoroutineCanvas } from './workspace/CoroutineCanvas'
 import { WorkspaceBody } from './workspace/WorkspaceBody'
 import { Inspector } from './workspace/Inspector/Inspector'
+import { EventsDrawer } from './workspace/EventsDrawer'
 import { ScenarioControls } from './workspace/ScenarioControls'
 import { StateBar } from './StateBar'
 import { LockedPanel } from './LockedPanel'
@@ -408,6 +408,15 @@ export function SessionWorkspace({
                 />
               )
 
+              const canvasWithEvents = (
+                <div className="space-y-4">
+                  {liveList}
+                  {/* Events, re-hosted from its tab as a drawer under the
+                      canvas and scoped to the selection (D-4 / spec tab map). */}
+                  <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
+                </div>
+              )
+
               // Surface 001 (PD-01): LIVE view → IDE-dock; replay/shared → the
               // existing standalone list (no dock, no added interactivity). The
               // dock owns the single SessionMetrics tile-strip + the single
@@ -423,7 +432,7 @@ export function SessionWorkspace({
                   sessionId={sessionId}
                   streamEnabled={streamEnabled}
                   readOnly={readOnly}
-                  liveList={liveList}
+                  liveList={canvasWithEvents}
                   showMetrics
                   inspector={
                     <Inspector
@@ -434,20 +443,9 @@ export function SessionWorkspace({
                   }
                 />
               ) : (
-                liveList
+                canvasWithEvents
               )
             })()}
-          </div>
-        </Tab>
-
-        {/* Events tab - restored as its own focused tab */}
-        <Tab key="events" title="Events">
-          <div className="pt-2">
-            <Card>
-              <CardBody>
-                <EventsList events={panelEvents} />
-              </CardBody>
-            </Card>
           </div>
         </Tab>
 
