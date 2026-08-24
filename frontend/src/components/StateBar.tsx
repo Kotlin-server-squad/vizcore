@@ -39,13 +39,25 @@ export function StateBar({
     { filter: 'failed', label: 'Failed', count: counts.failed, color: 'var(--danger)' },
   ]
 
+  // A potential leak is a heuristic finding, not a lifecycle fact, so it sits
+  // after the state chips and is amber — never danger-red, which is reserved
+  // for coroutines that actually failed.
+  const leakChip: Chip[] = [
+    {
+      filter: 'leaks',
+      label: 'Potential leaks',
+      count: counts.leaks,
+      color: 'var(--warning)',
+    },
+  ]
+
   return (
     <div
       className="flex flex-wrap items-center gap-2 rounded-medium border border-default-200 bg-content1 px-3 py-2"
       role="group"
       aria-label="Coroutine state"
     >
-      {chips
+      {[...chips, ...leakChip]
         .filter((chip) => chip.always || chip.count > 0)
         .map((chip) => {
           const active = filter === chip.filter

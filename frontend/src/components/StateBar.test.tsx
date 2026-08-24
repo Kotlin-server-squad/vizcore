@@ -11,6 +11,7 @@ const counts: StateCounts = {
   cancelled: 0,
   failed: 2,
   total: 1280,
+  leaks: 0,
 }
 
 const renderBar = (over: Partial<Parameters<typeof StateBar>[0]> = {}) => {
@@ -18,6 +19,31 @@ const renderBar = (over: Partial<Parameters<typeof StateBar>[0]> = {}) => {
   render(<StateBar counts={counts} filter="all" onFilterChange={onFilterChange} {...over} />)
   return { onFilterChange }
 }
+
+describe('StateBar leak chip', () => {
+  it('stays hidden when nothing is flagged', () => {
+    renderBar()
+    expect(screen.queryByRole('button', { name: /potential leaks/i })).toBeNull()
+  })
+
+  it('appears with its count once something is flagged', () => {
+    renderBar({ counts: { ...counts, leaks: 3 } })
+    expect(screen.getByRole('button', { name: 'Potential leaks 3' })).toBeInTheDocument()
+  })
+
+  it('selects the leak filter', async () => {
+    const { onFilterChange } = renderBar({ counts: { ...counts, leaks: 3 } })
+    await userEvent.click(screen.getByRole('button', { name: 'Potential leaks 3' }))
+    expect(onFilterChange).toHaveBeenCalledWith('leaks')
+  })
+
+  it('is amber, never danger red — a potential leak is not a failure', () => {
+    renderBar({ counts: { ...counts, leaks: 3 }, filter: 'leaks' })
+    const chip = screen.getByRole('button', { name: 'Potential leaks 3' })
+    expect(chip.style.color).toContain('--warning')
+    expect(chip.style.color).not.toContain('--danger')
+  })
+})
 
 describe('StateBar', () => {
   it('shows a chip per non-zero state with its count', () => {
