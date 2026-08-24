@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Card,
   CardBody,
-  CardHeader,
-  Chip,
   Tabs,
   Tab,
   Spinner,
@@ -12,11 +10,9 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
-  Tooltip,
 } from '@heroui/react'
-import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiRotateCcw, FiTrash2, FiShare2 } from 'react-icons/fi'
+import { FiPlay, FiRotateCcw, FiTrash2 } from 'react-icons/fi'
 import { useSession, useSessionEvents, useDeleteSession } from '@/hooks/use-sessions'
-import { useCapabilities } from '@/hooks/use-capabilities'
 import { useEventStream } from '@/hooks/use-event-stream'
 import { useRunScenario } from '@/hooks/use-scenarios'
 import { useThreadActivity } from '@/hooks/use-thread-activity'
@@ -24,7 +20,7 @@ import { useEventCategories } from '@/hooks/use-event-categories'
 import { useReplay } from '@/hooks/use-replay'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
 import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/state-counts'
-import { deriveRung, RUNG_LABEL } from '@/lib/fidelity-rung'
+import { deriveRung } from '@/lib/fidelity-rung'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { CoroutineTree } from './CoroutineTree'
@@ -35,6 +31,7 @@ import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
 import { LiveDockPanel } from './LiveDockPanel'
+import { SessionHeader } from './workspace/SessionHeader'
 import { StateBar } from './StateBar'
 import { LockedPanel } from './LockedPanel'
 import { EmptyState } from './EmptyState'
@@ -46,12 +43,10 @@ import { ValidationPanel } from './validation/ValidationPanel'
 import { ReplayController } from './replay/ReplayController'
 import { LiveDataNotice } from './replay/LiveDataNotice'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
-import { ExportMenu } from './export/ExportMenu'
 import { ManageShares } from './share/ManageShares'
 import { useRecordReplay } from '@/hooks/use-record-replay'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import type { JobStateChangedEvent, ThreadActivity, VizEvent } from '@/types/api'
 import { CoroutineState } from '@/types/api'
@@ -123,11 +118,6 @@ export function SessionWorkspace({
   // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
   // the read-only shared view (ADR-019: no re-sharing from a shared link).
   const [sharesOpen, setSharesOpen] = useState(false)
-  // Sharing is DB-backed (ADR-019); in memory mode the share routes are absent.
-  // Gate the Share affordance on the server capability so we never offer an
-  // action that 404s (explicit false only — stay enabled while still loading).
-  const { data: capabilities } = useCapabilities()
-  const sharingDisabled = capabilities?.sharingEnabled === false
   // Replay mode (D-01): when active, panels render from the frozen snapshot's
   // replay cursor instead of the live/stored events. The snapshot is captured
   // at replay entry so live SSE events do not mutate the frozen view (D-02).
@@ -484,176 +474,33 @@ export function SessionWorkspace({
 
   return (
     <div className="space-y-6">
-      {/* Session Header */}
-      <Card>
-        <CardHeader className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">Session Details</h1>
-              {hasScenario && scenarioName && (
-                <Chip color="primary" variant="bordered" size="lg">
-                  {scenarioName}
-                </Chip>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <p className="font-mono text-sm text-default-500">{sessionId}</p>
-              {/* Which fidelity rung this session is on (D-6). */}
-              <Chip
-                size="sm"
-                variant="flat"
-                color={rung === 'demo' ? 'default' : 'primary'}
-                data-testid="rung-badge"
-              >
-                {RUNG_LABEL[rung]}
-              </Chip>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Chip color="primary" variant="flat">
-                {session.coroutineCount} coroutines
-              </Chip>
-              <Chip color="secondary" variant="flat">
-                {session.eventCount} events
-              </Chip>
-              {/* REPLAY mode chip (D-15) — only solid-primary chip in the app. */}
-              {replayActive && (
-                <Chip size="sm" color="primary" variant="solid">
-                  REPLAY
-                </Chip>
-              )}
-              {/* New-events badge (D-02/D-04): clickable, exits replay + applies
-                  buffered events. Hidden when N = 0. */}
-              {replayActive && newEventsCount > 0 && (
-                <button
-                  type="button"
-                  aria-label="Exit replay and jump to live"
-                  onClick={exitReplay}
-                >
-                  <Chip size="sm" color="warning" variant="dot">
-                    {newEventsCount === 1 ? '1 new event' : `${newEventsCount} new events`}
-                  </Chip>
-                </button>
-              )}
-            </div>
-            <Button
-              isIconOnly
-              variant="flat"
-              onPress={() => refetch()}
-            >
-              <FiRefreshCw />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {/* Live-stream toggle — a shared session is a frozen capture, so
-                  it is gated OFF in read-only mode (T-03-22). The "Read-only
-                  shared view" banner is rendered by the /shared/$token shell. */}
-              {!readOnly && (
-                <Button
-                  color={streamEnabled ? 'success' : 'default'}
-                  variant={streamEnabled ? 'flat' : 'bordered'}
-                  startContent={<FiRadio />}
-                  onPress={() => {
-                    if (streamEnabled) {
-                      clearEvents()
-                    }
-                    setStreamEnabled(!streamEnabled)
-                  }}
-                >
-                  {streamEnabled ? 'Live Stream Active' : 'Enable Live Stream'}
-                </Button>
-              )}
-              {!readOnly && streamEnabled && (
-                <AnimatePresence>
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    className="flex items-center gap-2"
-                  >
-                    <Chip
-                      color={isConnected ? 'success' : 'warning'}
-                      variant="dot"
-                    >
-                      {isConnected ? 'Connected' : 'Connecting...'}
-                    </Chip>
-                  </motion.div>
-                </AnimatePresence>
-              )}
-
-              {/* Replay toggle (D-01) — always visible. */}
-              <Button
-                size="sm"
-                color={replayActive ? 'primary' : 'default'}
-                variant={replayActive ? 'flat' : 'bordered'}
-                startContent={<FiPlay />}
-                onPress={replayActive ? exitReplay : () => enterReplay()}
-              >
-                {replayActive ? 'Exit Replay' : 'Replay'}
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Share / Manage-shares trigger (D-11/D-13) — owner only, gated
-                  OFF in the read-only shared view so a shared link can never
-                  re-share (ADR-019, T-03-22). */}
-              {!readOnly && (
-                <Tooltip
-                  content="Sharing requires storage.type=database"
-                  isDisabled={!sharingDisabled}
-                >
-                  {/* Span wrapper so the Tooltip still shows over a disabled button. */}
-                  <span className="inline-flex">
-                    <Button
-                      size="sm"
-                      variant="bordered"
-                      startContent={<FiShare2 />}
-                      onPress={() => setSharesOpen(true)}
-                      isDisabled={sharingDisabled}
-                    >
-                      Share
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
-
-              {/* Export menu (ADR-018 / EXPT-01/02 / D-22). */}
-              <ExportMenu
-                getPanelEl={() => panelRef.current}
-                sessionId={sessionId}
-                sessionName={scenarioName ?? sessionId}
-                events={panelEvents}
-                panel={viewMode === 'graph' ? 'graph' : 'tree'}
-                onRecord={recordReplay.canRecord ? recordReplay.startRecording : undefined}
-              />
-
-              {/* View Mode Toggle */}
-              <Button
-                size="sm"
-                variant={viewMode === 'graph' ? 'flat' : 'light'}
-                color={viewMode === 'graph' ? 'primary' : 'default'}
-                startContent={<FiGitBranch />}
-                onPress={() => setViewMode('graph')}
-              >
-                Graph View
-              </Button>
-              <Button
-                size="sm"
-                variant={viewMode === 'list' ? 'flat' : 'light'}
-                color={viewMode === 'list' ? 'primary' : 'default'}
-                startContent={<FiList />}
-                onPress={() => setViewMode('list')}
-              >
-                List View
-              </Button>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      <SessionHeader
+        sessionId={sessionId}
+        session={session}
+        scenarioName={scenarioName}
+        hasScenario={hasScenario}
+        rung={rung}
+        readOnly={readOnly}
+        streamEnabled={streamEnabled}
+        isConnected={isConnected}
+        onToggleStream={() => {
+          if (streamEnabled) {
+            clearEvents()
+          }
+          setStreamEnabled(!streamEnabled)
+        }}
+        replayActive={replayActive}
+        newEventsCount={newEventsCount}
+        onToggleReplay={replayActive ? exitReplay : () => enterReplay()}
+        onExitReplay={exitReplay}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onRefetch={() => refetch()}
+        onOpenShares={() => setSharesOpen(true)}
+        panelRef={panelRef}
+        panelEvents={panelEvents}
+        onRecord={recordReplay.canRecord ? recordReplay.startRecording : undefined}
+      />
 
       {/* Sticky ReplayController bar (D-13) — directly above the tabs. While
           recording, the controller shows the red-dot recording cluster and the
