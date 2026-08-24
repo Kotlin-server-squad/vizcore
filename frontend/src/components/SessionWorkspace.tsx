@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Card,
   CardBody,
-  Tabs,
-  Tab,
   Spinner,
   Modal,
   ModalContent,
@@ -359,74 +357,46 @@ export function SessionWorkspace({
         }
       />
 
-      {/* Main Tabs */}
-      <Tabs aria-label="Session tabs" variant="bordered" fullWidth>
-        {/* Coroutines tab - Graph/List view toggle. In replay, renders the
-            projected snapshot from the replay cursor (D-17). */}
-        <Tab key="coroutines" title="Coroutines">
-          <div className="space-y-4 pt-2">
-            {/* The live "what's running now" list (header + Show-completed
-                control + tree/graph canvas + "N more"). In the live view it is
-                hosted in the dock's left column (PD-01/PD-02); in replay/shared
-                it renders standalone in the existing tabbed layout. */}
-            {(() => {
-              const liveList = (
-                <CoroutineCanvas
-                  coroutines={renderedCoroutines}
-                  viewMode={viewMode}
-                  completedCount={completedCount}
-                  showCompleted={showCompleted}
-                  onToggleCompleted={() => setShowCompleted(prev => !prev)}
-                  moreCount={moreCount}
-                  stateFilter={stateFilter}
-                  selectedCoroutineId={selectedCoroutineId}
-                  onSelect={isLiveView ? setSelectedCoroutineId : undefined}
-                  panelRef={panelRef}
-                />
-              )
-
-              const canvasWithEvents = (
-                <div className="space-y-4">
-                  {liveList}
-                  {/* Events, re-hosted from its tab as a drawer under the
-                      canvas and scoped to the selection (D-4 / spec tab map). */}
-                  <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
-                </div>
-              )
-
-              // Surface 001 (PD-01): LIVE view → IDE-dock; replay/shared → the
-              // existing standalone list (no dock, no added interactivity). The
-              // dock owns the single SessionMetrics tile-strip + the single
-              // inline LeakList (PD-02), so neither is mounted again here.
-              // Surface 002 (PD-05): the live-view source attribution lives
-              // INLINE in the dock's right column — the selected coroutine's
-              // CoroutineSourceStack (compact chips → expand) feeds the slot.
-              // The right-side CoroutineSourceDrawer mount is retired so the
-              // timeline is fetched/mounted exactly once (Pitfall 5). A muted
-              // placeholder renders until a coroutine is selected.
-              return isLiveView ? (
-                <WorkspaceBody
-                  sessionId={sessionId}
-                  streamEnabled={streamEnabled}
-                  readOnly={readOnly}
-                  liveList={canvasWithEvents}
-                  showMetrics
-                  inspector={
-                    <Inspector
-                      sessionId={sessionId}
-                      coroutine={selectedCoroutine}
-                      readOnly={readOnly}
-                    />
-                  }
-                />
-              ) : (
-                canvasWithEvents
-              )
-            })()}
+      {/* The workspace body — canvas + events drawer on the left, inspector on
+          the right (D-4/D-7). In replay it renders the projected snapshot from
+          the replay cursor (D-17). */}
+      <WorkspaceBody
+        sessionId={sessionId}
+        streamEnabled={streamEnabled}
+        readOnly={readOnly}
+        // The metric strip is live-only: in replay it would report current
+        // numbers over a frozen view, and the shared shell has no Bearer for
+        // the /metrics fetch behind it (M-4).
+        showMetrics={isLiveView}
+        liveList={
+          <div className="space-y-4">
+            <CoroutineCanvas
+              coroutines={renderedCoroutines}
+              viewMode={viewMode}
+              completedCount={completedCount}
+              showCompleted={showCompleted}
+              onToggleCompleted={() => setShowCompleted(prev => !prev)}
+              moreCount={moreCount}
+              stateFilter={stateFilter}
+              selectedCoroutineId={selectedCoroutineId}
+              // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
+              // view stay presentational, with no added interactivity.
+              onSelect={isLiveView ? setSelectedCoroutineId : undefined}
+              panelRef={panelRef}
+            />
+            {/* Events, re-hosted from its tab as a drawer under the canvas and
+                scoped to the current selection (spec: where the eight tabs go). */}
+            <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
           </div>
-        </Tab>
-
-      </Tabs>
+        }
+        inspector={
+          <Inspector
+            sessionId={sessionId}
+            coroutine={isLiveView ? selectedCoroutine : null}
+            readOnly={readOnly}
+          />
+        }
+      />
 
       {/* The evidence section (M-1/M-2): what this session can show beyond the
           tree, and — where the rung is the reason it cannot — what unlocks it. */}

@@ -213,7 +213,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     // No CoroutineSourceDrawer is mounted in the live view — the source is inline
-    // in the dock's right column (PD-05). The retired Drawer would render a
+    // in the inspector's Suspended-at card (PD-05). The retired Drawer would render a
     // "Coroutine source — {label}" title; assert it is absent.
     expect(screen.queryByText(/Coroutine source —/)).toBeNull()
 
@@ -273,28 +273,29 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
 
   // ── Surface 001 IDE-dock reconcile (Task 2) ──────────────────────────────
 
-  it('renders the LiveDockPanel (metric strip + live list) in the live view, with a single inline leak list', async () => {
+  it('renders the workspace body (metric strip + canvas) in the live view, with a single inline leak list', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
-    // The dock header strip mounts the metric tiles + LIVE/DEMO pill (un-buried
-    // from the Threads tab). Mounted exactly once.
+    // The body's header strip mounts the metric tiles + LIVE/DEMO pill
+    // (un-buried from the Threads tab). Mounted exactly once.
     expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
     expect(screen.getByTestId('live-pill')).toBeInTheDocument()
 
-    // The live list still renders inside the dock's left column.
+    // The canvas still renders inside the body's left column.
     expect(screen.getByText(/What's running now/)).toBeInTheDocument()
 
-    // The dock owns the single inline amber LeakList (fed by getMetrics). The
+    // The body owns the single inline amber LeakList (fed by getMetrics). The
     // "2 potential leaks" badge appears exactly once — no duplicate leak mount.
     const leakBadges = await screen.findAllByText('2 potential leaks')
     expect(leakBadges).toHaveLength(1)
   })
 
-  it('renders the existing tabs with NO dock and no source affordances in the read-only shared view', async () => {
+  it('renders the read-only shared view with no metric strip, no source affordances and no protected fetch', async () => {
     render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
 
-    // PD-01 back-compat: the read-only shared view keeps the standalone tabbed
-    // layout — the dock metric strip + LIVE pill are NOT mounted.
+    // The shared view now uses the same workspace body as every other mode
+    // (M-4), but with the metric strip + LIVE pill gated OFF — the shell has no
+    // Bearer for the /metrics fetch behind them.
     expect(screen.queryByTestId('session-metrics')).toBeNull()
     expect(screen.queryByTestId('live-pill')).toBeNull()
 

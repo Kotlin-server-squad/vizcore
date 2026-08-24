@@ -966,3 +966,59 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(screen.getByText('No live coroutines yet')).toBeInTheDocument()
   })
 })
+
+describe('SessionWorkspace — the tabs are retired (spec: where the eight tabs go)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 1 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+  })
+
+  it('renders no tab bar in the live view', () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+  })
+
+  it('renders no tab bar in the read-only shared view', () => {
+    render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
+
+    expect(screen.queryByRole('tablist')).toBeNull()
+  })
+
+  it('renders no tab bar in replay', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+
+    expect(screen.queryByRole('tablist')).toBeNull()
+  })
+
+  it('reaches the canvas, the events drawer, the inspector and the evidence with no navigation', () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+
+    expect(screen.getByText(/What's running now/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^events \(/i })).toBeInTheDocument()
+    expect(screen.getByText('Select a coroutine to inspect it')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Evidence' })).toBeInTheDocument()
+  })
+
+  it('keeps the thread lanes reachable in replay', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+
+    expect(screen.getByRole('heading', { name: 'Evidence' })).toBeInTheDocument()
+    expect(screen.getByTestId('dispatcher-overview')).toBeInTheDocument()
+  })
+
+  it('offers the checks report from the header instead of a Validation tab', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+
+    expect(screen.queryByRole('tab', { name: /validation/i })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^checks$/i }))
+    expect(await screen.findByRole('heading', { name: /session checks/i })).toBeInTheDocument()
+  })
+})

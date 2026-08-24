@@ -40,7 +40,7 @@ export function ChecksModal({
     <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="3xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
-          <span>Session checks</span>
+          <h2 className="text-lg font-semibold">Session checks</h2>
           <span className="text-xs font-normal text-default-500">
             Event ordering, timing anomalies and structural problems in this session.
           </span>
