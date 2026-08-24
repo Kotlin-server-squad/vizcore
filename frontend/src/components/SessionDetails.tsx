@@ -23,7 +23,9 @@ import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
 import { useReplay } from '@/hooks/use-replay'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
-import { deriveStateCounts, matchesFilter, type StateFilter } from '@/lib/state-counts'
+import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/state-counts'
+import { deriveRung, RUNG_LABEL } from '@/lib/fidelity-rung'
+import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { CoroutineTree } from './CoroutineTree'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
@@ -34,6 +36,7 @@ import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
 import { LiveDockPanel } from './LiveDockPanel'
 import { StateBar } from './StateBar'
+import { LockedPanel } from './LockedPanel'
 import { EmptyState } from './EmptyState'
 import { ChannelPanel } from './channels/ChannelPanel'
 import { FlowPanel } from './flow/FlowPanel'
@@ -143,6 +146,17 @@ export function SessionDetails({
   // shell has no Bearer; thread lanes are derived from the shared events below.
   const { data: threadActivity } = useThreadActivity(sessionId, streamEnabled, !readOnly)
   const eventCategories = useEventCategories(sessionId)
+  // Which rung this session is on (D-6), and the leak set behind the leak chip.
+  // Metrics is already polled by the dock; React Query dedupes the second call.
+  const rung = useMemo(
+    () => deriveRung(sessionId, eventCategories),
+    [sessionId, eventCategories],
+  )
+  const { data: metrics } = useSessionMetrics(sessionId, streamEnabled, !readOnly)
+  const leakIds = useMemo(
+    () => new Set((metrics?.leaks ?? []).map(l => l.coroutineId)),
+    [metrics?.leaks],
+  )
   const runScenario = useRunScenario()
   const deleteSession = useDeleteSession()
   const navigate = useNavigate()
@@ -285,15 +299,16 @@ export function SessionDetails({
     // bypasses the active-only default — you asked for completed, you get
     // completed. With no chip active, behaviour is exactly as before the bar.
     if (stateFilter !== 'all') {
-      return panelCoroutines
-        .filter(c => matchesFilter(c.state as CoroutineState, stateFilter))
-        .slice(0, NODE_CAP)
+      return selectCoroutines(panelCoroutines, stateFilter, leakIds).slice(0, NODE_CAP)
     }
     return showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines
-  }, [stateFilter, showCompleted, panelCoroutines, shownCoroutines])
+  }, [stateFilter, showCompleted, panelCoroutines, shownCoroutines, leakIds])
 
   /** Counts for the state bar — the whole snapshot, never the capped subset. */
-  const stateCounts = useMemo(() => deriveStateCounts(panelCoroutines), [panelCoroutines])
+  const stateCounts = useMemo(
+    () => deriveStateCounts(panelCoroutines, leakIds),
+    [panelCoroutines, leakIds],
+  )
 
   // Close the source drawer if its coroutine leaves the session entirely (e.g. a
   // replay cursor moving before its creation, or a session reset). A terminal or
@@ -481,7 +496,18 @@ export function SessionDetails({
                 </Chip>
               )}
             </div>
-            <p className="font-mono text-sm text-default-500">{sessionId}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-mono text-sm text-default-500">{sessionId}</p>
+              {/* Which fidelity rung this session is on (D-6). */}
+              <Chip
+                size="sm"
+                variant="flat"
+                color={rung === 'demo' ? 'default' : 'primary'}
+                data-testid="rung-badge"
+              >
+                {RUNG_LABEL[rung]}
+              </Chip>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -740,6 +766,36 @@ export function SessionDetails({
 
       {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
       <StateBar counts={stateCounts} filter={stateFilter} onFilterChange={setStateFilter} />
+
+      {/* Rung-aware locked panels (D-5). A wrapper-only capability that is
+          absent on a REAL session is absent because of the rung, not because
+          anything is wrong — so say what it would show and how to get it.
+          A demo session already has full fidelity, so nothing is locked there. */}
+      {rung !== 'demo' && (
+        <div className="grid gap-3 md:grid-cols-3">
+          {!eventCategories.hasSyncPrimitives && (
+            <LockedPanel
+              title="Lock contention"
+              whatYouWouldSee="Who holds each mutex and semaphore, who is queued behind it, and for how long."
+              unlockWith="Swap Mutex() for VizMutex() in the code you want to watch."
+            />
+          )}
+          {!eventCategories.hasFlowOps && (
+            <LockedPanel
+              title="Flow backpressure"
+              whatYouWouldSee="Emissions, operator stages, and where a slow collector is stalling the producer."
+              unlockWith="Wrap the flow you care about with .instrumented()."
+            />
+          )}
+          {!eventCategories.hasChannels && (
+            <LockedPanel
+              title="Channel traffic"
+              whatYouWouldSee="Send and receive pairs, buffer occupancy, and which side is waiting."
+              unlockWith="Create the channel with InstrumentedChannel(...)."
+            />
+          )}
+        </div>
+      )}
 
       {/* Main Tabs */}
       <Tabs aria-label="Session tabs" variant="bordered" fullWidth>

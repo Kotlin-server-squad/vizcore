@@ -61,7 +61,15 @@ describe('StateBar', () => {
 
   it('always shows Running so the bar never collapses to nothing', () => {
     renderBar({
-      counts: { running: 0, suspended: 0, completed: 0, cancelled: 0, failed: 0, total: 0 },
+      counts: {
+        running: 0,
+        suspended: 0,
+        completed: 0,
+        cancelled: 0,
+        failed: 0,
+        total: 0,
+        leaks: 0,
+      },
     })
     expect(screen.getByRole('button', { name: /running 0/i })).toBeInTheDocument()
   })
