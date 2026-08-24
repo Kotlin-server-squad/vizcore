@@ -1,10 +1,12 @@
+import { useMemo } from 'react'
 import { useCoroutineTimeline } from '@/hooks/use-timeline'
+import { resolveRunsOn } from '@/lib/runs-on'
 import { TimingCard } from './TimingCard'
 import { SuspendedAtCard } from './SuspendedAtCard'
 import { RunsOnCard } from './RunsOnCard'
 import { IdentityCard } from './IdentityCard'
 import { EventsCard } from './EventsCard'
-import type { CoroutineNode } from '@/types/api'
+import type { CoroutineNode, ThreadActivity } from '@/types/api'
 
 interface InspectorProps {
   sessionId: string
@@ -16,6 +18,12 @@ interface InspectorProps {
    * Identity needs no fetch, so it is what remains.
    */
   readOnly: boolean
+  /**
+   * Thread activity for the session — the only source that names the thread and
+   * dispatcher a coroutine is on. Undefined while it loads, and in the
+   * read-only shared view where the protected /threads fetch is disabled.
+   */
+  threadActivity?: ThreadActivity
 }
 
 /**
@@ -30,11 +38,21 @@ interface InspectorProps {
  * `SuspendedAtCard` calls the same query — React Query dedupes on the key, so
  * this is one network request, not two.
  */
-export function Inspector({ sessionId, coroutine, readOnly }: InspectorProps) {
+export function Inspector({
+  sessionId,
+  coroutine,
+  readOnly,
+  threadActivity,
+}: InspectorProps) {
   const showTimeline = !!coroutine && !readOnly
   const { data: timeline } = useCoroutineTimeline(
     showTimeline ? sessionId : undefined,
     showTimeline ? coroutine.id : undefined,
+  )
+
+  const runsOn = useMemo(
+    () => (coroutine ? resolveRunsOn(threadActivity, coroutine.id) : null),
+    [threadActivity, coroutine],
   )
 
   if (!coroutine) {
@@ -51,7 +69,7 @@ export function Inspector({ sessionId, coroutine, readOnly }: InspectorProps) {
         <>
           <TimingCard timeline={timeline} />
           <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
-          <RunsOnCard timeline={timeline} />
+          <RunsOnCard runsOn={runsOn} />
         </>
       )}
       <IdentityCard coroutine={coroutine} />

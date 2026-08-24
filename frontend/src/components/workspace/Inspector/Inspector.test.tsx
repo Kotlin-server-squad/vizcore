@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { CoroutineState, type CoroutineNode, type CoroutineTimeline } from '@/types/api'
+import {
+  CoroutineState,
+  type CoroutineNode,
+  type CoroutineTimeline,
+  type ThreadActivity,
+} from '@/types/api'
 import { Inspector } from './Inspector'
 
 const getCoroutineTimeline = vi.fn()
@@ -74,6 +79,21 @@ function timeline(overrides: Partial<CoroutineTimeline> = {}): CoroutineTimeline
   } as CoroutineTimeline
 }
 
+function threads(): ThreadActivity {
+  return {
+    '34': [
+      {
+        coroutineId: 'c-1',
+        threadId: 34,
+        threadName: 'DefaultDispatcher-worker-3',
+        timestamp: 2_000,
+        eventType: 'ASSIGNED',
+        dispatcherName: 'Dispatchers.IO',
+      },
+    ],
+  }
+}
+
 describe('Inspector', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -128,34 +148,48 @@ describe('Inspector', () => {
     expect(within(timing).queryByText(/~0/)).toBeNull()
   })
 
-  it('names the thread and dispatcher from the most recent event that reports them', async () => {
-    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, {
-      wrapper: createWrapper(),
-    })
-
-    // The NEWEST event that carries them wins — a coroutine that moved from
-    // Main to IO runs on IO now, and reporting the first event would be stale.
-    expect(await screen.findByText('DefaultDispatcher-worker-3')).toBeInTheDocument()
-    const runsOn = screen.getByTestId('runs-on-card')
-    expect(within(runsOn).getByText('Dispatchers.IO')).toBeInTheDocument()
-    expect(within(runsOn).queryByText('Dispatchers.Main')).toBeNull()
-  })
-
-  it('reports an unknown thread rather than inventing one', async () => {
-    getCoroutineTimeline.mockResolvedValue(
-      timeline({
-        events: [{ seq: 1, tsNanos: 1, kind: 'coroutine.created' }],
-      }),
+  it('names the thread and dispatcher from thread activity', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine()}
+        readOnly={false}
+        threadActivity={threads()}
+      />,
+      { wrapper: createWrapper() },
     )
 
+    // Thread activity, not the timeline: the timeline projection is source-only
+    // (D-02) and names no thread, which is why this card used to read
+    // "not reported" against a live backend that had the data.
+    const runsOn = screen.getByTestId('runs-on-card')
+    expect(within(runsOn).getByText('DefaultDispatcher-worker-3')).toBeInTheDocument()
+    expect(within(runsOn).getByText('Dispatchers.IO')).toBeInTheDocument()
+  })
+
+  it('reports an unknown thread rather than inventing one', () => {
     render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, {
       wrapper: createWrapper(),
     })
 
-    // Wait for the query to settle before asserting the fallback, or the
-    // pre-fetch render would pass this test for the wrong reason.
-    await screen.findByText('coroutine.created')
+    // No thread activity at all — "not reported" is still the honest answer.
     const runsOn = screen.getByTestId('runs-on-card')
+    expect(within(runsOn).getAllByText('not reported').length).toBe(2)
+  })
+
+  it('does not attribute another coroutine\'s thread to this one', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ id: 'c-other' })}
+        readOnly={false}
+        threadActivity={threads()}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    const runsOn = screen.getByTestId('runs-on-card')
+    expect(within(runsOn).queryByText('DefaultDispatcher-worker-3')).toBeNull()
     expect(within(runsOn).getAllByText('not reported').length).toBe(2)
   })
 
