@@ -20,9 +20,18 @@ import { SessionRow } from './SessionRow'
 export function SessionsSidebar({
   onConnect,
   selectedSessionId,
+  className = 'w-[320px] shrink-0',
+  onNewDemo,
+  onCompare,
 }: {
   onConnect: () => void
   selectedSessionId?: string
+  /** Width/placement is the caller's decision — sidebar at /sessions, full-width at /. */
+  className?: string
+  /** Opens the re-hosted scenario picker (D-2). Omitted in the sidebar placement. */
+  onNewDemo?: () => void
+  /** Opens the re-hosted comparison overlay (D-3). Omitted in the sidebar placement. */
+  onCompare?: () => void
 }) {
   const { data: sessions, isLoading } = useSessions()
   const navigate = useNavigate()
@@ -40,18 +49,30 @@ export function SessionsSidebar({
   const isEmpty = !isLoading && live.length === 0 && demo.length === 0
 
   return (
-    <Card className="w-[320px] shrink-0">
+    <Card className={className}>
       <CardBody className="gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Sessions</h2>
-          <Button
-            color="primary"
-            size="sm"
-            startContent={<FiPlus />}
-            onPress={onConnect}
-          >
-            Connect
-          </Button>
+          <div className="flex items-center gap-2">
+            {onCompare && (
+              <Button size="sm" variant="light" onPress={onCompare}>
+                Compare
+              </Button>
+            )}
+            {onNewDemo && (
+              <Button size="sm" variant="flat" onPress={onNewDemo}>
+                New demo session
+              </Button>
+            )}
+            <Button
+              color="primary"
+              size="sm"
+              startContent={<FiPlus />}
+              onPress={onConnect}
+            >
+              Connect
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (

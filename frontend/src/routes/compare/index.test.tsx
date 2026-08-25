@@ -11,7 +11,6 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { ComparePage, validateSearch } from './index'
-import { Layout } from '@/components/Layout'
 
 // Mock the data hooks so the route renders deterministically without a network.
 vi.mock('@/hooks/use-sessions', async () => {
@@ -137,33 +136,6 @@ describe('/compare route', () => {
   })
 })
 
-describe('Layout Compare nav', () => {
-  it('renders a Compare nav item linking to /compare', async () => {
-    mockedUseSessions.mockReturnValue({ data: sessions, isLoading: false } as never)
-    mockedUseSession.mockReturnValue(emptyQuery())
-    mockedUseComparison.mockReturnValue(emptyQuery())
-
-    const router = buildRouter('/compare', () => (
-      <Layout>
-        <Outlet />
-      </Layout>
-    ))
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, gcTime: 0 } },
-    })
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router as never} />
-      </QueryClientProvider>,
-    )
-
-    await screen.findByText('Compare Sessions')
-    // The navbar Compare link points at /compare.
-    const compareLinks = screen
-      .getAllByRole('link')
-      .filter((el) => el.getAttribute('href') === '/compare')
-    expect(compareLinks.length).toBeGreaterThanOrEqual(1)
-    expect(compareLinks[0]).toHaveTextContent('Compare')
-  })
-})
+// NOTE: the former `Layout Compare nav` suite asserted a navbar Compare link.
+// That destination is retired by D-3 (Compare is an action, not a place); the
+// inverse assertion now lives in `src/components/Layout.test.tsx`.
