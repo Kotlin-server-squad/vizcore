@@ -2,7 +2,63 @@
 
 **Read this first on a cold start.** Updated after every completed plan.
 
-**Last updated:** 2026-08-24, after plan 5 (plan-4 debt cleanup).
+**Last updated:** 2026-08-25, after surveying open PRs. **Start at "Next action" below.**
+
+---
+
+## Next action — fix PR #102's CI, then integrate
+
+**Do this first.** Surveyed 2026-08-25: 27 open PRs, 2 authored by the user, 25 dependabot.
+
+### 1. PR #102 — the token layer — is RED and it blocks everything
+
+`feat/spa-design-tokens` → `main`, +1144/−58 in 15 files. Unreviewed. The
+`Type check` step of `ci-frontend.yml` (`npx tsc --noEmit`) fails with:
+
+```
+Cannot find module 'node:url' or its corresponding type declarations.
+```
+
+**Cause:** three token-layer tests — `src/styles/tokens.test.ts`,
+`tailwind-theme.test.ts`, `theme-applied.test.ts` — import `fileURLToPath` from
+`node:url`, and **`@types/node` is not a declared devDependency** of
+`frontend/package.json`. The failing run is on the branch's current tip
+(`05eaa8a`), not stale.
+
+**⚠️ Caveat — do not skip this.** `npx tsc --noEmit` **passes locally** even
+after a clean `pnpm install --frozen-lockfile`, so the failure could not be
+reproduced on this machine. `--traceResolution` shows `node:url` does *not*
+resolve locally either ("Module name 'node:url' was not resolved"), yet tsc
+still exits 0 — something in the local toolchain suppresses what the CI runner
+reports. The fix is the same either way, but **verify against CI, not against a
+local green run.** A local pass proves nothing here.
+
+Suggested fix: add `@types/node` to `frontend/package.json` devDependencies,
+push, and confirm the check goes green on GitHub.
+
+### 2. PR #74 — green and waiting since 2026-06-27
+
+`fix/validation-parent-before-child` — "fix(validation): treat
+CoroutineCompleted as body completion for coarse sources". +152/−11 in 3 files.
+**MERGEABLE / CLEAN, all checks pass, unreviewed.** No reason to hold it.
+
+### 3. Dependabot — 25 PRs
+
+13 green (ktor group, tanstack, postgres, eslint tooling, prettier), 5 with no
+checks (GitHub Actions bumps), 7 failing. Two of the failing ones are majors
+that need a deliberate decision, not a merge:
+
+- **#91 `@heroui/react` 2.7.11 → 3.2.1** — a major of the entire UI library.
+  HeroUI v3 moves to Tailwind v4 + React Aria. This is a migration, not a bump,
+  and the whole frontend is on v2.7. A `heroui-react` skill for v3 exists.
+- **#98 `framer-motion` 11 → 12**.
+
+### Order
+
+1. Fix #102's type check → green → review → merge to `main`.
+2. Merge #74.
+3. Then the integration decision below, which #102 landing on `main` is step one of.
+4. Then sub-project 4.
 
 ---
 
