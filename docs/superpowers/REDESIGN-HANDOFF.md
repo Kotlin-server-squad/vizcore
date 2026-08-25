@@ -2,47 +2,49 @@
 
 **Read this first on a cold start.** Updated after every completed plan.
 
-**Last updated:** 2026-08-25, after surveying open PRs. **Start at "Next action" below.**
+**Last updated:** 2026-08-25, after fixing PR #102's CI. **Start at "Next action" below.**
 
 ---
 
-## Next action — fix PR #102's CI, then integrate
+## Next action — merge #102 and #74, then integrate
 
-**Do this first.** Surveyed 2026-08-25: 27 open PRs, 2 authored by the user, 25 dependabot.
+**#102's CI is fixed and green.** Commit `c99b4f9` on `feat/spa-design-tokens`
+adds `@types/node@^24` to `frontend/package.json`. The GitHub run passed all
+five steps — install (`--frozen-lockfile`, so the lockfile is valid under CI's
+pnpm 9), lint, type check, test, build. The lockfile churn beyond the new entry
+is peer-suffix rewiring only (vite, vitest and msw all take `@types/node` as an
+optional peer); no version moved.
 
-### 1. PR #102 — the token layer — is RED and it blocks everything
+**The "passes locally" mystery is solved, and it generalises.** There is a stray
+`/Users/<user>/node_modules/@types/node` in the home directory, and TypeScript
+walks *parent* directories looking for `node_modules`. A CI checkout has no such
+ancestor. So **any** missing `@types` dependency will pass locally on this
+machine and fail in CI — this was not specific to the token layer. See the
+harness gotchas below.
 
-`feat/spa-design-tokens` → `main`, +1144/−58 in 15 files. Unreviewed. The
-`Type check` step of `ci-frontend.yml` (`npx tsc --noEmit`) fails with:
+### Both PRs are reviewed and ready; neither is merged
 
-```
-Cannot find module 'node:url' or its corresponding type declarations.
-```
+1. **#102 — token layer.** Reviewed. ~250 lines of real change (the rest is plan
+   and spec docs): `palette.ts` → `tokens.css` → `tailwind.config.ts`, with tests
+   that read the files off disk rather than the loaded objects, plus the
+   `#6366f1` guards. One nit — `palette.ts`'s header names `stateColor()` as a
+   consumer, but that function only exists here on `feat/spa-shell-ia` (plan 5).
+   The comment is true once this branch lands, aspirational on `main` alone.
 
-**Cause:** three token-layer tests — `src/styles/tokens.test.ts`,
-`tailwind-theme.test.ts`, `theme-applied.test.ts` — import `fileURLToPath` from
-`node:url`, and **`@types/node` is not a declared devDependency** of
-`frontend/package.json`. The failing run is on the branch's current tip
-(`05eaa8a`), not stale.
+2. **#74 — validation.** Re-verified 2026-08-25 as still current: nothing on
+   `main` has touched the validator since June, and both test mirrors still exist
+   on `main`, so the PR patches the right two files. Green, CLEAN, unreviewed by
+   anyone else. One finding, recorded under carried debt as **C-3** — it is a
+   narrowing, not a regression, so it does not block the merge.
 
-**⚠️ Caveat — do not skip this.** `npx tsc --noEmit` **passes locally** even
-after a clean `pnpm install --frozen-lockfile`, so the failure could not be
-reproduced on this machine. `--traceResolution` shows `node:url` does *not*
-resolve locally either ("Module name 'node:url' was not resolved"), yet tsc
-still exits 0 — something in the local toolchain suppresses what the CI runner
-reports. The fix is the same either way, but **verify against CI, not against a
-local green run.** A local pass proves nothing here.
+3. Then the integration decision below, which #102 landing on `main` is step one of.
+4. Then sub-project 4.
 
-Suggested fix: add `@types/node` to `frontend/package.json` devDependencies,
-push, and confirm the check goes green on GitHub.
+**`origin/main` is 113 commits behind local `main`** (unpushed Phase-15 work).
+Merging these PRs moves `origin/main` forward and diverges it further. The user
+reconciles that themselves — do not touch local `main`.
 
-### 2. PR #74 — green and waiting since 2026-06-27
-
-`fix/validation-parent-before-child` — "fix(validation): treat
-CoroutineCompleted as body completion for coarse sources". +152/−11 in 3 files.
-**MERGEABLE / CLEAN, all checks pass, unreviewed.** No reason to hold it.
-
-### 3. Dependabot — 25 PRs
+### Dependabot — 25 PRs
 
 13 green (ktor group, tanstack, postgres, eslint tooling, prettier), 5 with no
 checks (GitHub Actions bumps), 7 failing. Two of the failing ones are majors
@@ -52,15 +54,6 @@ that need a deliberate decision, not a merge:
   HeroUI v3 moves to Tailwind v4 + React Aria. This is a migration, not a bump,
   and the whole frontend is on v2.7. A `heroui-react` skill for v3 exists.
 - **#98 `framer-motion` 11 → 12**.
-
-### Order
-
-1. Fix #102's type check → green → review → merge to `main`.
-2. Merge #74.
-3. Then the integration decision below, which #102 landing on `main` is step one of.
-4. Then sub-project 4.
-
----
 
 ## What this work is
 
@@ -80,7 +73,7 @@ the earlier "bottom to top" framing here was wrong:
 
 | Branch | vs `main` | Contains | Pushed? |
 |---|---|---|---|
-| `feat/spa-design-tokens` | 8 ahead | sub-project 2: token layer. Genuinely an ancestor of `spa-shell-ia` | **PR #102**, open, unreviewed |
+| `feat/spa-design-tokens` | 8 ahead | sub-project 2: token layer. Genuinely an ancestor of `spa-shell-ia` | **PR #102**, open, CI green, reviewed |
 | `feat/spa-shell-ia` | 41 ahead, **113 behind** | plans 1–5: IA, state bar, rung + locked panels, workspace decomposition, debt cleanup | local only |
 | `feat/intellij-plugin-native-redesign` | 117 ahead, 0 behind | the user's Phase-15 work, plus one redesign commit `fd479d0`. **Descended from main, not from us.** | local only |
 
@@ -164,6 +157,23 @@ presentation: age labels and "why" strings.
 
 - **C-1 — `secondary` still has ~78 live references.** ✅ *Partly closed by plan 5*: the one call site the spec flagged as carrying real meaning (`WAITING_FOR_CHILDREN` in `coroutine-state-colors`) is retired, and no coroutine state maps onto the token any more. The rest — the comparison "B only" delta ring, chips across ~25 components — remain a per-call-site decision.
 - **C-2 — palette-backed state colour.** ✅ CLOSED by plan 5: `stateColor()` returns resolved palette hex, in the existing module rather than a second one beside it.
+- **C-3 — #74's body-completion probe is stream-wide, not per-source.**
+  `HierarchyValidator` decides whether to assert parent/child terminal ordering
+  from `coroutineEvents.any { it is CoroutineBodyCompleted }` — the whole stream.
+  But `InstrumentationSource` documents that "multiple sources may run
+  concurrently against the same session", and `VizcoreClient` drives a
+  `DebugProbesSource` against a session where the developer may *also* be using
+  `VizScope` wrappers. That combination **is** the instrumented rung. In such a
+  session one `CoroutineBodyCompleted` from a single wrapped scope re-arms the
+  strict rule for every DebugProbes-sourced parent/child pair, reintroducing the
+  exact false positive #74 removes — for the users highest on the ladder.
+  Not a regression (today that case always false-positives), so #74 still
+  improves on the status quo. The obvious per-parent fix has its own cost:
+  `VizScope` emits `coroutineBodyCompleted()` on the normal-completion path
+  (`VizScope.kt:202`), so a *cancelled* wrapped parent would lose the check.
+  `SourceAttribution.kt` already exists — deciding by source id is probably the
+  real answer.
+
 - **The backend reports no per-coroutine active/suspended durations.** The inspector's Timing card correctly says "not reported" for two of its three rows, because the timeline projection is a deferred stub (D-02). Filling those is a backend change.
 - Four hardcoded `#6366f1` remain in `FlowParticlePath.tsx` and `animation-variants.ts` — a five-colour flow-operator scheme the palette does not define.
 - `/scenarios/builder` (410-line `ScenarioBuilder`) still resolves; its fate is an open question in the spec.
@@ -172,6 +182,14 @@ presentation: age labels and "why" strings.
 
 - **CORS.** The backend allowlists `localhost:3000` only. Run it as `CORS_ALLOWED_ORIGINS=http://localhost:<devport> PORT=8085 ./gradlew run`, or POSTs return **403** while curl gets 201 — which reads like a broken UI.
 - **Killing the backend.** `pkill -f "gradlew run"` does **not** reach the Gradle-spawned JVM. Kill by PID from `lsof -nP -iTCP:8085 -sTCP:LISTEN -t`, or a stale backend keeps serving and you debug a phantom.
+- **A missing `@types/*` dep passes locally and fails only in CI.** There is a
+  stray `/Users/<user>/node_modules/@types/node` in the home directory, and
+  TypeScript resolves `node:*` builtins by walking parent directories for
+  `node_modules`. A CI checkout has no ancestor above the repo. Cost: one full
+  session's caveat in this handoff insisting the failure "could not be
+  reproduced". **Trust the CI annotations** (`gh api repos/<o>/<r>/check-runs/<id>/annotations`)
+  — they carried the exact file, line and message when `gh run view --log` had
+  already expired to empty.
 - **JDK 21** for Gradle: `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`.
 - **Ports 3000 and 8080** are usually taken on this machine; use 3103+/8085.
 - **`frontend/node_modules` may be absent** — run `pnpm install` first.
