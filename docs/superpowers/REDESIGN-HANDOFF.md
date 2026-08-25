@@ -45,16 +45,41 @@ parameter — details below. Then sub-project 5 aligns the plugin to the new IA.
 Both were merged with merge commits, matching this repo's convention (18 of the
 last 100 commits on `main` are `Merge pull request #NN`; zero squashes).
 
-### Dependabot — 25 PRs, untouched
+### The redesign is up as a 5-PR stack (opened 2026-08-25)
 
-13 green (ktor group, tanstack, postgres, eslint tooling, prettier), 5 with no
-checks (GitHub Actions bumps), 7 failing. Two of the failing ones are majors
-that need a deliberate decision, not a merge:
+`main` ← **#103** 1-ia ← **#104** 2-state-bar ← **#105** 3-fidelity-rung ←
+**#106** 4-workspace-decomposition ← **#107** 5-debt-cleanup. All MERGEABLE;
+each diff is scoped to its own plan. As of this writing **none has been reviewed.**
 
-- **#91 `@heroui/react` 2.7.11 → 3.2.1** — a major of the entire UI library.
-  HeroUI v3 moves to Tailwind v4 + React Aria. This is a migration, not a bump,
-  and the whole frontend is on v2.7. A `heroui-react` skill for v3 exists.
-- **#98 `framer-motion` 11 → 12**.
+⚠️ **Only #103 gets CI.** `ci-frontend.yml` triggers on
+`pull_request: branches: [main]`, and #104–#107 target the branch below them, so
+no workflow fires on four of the five. That is a property of stacking against
+this workflow config, not something the split broke. The commits themselves are
+verified green on `feat/spa-integration` (648 frontend, 831 backend).
+
+### Dependabot — reviewed, and the reviews are substantive
+
+Checked 2026-08-25. **Read the reviews before touching any of these** — they are
+real analysis, not bot noise, and one of them reframed C-1.
+
+- **15 APPROVED + green, mergeable now:** #76, #80, #82, #84, #88, #89, #90, #94,
+  #95, #96, #97, #99, #101, plus GitHub-Actions bumps #75, #77, #79, #81, #85
+  (which trigger no checks at all).
+- **3 CHANGES_REQUESTED, correctly held:**
+  - **#91 `@heroui/react` 2.7.11 → 3.2.1.** 50+ `TS2322`/`TS2305` errors.
+    `CardBody`/`CardHeader` are gone in favour of a compound `Card` API (~35
+    components); `variant="flat"` and Chip `color="secondary"` are removed (60+
+    usages); `Tooltip`/`Drawer`/`Input` prop signatures changed; v3 requires
+    **Tailwind v4** and the PR touches neither `tailwind.config.ts` nor postcss.
+    Reviewer's call: `@dependabot ignore @heroui/react major version`, close it,
+    and drive a tracked migration. **This is the source of C-1's reframing.**
+  - **#98 `framer-motion` 11 → 12.** 2 `TS2322` errors, 58 importing files, and
+    the reviewer wants it landed **in lockstep with #91** — v3 drops
+    framer-motion for CSS animations and both touch the same components.
+  - **#93** build group — failing.
+- **4 needing a second look:** #83 (flyway, failing, no review) and #78, #86, #87
+  — all APPROVED but carrying a FAILURE check, i.e. an approval that predates a
+  red run.
 
 ## What this work is
 
@@ -194,7 +219,17 @@ replay and read-only (M-4) — there is no second layout any more.
 
 ## Carried debt
 
-- **C-1 — `secondary` still has ~78 live references.** ✅ *Partly closed by plan 5*: the one call site the spec flagged as carrying real meaning (`WAITING_FOR_CHILDREN` in `coroutine-state-colors`) is retired, and no coroutine state maps onto the token any more. The rest — the comparison "B only" delta ring, chips across ~25 components — remain a per-call-site decision.
+- **C-1 — `secondary` is a HeroUI-v3 MIGRATION PREREQUISITE, not a cleanup preference.**
+  *Reframed 2026-08-25 by the review on dependabot #91.* Plan 5 closed the one
+  call site that carried real meaning (`WAITING_FOR_CHILDREN` in
+  `coroutine-state-colors`), and no coroutine state maps onto the token any more.
+  The remaining ~78 references were filed here as a per-call-site judgement call.
+  **That framing was wrong.** HeroUI v3 *removes* `color="secondary"` from Chip
+  and Button outright (the palette becomes
+  `default`/`success`/`danger`/`accent`/`warning`), and removes `variant="flat"`
+  too. So every remaining reference is work the v3 migration must do regardless
+  of taste. Retiring them early is migration progress, not tidying.
+
 - **C-2 — palette-backed state colour.** ✅ CLOSED by plan 5: `stateColor()` returns resolved palette hex, in the existing module rather than a second one beside it.
 - **C-3 — #74's body-completion probe is stream-wide, not per-source.**
   `HierarchyValidator` decides whether to assert parent/child terminal ordering
@@ -213,6 +248,30 @@ replay and read-only (M-4) — there is no second layout any more.
   `SourceAttribution.kt` already exists — deciding by source id is probably the
   real answer.
 
+- **C-4 — token-layer gaps the #102 review flagged, merged unaddressed.** All
+  verified still live on the current tree:
+  - `tailwind.config.ts` `borderRadius` hardcodes `12px`/`8px` instead of
+    `var(--radius)`/`var(--radius-sm)`, so changing the CSS token does not reach
+    `.rounded-viz`. A real hole in the single-source-of-truth claim — and the
+    v3/Tailwind-v4 migration is CSS-first, so this compounds with C-1.
+  - `--created` is never surfaced to Tailwind/HeroUI; it is CSS-only.
+  - **Nine `tokens.css` properties have no palette entry and so are unguarded:**
+    the four `*-soft` fills, `--font-sans`, `--font-mono`, `--radius`,
+    `--radius-sm`, `--shadow`. A typo in any of them slips past `tokens.test.ts`,
+    which only iterates the palette. The reviewer's fix is better than the
+    obvious one: assert every `--*` in `tokens.css` is either in `palette` or on
+    an explicit extras allowlist.
+  - *Already answered, do not re-open:* `.font-mono-viz` was removed deliberately
+    in `05eaa8a` as unused — `font-mono` already maps to JetBrains Mono at 118
+    sites.
+
+- **C-5 — the duplicate `HierarchyValidatorTest.kt`.** Byte-identical at
+  `backend/coroutine-viz-core/src/test/...` and `backend/src/test/...`, and both
+  #74 reviews flagged it independently. Phase 08.4's `verifyNoDuplicateSourceFqns`
+  Gradle guard covers **main** sources only, so test-source duplication slips
+  through it. Two 175-line files kept in sync by hand is the drift hazard that
+  guard exists to prevent.
+
 - **The backend reports no per-coroutine active/suspended durations.** The inspector's Timing card correctly says "not reported" for two of its three rows, because the timeline projection is a deferred stub (D-02). Filling those is a backend change.
 - Four hardcoded `#6366f1` remain in `FlowParticlePath.tsx` and `animation-variants.ts` — a five-colour flow-operator scheme the palette does not define.
 - `/scenarios/builder` (410-line `ScenarioBuilder`) still resolves; its fate is an open question in the spec.
@@ -221,6 +280,15 @@ replay and read-only (M-4) — there is no second layout any more.
 
 - **CORS.** The backend allowlists `localhost:3000` only. Run it as `CORS_ALLOWED_ORIGINS=http://localhost:<devport> PORT=8085 ./gradlew run`, or POSTs return **403** while curl gets 201 — which reads like a broken UI.
 - **Killing the backend.** `pkill -f "gradlew run"` does **not** reach the Gradle-spawned JVM. Kill by PID from `lsof -nP -iTCP:8085 -sTCP:LISTEN -t`, or a stale backend keeps serving and you debug a phantom.
+- **`reviewDecision` and the check rollup do NOT tell you whether a PR was
+  reviewed.** A review posted as an *issue comment* leaves `reviews=0` and
+  `reviewDecision=""`, so a PR carrying a detailed APPROVE reads as untouched.
+  This cost real trust: #102 and #74 were both called "unreviewed" here and
+  merged on that basis, when each already carried a thorough review with
+  actionable nits (now C-4 and C-5). **Query all three endpoints** —
+  `issues/N/comments`, `pulls/N/comments`, `pulls/N/reviews` — before claiming a
+  PR is unreviewed. `gh pr list --json number,reviews,comments` sweeps the whole
+  repo in one call.
 - **A missing `@types/*` dep passes locally and fails only in CI.** There is a
   stray `/Users/<user>/node_modules/@types/node` in the home directory, and
   TypeScript resolves `node:*` builtins by walking parent directories for
