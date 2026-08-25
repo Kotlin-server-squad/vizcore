@@ -788,13 +788,13 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
     }
   }
 
-  function mountSession(coroutines: ReturnType<typeof coro>[]) {
+  function mountSession(coroutines: ReturnType<typeof coro>[], sessionId = 'session-1') {
     mockedUseSession.mockReturnValue({
       data: makeSession({ coroutineCount: coroutines.length, coroutines }),
       isLoading: false,
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useSession>)
-    return render(<SessionDetails sessionId="session-1" />, { wrapper: createWrapper() })
+    return render(<SessionDetails sessionId={sessionId} />, { wrapper: createWrapper() })
   }
 
   it('renders only non-terminal coroutines in the graph by default', () => {
@@ -840,6 +840,26 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
     // Suspended has no members here, so the canvas is empty for a different
     // reason than "no app connected".
     expect(screen.queryByRole('button', { name: /Suspended/ })).toBeNull()
+  })
+
+  it('badges a scenario session as DEMO and locks nothing', () => {
+    mountSession([coro('a-active', 'ACTIVE')], 'scenario-Nested Coroutines')
+    expect(screen.getByTestId('rung-badge')).toHaveTextContent('DEMO')
+    // A demo session already has full fidelity — nothing to invite.
+    expect(screen.queryByText('Lock contention')).toBeNull()
+  })
+
+  it('badges a real session with no wrapper evidence as ATTACHED', () => {
+    mountSession([coro('a-active', 'ACTIVE')], 'checkout-service')
+    expect(screen.getByTestId('rung-badge')).toHaveTextContent('ATTACHED')
+  })
+
+  it('invites the next rung instead of hiding what is missing', () => {
+    mountSession([coro('a-active', 'ACTIVE')], 'checkout-service')
+    // The defect this fixes: today these panels silently vanish, so the user
+    // never learns a richer view exists.
+    expect(screen.getByText('Lock contention')).toBeInTheDocument()
+    expect(screen.getByText(/Swap Mutex\(\) for VizMutex\(\)/)).toBeInTheDocument()
   })
 
   it('renders the state bar with counts over the whole snapshot', () => {

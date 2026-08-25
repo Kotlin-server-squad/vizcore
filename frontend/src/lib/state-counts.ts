@@ -4,7 +4,15 @@ import { CoroutineState, type CoroutineNode } from '@/types/api'
  * What the state bar can filter by. `all` is the resting state — the workspace
  * behaves exactly as it did before the bar existed.
  */
-export type StateFilter = 'all' | 'running' | 'suspended' | 'completed' | 'cancelled' | 'failed'
+export type StateFilter =
+  | 'all'
+  | 'running'
+  | 'suspended'
+  | 'completed'
+  | 'cancelled'
+  | 'failed'
+  /** Cross-cutting: a still-active coroutine alive past the leak threshold. */
+  | 'leaks'
 
 export interface StateCounts {
   running: number
@@ -12,8 +20,14 @@ export interface StateCounts {
   completed: number
   cancelled: number
   failed: number
-  /** Every coroutine in the snapshot. The five buckets always sum to this. */
+  /** Every coroutine in the snapshot. The five state buckets always sum to this. */
   total: number
+  /**
+   * Potential leaks. NOT one of the five buckets and not part of `total` — a
+   * leak is a heuristic flag on a still-active coroutine, so a leaked coroutine
+   * is also counted under `running`.
+   */
+  leaks: number
 }
 
 /**
@@ -40,7 +54,10 @@ const STATE_BUCKET = {
 } as const satisfies Record<CoroutineState, Exclude<StateFilter, 'all'>>
 
 /** Pure reducer over a coroutine snapshot. Safe inside a useMemo. */
-export function deriveStateCounts(coroutines: readonly CoroutineNode[]): StateCounts {
+export function deriveStateCounts(
+  coroutines: readonly CoroutineNode[],
+  leakIds?: ReadonlySet<string>,
+): StateCounts {
   const counts: StateCounts = {
     running: 0,
     suspended: 0,
@@ -48,6 +65,7 @@ export function deriveStateCounts(coroutines: readonly CoroutineNode[]): StateCo
     cancelled: 0,
     failed: 0,
     total: 0,
+    leaks: leakIds?.size ?? 0,
   }
   for (const c of coroutines) {
     const bucket = STATE_BUCKET[c.state as CoroutineState]
@@ -65,5 +83,28 @@ export function deriveStateCounts(coroutines: readonly CoroutineNode[]): StateCo
  */
 export function matchesFilter(state: CoroutineState, filter: StateFilter): boolean {
   if (filter === 'all') return true
+  // A leak is a property of the coroutine, not of its state — `selectCoroutines`
+  // resolves it against the leak id set instead.
+  if (filter === 'leaks') return false
   return (STATE_BUCKET[state] ?? 'running') === filter
+}
+
+/**
+ * What the canvas shows for a given chip.
+ *
+ * The single place the two kinds of filter meet: lifecycle states resolve
+ * through `matchesFilter`, and the cross-cutting leak flag resolves against the
+ * leak id set. Keeping both here stops the bar and the canvas disagreeing about
+ * what a chip means.
+ */
+export function selectCoroutines(
+  coroutines: readonly CoroutineNode[],
+  filter: StateFilter,
+  leakIds?: ReadonlySet<string>,
+): CoroutineNode[] {
+  if (filter === 'all') return [...coroutines]
+  if (filter === 'leaks') {
+    return leakIds ? coroutines.filter(c => leakIds.has(c.id)) : []
+  }
+  return coroutines.filter(c => matchesFilter(c.state as CoroutineState, filter))
 }
