@@ -27,7 +27,7 @@ dependencies {
     // Core library (events, wrappers, session, validation)
     implementation(project(":coroutine-viz-core"))
 
-    implementation("org.openfolder:kotlin-asyncapi-ktor:3.2.2")
+    implementation("org.openfolder:kotlin-asyncapi-ktor:3.2.3")
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-auth")
     // JWT auth (AUTH-03) — version from the Ktor BOM (io.ktor.plugin) so it tracks ktor-server-auth.
