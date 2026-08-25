@@ -52,7 +52,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-netty")
     implementation("ch.qos.logback:logback-classic:$logback_version")
-    implementation("net.logstash.logback:logstash-logback-encoder:8.1")
+    implementation("net.logstash.logback:logstash-logback-encoder:9.0")
     implementation("io.ktor:ktor-server-config-yaml")
 
     // Persistence (PERS-01/02) — Exposed 1.x DSL + HikariCP pool + Flyway migrations.
