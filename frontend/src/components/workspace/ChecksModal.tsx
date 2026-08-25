@@ -46,7 +46,7 @@ export function ChecksModal({
           </span>
         </ModalHeader>
         <ModalBody>
-          <ValidationPanel sessionId={sessionId} validation={validation} />
+          <ValidationPanel sessionId={sessionId} validation={validation} showHeading={false} />
         </ModalBody>
         <ModalFooter>
           <Button variant="light" onPress={() => onOpenChange(false)}>

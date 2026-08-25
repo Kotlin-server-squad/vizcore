@@ -16,9 +16,19 @@ interface ValidationPanelProps {
    * makes that possible. Omitted, the panel owns its own run as before.
    */
   validation?: ReturnType<typeof useValidation>
+  /**
+   * Whether the run card repeats the panel's title. False inside the checks
+   * modal, which already carries it — two headings saying the same thing one
+   * line apart read as a rendering mistake.
+   */
+  showHeading?: boolean
 }
 
-export function ValidationPanel({ sessionId, validation }: ValidationPanelProps) {
+export function ValidationPanel({
+  sessionId,
+  validation,
+  showHeading = true,
+}: ValidationPanelProps) {
   // Hooks cannot be called conditionally, so the panel always creates its own
   // and simply prefers the caller's when there is one. The unused mutation
   // issues no request until `validate` is called, so this costs nothing.
@@ -37,7 +47,7 @@ export function ValidationPanel({ sessionId, validation }: ValidationPanelProps)
       <Card>
         <CardBody className="flex flex-row items-center justify-between">
           <div>
-            <div className="font-semibold">Session Validation</div>
+            {showHeading && <div className="font-semibold">Session Validation</div>}
             <div className="text-xs text-default-500">
               Run validation checks to detect event ordering issues, timing anomalies, and structural problems.
             </div>

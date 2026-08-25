@@ -394,6 +394,7 @@ export function SessionWorkspace({
             sessionId={sessionId}
             coroutine={isLiveView ? selectedCoroutine : null}
             readOnly={readOnly}
+            threadActivity={panelThreadActivity}
           />
         }
       />

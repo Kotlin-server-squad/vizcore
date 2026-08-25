@@ -5,8 +5,14 @@ import type { ValidationResponse } from '@/types/api'
 import { ChecksModal, countFailedChecks } from './ChecksModal'
 
 vi.mock('../validation/ValidationPanel', () => ({
-  ValidationPanel: ({ validation }: { validation: { data: ValidationResponse | null } }) => (
-    <div data-testid="validation-panel">
+  ValidationPanel: ({
+    validation,
+    showHeading,
+  }: {
+    validation: { data: ValidationResponse | null }
+    showHeading?: boolean
+  }) => (
+    <div data-testid="validation-panel" data-show-heading={String(showHeading)}>
       results:{validation.data ? validation.data.results.length : 'none'}
     </div>
   ),
@@ -95,6 +101,21 @@ describe('ChecksModal', () => {
     // The hook lives in SessionWorkspace, not in the modal — unmounting the
     // modal must not throw the run away.
     expect(await screen.findByTestId('validation-panel')).toHaveTextContent('results:3')
+  })
+
+  it('announces itself once — the panel does not repeat the title', () => {
+    render(
+      <ChecksModal
+        sessionId="s-1"
+        isOpen
+        onOpenChange={vi.fn()}
+        validation={validation()}
+      />,
+    )
+
+    // The modal owns the title; the re-hosted panel's own "Session Validation"
+    // card header would say the same thing a second line down.
+    expect(screen.getByTestId('validation-panel')).toHaveAttribute('data-show-heading', 'false')
   })
 
   it('closes on the close button', async () => {
