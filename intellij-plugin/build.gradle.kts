@@ -27,10 +27,10 @@ dependencies {
     implementation(project(":coroutine-viz-core"))
 
     // Lightweight HTTP server for receiving events from instrumented app
-    implementation("io.ktor:ktor-server-core:3.5.0")
-    implementation("io.ktor:ktor-server-cio:3.5.0")
-    implementation("io.ktor:ktor-server-content-negotiation:3.5.0")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.5.0")
+    implementation("io.ktor:ktor-server-core:3.5.1")
+    implementation("io.ktor:ktor-server-cio:3.5.1")
+    implementation("io.ktor:ktor-server-content-negotiation:3.5.1")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.5.1")
 
     intellijPlatform {
         intellijIdeaCommunity("2024.1")
