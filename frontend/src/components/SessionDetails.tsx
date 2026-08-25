@@ -23,6 +23,7 @@ import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
 import { useReplay } from '@/hooks/use-replay'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
+import { deriveStateCounts, matchesFilter, type StateFilter } from '@/lib/state-counts'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { CoroutineTree } from './CoroutineTree'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
@@ -32,6 +33,7 @@ import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { ThreadTimeline } from './ThreadTimeline'
 import { DispatcherOverview } from './DispatcherOverview'
 import { LiveDockPanel } from './LiveDockPanel'
+import { StateBar } from './StateBar'
 import { EmptyState } from './EmptyState'
 import { ChannelPanel } from './channels/ChannelPanel'
 import { FlowPanel } from './flow/FlowPanel'
@@ -112,6 +114,9 @@ export function SessionDetails({
   // Active-only "What's running now" view (D-08): completed coroutines collapse
   // into an expandable aggregate, toggled off by default.
   const [showCompleted, setShowCompleted] = useState(false)
+  // The state bar's active chip (D-4). 'all' is the resting state and preserves
+  // the pre-bar behaviour exactly: active-only unless showCompleted is on.
+  const [stateFilter, setStateFilter] = useState<StateFilter>('all')
   // Manage-shares modal (D-11/D-13). Owner-only — the trigger is gated OFF in
   // the read-only shared view (ADR-019: no re-sharing from a shared link).
   const [sharesOpen, setSharesOpen] = useState(false)
@@ -264,11 +269,10 @@ export function SessionDetails({
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
-  const { activeCoroutines, completedCount, shownCoroutines, moreCount } = useMemo(() => {
+  const { completedCount, shownCoroutines, moreCount } = useMemo(() => {
     const active = panelCoroutines.filter(c => !TERMINAL_STATES.has(c.state as CoroutineState))
     const shown = active.slice(0, NODE_CAP)
     return {
-      activeCoroutines: active,
       completedCount: panelCoroutines.length - active.length,
       shownCoroutines: shown,
       moreCount: active.length - shown.length,
@@ -276,10 +280,20 @@ export function SessionDetails({
   }, [panelCoroutines])
   // What the tree/graph render: the capped active set, or — when the user expands
   // the completed aggregate — the full set (active + completed) up to the cap.
-  const renderedCoroutines = useMemo(
-    () => (showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines),
-    [showCompleted, panelCoroutines, shownCoroutines],
-  )
+  const renderedCoroutines = useMemo(() => {
+    // A named chip selects that state explicitly across the whole snapshot, and
+    // bypasses the active-only default — you asked for completed, you get
+    // completed. With no chip active, behaviour is exactly as before the bar.
+    if (stateFilter !== 'all') {
+      return panelCoroutines
+        .filter(c => matchesFilter(c.state as CoroutineState, stateFilter))
+        .slice(0, NODE_CAP)
+    }
+    return showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines
+  }, [stateFilter, showCompleted, panelCoroutines, shownCoroutines])
+
+  /** Counts for the state bar — the whole snapshot, never the capped subset. */
+  const stateCounts = useMemo(() => deriveStateCounts(panelCoroutines), [panelCoroutines])
 
   // Close the source drawer if its coroutine leaves the session entirely (e.g. a
   // replay cursor moving before its creation, or a session reset). A terminal or
@@ -724,6 +738,9 @@ export function SessionDetails({
         <RegistrationFlowView events={allEvents} />
       )}
 
+      {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
+      <StateBar counts={stateCounts} filter={stateFilter} onFilterChange={setStateFilter} />
+
       {/* Main Tabs */}
       <Tabs aria-label="Session tabs" variant="bordered" fullWidth>
         {/* Coroutines tab - Graph/List view toggle. In replay, renders the
@@ -752,11 +769,22 @@ export function SessionDetails({
                     )}
                   </div>
 
-                  {activeCoroutines.length === 0 && !showCompleted ? (
-                    <EmptyState
-                      title="No live coroutines yet"
-                      description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
-                    />
+                  {/* Gate on what the canvas will actually render, not on the
+                      active set — a state filter can select terminal coroutines,
+                      and gating on activeCoroutines hid them behind the
+                      "no app connected" empty state. */}
+                  {renderedCoroutines.length === 0 ? (
+                    stateFilter === 'all' ? (
+                      <EmptyState
+                        title="No live coroutines yet"
+                        description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
+                      />
+                    ) : (
+                      <EmptyState
+                        title={`No ${stateFilter} coroutines`}
+                        description="Nothing in this session matches the selected state. Pick another state, or clear the filter to see everything."
+                      />
+                    )
                   ) : (
                     <Card>
                       <CardBody className="overflow-auto">

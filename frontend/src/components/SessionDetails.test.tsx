@@ -810,6 +810,84 @@ describe('SessionDetails active-only "What\'s running now" view (RCO-06, D-08)',
     expect(graph).toHaveAttribute('data-ids', 'a-active,b-suspended')
   })
 
+  it('surfaces a filtered state even when every coroutine is terminal', async () => {
+    // Regression: the empty state was gated on activeCoroutines, which ignores
+    // the filter — so picking "Failed" on an all-terminal session kept showing
+    // "No live coroutines yet" instead of the failed coroutines.
+    mountSession([
+      coro('a-failed', 'FAILED'),
+      coro('b-failed', 'FAILED'),
+      coro('c-cancelled', 'CANCELLED'),
+    ])
+
+    expect(screen.getByText('No live coroutines yet')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Failed 2' }))
+
+    expect(screen.queryByText('No live coroutines yet')).not.toBeInTheDocument()
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
+      'data-ids',
+      'a-failed,b-failed'
+    )
+  })
+
+  it('explains an empty result as a filter miss, not a missing app', async () => {
+    mountSession([coro('a-active', 'ACTIVE'), coro('b-failed', 'FAILED')])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Failed 1' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'b-failed')
+
+    // Suspended has no members here, so the canvas is empty for a different
+    // reason than "no app connected".
+    expect(screen.queryByRole('button', { name: /Suspended/ })).toBeNull()
+  })
+
+  it('renders the state bar with counts over the whole snapshot', () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('b-suspended', 'SUSPENDED'),
+      coro('c-completed', 'COMPLETED'),
+      coro('d-failed', 'FAILED'),
+    ])
+    // Counts cover every coroutine, not just the ones the canvas renders.
+    expect(screen.getByRole('button', { name: 'Running 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Suspended 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Completed 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Failed 1' })).toBeInTheDocument()
+  })
+
+  it('narrows the canvas to the chosen state, including terminal ones', async () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('b-suspended', 'SUSPENDED'),
+      coro('c-completed', 'COMPLETED'),
+      coro('d-failed', 'FAILED'),
+    ])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Completed 1' }))
+    // A named chip bypasses the active-only default — asking for completed
+    // must actually show completed.
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'c-completed')
+  })
+
+  it('restores the default view when the active chip is clicked again', async () => {
+    mountSession([
+      coro('a-active', 'ACTIVE'),
+      coro('b-suspended', 'SUSPENDED'),
+      coro('c-completed', 'COMPLETED'),
+    ])
+
+    const completed = screen.getByRole('button', { name: 'Completed 1' })
+    await userEvent.click(completed)
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'c-completed')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Completed 1' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
+      'data-ids',
+      'a-active,b-suspended'
+    )
+  })
+
   it('shows the "What\'s running now" section title', () => {
     mountSession([coro('a-active', 'ACTIVE')])
     expect(screen.getByText("What's running now")).toBeInTheDocument()
