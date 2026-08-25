@@ -68,19 +68,75 @@ their own code the developer changed.
 
 ## Branches — NOT a stack
 
-Corrected 2026-08-24. These are **divergent lines off different points**, and
-the earlier "bottom to top" framing here was wrong:
+Corrected 2026-08-24, **measured 2026-08-25**. These are **divergent lines off
+different points**, and the earlier "bottom to top" framing was wrong:
 
-| Branch | vs `main` | Contains | Pushed? |
+| Branch | vs local `main` | Contains | Pushed? |
 |---|---|---|---|
-| `feat/spa-design-tokens` | 8 ahead | sub-project 2: token layer. Genuinely an ancestor of `spa-shell-ia` | **PR #102**, open, CI green, reviewed |
-| `feat/spa-shell-ia` | 41 ahead, **113 behind** | plans 1–5: IA, state bar, rung + locked panels, workspace decomposition, debt cleanup | local only |
-| `feat/intellij-plugin-native-redesign` | 117 ahead, 0 behind | the user's Phase-15 work, plus one redesign commit `fd479d0`. **Descended from main, not from us.** | local only |
+| `feat/spa-design-tokens` | 9 ahead, 113 behind | sub-project 2: token layer. Genuinely an ancestor of `spa-shell-ia` | **PR #102**, open, CI green, reviewed |
+| `feat/spa-shell-ia` | 48 ahead, **113 behind** | plans 1–5: IA, state bar, rung + locked panels, workspace decomposition, debt cleanup | local only |
+| `feat/intellij-plugin-native-redesign` | **117 ahead, 0 behind** | Phase-15 work + one redesign commit `fd479d0`. **Contains all of local `main`.** | local only |
 
-Only `feat/spa-design-tokens` is actually beneath us, so only a token-layer
-review forces a rebase here. The other two need a real integration, and the
-conflict surface between our branch and the plugin branch is small:
-`frontend/src/routes/index.tsx` and its test.
+Merge bases: `spa-shell-ia` ∩ `main` = `a87b5f9`; `plugin` ∩ `main` = `737e361`
+(= local `main`'s tip). So the plugin branch is a strict descendant of `main`,
+and only `spa-shell-ia` sits on an older fork point.
+
+## The integration decision — measured, not estimated (2026-08-25)
+
+A real trial merge was run with `git merge-tree --write-tree` (no working tree
+touched). **The conflict surface is two files, and both resolve trivially.**
+
+- 85 files touched by `spa-shell-ia`, 175 by `main`+plugin, **overlap = 2**.
+- Trial merge produces a coherent 885-file tree. Everything auto-merges except
+  `frontend/src/routes/index.tsx` (content) and `index.test.tsx` (add/add).
+
+**`index.tsx` is a non-conflict.** The plugin side's *net* diff from the merge
+base is a rename `HomePage` → `Home`, an `export`, and a doc comment — the
+`?correlation=` deep-link was added in `7bb6482` and removed again in `fd479d0`,
+so it nets to nothing. `spa-shell-ia` rewrote that file 124 → 40 lines. Take the
+`spa-shell-ia` version; add a named export if a plugin-side test wants one.
+
+**`index.test.tsx` is a shell.** The plugin's 96-line file is ~80 lines of router
+scaffolding supporting a single surviving assertion — that the marketing hero
+renders (`heading 'Coroutine Visualizer'`, `button 'View Sessions'`). That is the
+page sub-project 1 deliberately deleted, and `spa-shell-ia`'s own test asserts
+the hero is *gone*. Delete the plugin's copy; **no coverage is lost**, because
+its real content (the deep-link tests) was already removed with the deep-link.
+
+**No modify/delete landmines.** `SessionDetails.tsx`, `LiveDockPanel.tsx` and
+*both their test files* are removed cleanly in the merged tree — git tracked them
+as renames into `components/workspace/`, so the 113 `main` commits do not
+resurrect them.
+
+**Do it as a merge, not a rebase.** The conflict is concentrated in 2 files and 2
+commits; replaying 48 commits would re-litigate the same conflict repeatedly, and
+a merge preserves the frozen-suite signal that plan 4's refactor depended on.
+
+⚠️ **The integrated branch will fail CI exactly like #102 did.** The merged tree
+carries the three `node:*` token tests but **not** `@types/node` — that fix lives
+only on `feat/spa-design-tokens` (`c99b4f9`). Land #102 first, or carry that
+commit into the integration.
+
+## Next: sub-project 4 — shared domain projections — unblocked BY the integration
+
+Move `ProblemDerivation.kt` into `coroutine-viz-core` and expose it on the session
+API, so the plugin and SPA stop computing the same domain twice (spec D-8). Then
+sub-project 5 aligns the plugin to the new IA.
+
+It cannot start on `feat/spa-shell-ia` — the file lives only on the plugin branch,
+and this branch has no `model/`, `api/` or `toolwindow/` package at all. **The
+trial merge confirms it lands intact:**
+`intellij-plugin/src/main/kotlin/com/jh/coroutinevisualizer/model/ProblemDerivation.kt`
+plus `SuspensionTracker.kt` and both their tests are present in the merged tree.
+
+**The domain/presentation split is small and located.** `ProblemDerivation` is 109
+lines; the entire presentation coupling is three `CoroutineStateStyle.ageLabel`
+call sites (lines 65, 79, 80 — line 80 also builds the `why` string) plus the
+`longSuspended: Map<String, Long>` parameter fed by the plugin-side tracker.
+Everything else is domain. *Correction to an earlier note:* there is no
+`CoroutineStateStyle.kt` — the object is declared inside
+`toolwindow/CoroutineTreeStyle.kt`. `HierarchyNodeDto` and `LeakDto` are in
+`api/` (`WireModels.kt`).
 
 ## Done
 
