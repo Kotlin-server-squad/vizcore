@@ -1,0 +1,25 @@
+[
+  {
+    "type": "CoroutineCreated",
+    "sessionId": "cli-bad",
+    "seq": 0,
+    "tsNanos": 1000,
+    "coroutineId": "c1",
+    "jobId": "j1",
+    "parentCoroutineId": null,
+    "scopeId": "main-scope",
+    "label": "leaky-worker",
+    "createdAtEpochMs": 1700000000000
+  },
+  {
+    "type": "CoroutineStarted",
+    "sessionId": "cli-bad",
+    "seq": 1,
+    "tsNanos": 2000,
+    "coroutineId": "c1",
+    "jobId": "j1",
+    "parentCoroutineId": null,
+    "scopeId": "main-scope",
+    "label": "leaky-worker"
+  }
+]

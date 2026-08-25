@@ -10,6 +10,7 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.events.dispatcher.DispatcherSelected
 import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 import com.jh.proj.coroutineviz.events.job.JobCancellationRequested
 import com.jh.proj.coroutineviz.events.job.JobJoinCompleted
@@ -57,7 +58,7 @@ data class EventContext(
 // Coroutine Lifecycle Events
 // ============================================================================
 
-fun EventContext.coroutineCreated(): CoroutineCreated =
+fun EventContext.coroutineCreated(creationPoint: SuspensionPoint? = null): CoroutineCreated =
     CoroutineCreated(
         sessionId = sessionId,
         seq = nextSeq(),
@@ -68,6 +69,7 @@ fun EventContext.coroutineCreated(): CoroutineCreated =
         scopeId = scopeId,
         label = label,
         createdAtEpochMs = epochMillis(),
+        creationPoint = creationPoint,
     )
 
 fun EventContext.coroutineStarted(): CoroutineStarted =
@@ -261,6 +263,30 @@ fun EventContext.threadAssigned(
         threadId = threadId,
         threadName = threadName,
         dispatcherName = dispatcherName,
+    )
+
+/**
+ * Dispatcher announcement (15-08 Task 2). Mirrors [threadAssigned]; used by the
+ * DebugProbes synthesizer, where the stable normalized dispatcher name is the
+ * only dispatcher id available (`dispatcherId = dispatcherName`).
+ */
+fun EventContext.dispatcherSelected(
+    dispatcherId: String,
+    dispatcherName: String,
+    queueDepth: Int? = null,
+): DispatcherSelected =
+    DispatcherSelected(
+        sessionId = sessionId,
+        seq = nextSeq(),
+        tsNanos = timestamp(),
+        coroutineId = coroutineId,
+        jobId = jobId,
+        parentCoroutineId = parentCoroutineId,
+        scopeId = scopeId,
+        label = label,
+        dispatcherId = dispatcherId,
+        dispatcherName = dispatcherName,
+        queueDepth = queueDepth,
     )
 
 fun EventContext.waitingForChildren(

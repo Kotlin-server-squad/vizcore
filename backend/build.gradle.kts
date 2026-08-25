@@ -48,6 +48,18 @@ dependencies {
     implementation("io.ktor:ktor-server-rate-limit")
     implementation("io.ktor:ktor-server-metrics-micrometer")
     implementation("io.micrometer:micrometer-registry-prometheus:$prometheus_version")
+
+    // OpenTelemetry / OTLP observability (OTEL-01/02) — backend-ONLY per D-12.
+    // NEVER add these to coroutine-viz-core / coroutine-viz-client: OTel bytecode in
+    // a publishable module fails the Phase-11 `checkBytecode` guard. First-party CNCF
+    // io.opentelemetry artifacts (RESEARCH Package Legitimacy Audit: all Approved).
+    // BOM pins the version; all other coordinates inherit it (no per-artifact versions).
+    // Do NOT add opentelemetry-sdk-extension-autoconfigure — it eagerly constructs/sets
+    // a global, defeating the OTEL-01 construction gate (RESEARCH anti-pattern).
+    implementation(platform("io.opentelemetry:opentelemetry-bom:1.63.0"))
+    implementation("io.opentelemetry:opentelemetry-api")
+    implementation("io.opentelemetry:opentelemetry-sdk")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
     implementation("io.ktor:ktor-server-content-negotiation")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-netty")
@@ -78,10 +90,39 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+
+    // OTel in-memory span exporter for Wave 0 span-shape assertions (plans 02/03) —
+    // version inherited from the opentelemetry-bom above. Backend-only (D-12).
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
 }
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+// ── PERF-05 dev-only load harness (D-09/D-10/D-11) ───────────────────────────
+// A SEPARATE `loadHarness` source set + JavaExec task that drives sustained
+// synthetic VizEvent load straight at EventBus.send to stress the Plan 01-03
+// egress hardening. Because it is its OWN source set (not `main`), it is excluded
+// from `jar`/`shadowJar` by default — nothing here is ever added to a jar `from(...)`,
+// so the harness can NEVER ship in the production artifact (D-09). The source set
+// compiles/runs against `main`'s output + runtime classpath so it can see
+// VizSession / EventBus / the egress primitives. It lives ONLY in :backend and does
+// NOT touch coroutine-viz-core / coroutine-viz-client build files, so the JVM-17
+// purity of those publishable modules is untouched (Pitfall P6); the harness may run
+// on the backend's JVM 21.
+val loadHarness: SourceSet =
+    sourceSets.create("loadHarness") {
+        compileClasspath += sourceSets["main"].output + configurations["runtimeClasspath"]
+        runtimeClasspath += output + compileClasspath
+    }
+
+// The thin `main()` entrypoint in src/loadHarness/ flooding via EgressLoadDriver (main).
+tasks.register<JavaExec>("loadHarness") {
+    group = "verification"
+    description = "Dev-only: floods synthetic VizEvents at EventBus.send to stress the egress chain (PERF-05)."
+    mainClass.set("com.jh.proj.coroutineviz.harness.LoadHarnessMain")
+    classpath = loadHarness.runtimeClasspath
 }
 
 // CR-01 guard: fail the build if any .kt FQN (== relative path under src/main/kotlin)
@@ -114,4 +155,103 @@ val verifyNoDuplicateSourceFqns by tasks.registering {
     }
 }
 
+// PERF-06 guard: fail the build if the publishable SDK modules drift off the JVM-17
+// floor (D-07) OR if coroutine-viz-core gains an io.ktor import (D-08, breaks the
+// IntelliJ-241 17-targeted plugin variant). Models the verifyNoDuplicateSourceFqns
+// idiom but scans COMPILED output, so it MUST dependsOn the modules' `classes` tasks
+// (RESEARCH Pitfall 4 — the bytes must exist) and FAIL on an empty classes dir rather
+// than pass vacuously. The backend app (com.jh.proj) legitimately uses io.ktor (see the
+// application { mainClass = "io.ktor.server.netty.EngineMain" } block above) and is NOT
+// scanned — only the two publishable, web-framework-free modules are.
+val checkBytecode by tasks.registering {
+    group = "verification"
+    description =
+        "Fails if coroutine-viz-core/client emit a class with bytecode major > 61 (JVM 17) " +
+        "or if coroutine-viz-core sources import io.ktor."
+    dependsOn(
+        project(":coroutine-viz-core").tasks.named("classes"),
+        project(":coroutine-viz-client").tasks.named("classes"),
+    )
+    doLast {
+        val jvm17Major = 61 // class-file major version for Java 17
+        val offenders = mutableListOf<String>()
+        for (path in listOf(":coroutine-viz-core", ":coroutine-viz-client")) {
+            val classesDir =
+                project(path)
+                    .layout.buildDirectory
+                    .dir("classes/kotlin/main")
+                    .get()
+                    .asFile
+            val classFiles =
+                if (classesDir.isDirectory) {
+                    classesDir.walkTopDown().filter { it.isFile && it.extension == "class" }.toList()
+                } else {
+                    emptyList()
+                }
+            if (classFiles.isEmpty()) {
+                // Pitfall 4: an input-less guard must error, not pass vacuously.
+                throw GradleException(
+                    "checkBytecode found no compiled classes for $path under " +
+                        "${classesDir.path} — the modules must compile before the scan runs.",
+                )
+            }
+            for (classFile in classFiles) {
+                val bytes = classFile.readBytes()
+                // 0xCAFEBABE header: magic[0..3], minor[4..5], major[6..7].
+                // A guard that cannot parse a class must fail HARD (treat as an
+                // offender), not crash with IndexOutOfBounds or silently trust it.
+                if (bytes.size < 8) {
+                    offenders += "  - ${classFile.path} (truncated: ${bytes.size} bytes, cannot read class version)"
+                    continue
+                }
+                val magic =
+                    ((bytes[0].toInt() and 0xFF) shl 24) or
+                        ((bytes[1].toInt() and 0xFF) shl 16) or
+                        ((bytes[2].toInt() and 0xFF) shl 8) or
+                        (bytes[3].toInt() and 0xFF)
+                if (magic != -0x35014542) { // 0xCAFEBABE
+                    offenders += "  - ${classFile.path} (bad magic 0x${magic.toUInt().toString(16)}, not a class file)"
+                    continue
+                }
+                val major = ((bytes[6].toInt() and 0xFF) shl 8) or (bytes[7].toInt() and 0xFF)
+                if (major > jvm17Major) {
+                    offenders += "  - ${classFile.path} (major $major > $jvm17Major)"
+                }
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException(
+                "Bytecode above the JVM-17 floor (major > $jvm17Major) in a publishable module:\n" +
+                    offenders.joinToString("\n"),
+            )
+        }
+
+        // D-08: coroutine-viz-core must stay io.ktor-free. Match IMPORT LINES, not a
+        // whole-file substring — three core KDoc comments literally say "no io.ktor"
+        // (documentation, not imports) and MUST pass.
+        val coreSrc =
+            project(":coroutine-viz-core")
+                .layout.projectDirectory
+                .dir("src/main/kotlin")
+                .asFile
+        val ktorImporters =
+            coreSrc
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { file ->
+                    file.readLines().any { line -> line.trimStart().startsWith("import io.ktor") }
+                }.map { "  - ${it.path}" }
+                .sorted()
+                .toList()
+        if (ktorImporters.isNotEmpty()) {
+            throw GradleException(
+                "coroutine-viz-core must stay io.ktor-free (it backs the IntelliJ-241 JVM-17 " +
+                    "plugin variant), but these sources import io.ktor:\n" +
+                    ktorImporters.joinToString("\n"),
+            )
+        }
+    }
+}
+
 tasks.named("check") { dependsOn(verifyNoDuplicateSourceFqns) }
+tasks.named("check") { dependsOn(checkBytecode) }

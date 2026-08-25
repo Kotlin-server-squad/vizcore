@@ -84,6 +84,8 @@ class ProjectionService(
                         state = "CREATED",
                         createdAtNanos = event.tsNanos,
                         jobId = event.jobId,
+                        // Durable launch site (15-08 creationPoint) — survives EventStore eviction.
+                        creationPoint = event.creationPoint,
                     )
 
                 // Add to parent's children list
@@ -128,7 +130,14 @@ class ProjectionService(
 
             is CoroutineSuspended -> {
                 coroutines[event.coroutineId]?.let { node ->
-                    coroutines[event.coroutineId] = node.copy(state = "SUSPENDED")
+                    coroutines[event.coroutineId] =
+                        node.copy(
+                            state = "SUSPENDED",
+                            // Keep the LAST non-null suspension frame — a later frameless
+                            // suspension must not wipe a good jump target that eviction would
+                            // otherwise erase from the per-coroutine timeline.
+                            lastSuspensionPoint = event.suspensionPoint ?: node.lastSuspensionPoint,
+                        )
                 }
             }
 
@@ -154,10 +163,17 @@ class ProjectionService(
 
             is CoroutineFailed -> {
                 coroutines[event.coroutineId]?.let { node ->
+                    // Copy the failure detail onto the node so /hierarchy carries it on BOTH
+                    // paths (VizScope wrapper + agent). The plugin's whole EXCEPTION pipeline
+                    // (ProblemDerivation.isRealException, row badge, inspector card) keys on
+                    // node.exceptionType — CoroutineCancelled deliberately does NOT set it
+                    // because cancellation is normal structured-concurrency flow (D-09).
                     coroutines[event.coroutineId] =
                         node.copy(
                             state = "FAILED",
                             completedAtNanos = event.tsNanos,
+                            exceptionType = event.exceptionType,
+                            exceptionMessage = event.message,
                         )
                 }
             }
@@ -259,21 +275,95 @@ class ProjectionService(
     fun getCoroutineTimeline(coroutineId: String): CoroutineTimeline? {
         val node = coroutines[coroutineId] ?: return null
 
-        // Aggregate the coroutine's raw events (oldest-first) into source-frame summaries.
-        // Reuse the existing raw-event-by-coroutineId filter as the aggregation seed (D-02);
-        // reading fresh from the store keeps this replay/DB-rehydrate safe. Only CoroutineStarted
-        // and CoroutineSuspended carry source frames in v1 (D-03/D-04); other event types are
-        // skipped. Dispatcher/thread/duration breakdowns stay null (deferred per D-02/D-04).
-        val events =
-            session.getCoroutineTimeline(coroutineId, newestFirst = false)
-                .mapNotNull { toSummary(it) }
+        // Aggregate the coroutine's raw events (oldest-first) once. Reading fresh from the
+        // store keeps this replay/DB-rehydrate safe. CoroutineCreated/Started/Suspended carry
+        // source frames into the summary list (D-03/D-04); created now rides the launch frame
+        // (15-08 creationPoint). Active/suspended durations are folded from the same list.
+        val raw = session.getCoroutineTimeline(coroutineId, newestFirst = false)
+        val events = raw.mapNotNull { toSummary(it) }
+        val durations = computeDurations(raw)
 
         return CoroutineTimeline(
             coroutineId = coroutineId,
             name = node.name,
             state = node.state,
+            // totalDuration stays completion-only; the plugin falls back to live lifetime (15-12).
             totalDuration = node.completedAtNanos?.let { it - node.createdAtNanos },
+            activeDuration = durations.active,
+            suspendedDuration = durations.suspended,
             events = events,
+        )
+    }
+
+    private enum class Phase { ACTIVE, SUSPENDED }
+
+    private data class DurationBreakdown(
+        val active: Long?,
+        val suspended: Long?,
+    )
+
+    /**
+     * Fold ACTIVE/SUSPENDED durations over the seq/ts-ordered raw [events].
+     *
+     * CoroutineStarted/CoroutineResumed open an ACTIVE phase; CoroutineSuspended closes ACTIVE
+     * and opens SUSPENDED; CoroutineResumed closes SUSPENDED; a terminal event
+     * (Completed/Cancelled/Failed) closes whichever phase is open and stops accumulating.
+     *
+     * CRITICAL CLOCK RULE: `tsNanos` originates in the EMITTING process (the agent JVM on the
+     * attach path) and has no fixed origin across JVM lifetimes — these values may ONLY be
+     * subtracted from EACH OTHER, never from the backend's System.nanoTime(). Therefore a live
+     * coroutine's OPEN tail phase is never extrapolated; only CLOSED intervals contribute.
+     * When no interval closed, the corresponding duration is null (not 0) — preserving the
+     * "legit wire null" contract so evicted/empty timelines degrade cleanly.
+     */
+    private fun computeDurations(events: List<VizEvent>): DurationBreakdown {
+        var phase: Phase? = null
+        var phaseStartTs = 0L
+        var active = 0L
+        var suspended = 0L
+        var anyActive = false
+        var anySuspended = false
+
+        fun closeInto(endTs: Long) {
+            when (phase) {
+                Phase.ACTIVE -> {
+                    active += endTs - phaseStartTs
+                    anyActive = true
+                }
+                Phase.SUSPENDED -> {
+                    suspended += endTs - phaseStartTs
+                    anySuspended = true
+                }
+                null -> Unit
+            }
+        }
+
+        for (event in events) {
+            when (event) {
+                is CoroutineStarted, is CoroutineResumed -> {
+                    closeInto(event.tsNanos)
+                    phase = Phase.ACTIVE
+                    phaseStartTs = event.tsNanos
+                }
+
+                is CoroutineSuspended -> {
+                    closeInto(event.tsNanos)
+                    phase = Phase.SUSPENDED
+                    phaseStartTs = event.tsNanos
+                }
+
+                is CoroutineCompleted, is CoroutineCancelled, is CoroutineFailed -> {
+                    closeInto(event.tsNanos)
+                    phase = null
+                }
+
+                else -> Unit
+            }
+        }
+
+        return DurationBreakdown(
+            active = if (anyActive) active else null,
+            suspended = if (anySuspended) suspended else null,
         )
     }
 
@@ -281,8 +371,10 @@ class ProjectionService(
      * Map a raw event to a source-focused [TimelineEventSummary], or null to skip it.
      *
      * Emits the kebab-case `kind` strings the FE filters on (D-03). The `suspensionPoint`
-     * from a [CoroutineSuspended] is passed through UNCHANGED (no flatten, no conversion);
-     * [CoroutineStarted] carries no source frame (D-04).
+     * from a [CoroutineSuspended] is passed through UNCHANGED (no flatten, no conversion).
+     * [CoroutineCreated] now carries the LAUNCH FRAME (15-08 creationPoint) as its
+     * suspensionPoint so the plugin's jump-to-source has a durable launch target;
+     * [CoroutineStarted] stays frameless (D-04).
      */
     private fun toSummary(event: VizEvent): TimelineEventSummary? =
         when (event) {
@@ -293,6 +385,14 @@ class ProjectionService(
                     kind = "coroutine.suspended",
                     reason = event.reason,
                     suspensionPoint = event.suspensionPoint,
+                )
+
+            is CoroutineCreated ->
+                TimelineEventSummary(
+                    seq = event.seq,
+                    tsNanos = event.tsNanos,
+                    kind = "coroutine.created",
+                    suspensionPoint = event.creationPoint,
                 )
 
             is CoroutineStarted ->

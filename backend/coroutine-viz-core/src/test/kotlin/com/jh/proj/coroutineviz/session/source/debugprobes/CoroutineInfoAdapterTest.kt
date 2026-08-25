@@ -63,6 +63,39 @@ class CoroutineInfoAdapterTest {
     }
 
     @Test
+    fun `captures lastObservedThread id and name into the snapshot`() {
+        val adapter = CoroutineInfoAdapter()
+        val thread = Thread.currentThread()
+        val raw =
+            CoroutineInfoAdapter.RawInfo(
+                state = CoroState.RUNNING,
+                job = Job(),
+                context = Dispatchers.Default,
+                creationStackTrace = creationStack,
+                lastObservedStackTrace = lastObserved,
+                lastObservedThread = thread,
+            )
+
+        val snap = adapter.toSnapshot(raw)
+
+        @Suppress("DEPRECATION") // Thread.getId(): threadId() is JDK 19+; core pins JVM 17.
+        assertEquals(thread.id, snap.threadId)
+        assertEquals(thread.name, snap.threadName)
+    }
+
+    @Test
+    fun `null lastObservedThread leaves the snapshot thread fields null (no fabricated data)`() {
+        val adapter = CoroutineInfoAdapter()
+        val raw =
+            CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, Job(), EmptyCoroutineContext, creationStack, emptyList())
+
+        val snap = adapter.toSnapshot(raw)
+
+        assertNull(snap.threadId)
+        assertNull(snap.threadName)
+    }
+
+    @Test
     fun `same job identity maps to the same stable key (no double-emit)`() {
         val adapter = CoroutineInfoAdapter()
         val job = Job()

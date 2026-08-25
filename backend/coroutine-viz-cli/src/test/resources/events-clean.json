@@ -1,0 +1,36 @@
+[
+  {
+    "type": "CoroutineCreated",
+    "sessionId": "cli-clean",
+    "seq": 0,
+    "tsNanos": 1000,
+    "coroutineId": "c1",
+    "jobId": "j1",
+    "parentCoroutineId": null,
+    "scopeId": "main-scope",
+    "label": "worker",
+    "createdAtEpochMs": 1700000000000
+  },
+  {
+    "type": "CoroutineStarted",
+    "sessionId": "cli-clean",
+    "seq": 1,
+    "tsNanos": 2000,
+    "coroutineId": "c1",
+    "jobId": "j1",
+    "parentCoroutineId": null,
+    "scopeId": "main-scope",
+    "label": "worker"
+  },
+  {
+    "type": "CoroutineCompleted",
+    "sessionId": "cli-clean",
+    "seq": 2,
+    "tsNanos": 3000,
+    "coroutineId": "c1",
+    "jobId": "j1",
+    "parentCoroutineId": null,
+    "scopeId": "main-scope",
+    "label": "worker"
+  }
+]

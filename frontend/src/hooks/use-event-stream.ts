@@ -102,6 +102,10 @@ export function useEventStream(
   const [events, setEvents] = useState<VizEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Cumulative count of events the backend shed under overload (D-08). Surfaced
+  // from the `dropped` control frame ONLY — never derived from a stored event,
+  // so the rendered event list stays free of phantom nodes (T-10-13).
+  const [droppedCount, setDroppedCount] = useState(0)
   const queryClient = useQueryClient()
   // Live mirror of replayActive so the SSE listener (registered once per
   // connection inside the effect below) reads the current value without
@@ -150,6 +154,87 @@ export function useEventStream(
     retryCountRef.current = 0
     seenSeqsRef.current = new Set()
     setEvents([])
+    setDroppedCount(0)
+
+    // Shared per-element ingest body (D-04). Both the single-event per-kind
+    // listeners AND the batch-array loop route every raw event through this
+    // one function so the seq-dedup, bounded-set eviction, append, and D-02
+    // replay gate cannot drift between the two paths. `fallbackKind` lets a
+    // per-kind frame stamp its event name when the payload omits `kind`; batch
+    // elements carry their own kind so they pass undefined.
+    const appendNormalized = (rawEvent: unknown, fallbackKind?: string) => {
+      // Normalize event from backend format (type -> kind)
+      const event = normalizeEvent(rawEvent)
+      // If still no kind, set from SSE event type
+      if (!event.kind && fallbackKind) {
+        (event as { kind?: VizEventKind }).kind = fallbackKind as VizEventKind
+      }
+
+      // Replay dedup: a reconnect replays FULL history, so drop any event whose
+      // seq was already appended — BEFORE setEvents and BEFORE the invalidation
+      // debounce (duplicates must not burn invalidations either). Membership in
+      // a bounded seen-set (not a max-seq watermark) so legitimately
+      // out-of-order seqs are NOT dropped (WR-13). Events without a numeric seq
+      // (legacy kebab-case frames) bypass the guard.
+      const seq = (event as { seq?: unknown }).seq
+      if (typeof seq === 'number') {
+        if (seenSeqsRef.current.has(seq)) {
+          return
+        }
+        seenSeqsRef.current.add(seq)
+        // Bound the set: evict the oldest entry (Set iteration is
+        // insertion-ordered) once the cap is exceeded.
+        if (seenSeqsRef.current.size > SEEN_SEQS_MAX) {
+          const oldest = seenSeqsRef.current.values().next().value
+          if (oldest !== undefined) {
+            seenSeqsRef.current.delete(oldest)
+          }
+        }
+      }
+
+      setEvents(prev => [...prev, event])
+
+      // D-02 replay gate: while replay is active, KEEP appending events (above)
+      // but suppress the cache side effect entirely — no debounce timer is even
+      // scheduled. The EventSource, dedup, backoff, and max-wait machinery are
+      // all left untouched; only the invalidation is gated (T-02-12 / T-02-14).
+      // On exiting replay a single flush applies the buffered events (D-04),
+      // handled by the replayActive teardown effect below.
+      if (replayActiveRef.current) {
+        return
+      }
+
+      // Max-wait-capped debounced invalidation: a burst of events still
+      // produces only one trailing-edge invalidation, but a sustained stream is
+      // guaranteed to flush at least once per INVALIDATION_MAX_WAIT_MS (the
+      // trailing edge can never be pushed past the max-wait boundary).
+      const flushInvalidation = () => {
+        invalidationTimerRef.current = null
+        // Reset the window so the next event starts a fresh max-wait clock.
+        firstInvalidationAtRef.current = null
+        queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
+        // CR-01 fix: the Threads tab relies on this invalidation while live
+        // (its background poll is slowed during streaming).
+        queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
+      }
+
+      if (firstInvalidationAtRef.current === null) {
+        firstInvalidationAtRef.current = Date.now()
+      }
+      const elapsed = Date.now() - firstInvalidationAtRef.current
+
+      if (invalidationTimerRef.current !== null) {
+        clearTimeout(invalidationTimerRef.current)
+      }
+      if (elapsed >= INVALIDATION_MAX_WAIT_MS) {
+        flushInvalidation()
+      } else {
+        invalidationTimerRef.current = setTimeout(
+          flushInvalidation,
+          Math.min(INVALIDATION_DEBOUNCE_MS, INVALIDATION_MAX_WAIT_MS - elapsed),
+        )
+      }
+    }
 
     const connect = () => {
       retryTimerRef.current = null
@@ -201,84 +286,55 @@ export function useEventStream(
             const messageEvent = e as MessageEvent
             try {
               const rawEvent = JSON.parse(messageEvent.data)
-              // Normalize event from backend format (type -> kind)
-              const event = normalizeEvent(rawEvent)
-              // If still no kind, set from SSE event type
-              if (!event.kind) {
-                (event as { kind?: VizEventKind }).kind = eventType as VizEventKind
-              }
-
-              // Replay dedup: a reconnect replays FULL history, so drop any
-              // event whose seq was already appended — BEFORE setEvents and
-              // BEFORE the invalidation debounce (duplicates must not burn
-              // invalidations either). Membership in a bounded seen-set (not
-              // a max-seq watermark) so legitimately out-of-order seqs are
-              // NOT dropped (WR-13). Events without a numeric seq (legacy
-              // kebab-case frames) bypass the guard.
-              const seq = (event as { seq?: unknown }).seq
-              if (typeof seq === 'number') {
-                if (seenSeqsRef.current.has(seq)) {
-                  return
-                }
-                seenSeqsRef.current.add(seq)
-                // Bound the set: evict the oldest entry (Set iteration is
-                // insertion-ordered) once the cap is exceeded.
-                if (seenSeqsRef.current.size > SEEN_SEQS_MAX) {
-                  const oldest = seenSeqsRef.current.values().next().value
-                  if (oldest !== undefined) {
-                    seenSeqsRef.current.delete(oldest)
-                  }
-                }
-              }
-
-              setEvents(prev => [...prev, event])
-
-              // D-02 replay gate: while replay is active, KEEP appending events
-              // (above) but suppress the cache side effect entirely — no
-              // debounce timer is even scheduled. The EventSource, dedup,
-              // backoff, and max-wait machinery are all left untouched; only
-              // the invalidation is gated (T-02-12 / T-02-14). On exiting
-              // replay a single flush applies the buffered events (D-04),
-              // handled by the replayActive teardown effect below.
-              if (replayActiveRef.current) {
-                return
-              }
-
-              // Max-wait-capped debounced invalidation: a burst of events still
-              // produces only one trailing-edge invalidation, but a sustained
-              // stream is guaranteed to flush at least once per
-              // INVALIDATION_MAX_WAIT_MS (the trailing edge can never be pushed
-              // past the max-wait boundary).
-              const flushInvalidation = () => {
-                invalidationTimerRef.current = null
-                // Reset the window so the next event starts a fresh max-wait clock.
-                firstInvalidationAtRef.current = null
-                queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
-                // CR-01 fix: the Threads tab relies on this invalidation while
-                // live (its background poll is slowed during streaming).
-                queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
-              }
-
-              if (firstInvalidationAtRef.current === null) {
-                firstInvalidationAtRef.current = Date.now()
-              }
-              const elapsed = Date.now() - firstInvalidationAtRef.current
-
-              if (invalidationTimerRef.current !== null) {
-                clearTimeout(invalidationTimerRef.current)
-              }
-              if (elapsed >= INVALIDATION_MAX_WAIT_MS) {
-                flushInvalidation()
-              } else {
-                invalidationTimerRef.current = setTimeout(
-                  flushInvalidation,
-                  Math.min(INVALIDATION_DEBOUNCE_MS, INVALIDATION_MAX_WAIT_MS - elapsed),
-                )
-              }
+              appendNormalized(rawEvent, eventType)
             } catch {
               // Silently ignore malformed events
             }
           })
+        })
+
+        // Hybrid wire format (D-04): under load the backend coalesces events
+        // into a single `event: batch` frame whose data is a JSON ARRAY. A
+        // browser EventSource dispatches by event NAME, so a batched array can
+        // never ride `event: <kind>` — it needs its own listener (Pitfall P4).
+        // Loop each array element through the SAME appendNormalized spine so
+        // every batched event is seq-deduped one-by-one (T-10-12) and obeys the
+        // identical D-02 replay gate. A malformed/non-array frame is logged-as-
+        // skipped by the try/catch so one bad frame cannot kill the listener
+        // (T-10-14).
+        eventSource.addEventListener('batch', (e: Event) => {
+          const messageEvent = e as MessageEvent
+          try {
+            const parsed: unknown = JSON.parse(messageEvent.data)
+            if (!Array.isArray(parsed)) {
+              return
+            }
+            for (const rawEvent of parsed) {
+              appendNormalized(rawEvent)
+            }
+          } catch {
+            // Silently ignore malformed batch frames
+          }
+        })
+
+        // Drop observability (D-08): when the backend sheds non-structural
+        // events under overload it emits a `dropped` control frame
+        // ({"count":N}). Surface the cumulative count as a marker. This is a
+        // NON-stored control frame — it must NOT route through appendNormalized,
+        // must NOT append to `events`, and must NOT touch seenSeqsRef, otherwise
+        // it would render as a phantom node (T-10-13). Mirrors the `error`
+        // control-frame listener below.
+        eventSource.addEventListener('dropped', (e: Event) => {
+          const messageEvent = e as MessageEvent
+          try {
+            const data = JSON.parse(messageEvent.data)
+            const count = (data as { count?: unknown }).count
+            if (typeof count === 'number' && count > 0) {
+              setDroppedCount(prev => prev + count)
+            }
+          } catch {
+            // Silently ignore malformed dropped frames
+          }
         })
 
         // Also listen for error events from server
@@ -349,5 +405,6 @@ export function useEventStream(
     isConnected,
     error,
     clearEvents,
+    droppedCount,
   }
 }

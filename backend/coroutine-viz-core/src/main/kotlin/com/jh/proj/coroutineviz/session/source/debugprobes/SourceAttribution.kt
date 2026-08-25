@@ -29,18 +29,25 @@ object SourceAttribution {
     private fun List<StackTraceElement>.firstUserFrame(): StackTraceElement? = firstOrNull { !it.isInfrastructure() }
 
     /**
-     * Extract function + file:line from the creation stack (RCO-03). Returns all
-     * nulls for an empty or all-infrastructure stack. `lineNumber` is kept only
-     * when `>= 0` (a negative line means "unknown" in [StackTraceElement]).
+     * Extract function + file:line from the first user (non-infrastructure)
+     * frame of ANY stack (15-08 Task 3). Returns all nulls for an empty or
+     * all-infrastructure stack. `lineNumber` is kept only when `>= 0` (a
+     * negative line means "unknown" in [StackTraceElement]).
      */
-    fun fromCreationStack(creationStackTrace: List<StackTraceElement>): Location {
-        val frame = creationStackTrace.firstUserFrame()
+    fun fromStack(stack: List<StackTraceElement>): Location {
+        val frame = stack.firstUserFrame()
         return Location(
             function = frame?.methodName,
             fileName = frame?.fileName,
             lineNumber = frame?.lineNumber?.takeIf { it >= 0 },
         )
     }
+
+    /**
+     * Extract function + file:line from the creation stack (RCO-03). Delegates
+     * to the generic [fromStack] first-user-frame extraction.
+     */
+    fun fromCreationStack(creationStackTrace: List<StackTraceElement>): Location = fromStack(creationStackTrace)
 
     /**
      * Best-effort suspension reason: the method name of the first

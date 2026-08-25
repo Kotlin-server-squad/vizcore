@@ -5,6 +5,29 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
+/** Every character NOT in the URL-safe session-id allow-set `[A-Za-z0-9._-]`. */
+private val UNSAFE_SESSION_ID_CHARS = Regex("[^A-Za-z0-9._-]")
+
+/**
+ * Slugify a session name into a URL-safe session-id stem.
+ *
+ * Replaces every character NOT in the allow-set `[A-Za-z0-9._-]` with `-`. This is
+ * a pure character-class substitution — runs are NOT collapsed and the string is
+ * NOT trimmed — so a name that is already URL-safe passes through byte-identical and
+ * the id length/shape stays predictable.
+ *
+ * WHY: the minted session id is embedded verbatim into URL PATH SEGMENTS by three
+ * independent consumers — the client WebSocket ingest transport, the IntelliJ
+ * plugin's REST polling, and the frontend fetch layer — and IDE run-config names
+ * routinely contain spaces (e.g. "demo boot jar"). An un-slugified id malforms the
+ * client's HTTP request line (Netty drops the socket → eventCount 0) and 404s the
+ * plugin's `+`-form-encoded poll. Slugifying at the minting site makes ids URL-safe
+ * by construction (allowlist, never blocklist — T-15-07-01). Both minting sites
+ * (this object and the DB-backed ExposedSessionStore) share this ONE sanitizer so
+ * they cannot drift. See .planning/debug/DEBUG-sessionid-unencoded-paths.md.
+ */
+fun slugifySessionName(name: String): String = name.replace(UNSAFE_SESSION_ID_CHARS, "-")
+
 /**
  * Manages active visualization sessions.
  *
@@ -197,7 +220,7 @@ object SessionManager : SessionStoreInterface {
         }
 
         val sessionId =
-            name?.let { "$it-${System.currentTimeMillis()}" }
+            name?.let { "${slugifySessionName(it)}-${System.currentTimeMillis()}" }
                 ?: "session-${System.currentTimeMillis()}"
 
         val session = VizSession(sessionId, maxEvents = maxEventsPerSession)

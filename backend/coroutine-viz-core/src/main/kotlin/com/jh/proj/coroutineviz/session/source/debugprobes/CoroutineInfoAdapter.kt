@@ -1,11 +1,26 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.debug.CoroutineInfo
 import kotlinx.coroutines.debug.State
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
+
+/**
+ * Terminal outcome of an observed coroutine's [Job], recorded by the adapter's
+ * `invokeOnCompletion` handler (GAP-EXCEPTIONS-BLIND). The DebugProbes DUMP
+ * cannot distinguish completed/cancelled/failed (v1 tradeoff A3), but the Job
+ * completion cause can: `null` cause = normal completion (no outcome recorded),
+ * [CancellationException] = cancelled, any other Throwable = failed.
+ */
+data class CompletionOutcome(
+    val cancelled: Boolean,
+    val exceptionType: String?,
+    val message: String?,
+)
 
 /**
  * The ONLY production component that touches `kotlinx.coroutines.debug` types.
@@ -37,6 +52,12 @@ class CoroutineInfoAdapter {
         val context: CoroutineContext,
         val creationStackTrace: List<StackTraceElement>,
         val lastObservedStackTrace: List<StackTraceElement>,
+        /**
+         * The thread last observed running this coroutine (15-08 Task 2, from
+         * `CoroutineInfo.lastObservedThread`). Defaulted null so hand-built
+         * fixtures stay source-compatible; null = DebugProbes had no thread.
+         */
+        val lastObservedThread: Thread? = null,
     )
 
     // job identity-hash -> assigned key token (stable while the Job is referenced).
@@ -45,6 +66,16 @@ class CoroutineInfoAdapter {
     // creation-stack signature -> synthetic key token, for null-job coroutines.
     private val syntheticKeys = ConcurrentHashMap<String, String>()
     private val syntheticOrdinal = AtomicInteger(0)
+
+    // key token -> recorded terminal outcome; consumed (removed) at Vanished time
+    // (GAP-EXCEPTIONS-BLIND). Entries are keyed by observed coroutines and consumed
+    // when they vanish — same lifetime envelope as jobKeys.
+    private val outcomes = ConcurrentHashMap<String, CompletionOutcome>()
+
+    // job identity-hash -> invokeOnCompletion handle. Registration guard: each Job
+    // gets EXACTLY ONE handler no matter how many polls observe it (T-15-08-03);
+    // all handles are disposed on reset().
+    private val completionHandles = ConcurrentHashMap<Int, DisposableHandle>()
 
     /**
      * Drop all accumulated identity state (job→key and synthetic signature→key).
@@ -61,6 +92,47 @@ class CoroutineInfoAdapter {
         jobKeys.clear()
         syntheticKeys.clear()
         syntheticOrdinal.set(0)
+        // Run-scoped completion tracking (WR-03 precedent): dispose every
+        // registered invokeOnCompletion handle and drop recorded outcomes so a
+        // restart neither leaks handlers nor reports a prior run's failures.
+        completionHandles.values.forEach { it.dispose() }
+        completionHandles.clear()
+        outcomes.clear()
+    }
+
+    /**
+     * Consume-once read of a coroutine's recorded terminal outcome: REMOVES and
+     * returns the entry, or null when the coroutine completed normally (or was
+     * never observed with a Job). Called by [DebugProbesSource] at Vanished time.
+     */
+    fun completionOutcome(key: CoroKey): CompletionOutcome? = outcomes.remove(key.token)
+
+    /**
+     * Register the one-per-Job completion handler (guarded by [completionHandles]).
+     * `invokeOnCompletion` on an already-completed Job fires synchronously, so an
+     * outcome is always recorded before the coroutine's Vanished delta is diffed.
+     */
+    private fun registerCompletionHandler(
+        identity: Int,
+        token: String,
+        job: Job,
+    ) {
+        completionHandles.computeIfAbsent(identity) {
+            job.invokeOnCompletion { cause ->
+                when {
+                    cause == null -> Unit // normal completion: no entry.
+                    cause is CancellationException ->
+                        outcomes[token] = CompletionOutcome(cancelled = true, exceptionType = null, message = cause.message)
+                    else ->
+                        outcomes[token] =
+                            CompletionOutcome(
+                                cancelled = false,
+                                exceptionType = cause::class.java.name,
+                                message = cause.message,
+                            )
+                }
+            }
+        }
     }
 
     private fun stackSignature(stack: List<StackTraceElement>): String =
@@ -72,7 +144,9 @@ class CoroutineInfoAdapter {
         lastObservedStackTrace: List<StackTraceElement>,
     ): CoroKey {
         if (job != null) {
-            val token = jobKeys.computeIfAbsent(System.identityHashCode(job)) { "job:${System.identityHashCode(job)}" }
+            val identity = System.identityHashCode(job)
+            val token = jobKeys.computeIfAbsent(identity) { "job:$identity" }
+            registerCompletionHandler(identity, token, job)
             return CoroKey(token)
         }
         // Synthetic fallback: stable across re-dumps for the same identity, scoped
@@ -94,6 +168,10 @@ class CoroutineInfoAdapter {
     /** Map a fakeable [RawInfo] (the unit-tested path) to a [CoroutineSnapshot]. */
     fun toSnapshot(raw: RawInfo): CoroutineSnapshot {
         val location = SourceAttribution.fromCreationStack(raw.creationStackTrace)
+
+        // Thread#getId(): threadId() is JDK 19+; core pins JVM 17 (15-08 Task 2).
+        @Suppress("DEPRECATION")
+        val observedThreadId = raw.lastObservedThread?.id
         return CoroutineSnapshot(
             key = keyFor(raw.job, raw.creationStackTrace, raw.lastObservedStackTrace),
             state = raw.state,
@@ -104,10 +182,19 @@ class CoroutineInfoAdapter {
             lineNumber = location.lineNumber,
             reason = SourceAttribution.reason(raw.lastObservedStackTrace),
             lastObservedStackTrace = raw.lastObservedStackTrace,
+            threadId = observedThreadId,
+            threadName = raw.lastObservedThread?.name,
         )
     }
 
-    /** Map a real [CoroutineInfo] by forwarding into the unit-tested [RawInfo] core. */
+    /**
+     * Map a real [CoroutineInfo] by forwarding into the unit-tested [RawInfo] core.
+     *
+     * NOTE (15-08 Task 2): the PUBLIC [CoroutineInfo] wrapper DROPS the observed
+     * thread (its fields are context/state/stacks only), so this path leaves
+     * `lastObservedThread` null. The thread-aware production path is
+     * [DebugProbesImplBridge.dumpRawInfos] into the [RawInfo]-based [toSnapshots].
+     */
     fun toSnapshot(info: CoroutineInfo): CoroutineSnapshot =
         toSnapshot(
             RawInfo(

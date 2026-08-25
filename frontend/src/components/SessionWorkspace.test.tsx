@@ -22,6 +22,7 @@ vi.mock('@/hooks/use-event-stream', () => ({
     isConnected: false,
     error: null,
     clearEvents: vi.fn(),
+    droppedCount: 0,
   })),
 }))
 
@@ -510,6 +511,7 @@ describe('SessionWorkspace - session refetch max-wait under sustained stream (CR
       isConnected: false,
       error: null,
       clearEvents: vi.fn(),
+      droppedCount: 0,
     }))
   })
 
