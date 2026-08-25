@@ -161,7 +161,7 @@ describe('normalizeEvents — array normalization end-to-end', () => {
     expect(normalizeEvents([])).toEqual([])
   })
 
-  it('simulates SessionDetails jobStates derivation: raw REST payload -> Map keyed by jobId', () => {
+  it('simulates SessionWorkspace jobStates derivation: raw REST payload -> Map keyed by jobId', () => {
     // Mirrors the real wire shape from GET /api/sessions/{id}/events
     // (no kind field, only type)
     const rawRestPayload = [
@@ -176,7 +176,7 @@ describe('normalizeEvents — array normalization end-to-end', () => {
     // Every event has a defined kind
     expect(normalized.every(e => !!e.kind)).toBe(true)
 
-    // Replicate SessionDetails jobStates useMemo logic
+    // Replicate SessionWorkspace jobStates useMemo logic
     const jobStates = new Map<string, (typeof normalized)[number]>()
     for (const event of normalized) {
       if (event.kind === 'JobStateChanged') {

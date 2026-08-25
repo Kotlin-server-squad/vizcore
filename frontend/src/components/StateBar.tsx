@@ -22,14 +22,30 @@ interface Chip {
   always?: boolean
 }
 
+/**
+ * A chip that is not a filter (M-3).
+ *
+ * Validation findings belong on the bar per D-4 — problems are chips — but
+ * validation is an on-demand run, and its results scope a report rather than a
+ * subset of the canvas. So it opens the report instead of filtering, carries no
+ * pressed state, and appears only once a run has actually failed something.
+ */
+interface StateBarAction {
+  label: string
+  count: number
+  onPress: () => void
+}
+
 export function StateBar({
   counts,
   filter,
   onFilterChange,
+  action,
 }: {
   counts: StateCounts
   filter: StateFilter
   onFilterChange: (next: StateFilter) => void
+  action?: StateBarAction
 }) {
   const chips: Chip[] = [
     { filter: 'running', label: 'Running', count: counts.running, color: 'var(--primary)', always: true },
@@ -93,6 +109,24 @@ export function StateBar({
             </button>
           )
         })}
+
+      {action && (
+        <button
+          type="button"
+          // No aria-pressed: this control selects nothing, and announcing a
+          // pressed state would promise a filter the bar does not apply.
+          aria-label={`${action.label} ${action.count}`}
+          onClick={action.onPress}
+          className="ml-1 flex items-center gap-2 rounded-full border border-dashed px-3 py-1 text-sm transition-colors"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--danger) 45%, transparent)',
+            color: 'var(--danger)',
+          }}
+        >
+          <span>{action.label}</span>
+          <span className="font-mono tabular-nums font-semibold">{action.count}</span>
+        </button>
+      )}
     </div>
   )
 }

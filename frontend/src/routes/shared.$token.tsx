@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { Spinner, Chip } from '@heroui/react'
 import { FiEye } from 'react-icons/fi'
-import { SessionDetails } from '@/components/SessionDetails'
+import { SessionWorkspace } from '@/components/SessionWorkspace'
 import { EmptyState } from '@/components/EmptyState'
 import { apiClient } from '@/lib/api-client'
 import type { SharedSessionResult } from '@/types/share'
@@ -16,7 +16,7 @@ import type { SharedSessionResult } from '@/types/share'
  * only credential — `getSharedSession` attaches no Bearer (Plan 05). The shared
  * `{session, events}` payload is seeded into the React Query cache under the
  * same keys the viewer hooks read (`['sessions', id]`, `['sessions', id,
- * 'events']`), so `SessionDetails` renders read-only with NO protected fetch —
+ * 'events']`), so `SessionWorkspace` renders read-only with NO protected fetch —
  * REUSED behind the `readOnly` prop, never forked (D-10).
  *
  * The typed `SharedSessionResult` status branches drive the ADR-019 status
@@ -52,7 +52,7 @@ export function SharedSessionPage() {
       const res = await apiClient.getSharedSession(token)
       if (cancelled) return
       // On a valid result, seed the viewer hooks' cache from the public payload
-      // so SessionDetails renders without any protected (Bearer-bearing) fetch.
+      // so SessionWorkspace renders without any protected (Bearer-bearing) fetch.
       if (res.status === 'ok') {
         const sessionId = res.data.session.sessionId
         queryClient.setQueryData(['sessions', sessionId], res.data.session)
@@ -103,7 +103,7 @@ export function SharedSessionPage() {
           {COPY.banner}
         </Chip>
       </div>
-      <SessionDetails sessionId={result.data.session.sessionId} readOnly />
+      <SessionWorkspace sessionId={result.data.session.sessionId} readOnly />
     </div>
   )
 }
