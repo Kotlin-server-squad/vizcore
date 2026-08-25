@@ -2,49 +2,50 @@
 
 **Read this first on a cold start.** Updated after every completed plan.
 
-**Last updated:** 2026-08-25, after fixing PR #102's CI. **Start at "Next action" below.**
+**Last updated:** 2026-08-25, after merging #102 and #74 and integrating the
+plugin line. **Start at "Next action" below.**
 
 ---
 
-## Next action — merge #102 and #74, then integrate
+## Next action — sub-project 4, on `feat/spa-integration`
 
-**#102's CI is fixed and green.** Commit `c99b4f9` on `feat/spa-design-tokens`
-adds `@types/node@^24` to `frontend/package.json`. The GitHub run passed all
-five steps — install (`--frozen-lockfile`, so the lockfile is valid under CI's
-pnpm 9), lint, type check, test, build. The lockfile churn beyond the new entry
-is peer-suffix rewiring only (vite, vitest and msw all take `@types/node` as an
-optional peer); no version moved.
+**The integration is done and green.** `feat/spa-integration` contains all three
+lines and is **0 behind** every one of them: `origin/main`, `feat/spa-shell-ia`,
+and `feat/intellij-plugin-native-redesign`. It is **local only** — not pushed, no
+PR. `feat/spa-shell-ia` is untouched, so this is reversible by deleting one branch.
 
-**The "passes locally" mystery is solved, and it generalises.** There is a stray
-`/Users/<user>/node_modules/@types/node` in the home directory, and TypeScript
-walks *parent* directories looking for `node_modules`. A CI checkout has no such
-ancestor. So **any** missing `@types` dependency will pass locally on this
-machine and fail in CI — this was not specific to the token layer. See the
-harness gotchas below.
+Verified on the integrated tree, not on either side alone:
 
-### Both PRs are reviewed and ready; neither is merged
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | pass |
+| `pnpm lint` | 0 errors (5 pre-existing warnings) |
+| `pnpm test` | **648 passed, 80 files** |
+| `pnpm build` | pass |
+| `./gradlew test` (all 6 modules) | **831 passed, 0 failures, 0 errors** |
 
-1. **#102 — token layer.** Reviewed. ~250 lines of real change (the rest is plan
-   and spec docs): `palette.ts` → `tokens.css` → `tailwind.config.ts`, with tests
-   that read the files off disk rather than the loaded objects, plus the
-   `#6366f1` guards. One nit — `palette.ts`'s header names `stateColor()` as a
-   consumer, but that function only exists here on `feat/spa-shell-ia` (plan 5).
-   The comment is true once this branch lands, aspirational on `main` alone.
+The two predicted conflicts were the only two, and both resolved to the
+redesign's version — see `## The integration decision` below for why neither
+cost anything. `:intellij-plugin:test` ran as part of the backend build.
 
-2. **#74 — validation.** Re-verified 2026-08-25 as still current: nothing on
-   `main` has touched the validator since June, and both test mirrors still exist
-   on `main`, so the PR patches the right two files. Green, CLEAN, unreviewed by
-   anyone else. One finding, recorded under carried debt as **C-3** — it is a
-   narrowing, not a regression, so it does not block the merge.
+**So sub-project 4 is now unblocked and is the next real work:** split
+`ProblemDerivation`'s presentation from its domain, move the domain into
+`coroutine-viz-core`, expose it on the session API (spec D-8). The coupling is
+three `CoroutineStateStyle.ageLabel` call sites and the `longSuspended`
+parameter — details below. Then sub-project 5 aligns the plugin to the new IA.
 
-3. Then the integration decision below, which #102 landing on `main` is step one of.
-4. Then sub-project 4.
+### Merged 2026-08-25
 
-**`origin/main` is 113 commits behind local `main`** (unpushed Phase-15 work).
-Merging these PRs moves `origin/main` forward and diverges it further. The user
-reconciles that themselves — do not touch local `main`.
+- **#102** — the token layer — merged as `e7867ea`. Its CI was red because
+  `@types/node` was undeclared; fixed in `c99b4f9`. See the harness gotcha below,
+  which generalises well beyond this PR.
+- **#74** — `HierarchyValidator` for coarse sources — merged as `47959ba`.
+  Its one open question is recorded as **C-3** under carried debt.
 
-### Dependabot — 25 PRs
+Both were merged with merge commits, matching this repo's convention (18 of the
+last 100 commits on `main` are `Merge pull request #NN`; zero squashes).
+
+### Dependabot — 25 PRs, untouched
 
 13 green (ktor group, tanstack, postgres, eslint tooling, prettier), 5 with no
 checks (GitHub Actions bumps), 7 failing. Two of the failing ones are majors
@@ -73,7 +74,8 @@ different points**, and the earlier "bottom to top" framing was wrong:
 
 | Branch | vs local `main` | Contains | Pushed? |
 |---|---|---|---|
-| `feat/spa-design-tokens` | 9 ahead, 113 behind | sub-project 2: token layer. Genuinely an ancestor of `spa-shell-ia` | **PR #102**, open, CI green, reviewed |
+| `feat/spa-integration` | **contains everything** | the merge of all three lines; green on both suites | local only — **work here now** |
+| `feat/spa-design-tokens` | merged | sub-project 2: token layer | **PR #102 MERGED** (`e7867ea`) |
 | `feat/spa-shell-ia` | 48 ahead, **113 behind** | plans 1–5: IA, state bar, rung + locked panels, workspace decomposition, debt cleanup | local only |
 | `feat/intellij-plugin-native-redesign` | **117 ahead, 0 behind** | Phase-15 work + one redesign commit `fd479d0`. **Contains all of local `main`.** | local only |
 
@@ -181,25 +183,6 @@ replay and read-only (M-4) — there is no second layout any more.
 - **`stateColor(state)`** returns resolved palette hex for canvas/SVG. Its test asserts every returned value is a member of `palette` — the guard against a second colour source appearing beside it.
 - **`resolveRunsOn`** (`src/lib/runs-on.ts`) reads `/threads`, tracking `RELEASED` as well as `ASSIGNED` so the card cannot name a thread the coroutine has left.
 - **`ValidationPanel` gained `showHeading`**, default `true`, so its standalone use is unchanged.
-
-## Next: sub-project 4 — shared domain projections — **BLOCKED**
-
-Move `ProblemDerivation.kt` into `coroutine-viz-core` and expose it on the session API,
-so the plugin and SPA stop computing the same domain twice (spec D-8). Then sub-project 5
-aligns the plugin to the new IA.
-
-**This cannot start on `feat/spa-shell-ia`.** `ProblemDerivation.kt` is not reachable
-from here — it lives only on `feat/intellij-plugin-native-redesign`, along with the
-`HierarchyNodeDto`, `CoroutineStateStyle` and `SuspensionTracker` it depends on. On this
-branch the plugin has no `model/`, `api/` or `toolwindow/` package at all. Writing a
-second implementation here would create exactly the duplication the sub-project exists
-to remove, so it waits on the integration decision above.
-
-**When it does start, it is not a clean lift.** `ProblemDerivation` calls
-`CoroutineStateStyle.ageLabel` from the **toolwindow** (UI) package and takes its
-`longSuspended` map from a plugin-side stateful tracker. Moving it to core means first
-splitting the domain — which coroutines are problems, in what order — from the
-presentation: age labels and "why" strings.
 
 ## Decisions that are settled — do not relitigate
 
