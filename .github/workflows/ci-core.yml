@@ -38,7 +38,7 @@ jobs:
 
       - name: Upload coverage
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: backend/coroutine-viz-core/build/reports/jacoco/test/jacocoTestReport.xml
           flags: core
