@@ -65,8 +65,8 @@ dependencies {
     implementation("org.flywaydb:flyway-core:11.8.2")
     implementation("org.flywaydb:flyway-database-postgresql:11.8.2")
     implementation("org.postgresql:postgresql:42.7.11")
-    implementation("com.h2database:h2:2.3.232")
-    testRuntimeOnly("com.h2database:h2:2.3.232")
+    implementation("com.h2database:h2:2.4.240")
+    testRuntimeOnly("com.h2database:h2:2.4.240")
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-content-negotiation")
