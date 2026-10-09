@@ -136,11 +136,22 @@ class VizcoreClient internal constructor(
          * authenticating with [token]. Creates the server session, constructs the
          * local [VizSession] with the SERVER id, drives a real [DebugProbesSource],
          * and begins forwarding. This is the ONLY entry point that installs/connects.
+         *
+         * An OPTIONAL [correlation] token (defaulted to `null`, the established
+         * Phase 07/08 additive-param convention) is forwarded into the session-create
+         * call so the backend records it against the session it actually creates
+         * (CORR-01) — letting a watcher/IDE that supplied the same token resolve THIS
+         * real session id. Existing 3-arg `start(appName, backendUrl, token)` call
+         * sites compile and behave identically. The client forwards an OPAQUE string
+         * and imports no `TenantContext`/server-auth type, so this module stays
+         * pure-Kotlin JVM-17 (D-12); correlation is create-path metadata only and does
+         * NOT touch `VizSession.send()` (D-13).
          */
         fun start(
             appName: String,
             backendUrl: String,
             token: String,
+            correlation: String? = null,
         ): VizcoreClient {
             val httpClient =
                 HttpClient(CIO) {
@@ -148,7 +159,8 @@ class VizcoreClient internal constructor(
                 }
             // createSession is suspend; bootstrap is a one-shot blocking call before
             // the async loop takes over — acceptable for a start() entry point.
-            val serverSessionId = runBlocking { createSession(httpClient, backendUrl, appName, token) }
+            val serverSessionId =
+                runBlocking { createSession(httpClient, backendUrl, appName, token, correlation) }
             val session = VizSession(sessionId = serverSessionId)
             val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
             val source = DebugProbesSource(session = session)

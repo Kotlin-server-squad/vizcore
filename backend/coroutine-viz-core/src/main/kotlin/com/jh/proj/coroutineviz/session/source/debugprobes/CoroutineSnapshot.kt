@@ -71,6 +71,15 @@ data class CoroutineSnapshot(
      * breaks; a pure internal value, not a wire DTO (no serialization annotation).
      */
     val parentKey: CoroKey? = null,
+    /**
+     * Id of the thread last observed running this coroutine (15-08 Task 2, from
+     * `CoroutineInfo.lastObservedThread`). Null when DebugProbes observed no
+     * thread — the synthesizer then emits NO ThreadAssigned (no fabricated data).
+     * All-defaulted, pure internal value, no serialization annotation.
+     */
+    val threadId: Long? = null,
+    /** Name of that thread; see [threadId]. */
+    val threadName: String? = null,
 )
 
 /**

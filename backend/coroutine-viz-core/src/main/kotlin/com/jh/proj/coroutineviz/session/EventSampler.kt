@@ -4,26 +4,85 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Probabilistic event sampler that rate-limits events by type to prevent
- * overwhelming the frontend during high-throughput scenarios.
+ * Tunable thresholds for the adaptive throughput gate (D-02).
  *
- * Sampling is deterministic: for a given event [VizEvent.seq] and rate,
- * the decision is always the same. This is achieved by using the event's
- * sequence number as a seed for a simple hash-based decision.
+ * Two watermarks give the gate HYSTERESIS so it does not flap when observed throughput hovers
+ * at the boundary (Pitfall P8): sampling ENGAGES once the observed rate exceeds
+ * [highWatermarkPerSec] and stays engaged until the rate falls below [lowWatermarkPerSec].
  *
- * Lifecycle events (kinds ending in "Created", "Started", "Completed",
- * "Failed", or "Cancelled") are always kept regardless of configured rates,
- * because they are essential for maintaining a correct view of the system state.
+ * @property windowNanos Sliding-window span used to estimate events/sec (same idiom as
+ *   [MetricsProjection]). Defaults to 1 second.
+ * @property highWatermarkPerSec Observed events/sec at or above which sampling engages.
+ * @property lowWatermarkPerSec Observed events/sec below which sampling disengages
+ *   (must be <= [highWatermarkPerSec] for hysteresis).
+ */
+data class AdaptiveConfig(
+    val windowNanos: Long = DEFAULT_WINDOW_NANOS,
+    val highWatermarkPerSec: Double = DEFAULT_HIGH_WATERMARK_PER_SEC,
+    val lowWatermarkPerSec: Double = DEFAULT_LOW_WATERMARK_PER_SEC,
+) {
+    init {
+        require(windowNanos > 0) { "windowNanos must be positive, got $windowNanos" }
+        require(highWatermarkPerSec >= lowWatermarkPerSec) {
+            "highWatermarkPerSec ($highWatermarkPerSec) must be >= lowWatermarkPerSec ($lowWatermarkPerSec)"
+        }
+        require(lowWatermarkPerSec >= 0.0) { "lowWatermarkPerSec must be >= 0, got $lowWatermarkPerSec" }
+    }
+
+    companion object {
+        /** 1-second throughput estimation window. */
+        const val DEFAULT_WINDOW_NANOS = 1_000_000_000L
+
+        /** Engage sampling above ~500 events/sec (research-informed default, D-02). */
+        const val DEFAULT_HIGH_WATERMARK_PER_SEC = 500.0
+
+        /** Disengage below ~300 events/sec — the hysteresis gap avoids boundary flapping. */
+        const val DEFAULT_LOW_WATERMARK_PER_SEC = 300.0
+    }
+}
+
+/**
+ * Probabilistic, structural-aware, optionally-adaptive egress event sampler.
  *
- * @property defaultRate Default sampling rate for event types without a per-type override.
- *   1.0 = keep all events, 0.0 = drop all events, 0.5 = keep ~50%.
- * @property perTypeRates Per-event-kind overrides. Keys are [VizEvent.kind] values.
+ * ## Structural protection (PERF-01 / D-01)
+ * Structural events (coroutine lifecycle create/complete/cancel, topology, birth/death) are
+ * ALWAYS kept, regardless of configured rate or load. Protection is delegated to
+ * [StructuralClassifier.isStructural] — the single, explicit, auditable allow-set shared with
+ * the Plan-02 shed buffer. This replaces the old leaky lifecycle-suffix heuristic.
+ *
+ * ## Deterministic per-type sampling
+ * For a sheddable event the keep/drop decision is deterministic in [VizEvent.seq] and the
+ * effective rate: the same seq + rate always yields the same decision (multiplicative-hash).
+ *
+ * ## Adaptive throughput gate (PERF-01 / D-02)
+ * When [adaptive] is true the sampler observes its own arrival rate over a sliding window
+ * ([AdaptiveConfig.windowNanos]) and runs at FULL FIDELITY (keeps everything non-structural)
+ * until the observed rate crosses [AdaptiveConfig.highWatermarkPerSec]. Once ENGAGED it applies
+ * the configured per-type rates until the rate falls below [AdaptiveConfig.lowWatermarkPerSec]
+ * (two-watermark hysteresis — see [AdaptiveConfig]). When [adaptive] is false the configured
+ * rates apply unconditionally (the original, byte-equivalent behavior).
+ *
+ * @property defaultRate Default sampling rate for kinds without a per-type override
+ *   (1.0 = keep all, 0.0 = drop all, 0.5 = keep ~50%).
+ * @property perTypeRates Per-[VizEvent.kind] rate overrides.
+ * @property adaptive Whether the adaptive throughput gate is active (default off, D-02 wires it on).
+ * @property adaptiveConfig Threshold/window tuning for the adaptive gate.
  */
 class EventSampler(
     private val defaultRate: Double = 1.0,
     perTypeRates: Map<String, Double> = emptyMap(),
+    private val adaptive: Boolean = false,
+    private val adaptiveConfig: AdaptiveConfig = AdaptiveConfig(),
 ) {
     private val perTypeRates = ConcurrentHashMap<String, Double>(perTypeRates)
+
+    /** Recent arrival timestamps (nanos), bounded to [AdaptiveConfig.windowNanos]. */
+    private val recentArrivalNanos = ArrayDeque<Long>()
+
+    /** Hysteresis state: once true, sampling stays engaged until the rate drops below the low watermark. */
+    private var engaged = false
+
+    private val gateLock = Any()
 
     init {
         require(defaultRate in 0.0..1.0) { "defaultRate must be in [0.0, 1.0], got $defaultRate" }
@@ -33,30 +92,30 @@ class EventSampler(
     }
 
     companion object {
-        /**
-         * Lifecycle event suffixes that are always kept, regardless of sampling rates.
-         * These events are essential for maintaining correct system state in the frontend.
-         */
-        private val LIFECYCLE_SUFFIXES = listOf("Created", "Started", "Completed", "Failed", "Cancelled")
-
-        /**
-         * Large prime used for deterministic hash-based sampling.
-         * Mixing with a prime reduces sequential-seq clustering artifacts.
-         */
+        /** Large prime for deterministic hash-based sampling; mixing reduces sequential-seq clustering. */
         private const val HASH_PRIME = 2_654_435_761L
 
-        /** Scale factor: map hash to [0.0, 1.0) range. */
+        /** Scale factor: map a 32-bit hash to the [0.0, 1.0) range. */
         private const val UINT_MAX_PLUS_ONE = 4_294_967_296.0 // 2^32
+
+        /** Nanos per second, for events/sec conversion. */
+        private const val NANOS_PER_SEC = 1_000_000_000.0
     }
 
     /**
-     * Determines whether an event should be kept (true) or dropped (false).
+     * Determines whether [event] should be kept (true) or dropped (false).
      *
-     * Lifecycle events are always kept. For other events, the decision is
-     * deterministic based on [VizEvent.seq] and the effective rate.
+     * Structural kinds are always kept (delegated to [StructuralClassifier]). For sheddable
+     * kinds, when [adaptive] is on and the throughput gate is NOT engaged, the event is kept at
+     * full fidelity; otherwise the deterministic per-type rate decision applies.
+     *
+     * @param nowNanos monotonic read clock for the adaptive gate; defaulted to [System.nanoTime]
+     *   for production and supplied explicitly by tests to advance the window deterministically.
      */
-    fun shouldKeep(event: VizEvent): Boolean {
-        if (isLifecycleEvent(event.kind)) return true
+    fun shouldKeep(event: VizEvent, nowNanos: Long = System.nanoTime()): Boolean {
+        if (StructuralClassifier.isStructural(event.kind)) return true
+
+        if (adaptive && !isGateEngaged(nowNanos)) return true
 
         val rate = getEffectiveRate(event.kind)
         if (rate >= 1.0) return true
@@ -66,11 +125,48 @@ class EventSampler(
     }
 
     /**
-     * Updates the sampling rate for a specific event kind at runtime.
+     * Record an arrival and recompute the two-watermark hysteresis gate against [nowNanos].
+     * Returns true when sampling is currently ENGAGED (rates should apply).
+     */
+    private fun isGateEngaged(nowNanos: Long): Boolean =
+        synchronized(gateLock) {
+            recentArrivalNanos.addLast(nowNanos)
+            evictOlderThan(nowNanos - adaptiveConfig.windowNanos)
+
+            val ratePerSec = observedRatePerSec(nowNanos)
+            if (!engaged && ratePerSec >= adaptiveConfig.highWatermarkPerSec) {
+                engaged = true
+            } else if (engaged && ratePerSec < adaptiveConfig.lowWatermarkPerSec) {
+                engaged = false
+            }
+            engaged
+        }
+
+    /** Drop arrivals older than [cutoffNanos] from the front of the window. */
+    private fun evictOlderThan(cutoffNanos: Long) {
+        while (recentArrivalNanos.isNotEmpty() && recentArrivalNanos.first() < cutoffNanos) {
+            recentArrivalNanos.removeFirst()
+        }
+    }
+
+    /**
+     * Observed events/sec = number of arrivals retained in the last [AdaptiveConfig.windowNanos]
+     * divided by the window duration in seconds. Using the FIXED window denominator (rather than
+     * the span between the first and last retained arrival) keeps the estimate well-defined for a
+     * burst that lands at a single instant (span 0) and matches the natural "events in the last
+     * window" interpretation. [nowNanos] is unused here (eviction already trimmed the window) but
+     * kept for signature symmetry with the eviction step.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun observedRatePerSec(nowNanos: Long): Double {
+        val windowSeconds = adaptiveConfig.windowNanos / NANOS_PER_SEC
+        return recentArrivalNanos.size / windowSeconds
+    }
+
+    /**
+     * Updates the sampling rate for [eventKind] at runtime (D-02 "configurable thresholds").
      *
-     * @param eventKind The [VizEvent.kind] value to configure.
-     * @param rate Sampling rate in [0.0, 1.0].
-     * @throws IllegalArgumentException if rate is outside [0.0, 1.0].
+     * @throws IllegalArgumentException if [rate] is outside [0.0, 1.0].
      */
     fun updateRate(eventKind: String, rate: Double) {
         require(rate in 0.0..1.0) { "Rate for '$eventKind' must be in [0.0, 1.0], got $rate" }
@@ -78,30 +174,19 @@ class EventSampler(
     }
 
     /**
-     * Returns the effective sampling rate for a given event kind.
-     *
-     * If a per-type rate is configured for the kind, that is returned;
-     * otherwise the [defaultRate] is returned.
+     * Returns the effective sampling rate for [eventKind] — the per-type override if configured,
+     * otherwise [defaultRate].
      */
     fun getEffectiveRate(eventKind: String): Double =
         perTypeRates[eventKind] ?: defaultRate
 
     /**
-     * Checks whether the given event kind is a lifecycle event that should
-     * always be preserved.
-     */
-    private fun isLifecycleEvent(kind: String): Boolean =
-        LIFECYCLE_SUFFIXES.any { suffix -> kind.endsWith(suffix) }
-
-    /**
-     * Deterministic keep/drop decision based on event sequence number.
+     * Deterministic keep/drop decision based on [seq].
      *
-     * Uses a simple multiplicative hash to map [seq] to a value in [0.0, 1.0),
-     * then compares against the rate. This ensures the same seq + rate always
-     * yields the same decision.
+     * Multiplicative hash maps [seq] to [0.0, 1.0), compared against [rate], so the same
+     * seq + rate always yields the same decision.
      */
     private fun deterministicKeep(seq: Long, rate: Double): Boolean {
-        // Multiply by a large prime and take the lower 32 bits for uniform distribution
         val hash = (seq * HASH_PRIME) and 0xFFFFFFFFL
         val normalized = hash / UINT_MAX_PLUS_ONE // [0.0, 1.0)
         return normalized < rate

@@ -71,7 +71,12 @@ class DebugProbesSource(
         // each snapshot carries parentKey (nearest observed ancestor) keyed by the
         // SAME jobKeys cache — pollTick stays unchanged (still List<CoroutineSnapshot>
         // keyed by it.key).
-        adapter.toSnapshots(DebugProbes.dumpCoroutinesInfo())
+        //
+        // Impl-level dump (15-08 Task 2): the public CoroutineInfo wrapper DROPS
+        // lastObservedThread, so the Java bridge maps the unwrapped impl dump
+        // straight into RawInfo — keeping the observed thread for ThreadAssigned
+        // synthesis.
+        adapter.toSnapshots(DebugProbesImplBridge.dumpRawInfos())
     },
 ) : InstrumentationSource {
     private val logger = LoggerFactory.getLogger(DebugProbesSource::class.java)
@@ -132,7 +137,14 @@ class DebugProbesSource(
         try {
             val next = dump().associateBy { it.key }
             diff(prev, next).forEach { delta ->
-                synthesizer.synthesize(delta, session).forEach { event -> emit(event) }
+                // Vanished consumes the coroutine's recorded terminal outcome (15-08).
+                // Timing property: invokeOnCompletion on an already-completed Job fires
+                // synchronously, and a coroutine only Vanishes AFTER completion, so the
+                // outcome is recorded before the Vanished delta is processed in the
+                // same or an earlier tick. Other delta kinds pass nothing.
+                val outcome =
+                    (delta as? CoroutineDelta.Vanished)?.let { adapter.completionOutcome(it.last.key) }
+                synthesizer.synthesize(delta, session, outcome).forEach { event -> emit(event) }
                 // This delta's events are all out — fold it into the committed state.
                 applyDelta(committed, delta)
             }

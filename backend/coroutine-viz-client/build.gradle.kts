@@ -4,6 +4,7 @@ val ktor_version: String by project
 plugins {
     kotlin("jvm") version "2.3.21"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    id("maven-publish")
 }
 
 group = "com.jh.coroutine-visualizer"
@@ -50,10 +51,52 @@ tasks.named<Test>("test") {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        // Compile against the JDK 17 API, not just to JVM-17 bytecode: on a JDK-21 toolchain a
+        // JDK 19+ call (e.g. Thread#threadId) otherwise compiles and then throws NoSuchMethodError
+        // for SDK consumers on Java 17. checkBytecode only sees class-file versions, not API use.
+        freeCompilerArgs.add("-Xjdk-release=17")
     }
 }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
+}
+
+// Maven publishing configuration — mirrors coroutine-viz-core's already-working
+// block (D-02). The locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.1.0
+// MUST match frontend/src/lib/dep-snippet.ts verbatim (the ConnectWizard snippet).
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            groupId = "com.jh.coroutine-visualizer"
+            artifactId = "coroutine-viz-client"
+            version = project.version.toString()
+
+            from(components["java"])
+
+            pom {
+                name.set("Coroutine Viz Client")
+                description.set("Embeddable client library for streaming coroutine events to a vizcore backend")
+                url.set("https://github.com/hermanngeorge15/visualizer-for-coroutines")
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://opensource.org/licenses/MIT")
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/hermanngeorge15/visualizer-for-coroutines")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: ""
+                password = System.getenv("GITHUB_TOKEN") ?: ""
+            }
+        }
+    }
 }

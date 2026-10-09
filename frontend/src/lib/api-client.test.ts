@@ -342,4 +342,42 @@ describe('ApiClient', () => {
       })
     })
   })
+
+  describe('resolveCorrelation', () => {
+    it('returns the session id when the token is bound (200)', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ sessionId: 'order-service-42' }, 200))
+
+      const result = await apiClient.resolveCorrelation('tok-abc')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/sessions/resolve?correlation=tok-abc',
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+      expect(result).toEqual({ sessionId: 'order-service-42' })
+    })
+
+    // Regression (live-UAT, Phase 09): the 404 "not bound yet" poll path MUST
+    // resolve to null, never undefined. TanStack Query rejects an undefined
+    // queryFn result ("Query data cannot be undefined"), which wedges the
+    // ConnectWizard poll in an error state and breaks ONB-01 auto-navigation.
+    it('returns null (not undefined) on 404 so the poll keeps running', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ error: 'Session not found' }, 404))
+
+      const result = await apiClient.resolveCorrelation('tok-not-bound')
+
+      expect(result).toBeNull()
+      expect(result).not.toBeUndefined()
+    })
+
+    it('url-encodes the correlation token', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ error: 'Session not found' }, 404))
+
+      await apiClient.resolveCorrelation('a b/c?d')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/sessions/resolve?correlation=a%20b%2Fc%3Fd',
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+  })
 })

@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.events.coroutine
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
+import com.jh.proj.coroutineviz.events.SuspensionPoint
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -19,6 +20,13 @@ import kotlinx.serialization.Serializable
  * the DB-rehydrated path (CR-01). It is the LAST, defaulted constructor param so existing
  * positional/named call sites stay source-compatible and pre-existing persisted rows that
  * lack the field decode to the `0L` default with NO schema migration.
+ *
+ * [creationPoint] (15-08, GAP-JUMP-WRONG-FRAME) is the coroutine's LAUNCH SITE — the
+ * first user frame of the creation stack — reusing the [SuspensionPoint] shape as a
+ * generic source ref. Populated by the DebugProbes synthesizer; the VizScope wrapper
+ * path emits null (unchanged). Mirrors [createdAtEpochMs]'s compat precedent: LAST,
+ * defaulted constructor param, so positional call sites stay source-compatible and
+ * legacy wire/persisted JSON decodes to null.
  */
 @Serializable
 @SerialName("CoroutineCreated")
@@ -32,6 +40,7 @@ data class CoroutineCreated(
     override val scopeId: String,
     override val label: String?,
     val createdAtEpochMs: Long = 0L,
+    val creationPoint: SuspensionPoint? = null,
 ) : CoroutineEvent {
     override val kind: String get() = "CoroutineCreated"
 }

@@ -63,3 +63,18 @@ storage:
     maxAgeDays: ${RETENTION_MAX_AGE_DAYS:30}
     maxEventsPerSession: ${RETENTION_MAX_EVENTS_PER_SESSION:100000}
     cleanupIntervalMinutes: ${RETENTION_CLEANUP_INTERVAL_MINUTES:60}
+
+observability:
+  otel:
+    # OpenTelemetry span export (OTEL-01/D-01). DEFAULT-OFF: when enabled=false the
+    # construction gate (Application.configureObservability) returns BEFORE building any
+    # SDK, OTLP exporter, BatchSpanProcessor worker thread, or per-session subscriber.
+    # Telemetry is opt-in only — never left on by accident in prod (T-12-08, ADR-020).
+    enabled: ${OTEL_ENABLED:false}
+    # OTLP/gRPC collector endpoint. A stalled/unreachable collector must NOT back-pressure
+    # send() — BatchSpanProcessor is bounded + drops on overflow (T-12-10).
+    endpoint: ${OTEL_ENDPOINT:http://localhost:4317}
+    # service.name resource attribute on every exported span.
+    serviceName: ${OTEL_SERVICE_NAME:coroutine-visualizer}
+    # Trace-id-ratio sampler input, clamped to [0.0, 1.0] in OtelConfig.from (V5 / T-12-02).
+    samplingRatio: ${OTEL_SAMPLING_RATIO:1.0}

@@ -1,11 +1,20 @@
 import { Link } from '@tanstack/react-router'
-import { Navbar, NavbarBrand, NavbarContent, NavbarItem, Button } from '@heroui/react'
+import { Navbar, NavbarBrand } from '@heroui/react'
 import { FiActivity } from 'react-icons/fi'
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
+/**
+ * The app shell.
+ *
+ * The navbar is brand-only (D-1/D-2/D-3). It previously advertised five
+ * destinations — Home, Sessions, Scenarios, Gallery, Compare — of which Home
+ * and Sessions were the same page, and Scenarios, Gallery and Compare were
+ * actions wearing the costume of places. Per-page actions now live on the pages
+ * that own them; the brand returns you to the sessions home.
+ */
 export function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-background">
@@ -16,56 +25,8 @@ export function Layout({ children }: LayoutProps) {
             <span>Coroutine Visualizer</span>
           </Link>
         </NavbarBrand>
-        <NavbarContent justify="center">
-          <NavbarItem>
-            <Link to="/">
-              {({ isActive }: { isActive: boolean }) => (
-                <Button variant={isActive ? 'flat' : 'light'} color={isActive ? 'primary' : 'default'}>
-                  Home
-                </Button>
-              )}
-            </Link>
-          </NavbarItem>
-          <NavbarItem>
-            <Link to="/sessions">
-              {({ isActive }: { isActive: boolean }) => (
-                <Button variant={isActive ? 'flat' : 'light'} color={isActive ? 'primary' : 'default'}>
-                  Sessions
-                </Button>
-              )}
-            </Link>
-          </NavbarItem>
-          <NavbarItem>
-            <Link to="/scenarios">
-              {({ isActive }: { isActive: boolean }) => (
-                <Button variant={isActive ? 'flat' : 'light'} color={isActive ? 'primary' : 'default'}>
-                  Scenarios
-                </Button>
-              )}
-            </Link>
-          </NavbarItem>
-          <NavbarItem>
-            <Link to="/gallery">
-              {({ isActive }: { isActive: boolean }) => (
-                <Button variant={isActive ? 'flat' : 'light'} color={isActive ? 'primary' : 'default'}>
-                  Gallery
-                </Button>
-              )}
-            </Link>
-          </NavbarItem>
-          <NavbarItem>
-            <Link to="/compare">
-              {({ isActive }: { isActive: boolean }) => (
-                <Button variant={isActive ? 'flat' : 'light'} color={isActive ? 'primary' : 'default'}>
-                  Compare
-                </Button>
-              )}
-            </Link>
-          </NavbarItem>
-        </NavbarContent>
       </Navbar>
       <main>{children}</main>
     </div>
   )
 }
-

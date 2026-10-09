@@ -86,7 +86,7 @@ class InstrumentedDispatcher(
                             parentCoroutineId = vizElement.parentCoroutineId,
                             scopeId = vizElement.scopeId,
                             label = vizElement.label,
-                            threadId = Thread.currentThread().threadId(),
+                            threadId = currentThreadId(),
                             threadName = Thread.currentThread().name,
                             dispatcherName = dispatcherName,
                         ),

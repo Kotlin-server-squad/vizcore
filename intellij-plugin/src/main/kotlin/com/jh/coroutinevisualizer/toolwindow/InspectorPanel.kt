@@ -1,0 +1,288 @@
+package com.jh.coroutinevisualizer.toolwindow
+
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.util.ui.JBUI
+import java.awt.BorderLayout
+import java.awt.Component
+import java.awt.Font
+import java.awt.Point
+import javax.swing.BoxLayout
+import javax.swing.JButton
+import javax.swing.JPanel
+import javax.swing.JScrollPane
+import javax.swing.ScrollPaneConstants
+import javax.swing.SwingConstants
+
+/**
+ * Selected-coroutine inspector. Renders the [InspectorViewModel] (built by the pure
+ * [InspectorViewModel.from]) as a header plus "Suspended at" / "Launched at" / timing rows. A row
+ * with a resolved file:line gets a Jump button that calls [onJump]; otherwise it renders plain text.
+ *
+ * No networking or threading lives here — the tool window drives [show] from the EDT.
+ *
+ * [scrollPaneFactory] is a testability seam ONLY: production always uses the default [JBScrollPane].
+ * Bare unit tests cannot construct a JBScrollPane on macOS (its Mac scrollbar UI asserts a JNA
+ * native lib in `Foundation.<clinit>` that only a booted IDE Application provides), so the headless
+ * scroll test substitutes a plain [JScrollPane] and asserts the same structural contract.
+ */
+@Suppress("TooManyFunctions") // presentational panel built from many small card/label helpers
+class InspectorPanel(
+    private val onJump: (fileName: String, line: Int) -> Unit,
+    scrollPaneFactory: (Component) -> JScrollPane = { view -> JBScrollPane(view) },
+) : JPanel(BorderLayout()) {
+    /**
+     * Top-anchoring viewport wrapper. The card column is swapped INSIDE this panel (NORTH) so it
+     * stays top-aligned when shorter than the viewport; the placeholder goes to CENTER so it renders
+     * visually centered. Rebuilt content lives here — the enclosing [scrollPane] is never rebuilt.
+     */
+    private val wrapper =
+        JPanel(BorderLayout()).apply {
+            isOpaque = false
+        }
+
+    /**
+     * The ONE persistent scroll pane (mirror of [ProblemsDetailPanel]'s internal wrap). It is added
+     * once and never replaced, so wheel/scrollbar state survives every [show]. Borderless so it does
+     * not double the panel's own [ROOT_PADDING] border; horizontal scrolling is off because every
+     * card is a left-aligned label.
+     */
+    private val scrollPane =
+        scrollPaneFactory(wrapper).apply {
+            border = JBUI.Borders.empty()
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            verticalScrollBar.unitIncrement = WHEEL_UNIT_INCREMENT
+        }
+
+    init {
+        border = JBUI.Borders.empty(ROOT_PADDING)
+        add(scrollPane, BorderLayout.CENTER)
+        show(null)
+    }
+
+    /** Replaces the content with the given view model, or a placeholder when null. Call on the EDT. */
+    fun show(vm: InspectorViewModel?) {
+        wrapper.removeAll()
+        if (vm == null) {
+            val label = JBLabel("Select a coroutine")
+            label.horizontalAlignment = SwingConstants.CENTER
+            label.foreground = JBColor.GRAY
+            wrapper.add(label, BorderLayout.CENTER)
+        } else {
+            wrapper.add(content(vm), BorderLayout.NORTH)
+        }
+        wrapper.revalidate()
+        wrapper.repaint()
+        // A newly selected coroutine must open at the top, never mid-scroll from the previous card set.
+        scrollPane.viewport.viewPosition = Point(0, 0)
+    }
+
+    private fun content(vm: InspectorViewModel): Component {
+        val column = JPanel()
+        column.layout = BoxLayout(column, BoxLayout.Y_AXIS)
+        column.isOpaque = false
+
+        // D-24 / sketch 005-A most-diagnostic-first order: exception (when thrown) → timing →
+        // suspended-at (+ its suspension history + the future multi-frame stack placeholder) →
+        // launched-at → runs-on → identity → events.
+        val status = if (vm.running) "running" else "completed"
+        column.add(header(vm))
+        if (vm.exceptionType != null) {
+            column.add(exceptionCard(vm))
+        }
+        column.add(
+            captionedRows(
+                "Timing",
+                listOf(
+                    "$status  ·  lifetime ${vm.lifetimeLabel}",
+                    "active ${vm.activeLabel}  ·  suspended ${vm.suspendedLabel}  ·  total ${vm.totalLabel}",
+                ),
+            ),
+        )
+        column.add(sourceRow("Suspended at", vm.suspendedAt))
+        if (vm.suspensionHistory.isNotEmpty()) {
+            val history = leftColumn()
+            history.border = JBUI.Borders.emptyTop(ROW_GAP)
+            history.add(caption("Suspension history"))
+            vm.suspensionHistory.forEach { ref -> appendRef(history, ref) }
+            column.add(history)
+        }
+        column.add(placeholderCard())
+        column.add(sourceRow("Launched at", vm.launchedAt))
+        column.add(captionedRows("Runs on", listOf("${vm.threadName ?: EMPTY_VALUE} · ${vm.dispatcherName ?: EMPTY_VALUE}")))
+        column.add(
+            captionedRows(
+                "Identity",
+                listOf(
+                    "job ${vm.jobId ?: EMPTY_VALUE}",
+                    "scope ${vm.scopeId ?: EMPTY_VALUE}",
+                    "children ${vm.activeChildrenCount} active / ${vm.childrenCount} total",
+                ),
+            ),
+        )
+        if (vm.events.isNotEmpty()) {
+            val lines =
+                vm.events.map { event ->
+                    val reason =
+                        event.reason
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { " · $it" }
+                            .orEmpty()
+                    "${event.relativeLabel}  ${event.kind}$reason"
+                }
+            column.add(captionedRows("Events", lines))
+        }
+        return column
+    }
+
+    /**
+     * Placeholder for the future multi-frame suspension stack (D-24, sketch 005). It sits directly
+     * under the suspension block because that is where the real stack will land once the backend
+     * DebugProbes-stack change ships; for now it is a static, wire-free label (no HTML path).
+     */
+    private fun placeholderCard(): Component {
+        val panel = leftColumn()
+        panel.border = JBUI.Borders.emptyTop(ROW_GAP)
+        panel.add(caption("Stack trace"))
+        val note = JBLabel("Multi-frame suspension stacks coming soon — single frame shown above.")
+        note.foreground = JBColor.GRAY
+        note.alignmentX = Component.LEFT_ALIGNMENT
+        panel.add(note)
+        return panel
+    }
+
+    private fun exceptionCard(vm: InspectorViewModel): Component {
+        val panel = leftColumn()
+        panel.border =
+            JBUI.Borders.compound(
+                JBUI.Borders.emptyTop(ROW_GAP),
+                JBUI.Borders.customLine(DANGER_COLOR, 0, LEFT_BORDER, 0, 0),
+            )
+
+        val captionLabel = caption("Exception")
+        captionLabel.border = JBUI.Borders.emptyLeft(CARD_INSET)
+        panel.add(captionLabel)
+
+        val type = noHtml(JBLabel(vm.exceptionType.orEmpty()))
+        type.foreground = DANGER_COLOR
+        type.font = type.font.deriveFont(Font.BOLD)
+        type.alignmentX = Component.LEFT_ALIGNMENT
+        type.border = JBUI.Borders.emptyLeft(CARD_INSET)
+        panel.add(type)
+
+        vm.exceptionMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            val label = noHtml(JBLabel(message))
+            label.alignmentX = Component.LEFT_ALIGNMENT
+            label.border = JBUI.Borders.emptyLeft(CARD_INSET)
+            panel.add(label)
+        }
+        return panel
+    }
+
+    private fun header(vm: InspectorViewModel): Component {
+        val panel = leftColumn()
+
+        val title = noHtml(JBLabel("${vm.name}  ·  ${vm.state}"))
+        title.font = title.font.deriveFont(Font.BOLD, TITLE_FONT_SIZE)
+        title.alignmentX = Component.LEFT_ALIGNMENT
+        panel.add(title)
+
+        if (vm.identity.isNotBlank()) {
+            val identity = noHtml(JBLabel(vm.identity))
+            identity.foreground = JBColor.GRAY
+            identity.font = identity.font.deriveFont(SMALL_FONT_SIZE)
+            identity.alignmentX = Component.LEFT_ALIGNMENT
+            panel.add(identity)
+        }
+        return panel
+    }
+
+    private fun sourceRow(
+        caption: String,
+        ref: SourceRef?,
+    ): Component {
+        val panel = leftColumn()
+        panel.border = JBUI.Borders.emptyTop(ROW_GAP)
+        panel.add(caption(caption))
+        if (ref == null) {
+            panel.add(value(EMPTY_VALUE))
+        } else {
+            appendRef(panel, ref)
+        }
+        return panel
+    }
+
+    /** Appends a source reference (reason + file:line + Jump button) to an existing column. */
+    private fun appendRef(
+        panel: JPanel,
+        ref: SourceRef,
+    ) {
+        ref.reason?.takeIf { it.isNotBlank() }?.let { panel.add(value(it)) }
+        val file = ref.fileName
+        val line = ref.lineNumber
+        if (file != null && line != null) {
+            panel.add(value("$file:$line"))
+            val jump = JButton("Jump")
+            jump.alignmentX = Component.LEFT_ALIGNMENT
+            jump.addActionListener { onJump(file, line) }
+            panel.add(jump)
+        } else if (file != null) {
+            panel.add(value(file))
+        }
+    }
+
+    private fun captionedRows(
+        caption: String,
+        lines: List<String>,
+    ): Component {
+        val panel = leftColumn()
+        panel.border = JBUI.Borders.emptyTop(ROW_GAP)
+        panel.add(caption(caption))
+        lines.forEach { panel.add(value(it)) }
+        return panel
+    }
+
+    private fun leftColumn(): JPanel {
+        val panel = JPanel()
+        panel.layout = BoxLayout(panel, BoxLayout.Y_AXIS)
+        panel.isOpaque = false
+        panel.alignmentX = Component.LEFT_ALIGNMENT
+        return panel
+    }
+
+    private fun caption(text: String): JBLabel {
+        val label = noHtml(JBLabel(text))
+        label.foreground = JBColor.GRAY
+        label.font = label.font.deriveFont(Font.BOLD, SMALL_FONT_SIZE)
+        label.alignmentX = Component.LEFT_ALIGNMENT
+        return label
+    }
+
+    private fun value(text: String): Component {
+        val label = noHtml(JBLabel(text))
+        label.alignmentX = Component.LEFT_ALIGNMENT
+        return label
+    }
+
+    /**
+     * Disables Swing HTML rendering on a wire-fed label (T-15-01): a "&lt;html&gt;…" name, state,
+     * identity, exception message, or event reason stays literal — never markup, never a remote img.
+     */
+    private fun noHtml(label: JBLabel): JBLabel {
+        label.putClientProperty("html.disable", true)
+        return label
+    }
+
+    private companion object {
+        const val ROOT_PADDING = 10
+        const val ROW_GAP = 10
+        const val WHEEL_UNIT_INCREMENT = 16
+        const val TITLE_FONT_SIZE = 15f
+        const val SMALL_FONT_SIZE = 11f
+        const val EMPTY_VALUE = "—"
+        const val LEFT_BORDER = 2
+        const val CARD_INSET = 8
+        val DANGER_COLOR = JBColor(0xD32F2F, 0xFF6B68)
+    }
+}

@@ -127,6 +127,39 @@ class ApiClient {
     return this.fetchJson<SessionSnapshot>(`/sessions/${encodeURIComponent(sessionId)}`)
   }
 
+  // Correlation resolve — the ConnectWizard polls this with a client-minted
+  // correlation UUID until the user's real VizcoreClient session binds to it
+  // (CORR-02 / ONB-01). The backend returns 404 UNTIL the token is bound, then
+  // 200 { sessionId } once the connecting app's session is created and visible.
+  //
+  // 404 is the EXPECTED "not bound yet" state — NOT an error — so this does NOT
+  // route through fetchJson (which throws on non-ok and fires the 401-clear /
+  // navigateToLogin). Mirrors getSharedSession's raw-fetch + status-branch idiom.
+  // The Bearer is attached when a token exists (resolve sits behind
+  // authenticatedApi); auth-off mode sends no Authorization header.
+  async resolveCorrelation(correlation: string): Promise<{ sessionId: string } | null> {
+    const token = getToken()
+    const authHeaders: Record<string, string> = token
+      ? { Authorization: `Bearer ${token}` }
+      : {}
+
+    const response = await fetch(
+      `${API_BASE_URL}/sessions/resolve?correlation=${encodeURIComponent(correlation)}`,
+      { headers: { 'Content-Type': 'application/json', ...authHeaders } },
+    )
+
+    // 200 → the token is bound and tenant-visible; return the real session id.
+    if (response.status === 200) {
+      return response.json()
+    }
+    // 404 (not bound yet OR cross-tenant, indistinguishable — no existence leak)
+    // and any other non-ok status: keep polling, do not throw. MUST return null,
+    // not undefined — TanStack Query rejects an undefined queryFn result ("Query data
+    // cannot be undefined"), which would wedge the poll in an error state and stop the
+    // ConnectWizard from ever auto-navigating once the token binds.
+    return null
+  }
+
   async deleteSession(sessionId: string): Promise<{ message: string }> {
     return this.fetchJson(`/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
   }

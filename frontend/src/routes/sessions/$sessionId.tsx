@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Layout } from '@/components/Layout'
-import { SessionDetails } from '@/components/SessionDetails'
+import { SessionWorkspace } from '@/components/SessionWorkspace'
 
 interface SessionSearchParams {
   scenarioId?: string
@@ -24,7 +24,7 @@ function SessionDetailPage() {
   return (
     <Layout>
       <div className="container-custom py-8">
-        <SessionDetails 
+        <SessionWorkspace 
           sessionId={sessionId} 
           scenarioId={search.scenarioId}
           scenarioName={search.scenarioName}

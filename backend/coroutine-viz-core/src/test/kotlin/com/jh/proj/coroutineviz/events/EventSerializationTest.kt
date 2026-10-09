@@ -305,6 +305,50 @@ class EventSerializationTest {
     }
 
     @Test
+    fun `CoroutineCreated with creationPoint round-trips through the shared appJson`() {
+        val event =
+            CoroutineCreated(
+                sessionId = "test-session",
+                seq = 12L,
+                tsNanos = System.nanoTime(),
+                coroutineId = "coroutine-1",
+                jobId = "job-1",
+                parentCoroutineId = null,
+                scopeId = "scope-1",
+                label = "launched",
+                createdAtEpochMs = 1_700_000_000_000L,
+                creationPoint =
+                    SuspensionPoint(
+                        function = "startWork",
+                        fileName = "Bar.kt",
+                        lineNumber = 7,
+                        reason = "launch",
+                    ),
+            )
+
+        val serialized = com.jh.proj.coroutineviz.appJson.encodeToString(event)
+        val deserialized = com.jh.proj.coroutineviz.appJson.decodeFromString<CoroutineCreated>(serialized)
+
+        assertEquals(event, deserialized)
+        assertTrue(serialized.contains("\"creationPoint\""))
+        assertTrue(serialized.contains("\"fileName\":\"Bar.kt\""))
+    }
+
+    @Test
+    fun `CoroutineCreated JSON without creationPoint decodes to null (wire back-compat)`() {
+        // Legacy wire/persisted row: no creationPoint key at all.
+        val legacy =
+            """
+            {"sessionId":"s","seq":1,"tsNanos":0,"coroutineId":"c","jobId":"j",
+             "parentCoroutineId":null,"scopeId":"sc","label":null,"createdAtEpochMs":0}
+            """.trimIndent()
+
+        val deserialized = com.jh.proj.coroutineviz.appJson.decodeFromString<CoroutineCreated>(legacy)
+
+        assertEquals(null, deserialized.creationPoint)
+    }
+
+    @Test
     fun `CoroutineCreated with null parentCoroutineId and label`() {
         val event =
             CoroutineCreated(

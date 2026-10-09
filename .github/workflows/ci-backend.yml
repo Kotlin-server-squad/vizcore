@@ -11,6 +11,9 @@ on:
 jobs:
   test-build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [17, 21]
     defaults:
       run:
         working-directory: backend
@@ -21,7 +24,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21
+          java-version: ${{ matrix.java }}
           cache: gradle
 
       - name: Grant execute permission
@@ -35,6 +38,9 @@ jobs:
 
       - name: Test
         run: ./gradlew test
+
+      - name: Bytecode guard (JVM-17 floor)
+        run: ./gradlew checkBytecode
 
       - name: Build
         run: ./gradlew build

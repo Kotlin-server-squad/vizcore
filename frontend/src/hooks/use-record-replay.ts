@@ -87,7 +87,7 @@ export interface UseRecordReplayResult {
   cancelConfirm: () => void
   /**
    * True from the moment a recording is requested until the recorder has been
-   * armed and playback started (CR-01). SessionDetails suppresses its D-03
+   * armed and playback started (CR-01). SessionWorkspace suppresses its D-03
    * auto-seek-to-end while this is set so the record run starts from index 0.
    */
   isArming: boolean
@@ -191,7 +191,7 @@ export function useRecordReplay<E extends TimedEvent>(
    * record a pending-arm request. The actual seekTo(0) → recorder.start() →
    * play() is driven from the arm effect below, once replay.totalEvents has
    * settled to the snapshot length — so the record run can never be clobbered
-   * by SessionDetails' D-03 auto-seek-to-end (which is suppressed while arming).
+   * by SessionWorkspace' D-03 auto-seek-to-end (which is suppressed while arming).
    */
   const beginRecording = useCallback(() => {
     if (!canRecord || !mimeType) return
@@ -233,7 +233,7 @@ export function useRecordReplay<E extends TimedEvent>(
   // Arm effect (CR-01): once enterReplay has applied the frozen snapshot AND
   // useReplay's own reset-to-0 effect has run (so totalEvents reflects the new
   // snapshot), seek to 0, build + start the recorder, and begin playback. This
-  // runs AFTER the SessionDetails D-03 effect is suppressed (isArming gates it),
+  // runs AFTER the SessionWorkspace D-03 effect is suppressed (isArming gates it),
   // so the record run is guaranteed to start at index 0 rather than the end.
   const currentIndex = replay.currentIndex
   const totalEvents = replay.totalEvents

@@ -9,6 +9,7 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
 
@@ -81,7 +82,11 @@ class MetricsProjection(
 
     init {
         // Subscribe to the event bus, exactly like ProjectionService.
-        session.sessionScope.launch {
+        // UNDISPATCHED: the bus is replay = 0, so the subscription must exist before this
+        // constructor returns. A plain launch subscribed later, and events sent right after
+        // the session was created were lost for good (178/200 sessions in
+        // BusSubscriptionRaceTest, #150 / #138).
+        session.sessionScope.launch(start = CoroutineStart.UNDISPATCHED) {
             session.eventBus.stream().collect { event ->
                 processEvent(event)
             }

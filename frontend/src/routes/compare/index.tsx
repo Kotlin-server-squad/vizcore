@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate, useSearch } from '@tanstack/react-router'
 import { Layout } from '@/components/Layout'
 import { ComparisonView } from '@/components/comparison/ComparisonView'
 
@@ -22,8 +22,22 @@ export function validateSearch(search: Record<string, unknown>): CompareSearch {
   }
 }
 
+/**
+ * Compare is an action, not a destination (D-3) — but `/compare?a=&b=` is a
+ * shareable URL, so only the *bare* form is retired. A shared comparison link,
+ * or a half-filled one, still resolves.
+ */
+export function shouldRedirectBareCompare(search: CompareSearch): boolean {
+  return !search.a && !search.b
+}
+
 export const Route = createFileRoute('/compare/')({
   validateSearch,
+  beforeLoad: ({ search }: { search: CompareSearch }) => {
+    if (shouldRedirectBareCompare(search)) {
+      throw redirect({ to: '/' })
+    }
+  },
   component: ComparePage,
 })
 
