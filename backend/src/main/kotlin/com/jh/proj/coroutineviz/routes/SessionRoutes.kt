@@ -167,13 +167,15 @@ fun Route.registerSessionRoutes() {
             return@get
         }
 
+        // One point-in-time copy so the count and the list agree while events keep arriving.
+        val nodes = session.snapshot.nodes()
         val snapshot =
             SessionSnapshotResponse(
                 sessionId = session.sessionId,
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = nodes.size,
                 eventCount = session.store.all().size,
                 coroutines =
-                    session.snapshot.coroutines.values.map { node ->
+                    nodes.map { node ->
                         CoroutineNodeDto(
                             id = node.id,
                             jobId = node.jobId,
