@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { ConnectWizard } from './ConnectWizard'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { ConnectWizard, STILL_WAITING_AFTER_MS } from './ConnectWizard'
 
 // --- Router navigate (auto-resolve + Skip both navigate to the live view) ---
 const navigate = vi.fn()
@@ -55,7 +55,7 @@ describe('ConnectWizard', () => {
     render(<ConnectWizard isOpen onClose={vi.fn()} />)
 
     expect(screen.getByText('Add the client library')).toBeInTheDocument()
-    expect(screen.getByText('Enable in your app')).toBeInTheDocument()
+    expect(screen.getByText('Start it in your app')).toBeInTheDocument()
     expect(screen.getByText('Run your app')).toBeInTheDocument()
 
     // The dependency snippet renders the LOCKED canonical coordinate (D-06),
@@ -63,9 +63,10 @@ describe('ConnectWizard', () => {
     expect(
       screen.getByText(/com\.jh\.coroutine-visualizer:coroutine-viz-client:0\.1\.0/),
     ).toBeInTheDocument()
-    // The start snippet now carries the client-minted correlation token (D-01).
-    expect(screen.getByText(/VizcoreClient\.start/)).toBeInTheDocument()
-    expect(screen.getByText(/correlation = "/)).toBeInTheDocument()
+    // The start snippet carries the client-minted correlation token (D-01).
+    const start = screen.getByLabelText('Kotlin start call')
+    expect(start).toHaveTextContent(/VizcoreClient\.start\(/)
+    expect(start).toHaveTextContent(/correlation = "/)
 
     // Step 3 shows the waiting copy with the app name.
     expect(screen.getByText(/Waiting for events from/)).toBeInTheDocument()
@@ -87,6 +88,8 @@ describe('ConnectWizard', () => {
       expect(navigate).toHaveBeenCalledWith({
         to: '/sessions/$sessionId',
         params: { sessionId: 'real-app-session-1' },
+        // A just-connected app opens with the live stream on (#126).
+        search: { live: true },
       }),
     )
   })
@@ -121,6 +124,7 @@ describe('ConnectWizard', () => {
     expect(navigate).toHaveBeenCalledWith({
       to: '/sessions/$sessionId',
       params: { sessionId: 'real-app-session-1' },
+      search: { live: true },
     })
   })
 
@@ -137,5 +141,87 @@ describe('ConnectWizard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ConnectWizard snippet and flow (#126)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('generates a start call with the real backend URL, an empty token (auth off) and no fixed app name', () => {
+    render(<ConnectWizard isOpen onClose={vi.fn()} />)
+
+    const start = screen.getByLabelText('Kotlin start call')
+    expect(start).toHaveTextContent(`backendUrl = "${window.location.origin}"`)
+    expect(start).toHaveTextContent('token = ""')
+    expect(start).toHaveTextContent('appName = "my-app"')
+    expect(screen.queryByText(/order-service/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/localhost:8080/)).not.toBeInTheDocument()
+  })
+
+  it('the app name the user types flows into the snippet and the waiting copy', () => {
+    render(<ConnectWizard isOpen onClose={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('App name'), { target: { value: 'billing' } })
+
+    expect(screen.getByLabelText('Kotlin start call')).toHaveTextContent('appName = "billing"')
+    expect(screen.getByText(/Waiting for events from billing/)).toBeInTheDocument()
+  })
+
+  it('shows the repository block with credentials in the dependency snippet', () => {
+    render(<ConnectWizard isOpen onClose={vi.fn()} />)
+
+    const dep = screen.getByLabelText('Gradle dependency')
+    expect(dep).toHaveTextContent('maven.pkg.github.com')
+    expect(dep).toHaveTextContent(/credentials/)
+  })
+
+  it('mints a fresh correlation token every time the wizard is opened, not once per mount', () => {
+    const { rerender } = render(<ConnectWizard isOpen={false} onClose={vi.fn()} />)
+
+    rerender(<ConnectWizard isOpen onClose={vi.fn()} />)
+    const first = lastUseQueryOptions?.queryKey?.[1]
+    rerender(<ConnectWizard isOpen onClose={vi.fn()} />)
+    expect(lastUseQueryOptions?.queryKey?.[1]).toBe(first) // stable while open
+
+    rerender(<ConnectWizard isOpen={false} onClose={vi.fn()} />)
+    rerender(<ConnectWizard isOpen onClose={vi.fn()} />)
+    const second = lastUseQueryOptions?.queryKey?.[1]
+
+    expect(typeof first).toBe('string')
+    expect(second).not.toBe(first)
+    expect(screen.getByLabelText('Kotlin start call')).toHaveTextContent(String(second))
+  })
+
+  it('turns the spinner into a troubleshooting checklist after a while', () => {
+    vi.useFakeTimers()
+    render(<ConnectWizard isOpen onClose={vi.fn()} />)
+    expect(screen.queryByTestId('still-waiting')).not.toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(STILL_WAITING_AFTER_MS + 100)
+    })
+
+    const help = screen.getByTestId('still-waiting')
+    expect(help).toHaveTextContent(/still waiting/i)
+    expect(help).toHaveTextContent(`${window.location.origin}/api/health`)
+  })
+
+  it('confirms a copy, and says so when the clipboard is unavailable', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    render(<ConnectWizard isOpen onClose={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy setup snippet' }))
+
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+    expect(writeText.mock.calls[0]![0]).toContain('VizcoreClient.start(')
+
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    fireEvent.click(screen.getByLabelText('Copy kotlin start call'))
+    await waitFor(() =>
+      expect(screen.getByLabelText(/copy failed/i)).toBeInTheDocument(),
+    )
   })
 })

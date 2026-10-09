@@ -5,6 +5,8 @@ import { SessionWorkspace } from '@/components/SessionWorkspace'
 interface SessionSearchParams {
   scenarioId?: string
   scenarioName?: string
+  /** Open with the live stream on (set by the Connect wizard, #126). */
+  live?: boolean
 }
 
 export const Route = createFileRoute('/sessions/$sessionId')({
@@ -13,6 +15,7 @@ export const Route = createFileRoute('/sessions/$sessionId')({
     return {
       scenarioId: search.scenarioId as string | undefined,
       scenarioName: search.scenarioName as string | undefined,
+      live: search.live === true || search.live === 'true' ? true : undefined,
     }
   },
 })
@@ -24,13 +27,13 @@ function SessionDetailPage() {
   return (
     <Layout>
       <div className="container-custom py-8">
-        <SessionWorkspace 
-          sessionId={sessionId} 
+        <SessionWorkspace
+          sessionId={sessionId}
           scenarioId={search.scenarioId}
           scenarioName={search.scenarioName}
+          startLive={search.live}
         />
       </div>
     </Layout>
   )
 }
-

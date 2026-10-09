@@ -358,6 +358,21 @@ describe('SessionWorkspace', () => {
     expect(screen.getByText('Enable Live Stream')).toBeInTheDocument()
   })
 
+  it('opens with the live stream on for a just-connected app (startLive, #126)', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession(),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    render(<SessionWorkspace sessionId="session-1" startLive />, {
+      wrapper: createWrapper(),
+    })
+
+    expect(screen.getByText('Live Stream Active')).toBeInTheDocument()
+    expect(mockedUseEventStream).toHaveBeenLastCalledWith('session-1', true, false)
+  })
+
   it('shows "Run Scenario" enabled when coroutineCount is 0 (not started)', () => {
     const session = makeSession({
       coroutineCount: 0,

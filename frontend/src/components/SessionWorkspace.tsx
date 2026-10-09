@@ -69,6 +69,8 @@ interface SessionWorkspaceProps {
    * The component is REUSED, never forked (D-10).
    */
   readOnly?: boolean
+  /** Open with the live stream already on (a just-connected real app, #126). */
+  startLive?: boolean
 }
 
 export function SessionWorkspace({
@@ -76,6 +78,7 @@ export function SessionWorkspace({
   scenarioId,
   scenarioName,
   readOnly = false,
+  startLive = false,
 }: SessionWorkspaceProps) {
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
@@ -228,13 +231,16 @@ export function SessionWorkspace({
   // created a fight-loop where disabling the stream instantly re-enabled it
   // (after clearEvents had already wiped the accumulated live events), making
   // the toggle impossible to switch off on scenario pages.
+  // The same applies to a real app the Connect wizard just attached (#126):
+  // it opens streaming rather than as a static snapshot.
   const autoEnabledRef = useRef(false)
+  const autoLive = !readOnly && (hasScenario || startLive)
   useEffect(() => {
-    if (hasScenario && !autoEnabledRef.current) {
+    if (autoLive && !autoEnabledRef.current) {
       autoEnabledRef.current = true
       setStreamEnabled(true)
     }
-  }, [hasScenario])
+  }, [autoLive])
 
   // isPending too: a paused retry (background tab, offline) is still loading,
   // not a missing session (#139).
