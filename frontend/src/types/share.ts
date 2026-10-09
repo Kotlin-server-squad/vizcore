@@ -41,3 +41,6 @@ export type SharedSessionResult =
   | { status: 'expired' } // 410 — the link has passed its expiry
   | { status: 'not-found' } // 404 — unknown OR revoked (indistinguishable by design)
   | { status: 'rate-limited' } // 429 — per-IP bucket exceeded
+  | { status: 'server-error'; httpStatus: number } // 5xx — the server failed, not the link
+  | { status: 'network-error' } // no response at all
+  | { status: 'unauthorized' } // 401/403 — the server wants credentials for a public link

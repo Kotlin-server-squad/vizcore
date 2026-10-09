@@ -14,6 +14,8 @@ import { useEventCategories } from '@/hooks/use-event-categories'
 import { useWorkspaceReplay } from '@/hooks/use-workspace-replay'
 import { useValidation } from '@/hooks/use-validation'
 import { SSE_FALLBACK_POLL_MS } from '@/lib/poll-interval'
+import { useNavigate } from '@tanstack/react-router'
+import { ErrorState } from './ErrorState'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
 import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/state-counts'
 import { deriveRung } from '@/lib/fidelity-rung'
@@ -130,7 +132,13 @@ export function SessionWorkspace({
   // polling observer of each key; every other observer passes no interval.
   const fallbackPollMs =
     streamEnabled && !isConnected && !replayActive && !readOnly ? SSE_FALLBACK_POLL_MS : false
-  const { data: session, isLoading, refetch } = useSession(sessionId, { pollMs: fallbackPollMs })
+  const {
+    data: session,
+    isLoading,
+    error: sessionError,
+    refetch,
+  } = useSession(sessionId, { pollMs: fallbackPollMs })
+  const navigate = useNavigate()
   // In read-only mode the protected /threads fetch is disabled — the shared
   // shell has no Bearer; thread lanes are derived from the shared events below.
   const { data: threadActivity } = useThreadActivity(sessionId, fallbackPollMs, !readOnly)
@@ -236,6 +244,18 @@ export function SessionWorkspace({
   }
 
   if (!session) {
+    // A failed load is one of several distinct things (#139) — a 429 or a dead
+    // server must not read as "Session not found".
+    if (sessionError) {
+      return (
+        <ErrorState
+          error={sessionError}
+          subject="This session"
+          onRetry={() => void refetch()}
+          action={readOnly ? undefined : { label: 'Back to sessions', onPress: () => void navigate({ to: '/' }) }}
+        />
+      )
+    }
     return (
       <Card>
         <CardBody>
@@ -329,6 +349,7 @@ export function SessionWorkspace({
         <ScenarioControls
           sessionId={sessionId}
           scenarioId={scenarioId}
+          scenarioName={scenarioName}
           session={session}
           onClearEvents={clearEvents}
           onRefetch={refetch}

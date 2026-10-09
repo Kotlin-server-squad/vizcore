@@ -24,9 +24,9 @@ import { normalizeEvents } from './utils'
 import { getToken, clearToken } from './auth-store'
 import { navigateToLogin } from './navigation'
 
-import { ApiError, RateLimitedError, parseRetryAfter } from './api-errors'
+import { ApiError, NetworkError, RateLimitedError, parseRetryAfter } from './api-errors'
 
-export { ApiError, RateLimitedError } from './api-errors'
+export { ApiError, NetworkError, RateLimitedError } from './api-errors'
 
 const API_BASE_URL = '/api'
 
@@ -67,6 +67,42 @@ function noteRateLimited(cls: RateLimitClass, response: Response): RateLimitedEr
 }
 
 /**
+ * The most useful message an error response carries (#139). JSON bodies give
+ * their `error`/`message` field; a short plain-text body (Ktor's default for
+ * many statuses) is shown as-is; an HTML page or empty body falls back to the
+ * status line — never the old catch-all "Unknown error".
+ */
+async function errorMessageOf(response: Response): Promise<string> {
+  const statusLine = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
+  let text: string
+  try {
+    if (typeof response.text === 'function') {
+      text = await response.text()
+    } else {
+      // Minimal Response stand-ins (tests) may only implement json().
+      text = JSON.stringify(await response.json())
+    }
+  } catch {
+    return statusLine
+  }
+  const trimmed = text.trim()
+  if (!trimmed) return statusLine
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    if (parsed && typeof parsed === 'object') {
+      const { error, message } = parsed as { error?: unknown; message?: unknown }
+      if (typeof error === 'string' && error) return error
+      if (typeof message === 'string' && message) return message
+    }
+    return statusLine
+  } catch {
+    // Not JSON: use short plain text, never an HTML error page.
+    if (trimmed.startsWith('<') || trimmed.length > 300) return statusLine
+    return trimmed
+  }
+}
+
+/**
  * Thrown by `login()` when the token endpoint returns 401 (wrong credentials).
  * The `/login` form branches on this type to show the "Incorrect username or
  * password." copy, vs. the network/server copy for any other failure.
@@ -102,14 +138,20 @@ class ApiClient {
       ? { Authorization: `Bearer ${token}` }
       : {}
 
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders,
-        ...options?.headers,
-      },
-    })
+    let response: Response
+    try {
+      response = await fetch(`${API_BASE_URL}${url}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          ...options?.headers,
+        },
+      })
+    } catch (err) {
+      // No HTTP response at all — say so instead of a bare "Failed to fetch" (#139).
+      throw new NetworkError(err)
+    }
 
     if (!response.ok) {
       // 429: honour Retry-After and fail fast until it elapses (#124).
@@ -125,8 +167,7 @@ class ApiClient {
         clearToken()
         navigateToLogin()
       }
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-      throw new ApiError(response.status, error.error || `HTTP ${response.status}`)
+      throw new ApiError(response.status, await errorMessageOf(response))
     }
 
     // 204 No Content has no body — calling response.json() on it throws
@@ -196,10 +237,15 @@ class ApiClient {
       ? { Authorization: `Bearer ${token}` }
       : {}
 
-    const response = await fetch(
-      `${API_BASE_URL}/sessions/resolve?correlation=${encodeURIComponent(correlation)}`,
-      { headers: { 'Content-Type': 'application/json', ...authHeaders } },
-    )
+    let response: Response
+    try {
+      response = await fetch(
+        `${API_BASE_URL}/sessions/resolve?correlation=${encodeURIComponent(correlation)}`,
+        { headers: { 'Content-Type': 'application/json', ...authHeaders } },
+      )
+    } catch (err) {
+      throw new NetworkError(err)
+    }
 
     // 200 → the token is bound and tenant-visible; return the real session id.
     if (response.status === 200) {
@@ -367,19 +413,35 @@ class ApiClient {
   // The 410/404/429 status matrix (D-12, ADR-019) is mapped to a typed result
   // the shared view (Plan 06) branches on instead of catching raw errors.
   async getSharedSession(token: string): Promise<SharedSessionResult> {
-    const response = await fetch(
-      `${API_BASE_URL}/shared/${encodeURIComponent(token)}`,
-      { headers: { 'Content-Type': 'application/json' } },
-    )
+    let response: Response
+    try {
+      response = await fetch(
+        `${API_BASE_URL}/shared/${encodeURIComponent(token)}`,
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+    } catch {
+      // No response at all: the link may be fine, the server is unreachable (#139).
+      return { status: 'network-error' }
+    }
 
     if (response.ok) {
-      const data = await response.json()
-      return { status: 'ok', data }
+      try {
+        const data = await response.json()
+        return { status: 'ok', data }
+      } catch {
+        return { status: 'server-error', httpStatus: response.status }
+      }
     }
     if (response.status === 410) return { status: 'expired' }
     if (response.status === 429) return { status: 'rate-limited' }
-    // 404 (unknown OR revoked) and any other non-ok status fall through to
-    // not-found — the public view has no credential to retry with.
+    // A 5xx says nothing about the link — telling the viewer it "is no longer
+    // available" would be false (#139).
+    if (response.status >= 500) return { status: 'server-error', httpStatus: response.status }
+    // The public route should never ask for credentials; if a deployment puts
+    // it behind auth, say that rather than blaming the link.
+    if (response.status === 401 || response.status === 403) return { status: 'unauthorized' }
+    // 404 (unknown OR revoked) and any other 4xx fall through to not-found —
+    // the public view has no credential to retry with.
     return { status: 'not-found' }
   }
 }

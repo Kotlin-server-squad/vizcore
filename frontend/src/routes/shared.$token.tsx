@@ -32,6 +32,12 @@ const COPY = {
   rateLimitedHeading: 'Too many requests',
   rateLimitedBody:
     'This shared link is receiving a lot of traffic. Try again in a minute.',
+  serverErrorHeading: 'The server had a problem',
+  serverErrorBody: 'The vizcore server could not load this shared session right now.',
+  networkErrorHeading: "Can't reach the server",
+  networkErrorBody: 'The vizcore server did not respond. Check your connection and try again.',
+  unauthorizedHeading: 'Sign-in required',
+  unauthorizedBody: 'This server requires signing in to open shared links. Ask the person who shared it.',
 } as const
 
 export const Route = createFileRoute('/shared/$token')({
@@ -44,12 +50,22 @@ export function SharedSessionPage() {
   const queryClient = useQueryClient()
   // `null` = still loading; otherwise the typed status result drives the branch.
   const [result, setResult] = useState<SharedSessionResult | null>(null)
+  // Bumped by "Try again" to re-run the load.
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
+    setResult(null)
 
     async function load() {
-      const res = await apiClient.getSharedSession(token)
+      let res: SharedSessionResult
+      try {
+        res = await apiClient.getSharedSession(token)
+      } catch {
+        // Any unexpected failure ends the spinner with an explicit state —
+        // never a permanent spinner (#139).
+        res = { status: 'network-error' }
+      }
       if (cancelled) return
       // On a valid result, seed the viewer hooks' cache from the public payload
       // so SessionWorkspace renders without any protected (Bearer-bearing) fetch.
@@ -65,7 +81,9 @@ export function SharedSessionPage() {
     return () => {
       cancelled = true
     }
-  }, [token, queryClient])
+  }, [token, queryClient, attempt])
+
+  const retry = { label: 'Try again', onClick: () => setAttempt(n => n + 1) }
 
   if (result === null) {
     return (
@@ -78,7 +96,39 @@ export function SharedSessionPage() {
   if (result.status === 'rate-limited') {
     return (
       <div className="container-custom py-16 pt-20">
-        <EmptyState title={COPY.rateLimitedHeading} description={COPY.rateLimitedBody} />
+        <EmptyState
+          title={COPY.rateLimitedHeading}
+          description={COPY.rateLimitedBody}
+          action={retry}
+        />
+      </div>
+    )
+  }
+
+  if (result.status === 'unauthorized') {
+    return (
+      <div className="container-custom py-16 pt-20">
+        <EmptyState title={COPY.unauthorizedHeading} description={COPY.unauthorizedBody} />
+      </div>
+    )
+  }
+
+  // The server failed or could not be reached: that says nothing about the
+  // link, so do not claim it is "no longer available" (#139).
+  if (result.status === 'server-error' || result.status === 'network-error') {
+    return (
+      <div className="container-custom py-16 pt-20">
+        <EmptyState
+          title={
+            result.status === 'server-error' ? COPY.serverErrorHeading : COPY.networkErrorHeading
+          }
+          description={
+            result.status === 'server-error'
+              ? `${COPY.serverErrorBody} (HTTP ${result.httpStatus})`
+              : COPY.networkErrorBody
+          }
+          action={retry}
+        />
       </div>
     )
   }

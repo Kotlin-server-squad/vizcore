@@ -12,6 +12,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { useScenarios } from '@/hooks/use-scenarios'
 import { useCreateSession } from '@/hooks/use-sessions'
 import type { Scenario } from '@/types/api'
+import { describeApiError } from '@/lib/api-errors'
+import { ErrorState } from '../ErrorState'
 
 /**
  * "New demo session" — the re-hosted scenario picker (D-2).
@@ -29,7 +31,7 @@ export function NewDemoSessionModal({
   isOpen: boolean
   onClose: () => void
 }) {
-  const { data, isLoading } = useScenarios()
+  const { data, isLoading, error: scenariosError, refetch: refetchScenarios } = useScenarios()
   const createSession = useCreateSession()
   const navigate = useNavigate()
   const [preparing, setPreparing] = useState<string | null>(null)
@@ -42,8 +44,13 @@ export function NewDemoSessionModal({
     }
   }, [data?.scenarios])
 
+  const [startError, setStartError] = useState<{ scenario: string; error: unknown } | null>(null)
+
+  // Never rejects: a failed create (e.g. the session-create rate limit) is
+  // shown in the modal instead of becoming an unhandled rejection (#139).
   const start = async (scenario: Scenario) => {
     setPreparing(scenario.id)
+    setStartError(null)
     try {
       const result = await createSession.mutateAsync(`scenario-${scenario.name}`)
       onClose()
@@ -52,6 +59,8 @@ export function NewDemoSessionModal({
         params: { sessionId: result.sessionId },
         search: { scenarioId: scenario.id, scenarioName: scenario.name },
       })
+    } catch (error) {
+      setStartError({ scenario: scenario.name, error })
     } finally {
       setPreparing(null)
     }
@@ -94,10 +103,23 @@ export function NewDemoSessionModal({
           </span>
         </ModalHeader>
         <ModalBody className="pb-6">
+          {startError && (
+            <div role="alert" className="rounded-medium border border-danger-200 bg-danger-50 p-3 text-sm text-danger">
+              Could not start “{startError.scenario}”:{' '}
+              {describeApiError(startError.error, 'The scenario').message}
+            </div>
+          )}
           {isLoading ? (
             <div className="flex justify-center py-12">
               <Spinner size="sm" />
             </div>
+          ) : scenariosError && !data ? (
+            <ErrorState
+              error={scenariosError}
+              subject="The scenario list"
+              onRetry={() => void refetchScenarios()}
+              bare
+            />
           ) : (
             <div className="flex flex-col gap-4">
               {realistic.length > 0 && (

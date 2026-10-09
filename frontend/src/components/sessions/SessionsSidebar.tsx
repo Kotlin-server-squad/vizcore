@@ -1,7 +1,7 @@
 import { Button, Card, CardBody, Spinner } from '@heroui/react'
 import { FiPlus } from 'react-icons/fi'
-import { useNavigate } from '@tanstack/react-router'
 import type { SessionInfo } from '@/types/api'
+import { ErrorState } from '../ErrorState'
 import { useSessions } from '@/hooks/use-sessions'
 import { deriveSessionKind } from '@/lib/session-kind'
 import { SessionRow } from './SessionRow'
@@ -33,8 +33,7 @@ export function SessionsSidebar({
   /** Opens the re-hosted comparison overlay (D-3). Omitted in the sidebar placement. */
   onCompare?: () => void
 }) {
-  const { data: sessions, isLoading } = useSessions()
-  const navigate = useNavigate()
+  const { data: sessions, isLoading, isError, error, refetch } = useSessions()
 
   const live: SessionInfo[] = []
   const demo: SessionInfo[] = []
@@ -46,7 +45,12 @@ export function SessionsSidebar({
     }
   }
 
-  const isEmpty = !isLoading && live.length === 0 && demo.length === 0
+  // A failed load is NOT an empty list (#139): "No app connected" on a 429 or
+  // a dead server would send the user off to debug their app for nothing.
+  // Data from an earlier successful load keeps rendering through a failed
+  // background refresh.
+  const failed = isError && !sessions
+  const isEmpty = !isLoading && !failed && live.length === 0 && demo.length === 0
 
   return (
     <Card className={className}>
@@ -79,6 +83,8 @@ export function SessionsSidebar({
           <div className="flex items-center justify-center py-12">
             <Spinner size="sm" />
           </div>
+        ) : failed ? (
+          <ErrorState error={error} subject="The sessions list" onRetry={() => void refetch()} bare />
         ) : isEmpty ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <h3 className="text-sm font-semibold">No app connected</h3>
@@ -90,13 +96,13 @@ export function SessionsSidebar({
             <Button color="primary" size="sm" onPress={onConnect}>
               Connect your app
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={() => navigate({ to: '/scenarios' })}
-            >
-              Run a demo scenario instead
-            </Button>
+            {/* Opens the demo picker in place. It used to navigate to
+                /scenarios, which redirects straight back here (#139). */}
+            {onNewDemo && (
+              <Button variant="ghost" size="sm" onPress={onNewDemo}>
+                Run a demo scenario instead
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-4">

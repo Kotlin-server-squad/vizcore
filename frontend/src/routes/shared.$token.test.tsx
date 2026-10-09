@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createRootRoute,
@@ -141,6 +141,36 @@ describe('/shared/$token route', () => {
     expect(
       screen.getByText('The share link may have expired or been revoked.'),
     ).toBeInTheDocument()
+  })
+
+  it('says the server failed on a 5xx — not that the link is gone — and offers a retry (#139)', async () => {
+    getSharedSession
+      .mockResolvedValueOnce({ status: 'server-error', httpStatus: 503 })
+      .mockResolvedValueOnce({ status: 'ok', data: { session: makeSession(), events: [] } })
+
+    renderSharedAt()
+
+    expect(await screen.findByText('The server had a problem')).toBeInTheDocument()
+    expect(screen.queryByText('This link is no longer available')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByTestId('session-details')).toBeInTheDocument()
+  })
+
+  it('shows a network state, not a permanent spinner, when the fetch itself fails (#139)', async () => {
+    getSharedSession.mockRejectedValue(new TypeError('Failed to fetch'))
+
+    renderSharedAt()
+
+    expect(await screen.findByText("Can't reach the server")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('shows a sign-in state on 401', async () => {
+    getSharedSession.mockResolvedValue({ status: 'unauthorized' })
+
+    renderSharedAt()
+
+    expect(await screen.findByText('Sign-in required')).toBeInTheDocument()
   })
 
   it('shows the "Too many requests" copy on 429 (rate-limited)', async () => {
