@@ -112,6 +112,20 @@ describe('SessionsSidebar - failed loads are not an empty list (#139)', () => {
     }
   })
 
+  it('a paused retry (pending, not fetching) still reads as loading, not "No app connected"', () => {
+    useSessionsMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isPending: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    render(<SessionsSidebar onConnect={vi.fn()} />)
+
+    expect(screen.queryByText('No app connected')).not.toBeInTheDocument()
+  })
+
   it('keeps showing an earlier list through a failed background refresh', () => {
     useSessionsMock.mockReturnValue({
       data: [liveSession],

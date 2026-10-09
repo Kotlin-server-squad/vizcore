@@ -31,7 +31,7 @@ export function NewDemoSessionModal({
   isOpen: boolean
   onClose: () => void
 }) {
-  const { data, isLoading, error: scenariosError, refetch: refetchScenarios } = useScenarios()
+  const { data, isLoading, isPending, error: scenariosError, refetch: refetchScenarios } = useScenarios()
   const createSession = useCreateSession()
   const navigate = useNavigate()
   const [preparing, setPreparing] = useState<string | null>(null)
@@ -109,7 +109,7 @@ export function NewDemoSessionModal({
               {describeApiError(startError.error, 'The scenario').message}
             </div>
           )}
-          {isLoading ? (
+          {isLoading || isPending === true ? (
             <div className="flex justify-center py-12">
               <Spinner size="sm" />
             </div>

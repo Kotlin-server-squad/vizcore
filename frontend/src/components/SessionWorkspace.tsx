@@ -135,6 +135,7 @@ export function SessionWorkspace({
   const {
     data: session,
     isLoading,
+    isPending,
     error: sessionError,
     refetch,
   } = useSession(sessionId, { pollMs: fallbackPollMs })
@@ -235,7 +236,9 @@ export function SessionWorkspace({
     }
   }, [hasScenario])
 
-  if (isLoading) {
+  // isPending too: a paused retry (background tab, offline) is still loading,
+  // not a missing session (#139).
+  if (isLoading || (isPending === true && !sessionError)) {
     return (
       <div className="flex items-center justify-center py-20">
         <Spinner size="lg" />

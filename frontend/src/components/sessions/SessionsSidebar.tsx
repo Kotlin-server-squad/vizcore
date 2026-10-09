@@ -33,7 +33,11 @@ export function SessionsSidebar({
   /** Opens the re-hosted comparison overlay (D-3). Omitted in the sidebar placement. */
   onCompare?: () => void
 }) {
-  const { data: sessions, isLoading, isError, error, refetch } = useSessions()
+  const { data: sessions, isLoading, isPending, isError, error, refetch } = useSessions()
+  // `isPending`, not just `isLoading`: a retry TanStack Query has paused (tab
+  // in the background, browser offline) is pending but not fetching, and must
+  // read as "still loading" — not fall through to "No app connected" (#139).
+  const loading = isLoading || isPending === true
 
   const live: SessionInfo[] = []
   const demo: SessionInfo[] = []
@@ -50,7 +54,7 @@ export function SessionsSidebar({
   // Data from an earlier successful load keeps rendering through a failed
   // background refresh.
   const failed = isError && !sessions
-  const isEmpty = !isLoading && !failed && live.length === 0 && demo.length === 0
+  const isEmpty = !loading && !failed && live.length === 0 && demo.length === 0
 
   return (
     <Card className={className}>
@@ -79,7 +83,7 @@ export function SessionsSidebar({
           </div>
         </div>
 
-        {isLoading ? (
+        {loading ? (
           <div className="flex items-center justify-center py-12">
             <Spinner size="sm" />
           </div>

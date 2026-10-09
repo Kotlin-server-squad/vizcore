@@ -135,7 +135,9 @@ export function describeApiError(error: unknown, subject = 'This resource'): Des
       return {
         kind: 'server',
         title: 'Server error',
-        message: `The vizcore server failed to answer (HTTP ${error.status}): ${error.message}`,
+        message: error.message.startsWith('HTTP ')
+          ? `The vizcore server failed to answer (${error.message}).`
+          : `The vizcore server failed to answer (HTTP ${error.status}): ${error.message}`,
         retryable: true,
       }
     }
