@@ -1,18 +1,19 @@
 import { Chip } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import type { SessionInfo } from '@/types/api'
-import { LivePill } from '@/components/LivePill'
+import { sessionDisplayName } from '@/lib/session-kind'
 
 /**
  * One badged session row in the sessions-sidebar-as-home (Phase 08.5, Surface 003,
- * UI-SPEC line 143). Every row carries an unmistakable LIVE vs DEMO badge:
- * - live → the reused {@link LivePill} (LIVE pill + "~150ms poll" sub-label).
- * - demo → a neutral DEMO {@link Chip}.
+ * UI-SPEC line 143). Every row says whose code it is:
+ * - app  → an APP badge: the user's own application;
+ * - demo → a muted DEMO badge: a scenario that runs inside vizcore.
  *
- * The sketch's `{host}` meta is unavailable in `SessionInfo` (only `coroutineCount`
- * is wire-present), so the meta degrades gracefully to `{N} active` from the count
- * (PD-10, Pitfall 3). Literal Tailwind only (IN-12) — selected/hover styling via
- * discrete literal-class branches, no `cn()`.
+ * Only what the backend reports is claimed (#145). `SessionInfo` carries no
+ * liveness, so the row does not say LIVE (it used to, for every non-demo row,
+ * hours after the app had gone); and `coroutineCount` counts every coroutine
+ * the session has seen, finished ones included, so it reads "N coroutines",
+ * not "N active". Literal Tailwind only (IN-12).
  */
 export function SessionRow({
   session,
@@ -23,7 +24,7 @@ export function SessionRow({
   kind: 'live' | 'demo'
   selected: boolean
 }) {
-  const label = session.sessionId
+  const count = session.coroutineCount
 
   return (
     <Link
@@ -36,11 +37,15 @@ export function SessionRow({
       }
     >
       <div className="flex min-w-0 flex-col gap-1">
-        <span className="truncate text-sm font-semibold">{label}</span>
-        <span className="font-mono text-xs text-default-500">{session.coroutineCount} active</span>
+        <span className="truncate text-sm font-semibold">{sessionDisplayName(session.sessionId)}</span>
+        <span className="truncate font-mono text-xs text-default-500" title={session.sessionId}>
+          {count === 1 ? '1 coroutine' : `${count} coroutines`} · {session.sessionId}
+        </span>
       </div>
       {kind === 'live' ? (
-        <LivePill streamEnabled />
+        <Chip size="sm" variant="bordered" className="border-primary/40 text-primary">
+          APP
+        </Chip>
       ) : (
         <Chip size="sm" className="bg-default-100 text-default-500">
           DEMO
