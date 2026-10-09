@@ -22,7 +22,7 @@ fun Route.registerVizScenarioRoutes() {
         session.sent(CoroutineCompleted(session.sessionId, session.nextSeq(), System.nanoTime(), cid, jid, null, scopeId, "root"))
         delay(100)
         val nodes =
-            session.snapshot.coroutines.values.map {
+            session.snapshot.nodes().map {
                 CoroutineNodeDto(it.id, it.jobId, it.parentId, it.scopeId, it.label, it.state.toString())
             }
         call.respond(HttpStatusCode.OK, ScenarioResultData(true, session.sessionId, session.store.all(), nodes, session.store.all().size))
