@@ -198,6 +198,33 @@ class SseSubscriptionOrderTest {
             assertEquals(total - received.get(), evicted.get(), "every event not received is counted as evicted")
         }
 
+    /**
+     * `onSubscribed` must run only once the subscriber holds its slot on the bus: an
+     * event sent from inside the callback is delivered to that same subscriber. The bus
+     * has no replay, so if the callback ran before registration this event would be
+     * dropped and the collection would time out.
+     */
+    @Test
+    fun `an event sent from inside onSubscribed reaches the new subscriber`(): Unit =
+        runBlocking {
+            val bus = EventBus(capacity = 16)
+            val evicted = AtomicLong()
+            bus.onEvicted = { missed -> evicted.addAndGet(missed) }
+            repeat(50) { attempt ->
+                val seq = attempt + 1L
+                val first =
+                    withTimeout(5_000) {
+                        bus
+                            .stream(onSubscribed = { bus.send(event("bus", "in-callback-$seq", seq)) })
+                            .take(1)
+                            .toList()
+                            .single()
+                    }
+                assertEquals(seq, first.seq, "the event sent inside onSubscribed must be delivered")
+            }
+            assertEquals(0L, evicted.get())
+        }
+
     @Test
     fun `a subscriber within the bus capacity reports no evictions`(): Unit =
         runBlocking {

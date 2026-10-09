@@ -118,7 +118,9 @@ class EventBus(
      * the events evicted for it are counted and reported via [onEvicted].
      *
      * @param onSubscribed invoked once the subscriber is registered on the bus
-     *   and before it receives any event. Every event sent after this call
+     *   and before it receives any event. It runs inside
+     *   [kotlinx.coroutines.flow.onSubscription], which the shared flow calls
+     *   only after it has allocated the collector's slot. Every event sent after this call
      *   starts is delivered to the subscriber (or counted as evicted), so a
      *   caller can snapshot the store inside or after it without a gap.
      * @return Cold flow that emits all future events
