@@ -19,7 +19,7 @@ private val ingestLogger = LoggerFactory.getLogger("CoroutineVizIngest")
  * transport. A remote client opens an authenticated WebSocket to
  * `/api/sessions/{id}/ingest` and streams text frames, each carrying one
  * serialized [VizEvent]; the server deserializes it and publishes it via
- * [com.jh.proj.coroutineviz.session.VizSession.send], feeding the EXISTING
+ * [com.jh.proj.coroutineviz.session.VizSession.ingest], feeding the EXISTING
  * EventStore → snapshot → EventBus → SSE → FE pipeline with zero downstream
  * changes.
  *
@@ -32,7 +32,9 @@ private val ingestLogger = LoggerFactory.getLogger("CoroutineVizIngest")
  *    [resolveScopedSession], which returns null for a cross-tenant or missing id
  *    → the handshake is refused (close VIOLATED_POLICY) with NO write.
  *  - **T-07-03:** the server NEVER trusts the frame's `sessionId`; it always
- *    publishes into the server-resolved session, and `send()` re-stamps `seq`.
+ *    publishes into the server-resolved session, and the server assigns `seq`:
+ *    `ingest()` always replaces the frame's `seq` with the session's next seq,
+ *    so a restarted, duplicate or out-of-range client `seq` never drops an event.
  *  - **T-07-05:** a malformed frame is skipped (per-frame `runCatching`) and the
  *    stream stays open — one bad frame never drops the connection.
  *  - **T-07-04:** a single frame is capped at 1 MiB by the WebSockets plugin
@@ -68,7 +70,8 @@ fun Route.registerIngestRoutes() {
  *  - T-07-05: a malformed frame is skipped (logged at debug); the caller keeps
  *    looping so the stream stays open — one bad frame never drops the connection.
  *  - T-07-03: the event is published into the server-resolved session, never a
- *    target looked up from the frame body; `send()` re-stamps `seq` for ordering.
+ *    target looked up from the frame body; the server assigns `seq` (`ingest()`
+ *    never keeps the client's value), so session order stays strictly increasing.
  */
 private fun publishFrame(
     session: VizSession,
@@ -82,5 +85,5 @@ private fun publishFrame(
             ingestLogger.debug("Skipped malformed ingest frame for session {}: {}", sessionId, it.message)
             return
         }
-    session.send(event)
+    session.ingest(event)
 }

@@ -148,4 +148,37 @@ class IngestRoutesTest {
                 "the valid frame sent AFTER the malformed one must still be accepted (stream stayed open)",
             )
         }
+
+    @Test
+    fun `reconnecting client that restarts its seq keeps every event with server-assigned seq`() =
+        testApplication {
+            application { module() }
+            val client = wsClient()
+
+            val sessionId = createSession(client)
+            val perRun = 50
+
+            // Run 1 and a restarted run 2 both number their events 1..perRun (#127).
+            // Wait for run 1 to land before reconnecting so arrival order is deterministic.
+            listOf("run1", "run2").forEachIndexed { index, run ->
+                client.webSocket("/api/sessions/$sessionId/ingest") {
+                    (1..perRun).forEach { i ->
+                        send(Frame.Text(frameText(event(sessionId, "$run-$i", run).copy(seq = i.toLong()))))
+                    }
+                }
+                eventsWhenSettled(client, sessionId, expected = (index + 1) * perRun)
+            }
+
+            val arr = eventsWhenSettled(client, sessionId, expected = 2 * perRun)
+            assertEquals(2 * perRun, arr.size, "both runs must be kept in full")
+            val ids = arr.map { it.jsonObject["coroutineId"]?.jsonPrimitive?.content }
+            assertEquals((1..perRun).map { "run1-$it" } + (1..perRun).map { "run2-$it" }, ids)
+            val seqs =
+                arr.map {
+                    it.jsonObject["seq"]!!
+                        .jsonPrimitive.content
+                        .toLong()
+                }
+            assertTrue(seqs.zipWithNext().all { (a, b) -> b > a }, "server-assigned seq must be strictly increasing: $seqs")
+        }
 }

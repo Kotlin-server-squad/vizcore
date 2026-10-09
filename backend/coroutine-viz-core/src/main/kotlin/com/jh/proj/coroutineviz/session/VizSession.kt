@@ -37,6 +37,11 @@ import java.util.concurrent.atomic.AtomicLong
  * store order, seq order, and live-bus delivery order are identical — the
  * invariant SSE replay deduplication (max-seq watermark) depends on.
  *
+ * The session owns its seq space. Events produced in-process ([send]) and events
+ * received from a remote client ([ingest]) draw from one counter, so the
+ * session's event order is strictly increasing with no duplicates. A remote
+ * event's own seq is never kept: [ingest] always assigns a fresh server seq.
+ *
  * @property sessionId Unique identifier for this session
  */
 class VizSession(
@@ -114,27 +119,68 @@ class VizSession(
      * Non-suspending event send - PREFERRED for most use cases.
      * Synchronously emits event to bus, stores it, and updates snapshot.
      *
+     * Use this for events produced in-process, whose provisional seq came from
+     * [nextSeq]. Events received from a remote client go through [ingest].
+     *
      * Seq finalization, store append, snapshot apply, and bus broadcast run as one
      * atomic critical section: with concurrent senders, thread A can construct
      * seq=10, thread B construct seq=11 and reach send() first. Without the lock
      * the store (and bus) would deliver 11 before 10, breaking the max-seq
      * watermark dedup used by SSE replay (WR-02). Inside the lock, an event whose
      * provisional seq is no longer the highest is re-stamped with a fresh seq, so
-     * store order == seq order always holds (WR-12).
+     * store order == seq order always holds (WR-12). A kept provisional seq also
+     * advances the generator, so [send] and [ingest] share one strictly
+     * increasing counter.
      */
     fun send(event: VizEvent) {
+        append(event) {
+            if (event.seq <= lastSentSeq) {
+                // A concurrent sender appended a higher seq after this event was
+                // constructed (or the event carries a stale/placeholder seq):
+                // re-stamp so seq order matches append order.
+                event.seq = assignNextSeq()
+            } else {
+                seqGenerator.updateAndGet { maxOf(it, event.seq) }
+            }
+        }
+    }
+
+    /**
+     * Publish an event received from a remote client (the ingest transport).
+     *
+     * The server, not the client, owns the session's seq space: under the send
+     * lock the event's seq is ALWAYS replaced with `max(seqGenerator, lastSentSeq) + 1`
+     * and the generator advances to that value. Whatever seq the client sent
+     * (a restart from 1, a decreasing or duplicate value, `Long.MAX_VALUE`) is
+     * discarded, so every ingested event is kept and the session's order stays
+     * strictly increasing even when ingest interleaves with in-process [send].
+     */
+    fun ingest(event: VizEvent) {
+        append(event) { event.seq = assignNextSeq() }
+    }
+
+    /**
+     * Next seq after everything allocated or appended so far. Caller must hold
+     * [sendLock]; the generator is advanced atomically so a concurrent [nextSeq]
+     * outside the lock never hands out the same value.
+     */
+    private fun assignNextSeq(): Long = seqGenerator.updateAndGet { maxOf(it, lastSentSeq) + 1 }
+
+    /**
+     * Shared append path of [send] and [ingest]: finalize the seq with [finalizeSeq],
+     * then store, apply and broadcast, all under [sendLock].
+     */
+    private inline fun append(
+        event: VizEvent,
+        finalizeSeq: () -> Unit,
+    ) {
         // Capture the callback once: assigning onEventProcessed between a null
         // check and the invocation must not produce a garbage `nanoTime - 0`
         // duration sample (WR-12 check-then-act race).
         val onProcessed = onEventProcessed
         val startNanos = if (onProcessed != null) System.nanoTime() else 0L
         synchronized(sendLock) {
-            if (event.seq <= lastSentSeq) {
-                // A concurrent sender appended a higher seq after this event was
-                // constructed (or the event carries a stale/placeholder seq):
-                // re-stamp so seq order matches append order.
-                event.seq = seqGenerator.incrementAndGet()
-            }
+            finalizeSeq()
             lastSentSeq = event.seq
             store.record(event)
             applier.apply(event)
