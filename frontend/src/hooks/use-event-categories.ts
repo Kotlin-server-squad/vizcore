@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useSessionEvents } from '@/hooks/use-sessions'
+import type { VizEvent } from '@/types/api'
 import {
   CHANNEL_EVENT_KINDS,
   FLOW_EVENT_KINDS,
@@ -17,11 +18,19 @@ export interface EventCategories {
 
 /**
  * Returns which event categories are present in a session's events.
- * Scans the session event list and checks each event's `kind` against
- * the known category sets exported from api.ts.
+ * Scans the session event list — plus, when given, the events streamed live
+ * since it was fetched — and checks each event's `kind` against the known
+ * category sets exported from api.ts.
+ *
+ * The stored list is fetched once (it is never re-downloaded while the stream
+ * is connected, #137), so without `liveEvents` a real app that starts using a
+ * wrapper after the page opened would keep its old rung (#145).
  */
-export function useEventCategories(sessionId: string): EventCategories {
-  const { data: events } = useSessionEvents(sessionId)
+export function useEventCategories(
+  sessionId: string,
+  liveEvents?: readonly VizEvent[],
+): EventCategories {
+  const { data: stored } = useSessionEvents(sessionId)
 
   return useMemo(() => {
     const result: EventCategories = {
@@ -32,11 +41,7 @@ export function useEventCategories(sessionId: string): EventCategories {
       hasValidation: true, // Validation tab is always available
     }
 
-    if (!events || events.length === 0) {
-      return result
-    }
-
-    for (const event of events) {
+    for (const event of eventsOf(stored, liveEvents)) {
       const kind = event.kind
       if (!result.hasChannels && CHANNEL_EVENT_KINDS.has(kind)) {
         result.hasChannels = true
@@ -57,5 +62,13 @@ export function useEventCategories(sessionId: string): EventCategories {
     }
 
     return result
-  }, [events])
+  }, [stored, liveEvents])
+}
+
+function* eventsOf(
+  stored: readonly VizEvent[] | undefined,
+  live: readonly VizEvent[] | undefined,
+): Generator<VizEvent> {
+  if (stored) yield* stored
+  if (live) yield* live
 }

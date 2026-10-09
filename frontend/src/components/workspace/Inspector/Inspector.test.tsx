@@ -136,7 +136,7 @@ describe('Inspector', () => {
 
   it('says "not reported" rather than 0 when the backend sends no duration', async () => {
     getCoroutineTimeline.mockResolvedValue(
-      timeline({ totalDuration: null, activeDuration: null, suspendedDuration: null }),
+      timeline({ totalDuration: null, activeDuration: null, suspendedDuration: null, events: [] }),
     )
 
     render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, {
@@ -146,6 +146,30 @@ describe('Inspector', () => {
     const timing = await screen.findByTestId('timing-card')
     expect(within(timing).getAllByText('not reported').length).toBe(3)
     expect(within(timing).queryByText(/~0/)).toBeNull()
+  })
+
+  it('shows an approximate total "so far" for a coroutine that is still running (#145)', async () => {
+    // Backend: total is completion-only; active/suspended count closed intervals.
+    getCoroutineTimeline.mockResolvedValue(
+      timeline({
+        totalDuration: null,
+        activeDuration: 200_000_000,
+        suspendedDuration: 1_000_000_000,
+        events: [
+          { seq: 1, tsNanos: 0, kind: 'coroutine.created' },
+          { seq: 2, tsNanos: 3_000_000_000, kind: 'coroutine.suspended' },
+        ],
+      } as Partial<CoroutineTimeline>),
+    )
+
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, {
+      wrapper: createWrapper(),
+    })
+
+    const timing = await screen.findByTestId('timing-card')
+    // The event span (3s) is longer than the closed intervals (1.2s) — the
+    // larger figure is the honest lower bound.
+    expect(await within(timing).findByText('~3.00s so far')).toBeInTheDocument()
   })
 
   it('names the thread and dispatcher from thread activity', () => {
