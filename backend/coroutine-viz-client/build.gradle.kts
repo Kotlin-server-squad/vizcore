@@ -51,6 +51,10 @@ tasks.named<Test>("test") {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        // Compile against the JDK 17 API, not just to JVM-17 bytecode: on a JDK-21 toolchain a
+        // JDK 19+ call (e.g. Thread#threadId) otherwise compiles and then throws NoSuchMethodError
+        // for SDK consumers on Java 17. checkBytecode only sees class-file versions, not API use.
+        freeCompilerArgs.add("-Xjdk-release=17")
     }
 }
 
