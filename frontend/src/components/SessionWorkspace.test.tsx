@@ -14,6 +14,10 @@ vi.mock('@/hooks/use-sessions', () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   })),
+  useCreateSession: vi.fn(() => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  })),
 }))
 
 vi.mock('@/hooks/use-event-stream', () => ({
@@ -190,6 +194,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { useSession, useDeleteSession } from '@/hooks/use-sessions'
 import { useEventStream } from '@/hooks/use-event-stream'
+import { ApiError, NetworkError, RateLimitedError } from '@/lib/api-errors'
 import { apiClient } from '@/lib/api-client'
 
 const mockedUseSession = vi.mocked(useSession)
@@ -266,6 +271,31 @@ describe('SessionWorkspace', () => {
     })
 
     expect(screen.getByText('Session not found')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['404', new ApiError(404, 'Session not found'), 'not-found', /not found/i],
+    ['401', new ApiError(401, 'Unauthorized'), 'unauthorized', /sign-in required/i],
+    ['429', new RateLimitedError(15_000), 'rate-limited', /rate limited/i],
+    ['5xx', new ApiError(500, 'boom'), 'server', /server error/i],
+    ['network', new NetworkError(), 'network', /can't reach vizcore/i],
+  ])('a %s load failure renders its own truthful state (#139)', (_, error, kind, title) => {
+    mockedUseSession.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    render(<SessionWorkspace sessionId="s-err" />, { wrapper: createWrapper() })
+
+    const state = screen.getByTestId('error-state')
+    expect(state).toHaveAttribute('data-kind', kind)
+    expect(state).toHaveTextContent(title)
+    if (kind !== 'not-found') {
+      expect(screen.queryByText('Session not found')).not.toBeInTheDocument()
+    }
+    expect(screen.getByRole('button', { name: 'Back to sessions' })).toBeInTheDocument()
   })
 
   it('displays session info with coroutine and event counts', () => {
