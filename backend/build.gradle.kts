@@ -27,7 +27,7 @@ dependencies {
     // Core library (events, wrappers, session, validation)
     implementation(project(":coroutine-viz-core"))
 
-    implementation("org.openfolder:kotlin-asyncapi-ktor:3.2.2")
+    implementation("org.openfolder:kotlin-asyncapi-ktor:3.2.3")
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-auth")
     // JWT auth (AUTH-03) — version from the Ktor BOM (io.ktor.plugin) so it tracks ktor-server-auth.
@@ -64,21 +64,21 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-netty")
     implementation("ch.qos.logback:logback-classic:$logback_version")
-    implementation("net.logstash.logback:logstash-logback-encoder:8.1")
+    implementation("net.logstash.logback:logstash-logback-encoder:9.0")
     implementation("io.ktor:ktor-server-config-yaml")
 
     // Persistence (PERS-01/02) — Exposed 1.x DSL + HikariCP pool + Flyway migrations.
     // These live on :backend ONLY — coroutine-viz-core stays a zero-DB publishable SDK.
-    implementation("org.jetbrains.exposed:exposed-core:1.3.0")
-    implementation("org.jetbrains.exposed:exposed-jdbc:1.3.0")
-    implementation("org.jetbrains.exposed:exposed-json:1.3.0")
-    implementation("org.jetbrains.exposed:exposed-kotlin-datetime:1.3.0")
+    implementation("org.jetbrains.exposed:exposed-core:1.5.0")
+    implementation("org.jetbrains.exposed:exposed-jdbc:1.5.0")
+    implementation("org.jetbrains.exposed:exposed-json:1.5.0")
+    implementation("org.jetbrains.exposed:exposed-kotlin-datetime:1.5.0")
     implementation("com.zaxxer:HikariCP:6.3.0")
     implementation("org.flywaydb:flyway-core:11.8.2")
     implementation("org.flywaydb:flyway-database-postgresql:11.8.2")
-    implementation("org.postgresql:postgresql:42.7.7")
-    implementation("com.h2database:h2:2.3.232")
-    testRuntimeOnly("com.h2database:h2:2.3.232")
+    implementation("org.postgresql:postgresql:42.7.11")
+    implementation("com.h2database:h2:2.4.240")
+    testRuntimeOnly("com.h2database:h2:2.4.240")
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-content-negotiation")
@@ -87,7 +87,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 
     // JUnit 5 (Jupiter) for new dispatcher tests
-    testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 

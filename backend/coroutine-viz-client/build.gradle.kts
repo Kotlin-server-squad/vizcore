@@ -30,7 +30,7 @@ dependencies {
     implementation("org.slf4j:slf4j-api:2.0.9")
 
     // Test
-    testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
@@ -39,7 +39,7 @@ dependencies {
     // shape (configureWebSockets + webSocket) without a live network.
     testImplementation("io.ktor:ktor-server-test-host:$ktor_version")
     testImplementation("io.ktor:ktor-server-websockets:$ktor_version")
-    testImplementation("ch.qos.logback:logback-classic:1.5.32")
+    testImplementation("ch.qos.logback:logback-classic:1.6.3")
 }
 
 tasks.named<Test>("test") {
