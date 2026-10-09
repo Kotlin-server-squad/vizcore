@@ -105,6 +105,7 @@ class VizcoreClientTest {
             // Transport seam: the FIRST attempt throws (simulating a failed connect /
             // dropped socket) so the loop reconnects with backoff; later attempts run
             // the real buffer-draining WS send loop. This exercises the reconnect window.
+            val feedGate = FakeSource()
             val attempts = AtomicInteger(0)
             val transport: suspend () -> Unit = {
                 if (attempts.getAndIncrement() == 0) {
@@ -120,7 +121,7 @@ class VizcoreClientTest {
                     sessionId = serverId,
                     token = "test-token",
                     session = localSession,
-                    source = FakeSource(),
+                    source = feedGate,
                     scope = scope,
                     backoff = Backoff(baseMillis = 50L, capMillis = 200L),
                     buffer = buffer,
@@ -129,13 +130,15 @@ class VizcoreClientTest {
             client.start()
 
             // Deterministically await the feed's bus subscription (NO sleep): once the
-            // feed is provably subscribed, every subsequent emit is captured by the
-            // lifetime buffer even though no socket is connected yet. The session
-            // eagerly subscribes its own ProjectionService collector, so we await
-            // count >= 2 (ProjectionService + the client's feed) to guarantee the FEED
-            // specifically is live before emitting — the bus is replay=0, so an emit
+            // feed is subscribed, every subsequent emit is captured by the lifetime buffer
+            // even though no socket is connected yet — the bus is replay=0, so an emit
             // before the feed subscribes would not reach it.
-            localSession.bus.subscriptionCount.first { it >= 2 }
+            // The feed is provably live once the source runs: start() subscribes the feed
+            // and awaits that subscription BEFORE starting the source (feed-then-source).
+            // A bus subscriber count is NOT a reliable signal — the session owns several
+            // collectors of its own (projections, metrics), so "count >= 2" could be met
+            // before the feed subscribed, losing the batch below (#150).
+            pollFor { if (feedGate.isRunning) Unit else null }
 
             // (b) Emit a BATCH while the WS is NOT yet connected (no-socket window) —
             // and the very first transport attempt is forced to fail, so these events
@@ -218,7 +221,6 @@ class VizcoreClientTest {
             client.start()
             // Let the feed subscribe (ProjectionService + feed = 2) so the buffer is
             // live, then the feed-then-source ordering drives the source.
-            localSession.bus.subscriptionCount.first { it >= 2 }
             pollFor { if (source.isRunning) Unit else null }
             assertTrue(source.isRunning, "source runs after start()")
 

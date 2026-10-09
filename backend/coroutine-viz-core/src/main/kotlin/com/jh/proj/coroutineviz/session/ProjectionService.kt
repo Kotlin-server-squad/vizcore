@@ -17,6 +17,7 @@ import com.jh.proj.coroutineviz.models.CoroutineTimeline
 import com.jh.proj.coroutineviz.models.HierarchyNode
 import com.jh.proj.coroutineviz.models.ThreadEvent
 import com.jh.proj.coroutineviz.models.TimelineEventSummary
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -50,7 +51,11 @@ class ProjectionService(
 
     init {
         // Subscribe to event bus
-        session.sessionScope.launch {
+        // UNDISPATCHED: the bus is replay = 0, so the subscription must exist before this
+        // constructor returns. A plain launch subscribed later, and events sent right after
+        // the session was created were lost for good (178/200 sessions in
+        // BusSubscriptionRaceTest, #150 / #138).
+        session.sessionScope.launch(start = CoroutineStart.UNDISPATCHED) {
             session.eventBus.stream().collect { event ->
                 processEvent(event)
             }

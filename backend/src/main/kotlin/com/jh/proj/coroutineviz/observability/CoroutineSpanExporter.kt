@@ -14,6 +14,7 @@ import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -60,7 +61,11 @@ class CoroutineSpanExporter(
     init {
         // Subscribe exactly like MetricsProjection; the finally is the self-cleaning leak sweep
         // (RESEARCH Pattern 6) — preferred over addOnSessionClosed to avoid a CR-02 registry leak.
-        session.sessionScope.launch {
+        // UNDISPATCHED: the bus is replay = 0, so the subscription must exist before this
+        // constructor returns. A plain launch subscribed later, and events sent right after
+        // the session was created were lost for good (178/200 sessions in
+        // BusSubscriptionRaceTest, #150 / #138).
+        session.sessionScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 session.eventBus.stream().collect { event -> onEvent(event) }
             } finally {

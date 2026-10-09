@@ -313,6 +313,13 @@ class VizDispatchersIntegrationTest {
             // Wait for all
             jobs.forEach { it.join() }
 
+            // join() returns once a job's state is final, but CoroutineCompleted is emitted from
+            // the job's invokeOnCompletion handler, which kotlinx runs just AFTER that state flip —
+            // possibly on another thread. Bound the wait instead of assuming the handler already ran.
+            withTimeout(5_000) {
+                while (session.store.all().count { it.kind == "CoroutineCompleted" } < coroutineCount) delay(5)
+            }
+
             // Verify all were tracked
             val events = session.store.all()
             val coroutineEvents = events.filter { it.kind == "CoroutineCreated" }
