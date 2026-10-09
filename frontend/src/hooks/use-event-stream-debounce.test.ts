@@ -1,13 +1,14 @@
 /**
- * TDD tests: Task 1 - Polling storm prevention
- * Verifies that SSE invalidation is debounced (not per-event).
+ * Request-budget tests for the live stream (#124 / #137): SSE-driven cache
+ * refreshes are throttled, exact-keyed (never the full /events history), and
+ * live events are appended in bounded, batched state updates.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
-import { useEventStream } from './use-event-stream'
+import { useEventStream, LIVE_EVENTS_MAX, LIVE_REFRESH_MIN_INTERVAL_MS } from './use-event-stream'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
@@ -76,7 +77,7 @@ function invalidationCount(queryClient: QueryClient, keyRoot: string): number {
     }).length
 }
 
-describe('useEventStream - debounced invalidation', () => {
+describe('useEventStream - throttled, exact-keyed refresh (#124/#137)', () => {
   let mockEventSource: MockEventSource
   let queryClient: QueryClient
 
@@ -98,116 +99,190 @@ describe('useEventStream - debounced invalidation', () => {
     vi.restoreAllMocks()
   })
 
-  it('does not fire invalidation mid-burst (before debounce window closes)', () => {
-    renderHook(
-      () => useEventStream('session-1', true),
-      { wrapper: createWrapper(queryClient) },
-    )
-
-    act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(3))
+  it('coalesces a burst into one refresh, shortly after its first event', () => {
+    renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
     })
-
-    // At t=100ms — still inside the debounce window (~400ms): no invalidation yet
-    act(() => {
-      vi.advanceTimersByTime(100)
-    })
-
-    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(0)
-  })
-
-  it('fires exactly one invalidation after the debounce window for a burst of events', () => {
-    renderHook(
-      () => useEventStream('session-1', true),
-      { wrapper: createWrapper(queryClient) },
-    )
 
     act(() => {
       for (let i = 0; i < 5; i++) {
         mockEventSource.simulateEvent('CoroutineCreated', eventPayload(i + 1))
       }
-      // Advance past the debounce window so the trailing-edge timer fires
-      vi.advanceTimersByTime(600)
+      vi.advanceTimersByTime(100)
     })
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(0)
 
-    // A burst of 5 events should produce exactly 1 flush (not 5):
-    // one ['sessions', ...] invalidation (plus its paired thread-activity one)
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
     expect(invalidationCount(queryClient, 'sessions')).toBe(1)
   })
 
-  it('fires a second invalidation for a second separate burst after the window', () => {
-    renderHook(
-      () => useEventStream('session-1', true),
-      { wrapper: createWrapper(queryClient) },
-    )
+  it('refreshes only the exact snapshot, threads and metrics keys — never the /events history', () => {
+    renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
 
     act(() => {
       mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
       vi.advanceTimersByTime(600)
     })
 
-    // First burst: 1 flush
-    expect(invalidationCount(queryClient, 'sessions')).toBe(1)
-
-    act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(3))
-      vi.advanceTimersByTime(600)
-    })
-
-    // Second separate burst: now 2 flushes total
-    expect(invalidationCount(queryClient, 'sessions')).toBe(2)
+    const calls = vi.mocked(queryClient.invalidateQueries).mock.calls.map(([arg]) => arg)
+    expect(calls).toEqual([
+      { queryKey: ['sessions', 'session-1'], exact: true },
+      { queryKey: ['thread-activity', 'session-1'], exact: true },
+      { queryKey: ['session-metrics', 'session-1'], exact: true },
+    ])
   })
 
-  it('flushes at least once per max-wait window under a sustained sub-debounce stream (CR-02)', () => {
-    renderHook(
-      () => useEventStream('session-1', true),
-      { wrapper: createWrapper(queryClient) },
-    )
+  it('does not refetch an /events query while SSE is connected (#137)', async () => {
+    const eventsFetch = vi.fn().mockResolvedValue([])
+    const snapshotFetch = vi.fn().mockResolvedValue({ sessionId: 'session-1' })
+    // Active observers for both keys, exactly as the workspace mounts them.
+    const unsubscribe = [
+      new QueryObserver(queryClient, { queryKey: ['sessions', 'session-1'], queryFn: snapshotFetch }),
+      new QueryObserver(queryClient, {
+        queryKey: ['sessions', 'session-1', 'events'],
+        queryFn: eventsFetch,
+      }),
+    ].map(observer => observer.subscribe(() => {}))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(eventsFetch).toHaveBeenCalledTimes(1)
+    eventsFetch.mockClear()
+    snapshotFetch.mockClear()
 
-    // Sustained stream: one event every 200ms (below the 400ms debounce window)
-    // for 1400ms total — longer than INVALIDATION_MAX_WAIT_MS (1000ms).
-    // A pure trailing-edge debounce would never flush; the max-wait cap must.
+    renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
     act(() => {
-      for (let i = 0; i < 8; i++) {
+      mockEventSource.onopen?.()
+    })
+
+    for (let i = 0; i < 20; i++) {
+      act(() => {
         mockEventSource.simulateEvent('CoroutineCreated', eventPayload(i + 1))
+        vi.advanceTimersByTime(1000)
+      })
+    }
+
+    expect(eventsFetch).not.toHaveBeenCalled()
+    // ...while the snapshot itself was refreshed (throttled, not per event).
+    expect(snapshotFetch.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(snapshotFetch.mock.calls.length).toBeLessThanOrEqual(5)
+    unsubscribe.forEach(unsub => unsub())
+  })
+
+  it('refreshes at a bounded rate under a sustained stream (at most one per interval)', () => {
+    renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    // One event every 200 ms for a full minute.
+    const minuteMs = 60_000
+    act(() => {
+      for (let t = 0, seq = 1; t < minuteMs; t += 200, seq++) {
+        mockEventSource.simulateEvent('CoroutineCreated', eventPayload(seq))
         vi.advanceTimersByTime(200)
       }
     })
 
-    // The stream is still going, yet at least one flush already happened.
-    expect(invalidationCount(queryClient, 'sessions')).toBeGreaterThanOrEqual(1)
+    const flushes = invalidationCount(queryClient, 'sessions')
+    const maxFlushes = Math.ceil(minuteMs / LIVE_REFRESH_MIN_INTERVAL_MS) + 1
+    // Bounded (the old ~1/s debounce flushed ~60 times a minute)...
+    expect(flushes).toBeLessThanOrEqual(maxFlushes)
+    // ...but never starved: the stream keeps refreshing throughout.
+    expect(flushes).toBeGreaterThanOrEqual(maxFlushes - 2)
+    // Every flush is paired across the three read models (CR-01).
+    expect(invalidationCount(queryClient, 'thread-activity')).toBe(flushes)
+    expect(invalidationCount(queryClient, 'session-metrics')).toBe(flushes)
   })
 
-  it('every flush also invalidates the thread-activity query key (CR-01)', () => {
-    renderHook(
-      () => useEventStream('session-1', true),
-      { wrapper: createWrapper(queryClient) },
-    )
-
+  it('a quiet stream costs nothing', () => {
+    renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
     act(() => {
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
-      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
-      vi.advanceTimersByTime(600)
+      mockEventSource.onopen?.()
+      vi.advanceTimersByTime(5 * 60_000)
     })
-
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['thread-activity', 'session-1'],
-    })
-    // Flushes are paired: one thread-activity invalidation per sessions flush.
-    expect(invalidationCount(queryClient, 'thread-activity')).toBe(
-      invalidationCount(queryClient, 'sessions'),
-    )
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
   })
 })
 
-describe('useThreadActivity - isLive flag disables polling', () => {
-  it('useThreadActivity signature accepts isLive flag to disable polling interval', async () => {
-    const mod = await import('./use-thread-activity')
-    expect(typeof mod.useThreadActivity).toBe('function')
-    // function exists and accepts 2 args; full behavior is in use-thread-activity.test.ts
-    expect(mod.useThreadActivity.length).toBeGreaterThanOrEqual(1)
+describe('useEventStream - bounded, batched event buffer (#137)', () => {
+  let mockEventSource: MockEventSource
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.clearAllMocks()
+    mockEventSource = new MockEventSource()
+    mockedApiClient.createEventSource.mockReturnValue(
+      mockEventSource as unknown as EventSource,
+    )
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('applies a batch frame in a single state update', () => {
+    let renders = 0
+    const { result } = renderHook(
+      () => {
+        renders++
+        return useEventStream('session-1', true)
+      },
+      { wrapper: createWrapper(queryClient) },
+    )
+    const before = renders
+
+    const batch = Array.from({ length: 50 }, (_, i) => JSON.parse(eventPayload(i + 1)))
+    act(() => {
+      mockEventSource.simulateEvent('batch', JSON.stringify(batch))
+    })
+
+    expect(result.current.events).toHaveLength(50)
+    expect(renders - before).toBe(1)
+  })
+
+  it('caps buffered live events at the backend ring size, keeping the newest', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    const total = LIVE_EVENTS_MAX + 500
+    const batch = Array.from({ length: total }, (_, i) => JSON.parse(eventPayload(i + 1)))
+    act(() => {
+      mockEventSource.simulateEvent('batch', JSON.stringify(batch))
+    })
+
+    expect(result.current.events).toHaveLength(LIVE_EVENTS_MAX)
+    const last = result.current.events[result.current.events.length - 1] as unknown as {
+      seq: number
+    }
+    expect(last.seq).toBe(total)
+    // The received counter keeps counting past the cap (drives "N new events").
+    expect(result.current.receivedCount).toBe(total)
+  })
+
+  it('reconnect() opens a fresh EventSource after the retry budget is spent', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      result.current.reconnect()
+    })
+
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(2)
   })
 })

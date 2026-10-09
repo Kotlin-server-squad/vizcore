@@ -6,11 +6,6 @@ import { LeakList } from './LeakList'
 interface SessionMetricsProps {
   sessionId: string
   /**
-   * Forwarded to useSessionMetrics: while the SSE stream drives the live view,
-   * polling falls back to the slow 5s interval (mirrors DispatcherOverview).
-   */
-  isLive?: boolean
-  /**
    * Read-only shared view (T-08-08): disables the protected /metrics fetch/poll.
    * The shared shell carries no Bearer, so this query would 401/poll noisily.
    */
@@ -29,15 +24,15 @@ interface SessionMetricsProps {
  * The "Session metrics" panel (RCO-07, D-06/D-07). Delta L1 reflows the tiles
  * into a single horizontal strip (flex-wrap) of Active / Peak / Throughput /
  * Dispatcher utilization, plus a Potential-leaks card backed by LeakList. Fed
- * by useSessionMetrics (poll-while-live).
+ * by useSessionMetrics as a pure observer: it never polls itself — the
+ * workspace owns the refresh cadence (#124).
  */
 export function SessionMetrics({
   sessionId,
-  isLive = false,
   enabled = true,
   showLeaks = true,
 }: SessionMetricsProps) {
-  const { data, isLoading } = useSessionMetrics(sessionId, isLive, enabled)
+  const { data, isLoading } = useSessionMetrics(sessionId, false, enabled)
 
   if (isLoading) {
     return (

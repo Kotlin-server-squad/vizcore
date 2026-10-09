@@ -153,7 +153,7 @@ describe('useThreadLanesByDispatcher', () => {
   })
 })
 
-describe('live-mode polling interval (WR-15)', () => {
+describe('polling cadence (#124)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
@@ -163,50 +163,46 @@ describe('live-mode polling interval (WR-15)', () => {
     vi.useRealTimers()
   })
 
-  it('all observers on the query key honor the live 5s fallback — the 2s poll never fires while live', async () => {
+  it('only the observer that asks for a fallback interval polls — pure observers never re-arm a poll (#124)', async () => {
     mockedApiClient.getThreadActivity.mockResolvedValue(wireFixture())
 
-    // Mount EVERY observer of ['thread-activity', sessionId] the Threads tab
-    // creates while live: the direct hook (ThreadTimeline path) AND the lane
-    // hooks (DispatcherOverview / active-coroutine paths). TanStack Query
-    // refetches a key at the SMALLEST interval among observers, so a single
-    // observer left at the legacy default (isLive=false -> 2s) would re-arm
-    // the 2s poll and defeat the live-mode slow-poll design.
+    // Every observer of ['thread-activity', sessionId] the workspace mounts:
+    // its own (which owns the cadence) and the lane/active-coroutine readers.
+    // TanStack Query runs one interval timer PER OBSERVER, so a single
+    // observer with its own interval would poll on its own.
     renderHook(
       () => {
-        useThreadActivity('session-live', true)
-        useThreadLanesByDispatcher('session-live', true)
-        useActiveCoroutinesPerThread('session-live', true)
+        useThreadActivity('session-fallback', 10_000)
+        useThreadLanesByDispatcher('session-fallback')
+        useActiveCoroutinesPerThread('session-fallback')
       },
       { wrapper: createWrapper() },
     )
 
-    // Initial fetch
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
     expect(mockedApiClient.getThreadActivity).toHaveBeenCalledTimes(1)
 
-    // Two full legacy 2s windows pass without a refetch (no 2s observer wins)
+    // The old 2s/5s polls would have fired several times by now.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4900)
+      await vi.advanceTimersByTimeAsync(9_900)
     })
     expect(mockedApiClient.getThreadActivity).toHaveBeenCalledTimes(1)
 
-    // The single effective interval is the 5s live fallback
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200)
     })
     expect(mockedApiClient.getThreadActivity).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps the legacy 2s poll when not live', async () => {
+  it('does not poll at all when no observer asks for an interval', async () => {
     mockedApiClient.getThreadActivity.mockResolvedValue(wireFixture())
 
     renderHook(
       () => {
-        useThreadActivity('session-idle', false)
-        useThreadLanesByDispatcher('session-idle', false)
+        useThreadActivity('session-idle')
+        useThreadLanesByDispatcher('session-idle')
       },
       { wrapper: createWrapper() },
     )
@@ -217,9 +213,9 @@ describe('live-mode polling interval (WR-15)', () => {
     expect(mockedApiClient.getThreadActivity).toHaveBeenCalledTimes(1)
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2100)
+      await vi.advanceTimersByTimeAsync(60_000)
     })
-    expect(mockedApiClient.getThreadActivity).toHaveBeenCalledTimes(2)
+    expect(mockedApiClient.getThreadActivity).toHaveBeenCalledTimes(1)
   })
 })
 

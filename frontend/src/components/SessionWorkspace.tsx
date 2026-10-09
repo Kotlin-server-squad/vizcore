@@ -12,8 +12,8 @@ import { useSession, useSessionEvents } from '@/hooks/use-sessions'
 import { useThreadActivity } from '@/hooks/use-thread-activity'
 import { useEventCategories } from '@/hooks/use-event-categories'
 import { useWorkspaceReplay } from '@/hooks/use-workspace-replay'
-import { useSessionRefetch } from '@/hooks/use-session-refetch'
 import { useValidation } from '@/hooks/use-validation'
+import { SSE_FALLBACK_POLL_MS } from '@/lib/poll-interval'
 import { projectCoroutines } from '@/lib/projections/project-coroutines'
 import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/state-counts'
 import { deriveRung } from '@/lib/fidelity-rung'
@@ -75,7 +75,6 @@ export function SessionWorkspace({
   scenarioName,
   readOnly = false,
 }: SessionWorkspaceProps) {
-  const { data: session, isLoading, refetch } = useSession(sessionId)
   const { data: storedEvents } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
@@ -100,23 +99,6 @@ export function SessionWorkspace({
   const failedChecks = countFailedChecks(validation.data)
   // Panel ref for ExportMenu (captures the active visualization region lazily).
   const panelRef = useRef<HTMLDivElement | null>(null)
-  // Pass isLive=streamEnabled so thread-activity does not poll every 2s while
-  // SSE is driving updates; SSE-triggered cache invalidations handle refreshes.
-  // In read-only mode the protected /threads fetch is disabled — the shared
-  // shell has no Bearer; thread lanes are derived from the shared events below.
-  const { data: threadActivity } = useThreadActivity(sessionId, streamEnabled, !readOnly)
-  const eventCategories = useEventCategories(sessionId)
-  // Which rung this session is on (D-6), and the leak set behind the leak chip.
-  // Metrics is already polled by the dock; React Query dedupes the second call.
-  const rung = useMemo(
-    () => deriveRung(sessionId, eventCategories),
-    [sessionId, eventCategories],
-  )
-  const { data: metrics } = useSessionMetrics(sessionId, streamEnabled, !readOnly)
-  const leakIds = useMemo(
-    () => new Set((metrics?.leaks ?? []).map(l => l.coroutineId)),
-    [metrics?.leaks],
-  )
 
   // Replay + scripted recording (D-01..04, D-23). One hook because the cursor
   // and the recorder freeze the same snapshot and contend for the same seek.
@@ -124,6 +106,9 @@ export function SessionWorkspace({
     liveEvents,
     isConnected,
     clearEvents,
+    streamError,
+    droppedCount,
+    reconnect,
     replayActive,
     enterReplay,
     exitReplay,
@@ -137,14 +122,29 @@ export function SessionWorkspace({
     getPanelEl: () => panelRef.current,
   })
 
-  // Coalesced session refetch (CR-02). Suspended while replaying so the frozen
-  // panels are not refetched out from under the cursor (D-02).
-  useSessionRefetch({
-    enabled: streamEnabled && !replayActive,
-    eventCount: liveEvents.length,
-    refetch,
-    streamEnabled,
-  })
+  // Refresh cadence (#124). Nothing here polls while the live stream is
+  // connected — its throttled, SSE-driven invalidation refreshes the snapshot,
+  // threads and metrics — and nothing polls with the stream off: that view is
+  // a snapshot the user refreshes. Polling is only the fallback while the
+  // stream is ON but its connection is down. This component holds the ONLY
+  // polling observer of each key; every other observer passes no interval.
+  const fallbackPollMs =
+    streamEnabled && !isConnected && !replayActive && !readOnly ? SSE_FALLBACK_POLL_MS : false
+  const { data: session, isLoading, refetch } = useSession(sessionId, { pollMs: fallbackPollMs })
+  // In read-only mode the protected /threads fetch is disabled — the shared
+  // shell has no Bearer; thread lanes are derived from the shared events below.
+  const { data: threadActivity } = useThreadActivity(sessionId, fallbackPollMs, !readOnly)
+  const eventCategories = useEventCategories(sessionId)
+  // Which rung this session is on (D-6), and the leak set behind the leak chip.
+  const rung = useMemo(
+    () => deriveRung(sessionId, eventCategories),
+    [sessionId, eventCategories],
+  )
+  const { data: metrics } = useSessionMetrics(sessionId, fallbackPollMs, !readOnly)
+  const leakIds = useMemo(
+    () => new Set((metrics?.leaks ?? []).map(l => l.coroutineId)),
+    [metrics?.leaks],
+  )
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
   const hasScenario = !!scenarioId
@@ -256,6 +256,9 @@ export function SessionWorkspace({
         readOnly={readOnly}
         streamEnabled={streamEnabled}
         isConnected={isConnected}
+        streamError={streamError}
+        droppedCount={droppedCount}
+        onReconnect={reconnect}
         onToggleStream={() => {
           if (streamEnabled) {
             clearEvents()
@@ -407,7 +410,6 @@ export function SessionWorkspace({
         categories={eventCategories}
         replayActive={replayActive}
         readOnly={readOnly}
-        streamEnabled={streamEnabled}
         threadActivity={panelThreadActivity}
       />
     </div>

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useCoroutineTimeline } from '@/hooks/use-timeline'
 import { resolveRunsOn } from '@/lib/runs-on'
 import { TimingCard } from './TimingCard'
@@ -45,10 +45,29 @@ export function Inspector({
   threadActivity,
 }: InspectorProps) {
   const showTimeline = !!coroutine && !readOnly
-  const { data: timeline } = useCoroutineTimeline(
+  const { data: timeline, refetch: refetchTimeline } = useCoroutineTimeline(
     showTimeline ? sessionId : undefined,
     showTimeline ? coroutine.id : undefined,
   )
+
+  // Keep the selected coroutine's timeline current while it runs. The live
+  // stream no longer invalidates every ['sessions', id, …] key on each flush
+  // (#137); instead re-read the timeline when the refreshed snapshot reports
+  // that THIS coroutine changed state — bounded by the snapshot's own cadence.
+  const lastSeenRef = useRef<{ id: string; state: string } | null>(null)
+  const coroutineId = coroutine?.id
+  const coroutineState = coroutine?.state
+  useEffect(() => {
+    if (!showTimeline || !coroutineId || !coroutineState) {
+      lastSeenRef.current = null
+      return
+    }
+    const last = lastSeenRef.current
+    lastSeenRef.current = { id: coroutineId, state: coroutineState }
+    if (last && last.id === coroutineId && last.state !== coroutineState) {
+      void refetchTimeline()
+    }
+  }, [showTimeline, coroutineId, coroutineState, refetchTimeline])
 
   const runsOn = useMemo(
     () => (coroutine ? resolveRunsOn(threadActivity, coroutine.id) : null),

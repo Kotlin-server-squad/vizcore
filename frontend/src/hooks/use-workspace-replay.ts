@@ -38,11 +38,19 @@ export function useWorkspaceReplay({
 
   // The SSE gate: while replaying, the stream stays connected but its cache
   // invalidations are suppressed, so buffered events apply on exit (D-02/D-04).
-  const { events: liveEvents, isConnected, clearEvents } = useEventStream(
-    sessionId,
-    streamEnabled,
-    replayActive,
-  )
+  const {
+    events: liveEvents,
+    isConnected,
+    clearEvents,
+    error: streamError,
+    droppedCount,
+    receivedCount,
+    reconnect,
+  } = useEventStream(sessionId, streamEnabled, replayActive)
+  // receivedCount at replay entry: the badge counts events received since,
+  // which stays true once the live buffer is capped (#137) — liveEvents.length
+  // stops growing at the cap.
+  const [receivedAtEntry, setReceivedAtEntry] = useState(0)
 
   // Replay drives over the FROZEN snapshot taken at entry (never the live
   // event list), so live SSE events buffer for the badge without re-rendering
@@ -50,12 +58,11 @@ export function useWorkspaceReplay({
   const replay = useReplay(replaySnapshot)
   const { seekTo: replaySeekTo } = replay
 
-  // Number of live events appended since replay entry — drives the "● N new
+  // Number of live events received since replay entry — drives the "● N new
   // events" badge (D-02). The SSE stream stays connected during replay (the
-  // gate only suppresses invalidation, not the EventSource), so any live
-  // events beyond the frozen snapshot are buffered and counted here.
+  // gate only suppresses invalidation, not the EventSource).
   const newEventsCount = replayActive
-    ? Math.max(liveEvents.length - replaySnapshot.length, 0)
+    ? Math.max(receivedCount - receivedAtEntry, 0)
     : 0
 
   // Enter replay: freeze the given snapshot and activate replay. The seek to
@@ -80,9 +87,10 @@ export function useWorkspaceReplay({
           ? liveEvents
           : storedEvents || []
       setReplaySnapshot(frozen)
+      setReceivedAtEntry(receivedCount)
       setReplayActive(true)
     },
-    [streamEnabled, liveEvents, storedEvents],
+    [streamEnabled, liveEvents, storedEvents, receivedCount],
   )
 
   // Exit replay: drop the cursor and apply buffered events (the gated
@@ -150,6 +158,9 @@ export function useWorkspaceReplay({
     liveEvents,
     isConnected,
     clearEvents,
+    streamError,
+    droppedCount,
+    reconnect,
     replayActive,
     replaySnapshot,
     enterReplay,
