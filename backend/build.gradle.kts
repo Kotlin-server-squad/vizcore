@@ -1,3 +1,5 @@
+import java.util.zip.ZipFile
+
 val kotlin_version: String by project
 val logback_version: String by project
 val prometheus_version: String by project
@@ -253,5 +255,62 @@ val checkBytecode by tasks.registering {
     }
 }
 
+// #123 guard: the fat jar (Ktor `buildFatJar` -> Shadow) must carry the UNION of every
+// META-INF/services entry on the runtime classpath. Without merging, the last jar to supply
+// a service file wins — flyway-database-postgresql's Plugin file clobbered flyway-core's, so
+// DB mode died at startup with "Unsupported Database: H2 2.3" while every test (run on the
+// exploded classpath) stayed green. Generic on purpose: any library can hit the same trap.
+val verifyFatJarServiceFiles by tasks.registering {
+    group = "verification"
+    description = "Fails if the fat jar is missing any META-INF/services entry present on the runtime classpath."
+    val fatJar = tasks.named<Jar>("shadowJar").flatMap { it.archiveFile }
+    val runtimeJars = configurations.named("runtimeClasspath")
+    inputs.file(fatJar)
+    inputs.files(runtimeJars)
+    doLast {
+        fun serviceEntries(zip: ZipFile): Map<String, Set<String>> =
+            zip
+                .entries()
+                .asSequence()
+                .filter { !it.isDirectory && it.name.startsWith("META-INF/services/") }
+                .associate { entry ->
+                    entry.name to
+                        zip
+                            .getInputStream(entry)
+                            .bufferedReader()
+                            .readLines()
+                            .map { it.substringBefore('#').trim() }
+                            .filter { it.isNotEmpty() }
+                            .toSet()
+                }
+        val expected = mutableMapOf<String, MutableSet<String>>()
+        runtimeJars.get().filter { it.isFile && it.extension == "jar" }.forEach { jar ->
+            ZipFile(jar).use { zip ->
+                serviceEntries(zip).forEach { (name, lines) -> expected.getOrPut(name) { mutableSetOf() } += lines }
+            }
+        }
+        val actual = ZipFile(fatJar.get().asFile).use { serviceEntries(it) }
+        val missing =
+            expected
+                .flatMap { (name, lines) -> (lines - actual[name].orEmpty()).map { "  - $name: $it" } }
+                .sorted()
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Fat jar ${fatJar.get().asFile.name} is missing ${missing.size} service entries " +
+                    "(configure mergeServiceFiles() on shadowJar):\n" + missing.joinToString("\n"),
+            )
+        }
+    }
+}
+
+// #123: merge (concatenate) every META-INF/services file instead of letting the last jar win.
+// Shadow 9 excludes duplicate paths BEFORE transformers run (duplicatesStrategy EXCLUDE), so the
+// service files must be let through as duplicates for mergeServiceFiles() to see them all.
+tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
+    filesMatching("META-INF/services/**") { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
+    mergeServiceFiles()
+}
+
 tasks.named("check") { dependsOn(verifyNoDuplicateSourceFqns) }
 tasks.named("check") { dependsOn(checkBytecode) }
+tasks.named("check") { dependsOn(verifyFatJarServiceFiles) }
