@@ -9,7 +9,7 @@ rootProject.name = "backend"
 // the unversioned `id("com.gradleup.shadow")` applied in the CLI module build file.
 pluginManagement {
     plugins {
-        id("com.gradleup.shadow") version "9.4.3"
+        id("com.gradleup.shadow") version "9.6.1"
     }
     repositories {
         gradlePluginPortal()
