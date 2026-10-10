@@ -25,7 +25,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("ch.qos.logback:logback-classic:1.6.3")
+    testImplementation("ch.qos.logback:logback-classic:1.6.5")
 }
 
 val includeIntegration = project.hasProperty("includeIntegration")
