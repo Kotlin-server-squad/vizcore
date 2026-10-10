@@ -35,7 +35,7 @@ dependencies {
     // JWT auth (AUTH-03) — version from the Ktor BOM (io.ktor.plugin) so it tracks ktor-server-auth.
     implementation("io.ktor:ktor-server-auth-jwt")
     // Argon2id password verification for the token endpoint (AUTH-03, D-02). Maven Central, vetted.
-    implementation("com.password4j:password4j:1.8.2")
+    implementation("com.password4j:password4j:1.8.4")
     implementation("io.ktor:ktor-server-compression")
     implementation("io.ktor:ktor-server-cors")
     implementation("io.ktor:ktor-server-swagger")
