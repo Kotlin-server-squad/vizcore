@@ -216,8 +216,9 @@ describe('WorkspaceBody', () => {
       />,
     )
 
-    // The dock's own leak-data call: useSessionMetrics(sessionId, streamEnabled, !readOnly).
-    expect(useSessionMetricsMock).toHaveBeenCalledWith('s-1', true, false)
+    // The dock's own leak-data call is a pure observer (no poll, #124):
+    // useSessionMetrics(sessionId, false, !readOnly).
+    expect(useSessionMetricsMock).toHaveBeenCalledWith('s-1', false, false)
   })
   // The body is now mounted in all three modes (M-4), so the metric strip has
   // to be suppressible: in replay it would report live numbers over a frozen

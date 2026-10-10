@@ -24,7 +24,47 @@ import { normalizeEvents } from './utils'
 import { getToken, clearToken } from './auth-store'
 import { navigateToLogin } from './navigation'
 
+import { ApiError, RateLimitedError, parseRetryAfter } from './api-errors'
+
+export { ApiError, RateLimitedError } from './api-errors'
+
 const API_BASE_URL = '/api'
+
+/**
+ * Client-side rate-limit cool-down (#124).
+ *
+ * When the backend answers 429 it says (via `Retry-After`) how long to back
+ * off. Every poll, invalidation and retry that fires inside that window would
+ * only burn more of the same budget and get another 429, so requests in the
+ * same class fail fast locally — no network round-trip — until the window
+ * ends. Classes mirror the backend's separate buckets: reads, writes, and the
+ * connect handshake (`/sessions/resolve`), so a throttled poll never blocks a
+ * user's button press and vice versa.
+ */
+type RateLimitClass = 'read' | 'write' | 'connect'
+const rateLimitedUntil = new Map<RateLimitClass, number>()
+
+function rateLimitClass(url: string, method: string | undefined): RateLimitClass {
+  if (url.startsWith('/sessions/resolve')) return 'connect'
+  const m = (method ?? 'GET').toUpperCase()
+  return m === 'GET' || m === 'HEAD' ? 'read' : 'write'
+}
+
+/** Throws a RateLimitedError if `cls` is still cooling down from a 429. */
+function assertNotCoolingDown(cls: RateLimitClass) {
+  const until = rateLimitedUntil.get(cls)
+  if (until === undefined) return
+  const remaining = until - Date.now()
+  if (remaining > 0) throw new RateLimitedError(remaining)
+  rateLimitedUntil.delete(cls)
+}
+
+/** Records the cool-down a 429 asked for and returns the error to throw. */
+function noteRateLimited(cls: RateLimitClass, response: Response): RateLimitedError {
+  const retryAfterMs = parseRetryAfter(response.headers?.get?.('Retry-After'))
+  rateLimitedUntil.set(cls, Date.now() + retryAfterMs)
+  return new RateLimitedError(retryAfterMs)
+}
 
 /**
  * Thrown by `login()` when the token endpoint returns 401 (wrong credentials).
@@ -45,7 +85,15 @@ export interface LoginResponse {
 }
 
 class ApiClient {
+  /** Forget every rate-limit cool-down (tests, and a user-initiated retry). */
+  clearRateLimits(): void {
+    rateLimitedUntil.clear()
+  }
+
   private async fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+    const cls = rateLimitClass(url, options?.method)
+    assertNotCoolingDown(cls)
+
     // Attach the JWT Bearer only when a token exists. When auth is off the
     // token is null and NO Authorization header is added — the request looks
     // exactly like today's anonymous call (auth-off invisibility, D-07/D-08).
@@ -64,6 +112,10 @@ class ApiClient {
     })
 
     if (!response.ok) {
+      // 429: honour Retry-After and fail fast until it elapses (#124).
+      if (response.status === 429) {
+        throw noteRateLimited(cls, response)
+      }
       // A 401 means the JWT is missing/expired/invalid on a configured server.
       // Clear the stale token and route to /login (D-05); the error still
       // propagates so callers' error states render. When auth is off the
@@ -74,7 +126,7 @@ class ApiClient {
         navigateToLogin()
       }
       const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error(error.error || `HTTP ${response.status}`)
+      throw new ApiError(response.status, error.error || `HTTP ${response.status}`)
     }
 
     // 204 No Content has no body — calling response.json() on it throws
@@ -138,6 +190,7 @@ class ApiClient {
   // The Bearer is attached when a token exists (resolve sits behind
   // authenticatedApi); auth-off mode sends no Authorization header.
   async resolveCorrelation(correlation: string): Promise<{ sessionId: string } | null> {
+    assertNotCoolingDown('connect')
     const token = getToken()
     const authHeaders: Record<string, string> = token
       ? { Authorization: `Bearer ${token}` }
@@ -152,12 +205,21 @@ class ApiClient {
     if (response.status === 200) {
       return response.json()
     }
-    // 404 (not bound yet OR cross-tenant, indistinguishable — no existence leak)
-    // and any other non-ok status: keep polling, do not throw. MUST return null,
-    // not undefined — TanStack Query rejects an undefined queryFn result ("Query data
-    // cannot be undefined"), which would wedge the poll in an error state and stop the
-    // ConnectWizard from ever auto-navigating once the token binds.
-    return null
+    // 404 (not bound yet OR cross-tenant, indistinguishable — no existence leak):
+    // keep polling. MUST return null, not undefined — TanStack Query rejects an
+    // undefined queryFn result ("Query data cannot be undefined").
+    if (response.status === 404) {
+      return null
+    }
+    // 429 is NOT "not bound yet" (#124): mapping it to null hid the fact that
+    // the wizard's own polling had drained the budget. Surface it as a typed
+    // error with the server's Retry-After so the wizard can back off and say so.
+    if (response.status === 429) {
+      throw noteRateLimited('connect', response)
+    }
+    // Anything else (401, 5xx, …) is a real failure the wizard should show; the
+    // query keeps its interval, so polling resumes once the server recovers.
+    throw new ApiError(response.status, `HTTP ${response.status}`)
   }
 
   async deleteSession(sessionId: string): Promise<{ message: string }> {

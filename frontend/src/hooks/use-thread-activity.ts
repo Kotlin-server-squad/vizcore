@@ -12,37 +12,36 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useMemo } from 'react'
 import { buildThreadLanes } from '@/lib/thread-lanes'
+import { pollInterval } from '@/lib/poll-interval'
 import type { ThreadActivityResponse, ThreadLaneData } from '@/types/api'
 
 /**
  * Fetch thread activity for a session (wire shape: ThreadActivity).
  *
  * @param sessionId - the session to fetch thread data for
- * @param isLive    - when true the SSE stream is driving updates: the view
- *                    refreshes via SSE-driven invalidation of
- *                    ['thread-activity', sessionId] (see use-event-stream.ts),
- *                    with a slow 5s fallback poll as defense-in-depth.
- *                    Defaults to false (legacy 2s poll behaviour).
+ * @param pollMs    - fallback poll interval, or `false` (default) for none.
+ *                    Nothing polls while the live stream is connected — the
+ *                    SSE-driven invalidation of ['thread-activity', sessionId]
+ *                    (use-event-stream.ts) refreshes it — and nothing polls
+ *                    with the stream off (#124). Only the workspace's own
+ *                    observer passes an interval, as the fallback while the
+ *                    stream is on but SSE is down. TanStack Query runs one
+ *                    timer PER OBSERVER, so every other observer of the key
+ *                    must leave this `false`.
+ * @param enabled   - Read-only shared view (Plan 06): the thread snapshot is
+ *                    fed from the public `getSharedSession` payload, so the
+ *                    protected `GET /sessions/{id}/threads` fetch is disabled.
  */
 export function useThreadActivity(
   sessionId: string | undefined,
-  isLive = false,
-  // Read-only shared view (Plan 06): the thread snapshot is fed from the public
-  // `getSharedSession` payload (derived from events client-side), so the
-  // protected `GET /sessions/{id}/threads` fetch + poll must be disabled — the
-  // shared shell carries no Bearer and would otherwise 404/poll noisily.
+  pollMs: number | false = false,
   enabled = true,
 ) {
   return useQuery({
     queryKey: ['thread-activity', sessionId],
     queryFn: () => apiClient.getThreadActivity(sessionId!),
     enabled: !!sessionId && enabled,
-    // While the live SSE stream is active, refreshes are primarily driven by
-    // SSE-triggered invalidation of ['thread-activity', sessionId]; keep a
-    // slow 5s fallback poll so the Threads view can never freeze if an
-    // invalidation is missed. When SSE is not active, use the original
-    // 2-second background refresh. Disabled entirely in the read-only view.
-    refetchInterval: enabled ? (isLive ? 5000 : 2000) : false,
+    refetchInterval: enabled ? pollInterval(pollMs) : false,
     staleTime: 1000, // Consider data stale after 1 second
   })
 }
@@ -54,18 +53,14 @@ export function useThreadActivity(
  * External contract unchanged:
  * `{ ...query, data: Map<dispatcherName, ThreadLaneData[]>, dispatcherInfo }`.
  *
- * `isLive` is forwarded to useThreadActivity (WR-15): all observers of the
- * shared ['thread-activity', sessionId] query key must agree on the live
- * flag, otherwise TanStack Query refetches at the SMALLEST interval among
- * observers and the legacy 2s poll silently defeats the 5s live-mode
- * fallback.
+ * A pure observer: it never polls (see useThreadActivity), it re-renders when
+ * the workspace's refreshes land in the shared query cache.
  */
 export function useThreadLanesByDispatcher(
   sessionId: string | undefined,
-  isLive = false,
   enabled = true,
 ) {
-  const { data: activity, ...query } = useThreadActivity(sessionId, isLive, enabled)
+  const { data: activity, ...query } = useThreadActivity(sessionId, false, enabled)
 
   const lanes = useMemo(
     () => (activity ? buildThreadLanes(activity) : undefined),
@@ -143,11 +138,10 @@ export function useThreadUtilizationStats(activity: ThreadActivityResponse | und
  * A coroutine is active on a thread iff its derived segment is still open
  * (`endNanos == null`), i.e. an ASSIGNED event without a matching RELEASED.
  *
- * `isLive` is forwarded to useThreadActivity (WR-15) — see
- * useThreadLanesByDispatcher for why all observers must agree on the flag.
+ * A pure observer — it never polls (see useThreadActivity).
  */
-export function useActiveCoroutinesPerThread(sessionId: string | undefined, isLive = false) {
-  const { data: activity } = useThreadActivity(sessionId, isLive)
+export function useActiveCoroutinesPerThread(sessionId: string | undefined) {
+  const { data: activity } = useThreadActivity(sessionId)
 
   const activeCoroutines = useMemo(() => {
     if (!activity) return new Map<number, string[]>()

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { apiClient } from './api-client'
+import { apiClient, ApiError, RateLimitedError } from './api-client'
 import { getToken, setToken, clearToken } from './auth-store'
 import { registerNavigator } from './navigation'
 
@@ -9,6 +9,7 @@ beforeEach(() => {
   mockFetch.mockReset()
   vi.stubGlobal('fetch', mockFetch)
   clearToken()
+  apiClient.clearRateLimits()
 })
 
 afterEach(() => {
@@ -378,6 +379,79 @@ describe('ApiClient', () => {
         '/api/sessions/resolve?correlation=a%20b%2Fc%3Fd',
         { headers: { 'Content-Type': 'application/json' } },
       )
+    })
+  })
+
+  describe('rate limiting (#124)', () => {
+    function tooMany(retryAfter?: string) {
+      return {
+        ok: false,
+        status: 429,
+        headers: new Headers(retryAfter ? { 'Retry-After': retryAfter } : {}),
+        json: () => Promise.reject(new Error('plain-text body')),
+      }
+    }
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('throws a typed RateLimitedError carrying Retry-After, never "Unknown error"', async () => {
+      mockFetch.mockResolvedValue(tooMany('42'))
+
+      const error = await apiClient.getSession('s-1').catch(e => e)
+
+      expect(error).toBeInstanceOf(RateLimitedError)
+      expect(error).toBeInstanceOf(ApiError)
+      expect(error.status).toBe(429)
+      expect(error.retryAfterMs).toBe(42_000)
+    })
+
+    it('fails fast without touching the network until Retry-After has elapsed', async () => {
+      vi.useFakeTimers()
+      mockFetch.mockResolvedValueOnce(tooMany('30'))
+      await expect(apiClient.getSession('s-1')).rejects.toBeInstanceOf(RateLimitedError)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      // Other reads inside the window are refused locally — no retry storm.
+      await expect(apiClient.getMetrics('s-1')).rejects.toBeInstanceOf(RateLimitedError)
+      await expect(apiClient.listSessions()).rejects.toBeInstanceOf(RateLimitedError)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      // Writes are a separate bucket and still go out.
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({ message: 'ok' }))
+      await apiClient.deleteSession('s-1')
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+
+      // After the window, reads go out again.
+      vi.advanceTimersByTime(30_001)
+      mockFetch.mockResolvedValueOnce(mockJsonResponse([]))
+      await expect(apiClient.listSessions()).resolves.toEqual([])
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+    })
+
+    it('falls back to a default cool-down when Retry-After is missing', async () => {
+      mockFetch.mockResolvedValue(tooMany())
+
+      const error = await apiClient.listSessions().catch(e => e)
+
+      expect(error).toBeInstanceOf(RateLimitedError)
+      expect(error.retryAfterMs).toBe(10_000)
+    })
+
+    it('resolveCorrelation surfaces 429 as RateLimitedError instead of silently returning null', async () => {
+      mockFetch.mockResolvedValue(tooMany('5'))
+
+      await expect(apiClient.resolveCorrelation('tok')).rejects.toBeInstanceOf(RateLimitedError)
+    })
+
+    it('resolveCorrelation surfaces server errors instead of mapping them to "not bound yet"', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({}, 503))
+
+      const error = await apiClient.resolveCorrelation('tok').catch(e => e)
+
+      expect(error).toBeInstanceOf(ApiError)
+      expect(error.status).toBe(503)
     })
   })
 })

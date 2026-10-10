@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { normalizeEvent } from '@/lib/utils'
 import type { VizEvent, VizEventKind } from '@/types/api'
@@ -52,16 +52,50 @@ export const SSE_EVENT_TYPES: readonly string[] = [
   'thread.assigned',
 ]
 
-/** Debounce window for batching SSE-driven cache invalidations (ms). */
-const INVALIDATION_DEBOUNCE_MS = 400
+/**
+ * Coalescing window for SSE-driven cache refreshes (ms): a burst of events
+ * that starts after a quiet period is refreshed once, this long after its
+ * first event.
+ */
+const REFRESH_COALESCE_MS = 400
 
 /**
- * Max-wait cap for the invalidation debounce (ms). Under a sustained event
- * stream whose inter-event gap stays below INVALIDATION_DEBOUNCE_MS, a pure
- * trailing-edge debounce would be reset forever and never flush. This cap
- * guarantees at least one flush per INVALIDATION_MAX_WAIT_MS.
+ * Minimum gap between two SSE-driven refreshes (ms) — a throttle, not a
+ * debounce, so a sustained stream refreshes at a steady, bounded rate instead
+ * of either never (pure debounce) or once a second (#124/#137). Each refresh
+ * re-reads three cheap endpoints (snapshot, threads, metrics), so a session
+ * that streams non-stop costs at most 3 x 60/5 = 36 requests a minute; a quiet
+ * stream costs nothing.
  */
-const INVALIDATION_MAX_WAIT_MS = 1000
+export const LIVE_REFRESH_MIN_INTERVAL_MS = 5000
+
+/**
+ * Upper bound on buffered live events (#137). Matches the backend's bounded
+ * EventStore ring (10k): the backend replays at most this many on connect, so
+ * older events would be gone after a reload anyway. Without a bound a long
+ * stream grows browser memory without limit.
+ */
+export const LIVE_EVENTS_MAX = 10_000
+
+/**
+ * Re-read the live view's server-side read models for one session.
+ *
+ * `exact: true` matters (#137): the snapshot key ['sessions', id] is a PREFIX
+ * of ['sessions', id, 'events'] — the full event history, up to 10k events —
+ * and of the hierarchy/timeline keys. A prefix invalidation re-downloaded the
+ * entire history on every flush although the SSE stream already delivers it.
+ */
+function refreshLiveQueries(queryClient: QueryClient, sessionId: string) {
+  void queryClient.invalidateQueries({ queryKey: ['sessions', sessionId], exact: true })
+  // CR-01: the threads panel relies on this while live (it does not poll).
+  void queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId], exact: true })
+  void queryClient.invalidateQueries({ queryKey: ['session-metrics', sessionId], exact: true })
+}
+
+/** Keep only the newest LIVE_EVENTS_MAX events. */
+function capLiveEvents(list: VizEvent[]): VizEvent[] {
+  return list.length > LIVE_EVENTS_MAX ? list.slice(list.length - LIVE_EVENTS_MAX) : list
+}
 
 /**
  * Bounded retry budget for FATAL EventSource errors (UAT gap 2). Per the
@@ -106,6 +140,12 @@ export function useEventStream(
   // from the `dropped` control frame ONLY — never derived from a stored event,
   // so the rendered event list stays free of phantom nodes (T-10-13).
   const [droppedCount, setDroppedCount] = useState(0)
+  // Total events accepted since the stream (re)started. Unlike events.length
+  // it keeps counting once the buffer is capped, so "N new events" stays true.
+  const [receivedCount, setReceivedCount] = useState(0)
+  // Bumped by reconnect() to tear down and re-open the stream after the
+  // automatic retry budget is spent.
+  const [connectNonce, setConnectNonce] = useState(0)
   const queryClient = useQueryClient()
   // Live mirror of replayActive so the SSE listener (registered once per
   // connection inside the effect below) reads the current value without
@@ -114,12 +154,11 @@ export function useEventStream(
   // for the "● N new events" badge, but the frozen replay panels are not
   // jittered by live invalidation (D-02 / T-02-12).
   const replayActiveRef = useRef(replayActive)
-  // Ref to hold the debounce timer for invalidation — reset on each event,
-  // so a burst of events produces only one trailing-edge invalidation.
-  const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Timestamp of the first event in the current un-flushed window. Used to
-  // enforce the max-wait cap so a sustained stream cannot starve the flush.
-  const firstInvalidationAtRef = useRef<number | null>(null)
+  // Pending throttled refresh. While one is scheduled, further events ride
+  // along with it instead of scheduling another.
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // When the last refresh ran — the throttle's reference point.
+  const lastRefreshAtRef = useRef(Number.NEGATIVE_INFINITY)
   // Consecutive fatal-error retries since the last successful open.
   const retryCountRef = useRef(0)
   // Pending reconnect timer (fatal-error backoff), cancelled on teardown.
@@ -138,9 +177,14 @@ export function useEventStream(
     setEvents([])
   }, [])
 
+  const reconnect = useCallback(() => {
+    setConnectNonce(n => n + 1)
+  }, [])
+
   useEffect(() => {
     if (!sessionId || !enabled) {
       setIsConnected(false)
+      setError(null)
       return
     }
 
@@ -153,33 +197,62 @@ export function useEventStream(
     // clearEvents stays available for explicit user-driven clearing.
     retryCountRef.current = 0
     seenSeqsRef.current = new Set()
+    lastRefreshAtRef.current = Number.NEGATIVE_INFINITY
     setEvents([])
     setDroppedCount(0)
+    setReceivedCount(0)
+    setError(null)
+
+    const flushRefresh = () => {
+      refreshTimerRef.current = null
+      lastRefreshAtRef.current = Date.now()
+      refreshLiveQueries(queryClient, sessionId)
+    }
+
+    // Throttled refresh (#124/#137): at most one per
+    // LIVE_REFRESH_MIN_INTERVAL_MS, the first one REFRESH_COALESCE_MS after a
+    // quiet period so a burst still lands as a single refresh.
+    const scheduleRefresh = () => {
+      // D-02 replay gate: while replay is active events keep buffering (for
+      // the "N new events" badge) but the frozen panels are not refreshed;
+      // the replay-exit effect below performs one flush instead (D-04).
+      if (replayActiveRef.current) return
+      if (refreshTimerRef.current !== null) return
+      const sinceLast = Date.now() - lastRefreshAtRef.current
+      const delay = Math.max(REFRESH_COALESCE_MS, LIVE_REFRESH_MIN_INTERVAL_MS - sinceLast)
+      refreshTimerRef.current = setTimeout(flushRefresh, delay)
+    }
+
+    // Append accepted events in ONE state update (#137): a batch frame of N
+    // events used to cost N array copies and N updates.
+    const append = (accepted: VizEvent[]) => {
+      if (accepted.length === 0) return
+      setEvents(prev => capLiveEvents(prev.concat(accepted)))
+      setReceivedCount(n => n + accepted.length)
+      scheduleRefresh()
+    }
 
     // Shared per-element ingest body (D-04). Both the single-event per-kind
     // listeners AND the batch-array loop route every raw event through this
-    // one function so the seq-dedup, bounded-set eviction, append, and D-02
-    // replay gate cannot drift between the two paths. `fallbackKind` lets a
-    // per-kind frame stamp its event name when the payload omits `kind`; batch
-    // elements carry their own kind so they pass undefined.
-    const appendNormalized = (rawEvent: unknown, fallbackKind?: string) => {
-      // Normalize event from backend format (type -> kind)
+    // one function so the seq-dedup and bounded-set eviction cannot drift
+    // between the two paths. Returns the normalized event, or null when it is
+    // a replayed duplicate. `fallbackKind` lets a per-kind frame stamp its
+    // event name when the payload omits `kind`.
+    const accept = (rawEvent: unknown, fallbackKind?: string): VizEvent | null => {
       const event = normalizeEvent(rawEvent)
-      // If still no kind, set from SSE event type
       if (!event.kind && fallbackKind) {
         (event as { kind?: VizEventKind }).kind = fallbackKind as VizEventKind
       }
 
       // Replay dedup: a reconnect replays FULL history, so drop any event whose
-      // seq was already appended — BEFORE setEvents and BEFORE the invalidation
-      // debounce (duplicates must not burn invalidations either). Membership in
-      // a bounded seen-set (not a max-seq watermark) so legitimately
-      // out-of-order seqs are NOT dropped (WR-13). Events without a numeric seq
-      // (legacy kebab-case frames) bypass the guard.
+      // seq was already appended. Membership in a bounded seen-set (not a
+      // max-seq watermark) so legitimately out-of-order seqs are NOT dropped
+      // (WR-13). Events without a numeric seq (legacy kebab-case frames)
+      // bypass the guard.
       const seq = (event as { seq?: unknown }).seq
       if (typeof seq === 'number') {
         if (seenSeqsRef.current.has(seq)) {
-          return
+          return null
         }
         seenSeqsRef.current.add(seq)
         // Bound the set: evict the oldest entry (Set iteration is
@@ -191,49 +264,7 @@ export function useEventStream(
           }
         }
       }
-
-      setEvents(prev => [...prev, event])
-
-      // D-02 replay gate: while replay is active, KEEP appending events (above)
-      // but suppress the cache side effect entirely — no debounce timer is even
-      // scheduled. The EventSource, dedup, backoff, and max-wait machinery are
-      // all left untouched; only the invalidation is gated (T-02-12 / T-02-14).
-      // On exiting replay a single flush applies the buffered events (D-04),
-      // handled by the replayActive teardown effect below.
-      if (replayActiveRef.current) {
-        return
-      }
-
-      // Max-wait-capped debounced invalidation: a burst of events still
-      // produces only one trailing-edge invalidation, but a sustained stream is
-      // guaranteed to flush at least once per INVALIDATION_MAX_WAIT_MS (the
-      // trailing edge can never be pushed past the max-wait boundary).
-      const flushInvalidation = () => {
-        invalidationTimerRef.current = null
-        // Reset the window so the next event starts a fresh max-wait clock.
-        firstInvalidationAtRef.current = null
-        queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
-        // CR-01 fix: the Threads tab relies on this invalidation while live
-        // (its background poll is slowed during streaming).
-        queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
-      }
-
-      if (firstInvalidationAtRef.current === null) {
-        firstInvalidationAtRef.current = Date.now()
-      }
-      const elapsed = Date.now() - firstInvalidationAtRef.current
-
-      if (invalidationTimerRef.current !== null) {
-        clearTimeout(invalidationTimerRef.current)
-      }
-      if (elapsed >= INVALIDATION_MAX_WAIT_MS) {
-        flushInvalidation()
-      } else {
-        invalidationTimerRef.current = setTimeout(
-          flushInvalidation,
-          Math.min(INVALIDATION_DEBOUNCE_MS, INVALIDATION_MAX_WAIT_MS - elapsed),
-        )
-      }
+      return event
     }
 
     const connect = () => {
@@ -285,8 +316,8 @@ export function useEventStream(
           eventSource.addEventListener(eventType, (e: Event) => {
             const messageEvent = e as MessageEvent
             try {
-              const rawEvent = JSON.parse(messageEvent.data)
-              appendNormalized(rawEvent, eventType)
+              const event = accept(JSON.parse(messageEvent.data), eventType)
+              if (event) append([event])
             } catch {
               // Silently ignore malformed events
             }
@@ -297,11 +328,10 @@ export function useEventStream(
         // into a single `event: batch` frame whose data is a JSON ARRAY. A
         // browser EventSource dispatches by event NAME, so a batched array can
         // never ride `event: <kind>` — it needs its own listener (Pitfall P4).
-        // Loop each array element through the SAME appendNormalized spine so
-        // every batched event is seq-deduped one-by-one (T-10-12) and obeys the
-        // identical D-02 replay gate. A malformed/non-array frame is logged-as-
-        // skipped by the try/catch so one bad frame cannot kill the listener
-        // (T-10-14).
+        // Every element goes through the SAME accept() spine so it is
+        // seq-deduped one-by-one (T-10-12); the survivors are appended in a
+        // single state update (#137). A malformed/non-array frame is skipped
+        // by the try/catch so one bad frame cannot kill the listener (T-10-14).
         eventSource.addEventListener('batch', (e: Event) => {
           const messageEvent = e as MessageEvent
           try {
@@ -309,9 +339,12 @@ export function useEventStream(
             if (!Array.isArray(parsed)) {
               return
             }
+            const accepted: VizEvent[] = []
             for (const rawEvent of parsed) {
-              appendNormalized(rawEvent)
+              const event = accept(rawEvent)
+              if (event) accepted.push(event)
             }
+            append(accepted)
           } catch {
             // Silently ignore malformed batch frames
           }
@@ -320,7 +353,7 @@ export function useEventStream(
         // Drop observability (D-08): when the backend sheds non-structural
         // events under overload it emits a `dropped` control frame
         // ({"count":N}). Surface the cumulative count as a marker. This is a
-        // NON-stored control frame — it must NOT route through appendNormalized,
+        // NON-stored control frame — it must NOT route through accept/append,
         // must NOT append to `events`, and must NOT touch seenSeqsRef, otherwise
         // it would render as a phantom node (T-10-13). Mirrors the `error`
         // control-frame listener below.
@@ -368,14 +401,13 @@ export function useEventStream(
         eventSourceRef.current = null
         setIsConnected(false)
       }
-      // Clear any pending debounce timer on teardown
-      if (invalidationTimerRef.current !== null) {
-        clearTimeout(invalidationTimerRef.current)
-        invalidationTimerRef.current = null
+      // Clear any pending refresh on teardown
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = null
       }
-      firstInvalidationAtRef.current = null
     }
-  }, [sessionId, enabled, queryClient])
+  }, [sessionId, enabled, queryClient, connectNonce])
 
   // Replay gate sync + exit flush (D-02 / D-04). Keep the ref in lockstep with
   // the prop so the SSE listener reads the live value, and when replay turns
@@ -390,21 +422,27 @@ export function useEventStream(
     wasReplayActiveRef.current = replayActive
 
     if (wasActive && !replayActive && sessionId && enabled) {
-      if (invalidationTimerRef.current !== null) {
-        clearTimeout(invalidationTimerRef.current)
-        invalidationTimerRef.current = null
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = null
       }
-      firstInvalidationAtRef.current = null
-      queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] })
-      queryClient.invalidateQueries({ queryKey: ['thread-activity', sessionId] })
+      lastRefreshAtRef.current = Date.now()
+      refreshLiveQueries(queryClient, sessionId)
     }
   }, [replayActive, sessionId, enabled, queryClient])
 
   return {
+    /** Buffered live events, newest last, capped at LIVE_EVENTS_MAX. */
     events,
     isConnected,
+    /** Human-readable connection problem, or null while healthy. */
     error,
     clearEvents,
+    /** Events the backend shed under overload since the stream started. */
     droppedCount,
+    /** Events accepted since the stream started (keeps counting past the cap). */
+    receivedCount,
+    /** Re-open the stream, e.g. after the retry budget is exhausted. */
+    reconnect,
   }
 }

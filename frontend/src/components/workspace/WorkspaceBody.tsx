@@ -6,7 +6,7 @@ import { LivePill } from '../LivePill'
 
 interface WorkspaceBodyProps {
   sessionId: string
-  /** Drives the LivePill + the metrics poll cadence (mirrors SessionMetrics). */
+  /** Drives the LivePill. */
   streamEnabled: boolean
   /**
    * Read-only shared view (T-08-08): the shared shell carries no Bearer, so the
@@ -66,8 +66,9 @@ export function WorkspaceBody({
   inspector,
 }: WorkspaceBodyProps) {
   // Leak-data source (PD-02). Shares the React Query key with the strip's
-  // SessionMetrics, so no extra network fetch is incurred.
-  const { data: metrics } = useSessionMetrics(sessionId, streamEnabled, !readOnly)
+  // SessionMetrics, so no extra network fetch is incurred. A pure observer —
+  // the workspace owns the refresh cadence (#124).
+  const { data: metrics } = useSessionMetrics(sessionId, false, !readOnly)
 
   return (
     <div className="mt-8 rounded-xl bg-content1 border-t-2 border-primary min-h-[200px]">
@@ -75,12 +76,7 @@ export function WorkspaceBody({
       {showMetrics && (
         <div className="flex items-center justify-between gap-4 p-6">
           <LivePill streamEnabled={streamEnabled} />
-          <SessionMetrics
-            sessionId={sessionId}
-            isLive={streamEnabled}
-            enabled={!readOnly}
-            showLeaks={false}
-          />
+          <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
         </div>
       )}
 

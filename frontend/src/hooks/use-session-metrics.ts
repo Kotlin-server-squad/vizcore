@@ -3,35 +3,37 @@
  *
  * `useSessionMetrics` returns the wire shape of GET /sessions/{id}/metrics
  * (`MetricsResponse`: active/peak/throughput/dispatcher-utilization/leaks).
- * It clones `useThreadActivity`'s poll-while-live semantics EXACTLY so the
- * Session metrics panel refreshes at the same cadence as the rest of the live
- * view (5s slow fallback while the SSE stream drives updates, 2s otherwise).
+ * It does not poll by default (#124): while the live stream is connected the
+ * SSE-driven invalidation in use-event-stream.ts refreshes it, and with the
+ * stream off the panel shows a snapshot. Only the workspace's own observer
+ * passes `pollMs`, as the fallback while the stream is on but SSE is down —
+ * every other observer of the key must leave it `false`, or its timer would
+ * poll on its own.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
+import { pollInterval } from '@/lib/poll-interval'
 
 /**
- * Poll-while-live metrics query for a session.
+ * Metrics query for a session.
  *
  * @param sessionId - the session to fetch metrics for
- * @param isLive    - when true the SSE stream is driving the live view: poll
- *                    on the slow 5s fallback interval (defense-in-depth) rather
- *                    than the 2s background refresh.
+ * @param pollMs    - fallback poll interval, or `false` (default) for none
  * @param enabled   - read-only shared view parity (T-08-08): the shared shell
- *                    carries no Bearer, so the protected /metrics fetch + poll
- *                    must be disabled there (mirrors useThreadActivity).
+ *                    carries no Bearer, so the protected /metrics fetch must be
+ *                    disabled there (mirrors useThreadActivity).
  */
 export function useSessionMetrics(
   sessionId: string | undefined,
-  isLive = false,
+  pollMs: number | false = false,
   enabled = true,
 ) {
   return useQuery({
     queryKey: ['session-metrics', sessionId],
     queryFn: () => apiClient.getMetrics(sessionId!),
     enabled: !!sessionId && enabled,
-    refetchInterval: enabled ? (isLive ? 5000 : 2000) : false,
+    refetchInterval: enabled ? pollInterval(pollMs) : false,
     staleTime: 1000,
   })
 }

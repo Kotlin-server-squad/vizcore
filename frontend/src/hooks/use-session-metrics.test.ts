@@ -89,36 +89,29 @@ describe('useSessionMetrics polling cadence', () => {
     vi.useRealTimers()
   })
 
-  it('polls on the live 5s interval when isLive is true', async () => {
+  it('does not poll by default — refreshes come from the live stream (#124)', async () => {
     mockedApiClient.getMetrics.mockResolvedValue(metricsFixture())
 
-    renderHook(() => useSessionMetrics('session-live', true), {
+    renderHook(() => useSessionMetrics('session-idle'), {
       wrapper: createWrapper(),
     })
 
-    // Initial fetch
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
     expect(mockedApiClient.getMetrics).toHaveBeenCalledTimes(1)
 
-    // Just under 5s: no live-mode refetch yet (the 2s non-live poll must NOT fire)
+    // A full minute passes: the old 2s poll would have fired 30 times.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4900)
+      await vi.advanceTimersByTimeAsync(60_000)
     })
     expect(mockedApiClient.getMetrics).toHaveBeenCalledTimes(1)
-
-    // Crossing 5s: the live fallback poll fires
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(200)
-    })
-    expect(mockedApiClient.getMetrics).toHaveBeenCalledTimes(2)
   })
 
-  it('polls on the 2s interval when not live', async () => {
+  it('polls at the given fallback interval when one is passed', async () => {
     mockedApiClient.getMetrics.mockResolvedValue(metricsFixture())
 
-    renderHook(() => useSessionMetrics('session-poll', false), {
+    renderHook(() => useSessionMetrics('session-fallback', 10_000), {
       wrapper: createWrapper(),
     })
 
@@ -127,9 +120,13 @@ describe('useSessionMetrics polling cadence', () => {
     })
     expect(mockedApiClient.getMetrics).toHaveBeenCalledTimes(1)
 
-    // The non-live 2s poll fires
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2100)
+      await vi.advanceTimersByTimeAsync(9_900)
+    })
+    expect(mockedApiClient.getMetrics).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200)
     })
     expect(mockedApiClient.getMetrics).toHaveBeenCalledTimes(2)
   })
