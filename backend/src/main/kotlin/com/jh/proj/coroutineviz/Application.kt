@@ -1,14 +1,21 @@
 package com.jh.proj.coroutineviz
 
+import com.jh.proj.coroutineviz.auth.ApiKeyPrincipal
+import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.observability.configureObservability
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.RetentionPolicy
 import com.jh.proj.coroutineviz.session.SessionManager
+import io.ktor.http.HttpMethod
 import io.ktor.server.application.*
+import io.ktor.server.config.ApplicationConfig
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.RateLimiter
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.util.AttributeKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +43,18 @@ val DatabaseKey = AttributeKey<Database>("Database")
  * `GET /api/shared/{token}` is wrapped in `rateLimit(RateLimitName(SHARED_RATE_LIMIT_NAME))`.
  */
 const val SHARED_RATE_LIMIT_NAME = "shared"
+
+/** The `api` scope: tiered read / write / stream buckets per client ([RateLimitPolicy]). */
+const val API_RATE_LIMIT_NAME = "api"
+
+/** The scope around POST /api/sessions (nested inside [API_RATE_LIMIT_NAME]). */
+const val SESSION_CREATE_RATE_LIMIT_NAME = "session-create"
+
+/** The scope around the public login endpoint POST /api/auth/token. */
+const val LOGIN_RATE_LIMIT_NAME = "login"
+
+/** The limits [configureRateLimit] installed, read from the `rateLimit.*` config block. */
+internal val RateLimitPolicyKey = AttributeKey<RateLimitPolicy>("RateLimitPolicy")
 
 /** True when the shared-read [RateLimit] scope was installed (config-gated). */
 val SharedRateLimitEnabledKey = AttributeKey<Boolean>("SharedRateLimitEnabled")
@@ -119,10 +138,17 @@ fun Application.configureSessionLifecycle() {
 }
 
 /**
- * Install the single [RateLimit] plugin and register all per-IP scopes (Ktor
- * forbids installing the plugin twice, so this is the ONE install site):
- *  - `api` (60/min) and `session-create` (10/min) — production hardening (ADR-029),
- *    always registered, keyed on `remoteAddress`.
+ * Install the single [RateLimit] plugin and register all scopes (Ktor forbids
+ * installing the plugin twice, so this is the ONE install site). Limits come from
+ * the `rateLimit.*` config block ([RateLimitPolicy]); every 429 carries the
+ * `Retry-After` header that Ktor's default response modifier sets.
+ *  - `api` ([API_RATE_LIMIT_NAME]) — one provider with three independent buckets per
+ *    client: cheap reads (GET/HEAD), writes, and SSE/ingest-WebSocket connects
+ *    ([ApiTier], [classifyApiTier]). The client is the authenticated principal when
+ *    present, else the remote address ([rateLimitClientKey]).
+ *  - `session-create` ([SESSION_CREATE_RATE_LIMIT_NAME]) — POST /api/sessions, nested
+ *    inside `api`, so a create draws from both the write bucket and this one.
+ *  - `login` ([LOGIN_RATE_LIMIT_NAME]) — the public POST /api/auth/token, by remote address.
  *  - `shared` (SHAR-02, D-12) — the public shared read, keyed on `remoteHost`,
  *    config-gated by `share.rateLimit.enabled` and sized by `requestsPerMinute`.
  *
@@ -135,14 +161,25 @@ private fun Application.configureRateLimit() {
     val sharedEnabled = cfg.propertyOrNull("share.rateLimit.enabled")?.getString()?.toBoolean() ?: true
     attributes.put(SharedRateLimitEnabledKey, sharedEnabled)
     val sharedRpm = cfg.propertyOrNull("share.rateLimit.requestsPerMinute")?.getString()?.toIntOrNull() ?: 60
+    val policy = RateLimitPolicy.fromConfig(cfg)
+    attributes.put(RateLimitPolicyKey, policy)
 
     install(RateLimit) {
-        register(RateLimitName("api")) {
-            rateLimiter(limit = 60, refillPeriod = 1.minutes)
-            requestKey { call -> call.request.local.remoteAddress }
+        register(RateLimitName(API_RATE_LIMIT_NAME)) {
+            // One bucket per (tier, client): Ktor caches a limiter per request key, so the
+            // tier in the key keeps reads, writes and stream connects from draining each other.
+            requestKey { call -> ApiBucketKey(classifyApiTier(call), call.rateLimitClientKey()) }
+            rateLimiter { _, key ->
+                val tier = (key as? ApiBucketKey)?.tier ?: ApiTier.WRITE
+                RateLimiter.default(limit = policy.limitFor(tier), refillPeriod = 1.minutes)
+            }
         }
-        register(RateLimitName("session-create")) {
-            rateLimiter(limit = 10, refillPeriod = 1.minutes)
+        register(RateLimitName(SESSION_CREATE_RATE_LIMIT_NAME)) {
+            rateLimiter(limit = policy.sessionCreate, refillPeriod = 1.minutes)
+            requestKey { call -> call.rateLimitClientKey() }
+        }
+        register(RateLimitName(LOGIN_RATE_LIMIT_NAME)) {
+            rateLimiter(limit = policy.login, refillPeriod = 1.minutes)
             requestKey { call -> call.request.local.remoteAddress }
         }
         if (sharedEnabled) {
@@ -153,9 +190,93 @@ private fun Application.configureRateLimit() {
         }
     }
     moduleLogger.info(
-        "Rate limiting installed (api=60/min, session-create=10/min, shared={})",
+        "Rate limiting installed (read={}/min, write={}/min, stream={}/min, login={}/min, " +
+            "session-create={}/min, shared={})",
+        policy.read,
+        policy.write,
+        policy.stream,
+        policy.login,
+        policy.sessionCreate,
         if (sharedEnabled) "$sharedRpm/min" else "disabled",
     )
+}
+
+/** Which `api` bucket a request draws from. */
+internal enum class ApiTier { READ, WRITE, STREAM }
+
+/** Request key of the `api` provider: one bucket per tier per client. */
+internal data class ApiBucketKey(
+    val tier: ApiTier,
+    val client: String,
+)
+
+private val STREAM_PATH = Regex("^/api/sessions/[^/]+/(stream|ingest)$")
+
+/**
+ * SSE stream and ingest-WebSocket connects are [ApiTier.STREAM]; any other GET/HEAD
+ * is a cheap [ApiTier.READ]; everything else is a [ApiTier.WRITE].
+ */
+internal fun classifyApiTier(call: ApplicationCall): ApiTier {
+    val method = call.request.httpMethod
+    return when {
+        STREAM_PATH.matches(call.request.path()) -> ApiTier.STREAM
+        method == HttpMethod.Get || method == HttpMethod.Head -> ApiTier.READ
+        else -> ApiTier.WRITE
+    }
+}
+
+/**
+ * Rate-limit client identity: the authenticated principal when there is one (so
+ * clients behind one address do not share a bucket), else the remote address.
+ */
+internal fun ApplicationCall.rateLimitClientKey(): String =
+    when (val principal = currentPrincipal()) {
+        is ApiKeyPrincipal -> "key:${principal.name}"
+        is UserPrincipal -> "user:${principal.userId}"
+        else -> "ip:${request.local.remoteAddress}"
+    }
+
+/** Per-minute request limits for each rate-limit bucket, from the `rateLimit.*` config block. */
+internal data class RateLimitPolicy(
+    val read: Int = DEFAULT_READ_RPM,
+    val write: Int = DEFAULT_WRITE_RPM,
+    val stream: Int = DEFAULT_STREAM_RPM,
+    val login: Int = DEFAULT_LOGIN_RPM,
+    val sessionCreate: Int = DEFAULT_SESSION_CREATE_RPM,
+) {
+    fun limitFor(tier: ApiTier): Int =
+        when (tier) {
+            ApiTier.READ -> read
+            ApiTier.WRITE -> write
+            ApiTier.STREAM -> stream
+        }
+
+    companion object {
+        const val DEFAULT_READ_RPM = 1200
+        const val DEFAULT_WRITE_RPM = 300
+        const val DEFAULT_STREAM_RPM = 120
+        const val DEFAULT_LOGIN_RPM = 10
+        const val DEFAULT_SESSION_CREATE_RPM = 10
+
+        fun fromConfig(config: ApplicationConfig): RateLimitPolicy {
+            fun rpm(
+                key: String,
+                default: Int,
+            ): Int =
+                config
+                    .propertyOrNull("rateLimit.$key.requestsPerMinute")
+                    ?.getString()
+                    ?.toIntOrNull()
+                    ?.takeIf { it > 0 } ?: default
+            return RateLimitPolicy(
+                read = rpm("read", DEFAULT_READ_RPM),
+                write = rpm("write", DEFAULT_WRITE_RPM),
+                stream = rpm("stream", DEFAULT_STREAM_RPM),
+                login = rpm("login", DEFAULT_LOGIN_RPM),
+                sessionCreate = rpm("sessionCreate", DEFAULT_SESSION_CREATE_RPM),
+            )
+        }
+    }
 }
 
 /**

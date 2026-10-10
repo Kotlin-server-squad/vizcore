@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.SESSION_CREATE_RATE_LIMIT_NAME
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
@@ -70,9 +71,10 @@ internal fun ApplicationCall.resolveScopedSession(sessionId: String): VizSession
 }
 
 fun Route.registerSessionRoutes() {
-    // Session creation is rate-limited (ADR-029, 10/min) AND tenant-scoped (T-03):
-    // a scoped store stamps ownership, else fall back to the in-memory manager (D-04b).
-    rateLimit(RateLimitName("session-create")) {
+    // Session creation is rate-limited (ADR-029, rateLimit.sessionCreate, default 10/min) AND
+    // tenant-scoped (T-03): a scoped store stamps ownership, else fall back to the in-memory
+    // manager (D-04b).
+    rateLimit(RateLimitName(SESSION_CREATE_RATE_LIMIT_NAME)) {
         post("/api/sessions") {
             val name = call.request.queryParameters["name"]
             val store = tenantScopedStore()
@@ -119,7 +121,7 @@ fun Route.registerSessionRoutes() {
     // Resolve a client-minted correlation token to the REAL live session id (CORR-02, D-04/D-05).
     // A constant-segment path, so Ktor's routing priority keeps it from being captured by the
     // parameterized "/api/sessions/{id}" below (same coexistence proven for "/compare" in 2-01).
-    // Registered inside registerSessionRoutes() so it inherits auth + the 60/min api rate limit
+    // Registered inside registerSessionRoutes() so it inherits auth + the "api" read bucket
     // + D-04a fail-open from Routing.kt for free.
     get("/api/sessions/resolve") {
         val correlation = call.request.queryParameters["correlation"]
