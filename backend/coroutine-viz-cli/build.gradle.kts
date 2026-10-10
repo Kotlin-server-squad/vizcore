@@ -1,5 +1,5 @@
 plugins {
-    kotlin("jvm") version "2.3.21"
+    kotlin("jvm") version "2.4.20"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
     application
     // Shadow fat-JAR plugin (SDK-02). Pinned to exactly 9.4.3 — the johnrengelman/shadow
