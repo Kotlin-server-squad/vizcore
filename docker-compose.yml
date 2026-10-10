@@ -1,24 +1,37 @@
+# Local development stack. Both images build from the repository root context so the backend
+# image can reach its SDK modules and the frontend image can reach shared/api-types.
+# Host ports are overridable so the stack can come up on a machine where 8080 or 3000 is
+# already taken: BACKEND_PORT=18081 FRONTEND_PORT=13001 docker compose up -d
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
-      - "8080:8080"
+      - "${BACKEND_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      # /api/ready is the readiness probe (HealthRoutes); "/" is not a route and would make
+      # `curl -f` fail forever. curl ships with the eclipse-temurin:21-jre runtime image.
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/ready"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       target: dev
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
-      - ./frontend/src:/app/src
+      # The dev image keeps the repository layout, so the app lives at /app/frontend.
+      - ./frontend/src:/app/frontend/src
     depends_on:
       backend:
         condition: service_healthy
     environment:
-      - VITE_API_URL=http://backend:8080
+      # vite.config.ts reads VITE_PROXY_TARGET for its /api proxy. VITE_API_URL was never
+      # read by anything.
+      - VITE_PROXY_TARGET=http://backend:8080
