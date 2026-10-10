@@ -4,7 +4,7 @@ import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLeve
 plugins {
     kotlin("jvm") version "2.3.21"
     id("org.jetbrains.intellij.platform") version "2.16.0"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.20"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
@@ -48,7 +48,7 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.0")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.20")
     // Mocks a RunConfigurationBase for the headless un-armed early-return proof in
     // VizcoreRunConfigurationExtensionTest (no project/fixture needed). Test-only.
     testImplementation("org.mockito:mockito-core:5.23.0")
