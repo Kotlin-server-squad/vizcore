@@ -1,5 +1,11 @@
 # IntelliJ Plugin Distribution Runbook
 
+> **Postponed — not part of v1.2.**
+> The IntelliJ plugin is parked (#130). It is excluded from the default Gradle build and is
+> only configured when a build opts in with `-Pvizcore.withPlugin=true`; CI builds it on
+> demand from `.github/workflows/ci-plugin.yml` (`workflow_dispatch`) only. Everything below
+> describes work that resumes after v1.2 — it is neither shipped nor supported in v1.2.
+
 How to build, verify, sign, and publish the **Coroutine Visualizer** IntelliJ plugin
 (`intellij-plugin`, plugin id `com.jh.coroutine-visualizer`).
 
