@@ -34,7 +34,7 @@ jobs:
 
       # Root context: backend/Dockerfile copies backend/ plus every SDK module the default
       # build includes, so the build cannot be scoped to ./backend.
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: backend/Dockerfile
@@ -65,7 +65,7 @@ jobs:
 
       # Root context: frontend/Dockerfile needs shared/api-types next to frontend/ for
       # `pnpm build` (tsc + vite) to resolve @vizcor/api-types.
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: frontend/Dockerfile
