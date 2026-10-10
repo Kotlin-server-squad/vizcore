@@ -1,12 +1,11 @@
 name: CI IntelliJ Plugin
 
+# The IntelliJ plugin is postponed and is not part of v1.2 (#130). It is excluded from the
+# default Gradle build (see backend/settings.gradle.kts) and this workflow therefore runs
+# ON DEMAND ONLY — never on push or pull_request. Every Gradle call must pass
+# -Pvizcore.withPlugin=true, otherwise the :intellij-plugin project does not exist.
 on:
-  push:
-    branches: [main]
-    paths: ['intellij-plugin/**', 'backend/coroutine-viz-core/**']
-  pull_request:
-    branches: [main]
-    paths: ['intellij-plugin/**', 'backend/coroutine-viz-core/**']
+  workflow_dispatch:
 
 jobs:
   build-plugin:
@@ -28,16 +27,16 @@ jobs:
         run: chmod +x gradlew
 
       - name: ktlint
-        run: ./gradlew :intellij-plugin:ktlintCheck
+        run: ./gradlew -Pvizcore.withPlugin=true :intellij-plugin:ktlintCheck
 
       - name: detekt
-        run: ./gradlew :intellij-plugin:detekt
+        run: ./gradlew -Pvizcore.withPlugin=true :intellij-plugin:detekt
 
       - name: Build core library
-        run: ./gradlew :coroutine-viz-core:jar
+        run: ./gradlew -Pvizcore.withPlugin=true :coroutine-viz-core:jar
 
       - name: Build plugin
-        run: ./gradlew :intellij-plugin:buildPlugin
+        run: ./gradlew -Pvizcore.withPlugin=true :intellij-plugin:buildPlugin
 
       - name: Upload plugin ZIP
         uses: actions/upload-artifact@v7
