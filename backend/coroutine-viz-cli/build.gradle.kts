@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.3.21"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.20"
     application
     // Shadow fat-JAR plugin (SDK-02). Pinned to exactly 9.4.3 — the johnrengelman/shadow
     // lineage's maintained successor (GradleUp org). Legitimacy verified on the Gradle
@@ -33,7 +33,7 @@ dependencies {
     // Test
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.2.20")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.20")
 }
 
 tasks.named<Test>("test") {
