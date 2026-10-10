@@ -95,10 +95,13 @@ fun wireMetrics(registry: PrometheusMeterRegistry) {
         // DB-backed store has no capacity bound, so this is a no-op there.
         (session.store as? EventStore)?.onEvict = { eventsDroppedCounter.increment() }
 
-        // events.dropped.bus: increment each time the EventBus broadcast buffer sheds an
-        // event on tryEmit overflow (the onDrop hook already fires in EventBus.send; it was
-        // previously unwired to any counter). Distinct lane from the store-drop counter (D-11).
+        // events.dropped.bus: count events the EventBus loses. Under DROP_OLDEST the emitter
+        // is never rejected, so the real losses are evictions a lagging subscriber misses
+        // (detected per subscriber from the bus-local index, reported via onEvicted; N lagging
+        // subscribers each count their own). onDrop stays wired for the defensive
+        // reject path. Distinct lane from the store-drop counter (D-11).
         session.bus.onDrop = { eventsDroppedBusCounter.increment() }
+        session.bus.onEvicted = { missed -> eventsDroppedBusCounter.increment(missed.toDouble()) }
 
         // events.buffer.size: per-session gauge tagged by sessionId
         val bufferGauge =

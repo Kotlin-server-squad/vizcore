@@ -54,8 +54,11 @@ fun Application.configureRouting() {
         // Public routes — no auth required (AUTH-01 allowlist), no rate limit.
         registerRootRoutes()
         registerHealthRoutes()
-        // POST /api/auth/token is ALWAYS public (login endpoint).
-        registerAuthRoutes(userStore, jwtConfig)
+        // POST /api/auth/token is ALWAYS public (login endpoint), in its own small per-IP
+        // bucket (rateLimit.login.requestsPerMinute) to bound credential guessing.
+        rateLimit(RateLimitName(LOGIN_RATE_LIMIT_NAME)) {
+            registerAuthRoutes(userStore, jwtConfig)
+        }
         // Public GET /api/shared/{token} (SHAR-02): the share token IS the credential, so
         // this is registered OUTSIDE authenticatedApi. It is wrapped in the per-IP RateLimit
         // scope (Task 2) to bound brute-force/scraping (T-03-13). Present only when persistence
@@ -64,17 +67,17 @@ fun Application.configureRouting() {
 
         // Protected routes — wrapped so EITHER X-API-Key OR JWT satisfies (D-08); pass-through
         // when auth is fully unconfigured (D-04a). /openapi.json is served by the OpenAPI plugin
-        // (configureHTTP), outside this wrapper, so it stays public. Nested inside the per-IP
-        // "api" rate-limit scope (ADR-029, 60/min) so protected routes are authenticated AND
-        // rate-limited.
+        // (configureHTTP), outside this wrapper, so it stays public. Nested inside the tiered
+        // "api" rate-limit scope (separate read / write / stream buckets per client, see
+        // configureRateLimit) so protected routes are authenticated AND rate-limited.
         authenticatedApi {
-            rateLimit(RateLimitName("api")) {
+            rateLimit(RateLimitName(API_RATE_LIMIT_NAME)) {
                 registerVizScenarioRoutes()
                 registerSyncScenarioRoutes()
                 registerTestRoutes()
                 registerSessionRoutes()
-                // WebSocket ingest (RCO-05): inherits auth + the 60/min per-IP
-                // limit + D-04a fail-open from this authenticatedApi/rateLimit block.
+                // WebSocket ingest (RCO-05): inherits auth + the "api" stream bucket
+                // + D-04a fail-open from this authenticatedApi/rateLimit block.
                 registerIngestRoutes()
                 registerValidationRoutes()
                 registerScenarioRunnerRoutes()

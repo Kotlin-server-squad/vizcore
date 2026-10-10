@@ -247,7 +247,7 @@ object SessionManager : SessionStoreInterface {
         return sessions.values.map { session ->
             SessionInfo(
                 sessionId = session.sessionId,
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
