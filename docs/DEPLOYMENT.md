@@ -13,6 +13,40 @@
 | `SESSION_CHECK_INTERVAL_MS` | `60000` | Retention policy check interval (ms) |
 | `JAVA_OPTS` | `-Xmx512m -Xms256m` | JVM options for backend container |
 | `TAG` | `latest` | Docker image tag for prod compose |
+| `BACKEND_PORT` | `8080` | Host port published for the backend (container port stays 8080) |
+| `FRONTEND_PORT` | `3000` | Host port published for the frontend (container port stays 3000) |
+
+## Images
+
+Both images build from the **repository root** context — the backend image copies every SDK
+module `backend/settings.gradle.kts` includes, and the frontend image needs `shared/api-types`
+next to `frontend/` for `pnpm build` to resolve `@vizcor/api-types`:
+
+```bash
+docker build -f backend/Dockerfile  -t vizcore-backend  .
+docker build -f frontend/Dockerfile -t vizcore-frontend .   # add --target dev for the Vite dev server
+```
+
+`docker compose build` does the same for the local stack. Host ports are overridable, so the
+stack comes up on a machine where 8080 or 3000 is taken:
+
+```bash
+BACKEND_PORT=18081 FRONTEND_PORT=13001 docker compose up -d
+```
+
+`.github/workflows/deploy.yml` publishes both images to the repository's GHCR namespace on
+every push to `main`:
+
+- `ghcr.io/kotlin-server-squad/vizcore/backend:{latest,<sha>}`
+- `ghcr.io/kotlin-server-squad/vizcore/frontend:{latest,<sha>}`
+
+Authenticate before pulling them:
+
+```bash
+export CR_PAT=<personal access token with read:packages>
+echo "$CR_PAT" | docker login ghcr.io -u <github-username> --password-stdin
+docker compose -f docker-compose.prod.yml pull
+```
 
 ## Docker Production
 
@@ -45,8 +79,14 @@ Logs are rotated at 10 MB with 3 files retained per service.
 
 ### Health check
 
+`/api/ready` is the readiness probe both compose files wire into the container healthcheck.
+It answers `{"status":"UP"}` while the session manager is reachable and heap use is under 95%,
+and 503 otherwise. `/api/health` returns the full status payload (version, session count,
+uptime, memory) and is the one to read when diagnosing:
+
 ```bash
-curl http://localhost:8080/health
+curl -f http://localhost:${BACKEND_PORT:-8080}/api/ready
+curl http://localhost:${BACKEND_PORT:-8080}/api/health   # full status payload
 ```
 
 ### Prometheus metrics

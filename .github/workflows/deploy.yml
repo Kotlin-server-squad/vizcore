@@ -7,8 +7,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/backend
-  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/frontend
 
 jobs:
   build-backend:
@@ -19,19 +17,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # A GHCR reference must be lowercase, but github.repository keeps the owner's casing
+      # ("Kotlin-server-squad/vizcore"), so interpolating it straight into a tag produces an
+      # invalid reference and the push fails. Lowercase it once here instead.
+      - name: Resolve the lowercase image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=${REGISTRY}/${REPOSITORY,,}/backend" >> "$GITHUB_OUTPUT"
+
       - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Root context: backend/Dockerfile copies backend/ plus every SDK module the default
+      # build includes, so the build cannot be scoped to ./backend.
       - uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .
+          file: backend/Dockerfile
           push: true
           tags: |
-            ${{ env.BACKEND_IMAGE }}:latest
-            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
 
   build-frontend:
     runs-on: ubuntu-latest
@@ -41,16 +51,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Resolve the lowercase image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=${REGISTRY}/${REPOSITORY,,}/frontend" >> "$GITHUB_OUTPUT"
+
       - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Root context: frontend/Dockerfile needs shared/api-types next to frontend/ for
+      # `pnpm build` (tsc + vite) to resolve @vizcor/api-types.
       - uses: docker/build-push-action@v5
         with:
-          context: ./frontend
+          context: .
+          file: frontend/Dockerfile
+          target: production
           push: true
           tags: |
-            ${{ env.FRONTEND_IMAGE }}:latest
-            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}

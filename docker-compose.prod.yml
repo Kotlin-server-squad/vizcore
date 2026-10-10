@@ -1,8 +1,24 @@
+# Production stack: pulls the images .github/workflows/deploy.yml publishes, it does not build.
+#
+# Images live under the repository's own GHCR namespace,
+# ghcr.io/kotlin-server-squad/vizcore/{backend,frontend}. GHCR requires a login even for a
+# public package pull on some hosts, and always for a private one, so authenticate before
+# `docker compose -f docker-compose.prod.yml pull`:
+#
+#   export CR_PAT=<personal access token with read:packages>
+#   echo "$CR_PAT" | docker login ghcr.io -u <github-username> --password-stdin
+#
+# Env this file reads:
+#   TAG                   image tag to run (default `latest`; deploy.yml also tags the commit SHA)
+#   BACKEND_PORT          host port for the backend (default 8080)
+#   FRONTEND_PORT         host port for the frontend (default 3000)
+#   CORS_ALLOWED_ORIGINS  comma-separated origins the backend accepts
+#   SESSION_MAX_AGE_MS, SESSION_MAX_COUNT, JAVA_OPTS  backend tuning
 services:
   backend:
-    image: ghcr.io/hermanngeorge15/visualizer-for-coroutines/backend:${TAG:-latest}
+    image: ghcr.io/kotlin-server-squad/vizcore/backend:${TAG:-latest}
     ports:
-      - "8080:8080"
+      - "${BACKEND_PORT:-8080}:8080"
     environment:
       - PORT=8080
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://your-frontend-domain.com}
@@ -11,10 +27,11 @@ services:
       - SESSION_MAX_COUNT=${SESSION_MAX_COUNT:-100}
       - JAVA_OPTS=${JAVA_OPTS:--Xmx512m -Xms256m}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      # Same readiness probe as the dev stack; curl ships with eclipse-temurin:21-jre.
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/ready"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
       start_period: 30s
     restart: unless-stopped
     deploy:
@@ -29,9 +46,9 @@ services:
         max-file: "3"
 
   frontend:
-    image: ghcr.io/hermanngeorge15/visualizer-for-coroutines/frontend:${TAG:-latest}
+    image: ghcr.io/kotlin-server-squad/vizcore/frontend:${TAG:-latest}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_healthy

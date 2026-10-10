@@ -1,0 +1,36 @@
+# Single ignore file for BOTH images. Each builds from the repository ROOT context:
+#   docker build -f backend/Dockerfile .      (needs backend/ + its SDK modules)
+#   docker build -f frontend/Dockerfile .     (needs frontend/ + shared/api-types)
+# Docker only reads the .dockerignore at the context root, so the former
+# backend/.dockerignore and frontend/.dockerignore no longer applied to anything and
+# were removed rather than left to rot.
+
+.git
+.github
+.idea
+.claude
+.planning
+.memtrace
+**/.DS_Store
+
+# Gradle / Kotlin / IntelliJ build output
+**/.gradle
+**/.kotlin
+**/.intellijPlatform
+**/build
+**/*.iml
+
+# Node build output
+**/node_modules
+**/dist
+
+# Trees neither image needs
+intellij-plugin
+docs-site
+docs
+examples
+scratchpad
+scripts
+backend/data
+backend/docs
+backend/http-requests
