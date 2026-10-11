@@ -1,5 +1,7 @@
 # Documentation
 
+Project overview and quickstart: [../README.md](../README.md).
+
 ## Guides
 
 - [Setup](guides/SETUP.md) — Local development setup, prerequisites, troubleshooting

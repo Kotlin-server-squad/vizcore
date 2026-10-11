@@ -2,6 +2,8 @@
 
 Complete guide for setting up and running the Coroutine Visualizer project.
 
+For the short version — what vizcore is, the two-command quickstart, the SDK snippet and the smoke test — see [README.md](README.md).
+
 ## Architecture Overview
 
 ```
@@ -54,7 +56,7 @@ npm install -g pnpm
 
 ```bash
 cd backend
-./gradlew run
+./gradlew :run
 ```
 
 Wait for output:
@@ -100,7 +102,7 @@ Navigate to **http://localhost:3000**
 
 ```bash
 # Development
-./gradlew run              # Start dev server (port 8080)
+./gradlew :run              # Start dev server (port 8080)
 ./gradlew test             # Run tests
 
 # Production
@@ -217,7 +219,7 @@ Frontend can run without backend using Mock Service Worker:
 
 **Terminal 1 - Backend:**
 ```bash
-cd backend && ./gradlew run
+cd backend && ./gradlew :run
 ```
 
 **Terminal 2 - Frontend:**
@@ -229,7 +231,7 @@ cd frontend && pnpm dev
 
 ```bash
 # Start backend in background
-cd backend && ./gradlew run &
+cd backend && ./gradlew :run &
 
 # Start frontend
 cd frontend && pnpm dev
@@ -239,7 +241,7 @@ cd frontend && pnpm dev
 
 Create `Procfile` in root:
 ```
-backend: cd backend && ./gradlew run
+backend: cd backend && ./gradlew :run
 frontend: cd frontend && pnpm dev
 ```
 
@@ -295,7 +297,7 @@ Use with `foreman`, `overmind`, or similar tools.
 
 **Backend changes:**
 - Gradle auto-reloads on save (if using `--continuous`)
-- Or restart: `Ctrl+C` then `./gradlew run`
+- Or restart: `Ctrl+C` then `./gradlew :run`
 
 **Frontend changes:**
 - Vite HMR auto-updates browser
