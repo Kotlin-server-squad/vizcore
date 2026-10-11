@@ -8,6 +8,11 @@ on:
     branches: [main]
     paths: ['backend/**']
 
+# The IntelliJ plugin is postponed (#130) and is no longer configured or built by this
+# workflow: backend/settings.gradle.kts leaves :intellij-plugin out of the build unless
+# -Pvizcore.withPlugin=true is passed, so the Gradle calls below (ktlintCheck, detekt, test,
+# checkBytecode, build) cover the backend and the SDK modules only. The plugin is built on
+# demand by ci-plugin.yml; do not add the opt-in flag here.
 jobs:
   test-build:
     runs-on: ubuntu-latest

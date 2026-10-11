@@ -6,8 +6,17 @@
 - [User Guide](guides/USER_GUIDE.md) — How to use the visualizer, panels, scenarios
 - [API Reference](guides/API_REFERENCE.md) — REST endpoints, SSE streams, request/response examples
 - [Deployment](guides/DEPLOYMENT.md) — Production deployment, Docker, monitoring, scaling
-- [IntelliJ Plugin Guide](guides/INTELLIJ_PLUGIN_GUIDE.md) — Building the IntelliJ plugin
-- [IntelliJ Plugin Integration](guides/INTELLIJ_PLUGIN_INTEGRATION.md) — Hybrid VizSession + DebugProbes architecture
+- [IntelliJ Plugin Guide](guides/INTELLIJ_PLUGIN_GUIDE.md) — Building the IntelliJ plugin *(postponed — not part of v1.2)*
+- [IntelliJ Plugin Integration](guides/INTELLIJ_PLUGIN_INTEGRATION.md) — Hybrid VizSession + DebugProbes architecture *(postponed — not part of v1.2)*
+
+> **Postponed — not part of v1.2.**
+> The IntelliJ plugin is parked (#130). It is excluded from the default Gradle build and is
+> only configured when a build opts in with `-Pvizcore.withPlugin=true`; CI builds it on
+> demand from `.github/workflows/ci-plugin.yml` (`workflow_dispatch`) only. The two plugin
+> guides above, [ADR-010](adr/010-intellij-plugin-architecture.md),
+> [ADR-014](adr/014-plugin-communication-protocol.md) and the
+> [distribution runbook](guides/intellij-plugin-distribution.md) describe work that resumes
+> after v1.2 — none of it is shipped or supported in v1.2.
 
 ## Architecture Decision Records
 
