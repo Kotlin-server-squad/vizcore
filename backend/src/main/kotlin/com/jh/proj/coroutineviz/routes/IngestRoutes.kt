@@ -42,6 +42,11 @@ private val ingestLogger = LoggerFactory.getLogger("CoroutineVizIngest")
  *    stream stays open — one bad frame never drops the connection.
  *  - **T-07-04:** a single frame is capped at 1 MiB by the WebSockets plugin
  *    (`maxFrameSize`), and the connect draws from the `rateLimit("api")` stream bucket.
+ *
+ * Lifetime: the handler registers the open socket on the session
+ * ([com.jh.proj.coroutineviz.session.VizSession.ingestSocketOpened]) and releases it in a
+ * `finally`, so [com.jh.proj.coroutineviz.session.RetentionPolicy] never evicts the session
+ * a client is still streaming into (#129).
  */
 fun Route.registerIngestRoutes() {
     webSocket("/api/sessions/{id}/ingest") {
@@ -59,10 +64,19 @@ fun Route.registerIngestRoutes() {
             return@webSocket
         }
 
-        for (frame in incoming) {
-            if (frame is Frame.Text) {
-                publishFrame(session, sessionId, frame.readText())
+        // Retention never evicts a session with an open ingest socket (#129). The
+        // counter is incremented BEFORE the receive loop and decremented in a
+        // `finally`, so it is exact on every exit path — normal close, client
+        // disconnect, coroutine cancellation and an unexpected throw alike.
+        session.ingestSocketOpened()
+        try {
+            for (frame in incoming) {
+                if (frame is Frame.Text) {
+                    publishFrame(session, sessionId, frame.readText())
+                }
             }
+        } finally {
+            session.ingestSocketClosed()
         }
     }
 }

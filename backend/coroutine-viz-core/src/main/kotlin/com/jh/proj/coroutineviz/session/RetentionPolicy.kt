@@ -14,12 +14,25 @@ import org.slf4j.LoggerFactory
  * removes those that exceed the maximum age or when the total session count
  * exceeds the configured limit.
  *
- * Cleanup rules (applied in order):
- * 1. Remove all sessions older than [maxSessionAgeMs]
- * 2. If the remaining count still exceeds [maxSessions], remove the oldest
- *    sessions until the count is at or below the limit
+ * A session's age is measured from its LAST ACTIVITY
+ * ([VizSession.lastActivityAtMs] — the last appended event or ingest socket
+ * open/close), never from its creation, and a session that currently has an open
+ * ingest socket ([VizSession.hasOpenIngestSocket]) is NEVER removed — not by age
+ * and not by count. WHY: ageing by `createdAtMs` evicted a real app's session
+ * after [maxSessionAgeMs] (1 h by default) while the app was still streaming, so
+ * the client's next frame hit a session that no longer existed (#129). Idle
+ * sessions are still evicted exactly as configured.
  *
- * @property maxSessionAgeMs Maximum age of a session in milliseconds before
+ * Cleanup rules (applied in order):
+ * 1. Remove all sessions idle for longer than [maxSessionAgeMs]
+ * 2. If the remaining count still exceeds [maxSessions], remove the
+ *    least-recently-active sessions until the count is at or below the limit
+ *
+ * Sessions with an open ingest socket are skipped by both phases, so the live
+ * count can legitimately stay above [maxSessions] while that many clients are
+ * connected — dropping a connected client's session is the worse failure.
+ *
+ * @property maxSessionAgeMs Maximum idle time of a session in milliseconds before
  *           it is eligible for removal. Defaults to 1 hour.
  * @property maxSessions Maximum number of sessions to retain. Defaults to 100.
  * @property checkIntervalMs How often (in milliseconds) the background cleanup
@@ -88,31 +101,36 @@ class RetentionPolicy(
         val now = clock()
         var removedCount = 0
 
-        // Phase 1: remove sessions older than maxSessionAgeMs
+        // Phase 1: remove sessions idle for longer than maxSessionAgeMs. A session
+        // with an open ingest socket is live activity even between frames and is
+        // never aged out (#129).
         val sessions = sessionManager.listSessions()
         for (info in sessions) {
             val session = sessionManager.getSession(info.sessionId) ?: continue
-            val age = now - session.createdAtMs
-            if (age > maxSessionAgeMs) {
+            if (session.hasOpenIngestSocket) continue
+            val idleMs = now - session.lastActivityAtMs
+            if (idleMs > maxSessionAgeMs) {
                 if (sessionManager.deleteSession(info.sessionId)) {
                     removedCount++
-                    logger.debug("Removed expired session {} (age={}ms)", info.sessionId, age)
+                    logger.debug("Removed idle session {} (idle={}ms)", info.sessionId, idleMs)
                 }
             }
         }
 
-        // Phase 2: if still over maxSessions, remove oldest first
+        // Phase 2: if still over maxSessions, remove the least-recently-active
+        // first. Connected sessions are excluded from the candidates but still
+        // counted against the limit, so newer arrivals never evict a live client.
         val remaining = sessionManager.listSessions()
         if (remaining.size > maxSessions) {
-            val sessionsWithAge = remaining.mapNotNull { info ->
-                sessionManager.getSession(info.sessionId)?.let { session ->
-                    info.sessionId to session.createdAtMs
-                }
-            }.sortedBy { it.second } // oldest first
+            val candidates = remaining.mapNotNull { info ->
+                sessionManager.getSession(info.sessionId)
+                    ?.takeUnless { it.hasOpenIngestSocket }
+                    ?.let { session -> info.sessionId to session.lastActivityAtMs }
+            }.sortedBy { it.second } // least recently active first
 
-            val excessCount = sessionsWithAge.size - maxSessions
+            val excessCount = (remaining.size - maxSessions).coerceAtMost(candidates.size)
             for (i in 0 until excessCount) {
-                val sessionId = sessionsWithAge[i].first
+                val sessionId = candidates[i].first
                 if (sessionManager.deleteSession(sessionId)) {
                     removedCount++
                     logger.debug("Removed excess session {}", sessionId)
