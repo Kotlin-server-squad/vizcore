@@ -60,6 +60,9 @@ class IngestSessionIdTest {
     /** Egress with full fidelity and room to spare, so no SSE frame is sampled or shed. */
     private val fullFidelity = EgressConfig(adaptive = false, shedCapacity = 100_000)
 
+    /** Keep-alive frames are SseHeartbeatTest's concern; keep them out of these frames. */
+    private val noHeartbeat = 10 * 60 * 1000L
+
     private val ghostSessionId = "no-such-session-0000"
 
     @BeforeEach
@@ -218,7 +221,7 @@ class IngestSessionIdTest {
                 coroutineScope {
                     val collected =
                         async(Dispatchers.Default) {
-                            sessionSseFrames(session, fullFidelity)
+                            sessionSseFrames(session, fullFidelity, heartbeatMillis = noHeartbeat)
                                 .transformWhile { frame ->
                                     val events = eventsOf(frame)
                                     events.forEach { emit(it) }
@@ -275,7 +278,7 @@ class IngestSessionIdTest {
                 withTimeout(SSE_TIMEOUT_MS) {
                     withContext(Dispatchers.Default) {
                         var seen = 0
-                        sessionSseFrames(session, fullFidelity)
+                        sessionSseFrames(session, fullFidelity, heartbeatMillis = noHeartbeat)
                             .transformWhile { frame ->
                                 if (frame.data != null) {
                                     emit(frame)

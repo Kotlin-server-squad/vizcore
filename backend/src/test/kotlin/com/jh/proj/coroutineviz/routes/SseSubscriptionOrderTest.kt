@@ -40,6 +40,12 @@ class SseSubscriptionOrderTest {
     /** Egress with full fidelity and room to spare, so nothing is sampled or shed. */
     private val fullFidelity = EgressConfig(adaptive = false, shedCapacity = 100_000)
 
+    /**
+     * Keep-alive frames are a separate concern (SseHeartbeatTest); an interval far beyond
+     * these tests' timeouts keeps the frames here purely event frames.
+     */
+    private val noHeartbeat = 10 * 60 * 1000L
+
     @AfterEach
     fun tearDown() {
         sessions.forEach { it.close() }
@@ -100,7 +106,7 @@ class SseSubscriptionOrderTest {
 
             val replayed =
                 withTimeout(10_000) {
-                    sessionSseFrames(session, fullFidelity).take(3).toList()
+                    sessionSseFrames(session, fullFidelity, heartbeatMillis = noHeartbeat).take(3).toList()
                 }
 
             assertEquals(3, replayed.size)
@@ -128,7 +134,7 @@ class SseSubscriptionOrderTest {
             val received =
                 async(Dispatchers.Default) {
                     start.await()
-                    sessionSseFrames(session, fullFidelity)
+                    sessionSseFrames(session, fullFidelity, heartbeatMillis = noHeartbeat)
                         .transformWhile { frame ->
                             val events = eventsOf(frame)
                             events.forEach { emit(it) }
