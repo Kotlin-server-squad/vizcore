@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -47,7 +48,13 @@ import java.util.concurrent.atomic.AtomicLong
 class VizSession(
     val sessionId: String,
     maxEvents: Int = 100_000,
-    val createdAtMs: Long = System.currentTimeMillis(),
+    /**
+     * Wall-clock source for [createdAtMs] and [lastActivityAtMs]. Defaults to
+     * [System.currentTimeMillis]; override in tests so retention can be driven
+     * deterministically without sleeping.
+     */
+    private val clock: () -> Long = System::currentTimeMillis,
+    val createdAtMs: Long = clock(),
     /**
      * Event-store factory seam. Defaults to the in-memory bounded [EventStore]
      * so the SDK default is byte-for-byte unchanged (D-04a). The persistence
@@ -65,6 +72,56 @@ class VizSession(
     val store: EventStoreInterface = eventStoreFactory(sessionId)
     val snapshot = RuntimeSnapshot()
     val jobMonitor = JobStatusMonitor(session = this, 100)
+
+    /**
+     * Wall-clock of the LAST activity on this session: the last event appended
+     * through [send]/[ingest], or the last ingest socket open/close. Initialized to
+     * [createdAtMs] so a session that never sees an event ages exactly as before.
+     *
+     * WHY: [RetentionPolicy] used to age a session by [createdAtMs], so a real app
+     * streaming through the ingest socket was evicted after `session.maxAgeMs`
+     * (1 h by default) WHILE STILL SENDING — the session vanished mid-run and the
+     * client's next frame hit a session that no longer existed (#129). Aging by
+     * last activity keeps a busy session alive and still evicts idle ones.
+     *
+     * Written under [sendLock] on the append path and volatile-published, so the
+     * retention sweep (another thread) always reads a value at least as recent as
+     * the last completed append.
+     */
+    @Volatile
+    var lastActivityAtMs: Long = createdAtMs
+        private set
+
+    /**
+     * Number of ingest WebSockets currently open against this session. Maintained by
+     * [ingestSocketOpened]/[ingestSocketClosed] from the route layer.
+     */
+    private val openIngestSockets = AtomicInteger(0)
+
+    /**
+     * Whether a remote client currently holds an ingest socket open. A session in
+     * this state is NEVER evicted by [RetentionPolicy] — neither by age nor by
+     * count — because a connected client is live activity even between frames
+     * (a long-idle-then-busy app is the exact #129 case).
+     */
+    val hasOpenIngestSocket: Boolean get() = openIngestSockets.get() > 0
+
+    /** Record that an ingest socket opened; counts as activity. */
+    fun ingestSocketOpened() {
+        openIngestSockets.incrementAndGet()
+        lastActivityAtMs = clock()
+    }
+
+    /**
+     * Record that an ingest socket closed; counts as activity, so a session whose
+     * client just disconnected starts its idle clock from the disconnect, not from
+     * creation. Clamped at zero so an unbalanced close (defensive) cannot make
+     * [hasOpenIngestSocket] wrong for a later real open.
+     */
+    fun ingestSocketClosed() {
+        openIngestSockets.updateAndGet { if (it > 0) it - 1 else 0 }
+        lastActivityAtMs = clock()
+    }
 
     private val applier = EventApplier(snapshot)
     private var monitoringEnabled = false
@@ -185,6 +242,8 @@ class VizSession(
             store.record(event)
             applier.apply(event)
             eventBus.send(event)
+            // Retention ages a session by this stamp, not by createdAtMs (#129).
+            lastActivityAtMs = clock()
         }
         onEventEmitted?.invoke()
         onProcessed?.invoke(System.nanoTime() - startNanos)

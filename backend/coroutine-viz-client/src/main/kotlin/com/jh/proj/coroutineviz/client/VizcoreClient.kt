@@ -11,12 +11,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
+
+/**
+ * How long an ingest socket must stay up before its close is treated as the end of a
+ * HEALTHY connection (and therefore resets the reconnect backoff). Anything shorter is
+ * an immediate close and must keep the backoff growing.
+ */
+private const val DEFAULT_STABLE_CONNECTION_MS = 5_000L
 
 /**
  * The embeddable client half of real-app transport (RCO-04).
@@ -28,6 +37,13 @@ import kotlin.random.Random
  * synthesized event over a Ktor client WebSocket to the backend ingest route —
  * with capped exponential backoff on a dropped connection (T-07-08) and a clean
  * idempotent [stop].
+ *
+ * It also SURVIVES losing its server session (#129): when the backend reports the
+ * session is gone — a `VIOLATED_POLICY` "Session not found" close or a `404` on the
+ * session lookup — the loop bootstraps a replacement session and keeps streaming into
+ * it ([currentSessionId] follows). An immediate close does NOT reset the backoff, so a
+ * backend that accepts and instantly drops every socket is retried ever more slowly
+ * rather than in a hot loop.
  *
  * Events are serialized with the SHARED core `appJson` (see [IngestTransport]) so
  * the wire format never drifts from the backend ingest / SSE / FE format
@@ -44,12 +60,18 @@ import kotlin.random.Random
 class VizcoreClient internal constructor(
     private val httpClient: HttpClient,
     private val backendUrl: String,
-    private val sessionId: String,
+    sessionId: String,
     private val token: String,
     val session: VizSession,
     private val source: InstrumentationSource,
     private val scope: CoroutineScope,
     private val backoff: Backoff = Backoff(),
+    /**
+     * App name used when the client has to bootstrap a REPLACEMENT session
+     * (see [recreateSession]). Defaults to the initial session id so existing
+     * call sites keep compiling and the new session is still recognizable.
+     */
+    private val appName: String = sessionId,
     /**
      * The lifetime-scoped outbound bridge (CR-01). Fed ONCE at [start] by the single
      * source-side collector that subscribes to `session.bus.stream()` and SURVIVES
@@ -64,14 +86,46 @@ class VizcoreClient internal constructor(
      * Returns when the socket closes; throws on a connection error (→ the loop
      * reconnects with backoff).
      */
-    private val transport: suspend () -> Unit = {
-        stream(httpClient, backendUrl, sessionId, token, buffer)
+    private val transport: suspend (sessionId: String) -> Unit = { id ->
+        stream(httpClient, backendUrl, id, token, buffer)
     },
+    /**
+     * Bootstrap a REPLACEMENT server session and return its id, used when the
+     * backend reports the current session is gone ([SessionGoneException]).
+     * Injectable so a test can drive recovery without a live REST backend.
+     */
+    private val recreateSession: suspend () -> String = {
+        createSession(httpClient, backendUrl, appName, token)
+    },
+    /**
+     * Wall-clock source used ONLY to decide whether a socket streamed long enough to
+     * count as a healthy connection (see the reconnect loop). Injectable so a test
+     * can drive the decision under `runTest` virtual time.
+     */
+    private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * How long a socket must live before it is treated as a HEALTHY connection whose
+     * close resets the backoff. Shorter-lived sockets (the "accepted then closed
+     * immediately" case) keep the backoff growing.
+     */
+    private val stableConnectionMillis: Long = DEFAULT_STABLE_CONNECTION_MS,
 ) {
     private val logger = LoggerFactory.getLogger(VizcoreClient::class.java)
 
     @Volatile
     private var running = false
+
+    /**
+     * The server session currently being streamed into. MUTABLE because the backend
+     * can lose the session under us (eviction, restart) and the client then
+     * bootstraps a replacement and keeps sending to that one (#129). Read by the
+     * transport on every connect attempt, so a recovery mid-run takes effect on the
+     * next socket with no restart.
+     */
+    private val sessionIdRef = AtomicReference(sessionId)
+
+    /** The id of the server session events are currently being sent to. */
+    val currentSessionId: String get() = sessionIdRef.get()
 
     /**
      * Start producing + forwarding events. Idempotent: a second call while running
@@ -95,23 +149,66 @@ class VizcoreClient internal constructor(
             buffer.feed(session, scope)
             source.start()
         }
-        scope.launch {
-            var attempt = 0
-            while (isActive && running) {
-                try {
-                    transport()
-                    // A clean return means the socket closed; treat as a drop and reconnect.
-                    attempt = 0
-                } catch (ce: CancellationException) {
-                    // Cooperative cancellation (stop()/scope cancel) must propagate; never retry.
-                    throw ce
-                } catch (t: Throwable) {
-                    logger.warn("Ingest connection dropped; reconnecting with backoff", t)
-                }
-                if (!isActive || !running) break
-                delay(backoff.delayMillis(attempt))
-                attempt++
+        scope.launch { reconnectLoop() }
+    }
+
+    /**
+     * The single reconnect loop: connect, stream until the socket ends, back off,
+     * repeat — for the client's whole lifetime.
+     *
+     * Backoff reset rule (#129): ONLY a socket that streamed for at least
+     * [stableConnectionMillis] counts as a healthy connection and resets the attempt
+     * counter. A socket that returns immediately — which is what an
+     * accepted-then-closed handshake against a dead backend or a refusing route does
+     * — keeps the counter growing, so the loop backs off instead of spinning at the
+     * base delay forever. The previous code reset on every clean return, turning that
+     * case into a 500 ms hot loop.
+     *
+     * Session recovery: a [SessionGoneException] means retrying this id can never
+     * work, so the loop bootstraps a REPLACEMENT session and keeps streaming into it.
+     * The local [session] keeps its original id — the backend stamps the
+     * server-resolved id onto every ingested event, so events still land under the
+     * session they were actually ingested into.
+     */
+    private suspend fun reconnectLoop() {
+        var attempt = 0
+        while (currentCoroutineContext().isActive && running) {
+            val connectedAtMs = clock()
+            var sessionGone = false
+            try {
+                transport(sessionIdRef.get())
+            } catch (ce: CancellationException) {
+                // Cooperative cancellation (stop()/scope cancel) must propagate; never retry.
+                throw ce
+            } catch (gone: SessionGoneException) {
+                sessionGone = true
+                logger.warn("Backend no longer has session {}", sessionIdRef.get(), gone)
+            } catch (t: Throwable) {
+                logger.warn("Ingest connection dropped; reconnecting with backoff", t)
             }
+            if (!currentCoroutineContext().isActive || !running) break
+            if (clock() - connectedAtMs >= stableConnectionMillis) attempt = 0
+            if (sessionGone) recoverSession()
+            delay(backoff.delayMillis(attempt))
+            attempt++
+        }
+    }
+
+    /**
+     * Bootstrap a replacement server session and point the transport at it. A failure
+     * here is logged and swallowed: the loop simply backs off and tries the whole
+     * recovery again on the next pass rather than killing the client.
+     */
+    @Suppress("TooGenericExceptionCaught") // a failed bootstrap must not kill the reconnect loop
+    private suspend fun recoverSession() {
+        try {
+            val replacement = recreateSession()
+            val previous = sessionIdRef.getAndSet(replacement)
+            logger.info("Recovered ingest: session {} replaced by {}", previous, replacement)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            logger.warn("Could not create a replacement session; will retry after backoff", t)
         }
     }
 
@@ -172,6 +269,9 @@ class VizcoreClient internal constructor(
                 session = session,
                 source = source,
                 scope = scope,
+                // Carried so a replacement session (after the backend loses this one)
+                // is created under the SAME app name, not under a session id.
+                appName = appName,
             ).also { it.start() }
         }
     }
