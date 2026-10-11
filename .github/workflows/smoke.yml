@@ -1,0 +1,55 @@
+name: Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Golden-path smoke test (#133): boots the backend fat jar in memory mode and drives the
+# real HTTP/SSE/WebSocket surface, which the module tests cannot cover. The IntelliJ plugin
+# is out of the default build (#130), so shadowJar below needs no opt-out flag — and must
+# never be passed -Pvizcore.withPlugin=true. Compose E2E and DB-mode boot stay open.
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+        working-directory: backend
+
+      - name: Build fat jar
+        run: ./gradlew shadowJar --console=plain
+        working-directory: backend
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install smoke dependencies
+        run: pip install -r scripts/smoke/requirements.txt
+
+      - name: Run golden-path smoke test
+        run: scripts/smoke/run-smoke.sh "$(ls backend/build/libs/*-all.jar | head -1)"
+
+  docker-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Root context for both: backend/Dockerfile copies backend/ plus every SDK module in
+      # the default build, and frontend/Dockerfile needs shared/api-types next to frontend/.
+      # Build only — publishing to ghcr is deploy.yml's job, and never happens on a PR.
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t vizcore-backend:smoke .
+
+      - name: Build frontend image
+        run: docker build -f frontend/Dockerfile --target production -t vizcore-frontend:smoke .
