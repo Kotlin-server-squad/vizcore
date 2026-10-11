@@ -22,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
@@ -392,6 +393,7 @@ fun Route.registerSessionRoutes() {
                 sessionSseFrames(
                     session = session,
                     config = call.application.egressConfig(),
+                    heartbeatMillis = call.application.sseHeartbeatSeconds() * SECOND_MILLIS,
                     onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
                 ).collect { frame -> send(frame) }
             } catch (e: CancellationException) {
@@ -428,10 +430,17 @@ fun Route.registerSessionRoutes() {
  * by the bus (`events.dropped.bus`).
  *
  * Replay is never sampled, shed or batched — history must be complete.
+ *
+ * Every [heartbeatMillis] a [heartbeatFrame] is merged into this one flow (not sent from a
+ * second coroutine straight to the client): the SSE writer must stay single-writer, or a
+ * heartbeat could interleave with a frame mid-write. Replay and live frames come from one
+ * producer, so the heartbeats are the only other writer on [out] and their presence changes
+ * neither replay order nor the exactly-once watermark.
  */
 internal fun sessionSseFrames(
     session: VizSession,
     config: EgressConfig,
+    heartbeatMillis: Long = DEFAULT_SSE_HEARTBEAT_SECONDS * SECOND_MILLIS,
     onShedDelta: (Long) -> Unit = {},
 ): Flow<ServerSentEvent> =
     flow {
@@ -455,14 +464,42 @@ internal fun sessionSseFrames(
                 }
             }
 
-            subscribed.await()
-            val storedEvents = session.store.all()
-            watermark.complete(storedEvents.maxOfOrNull { it.seq } ?: 0L)
-            logger.info("Replaying {} stored events for session: {}", storedEvents.size, session.sessionId)
-            for (event in storedEvents) {
-                emit(event.toSse())
+            // The client's single frame queue: replay, then live frames, with heartbeats merged in.
+            val out = Channel<ServerSentEvent>(Channel.RENDEZVOUS)
+            launch {
+                try {
+                    coroutineScope {
+                        val heartbeats =
+                            launch {
+                                while (true) {
+                                    delay(heartbeatMillis)
+                                    out.send(heartbeatFrame())
+                                }
+                            }
+                        subscribed.await()
+                        val storedEvents = session.store.all()
+                        watermark.complete(storedEvents.maxOfOrNull { it.seq } ?: 0L)
+                        logger.info(
+                            "Replaying {} stored events for session: {}",
+                            storedEvents.size,
+                            session.sessionId,
+                        )
+                        for (event in storedEvents) {
+                            out.send(event.toSse())
+                        }
+                        for (frame in liveFrames) {
+                            out.send(frame)
+                        }
+                        // Stop the only other writer and let this scope join it, so `out` is
+                        // closed below with no send in flight.
+                        heartbeats.cancel()
+                    }
+                } finally {
+                    out.close()
+                }
             }
-            for (frame in liveFrames) {
+
+            for (frame in out) {
                 emit(frame)
             }
         }
