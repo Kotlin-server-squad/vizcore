@@ -112,6 +112,19 @@ const SSE_RETRY_BASE_DELAY_MS = 1000
 const SSE_RETRY_MAX_DELAY_MS = 8000
 
 /**
+ * Dead-connection watchdog. A stream whose socket dies silently (laptop sleep,
+ * a proxy that keeps the browser side open) fires no error, so the view would
+ * claim "connected" forever. The backend sends `event: heartbeat` every 15 s;
+ * after HEARTBEAT_TIMEOUT_MS without any frame the connection is treated as
+ * lost and goes through the fatal-error retry path. The watchdog arms only once
+ * a heartbeat has been seen, so a server without heartbeats is unaffected.
+ */
+export const HEARTBEAT_TIMEOUT_MS = 45_000
+
+/** How often the watchdog compares the last frame time with the timeout. */
+const HEARTBEAT_CHECK_MS = 5000
+
+/**
  * Upper bound for the replay-dedup seen-seq set (REVIEW WR-13). When the set
  * exceeds this size the oldest entries (insertion order) are evicted. The
  * bound only needs to comfortably cover the reconnect replay window (the
@@ -172,6 +185,13 @@ export function useEventStream(
   const seenSeqsRef = useRef<Set<number>>(new Set())
   // The current EventSource (reconnects replace it within one effect run).
   const eventSourceRef = useRef<EventSource | null>(null)
+  // When the current connection attempt last showed signs of life (opened or
+  // delivered any frame). Read by the heartbeat watchdog.
+  const lastFrameAtRef = useRef(0)
+  // True once the server has sent a heartbeat; until then the watchdog is idle.
+  const heartbeatSeenRef = useRef(false)
+  // The heartbeat watchdog interval, cleared on teardown.
+  const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clearEvents = useCallback(() => {
     setEvents([])
@@ -196,6 +216,7 @@ export function useEventStream(
     // A's events, and re-enabling the stream would duplicate history.
     // clearEvents stays available for explicit user-driven clearing.
     retryCountRef.current = 0
+    heartbeatSeenRef.current = false
     seenSeqsRef.current = new Set()
     lastRefreshAtRef.current = Number.NEGATIVE_INFINITY
     setEvents([])
@@ -267,14 +288,42 @@ export function useEventStream(
       return event
     }
 
+    const markAlive = () => {
+      lastFrameAtRef.current = Date.now()
+    }
+
+    // Shared by a CLOSED EventSource and the heartbeat watchdog: drop the
+    // source and retry ourselves with bounded exponential backoff.
+    const failAndRetry = () => {
+      setIsConnected(false)
+      eventSourceRef.current?.close()
+      eventSourceRef.current = null
+
+      if (retryCountRef.current < SSE_MAX_RETRIES) {
+        retryCountRef.current += 1
+        const delay = Math.min(
+          SSE_RETRY_BASE_DELAY_MS * 2 ** (retryCountRef.current - 1),
+          SSE_RETRY_MAX_DELAY_MS,
+        )
+        setError('Connection lost — retrying')
+        retryTimerRef.current = setTimeout(connect, delay)
+      } else {
+        setError('Connection lost')
+      }
+    }
+
     const connect = () => {
       retryTimerRef.current = null
+      // The silence window of a fresh attempt starts now, not at the last
+      // frame of the previous connection.
+      markAlive()
 
       try {
         const eventSource = apiClient.createEventSource(sessionId)
         eventSourceRef.current = eventSource
 
         eventSource.onopen = () => {
+          markAlive()
           setIsConnected(true)
           setError(null)
           // A successful open restores the full retry budget.
@@ -287,22 +336,8 @@ export function useEventStream(
           if (eventSourceRef.current?.readyState === EVENTSOURCE_CLOSED) {
             // FATAL: per the EventSource spec, CLOSED is the terminal state
             // after a non-200 response — the browser will not reconnect on
-            // its own (exactly the UAT gap 2 failure mode). Retry ourselves
-            // with bounded exponential backoff.
-            eventSourceRef.current.close()
-            eventSourceRef.current = null
-
-            if (retryCountRef.current < SSE_MAX_RETRIES) {
-              retryCountRef.current += 1
-              const delay = Math.min(
-                SSE_RETRY_BASE_DELAY_MS * 2 ** (retryCountRef.current - 1),
-                SSE_RETRY_MAX_DELAY_MS,
-              )
-              setError('Connection lost — retrying')
-              retryTimerRef.current = setTimeout(connect, delay)
-            } else {
-              setError('Connection lost')
-            }
+            // its own (exactly the UAT gap 2 failure mode).
+            failAndRetry()
           } else {
             // TRANSIENT: the browser's native auto-reconnect is still alive.
             // Do NOT create a new EventSource (prevents double connections).
@@ -314,6 +349,7 @@ export function useEventStream(
         // from the shared kind constants) plus the legacy kebab-case names.
         SSE_EVENT_TYPES.forEach(eventType => {
           eventSource.addEventListener(eventType, (e: Event) => {
+            markAlive()
             const messageEvent = e as MessageEvent
             try {
               const event = accept(JSON.parse(messageEvent.data), eventType)
@@ -333,6 +369,7 @@ export function useEventStream(
         // single state update (#137). A malformed/non-array frame is skipped
         // by the try/catch so one bad frame cannot kill the listener (T-10-14).
         eventSource.addEventListener('batch', (e: Event) => {
+          markAlive()
           const messageEvent = e as MessageEvent
           try {
             const parsed: unknown = JSON.parse(messageEvent.data)
@@ -358,6 +395,7 @@ export function useEventStream(
         // it would render as a phantom node (T-10-13). Mirrors the `error`
         // control-frame listener below.
         eventSource.addEventListener('dropped', (e: Event) => {
+          markAlive()
           const messageEvent = e as MessageEvent
           try {
             const data = JSON.parse(messageEvent.data)
@@ -368,6 +406,14 @@ export function useEventStream(
           } catch {
             // Silently ignore malformed dropped frames
           }
+        })
+
+        // Liveness frame from the server (no payload the view needs): arms the
+        // watchdog on first sight and resets its silence window. Like
+        // `dropped`, it never routes through accept/append.
+        eventSource.addEventListener('heartbeat', () => {
+          heartbeatSeenRef.current = true
+          markAlive()
         })
 
         // Also listen for error events from server
@@ -390,7 +436,22 @@ export function useEventStream(
 
     connect()
 
+    // Heartbeat watchdog: once the server has proven it sends heartbeats, a
+    // live source that stays silent past HEARTBEAT_TIMEOUT_MS is dead even if
+    // the browser never reported an error. Idle while a retry is pending or
+    // the retry budget is spent (no current source).
+    watchdogTimerRef.current = setInterval(() => {
+      if (!heartbeatSeenRef.current || eventSourceRef.current === null) return
+      if (Date.now() - lastFrameAtRef.current > HEARTBEAT_TIMEOUT_MS) {
+        failAndRetry()
+      }
+    }, HEARTBEAT_CHECK_MS)
+
     return () => {
+      if (watchdogTimerRef.current !== null) {
+        clearInterval(watchdogTimerRef.current)
+        watchdogTimerRef.current = null
+      }
       // Cancel any pending fatal-error reconnect
       if (retryTimerRef.current !== null) {
         clearTimeout(retryTimerRef.current)
