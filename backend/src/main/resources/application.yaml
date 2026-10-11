@@ -40,6 +40,13 @@ session:
   maxCount: ${SESSION_MAX_COUNT:100}
   checkIntervalMs: ${SESSION_CHECK_INTERVAL_MS:60000}
 
+sse:
+  # Keep-alive for GET /api/sessions/{id}/stream. A named `heartbeat` event (not an SSE
+  # comment — browser EventSource drops comments) is merged into the frame flow every
+  # interval, whether or not the session emits. The SPA watchdog treats 45 s of silence
+  # as a lost connection, so keep this well under that.
+  heartbeatSeconds: ${SSE_HEARTBEAT_SECONDS:15}
+
 app:
   # Base URL the share link is built from (e.g. https://app.example.com). Empty =
   # derive from the request origin (scheme + host[:port]). Used for {base}/shared/{token}.

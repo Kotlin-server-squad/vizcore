@@ -71,6 +71,38 @@ fun Application.egressConfig(): EgressConfig {
     )
 }
 
+/** Default `/stream` heartbeat interval in seconds when `sse.heartbeatSeconds` is absent. */
+const val DEFAULT_SSE_HEARTBEAT_SECONDS: Long = 15
+
+/** `sse.heartbeatSeconds` is configured in seconds; the stream works in milliseconds. */
+const val SECOND_MILLIS: Long = 1_000
+
+/**
+ * Read the `/stream` keep-alive interval from `sse.heartbeatSeconds` (same `propertyOrNull`
+ * idiom as [egressConfig]), falling back to [DEFAULT_SSE_HEARTBEAT_SECONDS].
+ */
+fun Application.sseHeartbeatSeconds(): Long =
+    environment.config
+        .propertyOrNull("sse.heartbeatSeconds")
+        ?.getString()
+        ?.toLongOrNull()
+        ?: DEFAULT_SSE_HEARTBEAT_SECONDS
+
+/**
+ * The `/stream` keep-alive frame: a NAMED event, because browser `EventSource` silently drops
+ * SSE comments and the SPA watchdog has to observe it.
+ *
+ * It is a pure egress artifact and deliberately bypasses the whole egress chain: it is never
+ * sampled, shed, batched or counted as dropped, carries no `seq` and no `id` (so it cannot
+ * become a `Last-Event-ID` resume point), is never recorded in the store, and therefore never
+ * appears in `/events` or in a replay.
+ */
+internal fun heartbeatFrame(): ServerSentEvent =
+    ServerSentEvent(
+        data = """{"ts":${System.currentTimeMillis()}}""",
+        event = "heartbeat",
+    )
+
 /**
  * Build the consumer-side egress chain — `adaptive-sample → structural-shed → hybrid-batch`
  * (RESEARCH §2 order) — over [upstream] and render it as a flow of [ServerSentEvent] frames.
