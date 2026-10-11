@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.withSessionId
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.server.routing.Route
 import io.ktor.server.websocket.webSocket
@@ -10,6 +11,7 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.serialization.PolymorphicSerializer
+import kotlinx.serialization.json.decodeFromJsonElement
 import org.slf4j.LoggerFactory
 
 private val ingestLogger = LoggerFactory.getLogger("CoroutineVizIngest")
@@ -70,9 +72,14 @@ fun Route.registerIngestRoutes() {
  *
  *  - T-07-05: a malformed frame is skipped (logged at debug); the caller keeps
  *    looping so the stream stays open — one bad frame never drops the connection.
- *  - T-07-03: the event is published into the server-resolved session, never a
- *    target looked up from the frame body; the server assigns `seq` (`ingest()`
- *    never keeps the client's value), so session order stays strictly increasing.
+ *  - T-07-03: the frame's own `sessionId` is REWRITTEN to the server-resolved
+ *    [VizSession.sessionId] before the event is decoded ([withSessionId]), so the
+ *    stored, replayed and streamed event carries the session the request resolved
+ *    to — whatever id the client put in the body, including one naming another
+ *    tenant's session or a session that does not exist. Only the target session is
+ *    ever written to; the frame body never selects a destination.
+ *  - The server also assigns `seq` (`ingest()` never keeps the client's value), so
+ *    session order stays strictly increasing.
  */
 private fun publishFrame(
     session: VizSession,
@@ -81,7 +88,8 @@ private fun publishFrame(
 ) {
     val event =
         runCatching {
-            appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), text)
+            val stamped = appJson.parseToJsonElement(text).withSessionId(session.sessionId)
+            appJson.decodeFromJsonElement(PolymorphicSerializer(VizEvent::class), stamped)
         }.getOrElse {
             ingestLogger.debug("Skipped malformed ingest frame for session {}: {}", sessionId, it.message)
             return
