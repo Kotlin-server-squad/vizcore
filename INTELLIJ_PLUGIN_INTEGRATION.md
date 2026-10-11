@@ -1,5 +1,11 @@
 # IntelliJ Plugin with Your Custom Instrumentation
 
+> **Postponed — not part of v1.2.**
+> The IntelliJ plugin is parked (#130). It is excluded from the default Gradle build and is
+> only configured when a build opts in with `-Pvizcore.withPlugin=true`; CI builds it on
+> demand from `.github/workflows/ci-plugin.yml` (`workflow_dispatch`) only. Everything below
+> describes work that resumes after v1.2 — it is neither shipped nor supported in v1.2.
+
 ## Strategy: Hybrid Approach
 
 Your existing `VizSession`, `VizScope`, `vizLaunch`, `vizAsync` code is **more powerful** than DebugProbes alone. Here's how to combine both:

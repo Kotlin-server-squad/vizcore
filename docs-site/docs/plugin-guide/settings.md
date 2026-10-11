@@ -4,6 +4,12 @@ sidebar_position: 3
 
 # Plugin Settings
 
+> **Postponed — not part of v1.2.**
+> The IntelliJ plugin is parked (#130). It is excluded from the default Gradle build and is
+> only configured when a build opts in with `-Pvizcore.withPlugin=true`; CI builds it on
+> demand from `.github/workflows/ci-plugin.yml` (`workflow_dispatch`) only. Everything below
+> describes work that resumes after v1.2 — it is neither shipped nor supported in v1.2.
+
 Configure the IntelliJ plugin behavior via **Settings/Preferences > Tools > Coroutine Visualizer**.
 
 ## Connection Settings

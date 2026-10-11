@@ -45,6 +45,21 @@ app:
   # derive from the request origin (scheme + host[:port]). Used for {base}/shared/{token}.
   publicBaseUrl: ${APP_PUBLIC_BASE_URL:}
 
+rateLimit:
+  # Per-client request buckets (#124). A client is the authenticated principal when
+  # present, else the remote address. Read at install(RateLimit) time; restart to change.
+  # Every 429 carries Retry-After. share.rateLimit.* below sizes the public shared read.
+  read:
+    requestsPerMinute: ${RATE_LIMIT_READ_RPM:1200}           # GET/HEAD on /api/**
+  write:
+    requestsPerMinute: ${RATE_LIMIT_WRITE_RPM:300}           # POST/PUT/PATCH/DELETE on /api/**
+  stream:
+    requestsPerMinute: ${RATE_LIMIT_STREAM_RPM:120}          # SSE stream + ingest WebSocket connects
+  login:
+    requestsPerMinute: ${RATE_LIMIT_LOGIN_RPM:10}            # POST /api/auth/token
+  sessionCreate:
+    requestsPerMinute: ${RATE_LIMIT_SESSION_CREATE_RPM:10}   # POST /api/sessions (also draws on write)
+
 share:
   rateLimit:
     # Per-IP limit on GET /api/shared/{token} (D-12). Applied at install(RateLimit)

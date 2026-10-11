@@ -20,6 +20,7 @@ import com.jh.proj.coroutineviz.models.TimelineEventSummary
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * Computes derived views (projections) from raw events.
@@ -47,7 +48,11 @@ class ProjectionService(
 ) {
     // In-memory state
     private val coroutines = ConcurrentHashMap<String, HierarchyNode>()
-    private val threadActivity = ConcurrentHashMap<String, MutableList<ThreadEvent>>()
+
+    // The bus subscriber appends while HTTP readers call getThreadActivity() without a lock:
+    // a lock-free queue per thread keeps appends and reader iteration free of
+    // ConcurrentModificationException (#135).
+    private val threadActivity = ConcurrentHashMap<String, ConcurrentLinkedQueue<ThreadEvent>>()
 
     init {
         // Subscribe to event bus
@@ -120,7 +125,7 @@ class ProjectionService(
                 }
 
                 // Track thread activity
-                threadActivity.getOrPut(event.threadId.toString()) { mutableListOf() }
+                threadActivity.computeIfAbsent(event.threadId.toString()) { ConcurrentLinkedQueue() }
                     .add(
                         ThreadEvent(
                             coroutineId = event.coroutineId,
@@ -266,11 +271,12 @@ class ProjectionService(
     }
 
     /**
-     * Get thread activity timeline
+     * Get thread activity timeline: a point-in-time copy per thread, sorted by timestamp, safe
+     * to call while events are still being processed.
      */
     fun getThreadActivity(): Map<String, List<ThreadEvent>> {
         return threadActivity.mapValues { (_, events) ->
-            events.sortedBy { it.timestamp }
+            events.toList().sortedBy { it.timestamp }
         }
     }
 

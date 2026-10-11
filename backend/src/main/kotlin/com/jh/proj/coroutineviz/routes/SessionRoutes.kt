@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.SESSION_CREATE_RATE_LIMIT_NAME
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
@@ -18,23 +19,17 @@ import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 import io.ktor.sse.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
-
-/**
- * Per-client SSE live buffer capacity. Bounds the memory a slow/stalled SSE client
- * can pin on the server (WR-14): when the writer cannot keep up, the OLDEST buffered
- * events are dropped (with a logged warning) instead of growing without limit.
- */
-private const val SSE_LIVE_BUFFER_CAPACITY = 4096
 
 /**
  * Default leak-detection age threshold for `GET /api/sessions/{id}/metrics` when
@@ -76,9 +71,10 @@ internal fun ApplicationCall.resolveScopedSession(sessionId: String): VizSession
 }
 
 fun Route.registerSessionRoutes() {
-    // Session creation is rate-limited (ADR-029, 10/min) AND tenant-scoped (T-03):
-    // a scoped store stamps ownership, else fall back to the in-memory manager (D-04b).
-    rateLimit(RateLimitName("session-create")) {
+    // Session creation is rate-limited (ADR-029, rateLimit.sessionCreate, default 10/min) AND
+    // tenant-scoped (T-03): a scoped store stamps ownership, else fall back to the in-memory
+    // manager (D-04b).
+    rateLimit(RateLimitName(SESSION_CREATE_RATE_LIMIT_NAME)) {
         post("/api/sessions") {
             val name = call.request.queryParameters["name"]
             val store = tenantScopedStore()
@@ -125,7 +121,7 @@ fun Route.registerSessionRoutes() {
     // Resolve a client-minted correlation token to the REAL live session id (CORR-02, D-04/D-05).
     // A constant-segment path, so Ktor's routing priority keeps it from being captured by the
     // parameterized "/api/sessions/{id}" below (same coexistence proven for "/compare" in 2-01).
-    // Registered inside registerSessionRoutes() so it inherits auth + the 60/min api rate limit
+    // Registered inside registerSessionRoutes() so it inherits auth + the "api" read bucket
     // + D-04a fail-open from Routing.kt for free.
     get("/api/sessions/resolve") {
         val correlation = call.request.queryParameters["correlation"]
@@ -173,13 +169,15 @@ fun Route.registerSessionRoutes() {
             return@get
         }
 
+        // One point-in-time copy so the count and the list agree while events keep arriving.
+        val nodes = session.snapshot.nodes()
         val snapshot =
             SessionSnapshotResponse(
                 sessionId = session.sessionId,
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = nodes.size,
                 eventCount = session.store.all().size,
                 coroutines =
-                    session.snapshot.coroutines.values.map { node ->
+                    nodes.map { node ->
                         CoroutineNodeDto(
                             id = node.id,
                             jobId = node.jobId,
@@ -389,64 +387,13 @@ fun Route.registerSessionRoutes() {
                 // to browser EventSource listeners, so no frontend changes are required.
                 send(ServerSentEvent(comments = "connected"))
 
-                coroutineScope {
-                    // Subscribe to live events BEFORE snapshotting the store: EventBus has
-                    // replay = 0, so any event emitted between the store snapshot and the
-                    // subscription would otherwise be permanently lost. Live events are
-                    // bridged into a buffering channel during replay, then drained through the
-                    // structural-aware egress chain with a seq filter to deduplicate.
-                    //
-                    // This bridge channel only spans the subscribe→snapshot race window; the
-                    // REAL per-subscriber bounded shedding is the StructuralAwareBuffer inside
-                    // sseEgressFrames (PERF-04, D-07), which replaces the old blind DROP_OLDEST
-                    // liveBuffer with structural-aware shedding (lifecycle never dropped).
-                    val liveBridge =
-                        Channel<VizEvent>(
-                            capacity = SSE_LIVE_BUFFER_CAPACITY,
-                            onBufferOverflow = BufferOverflow.DROP_OLDEST,
-                            onUndeliveredElement = { dropped ->
-                                logger.warn(
-                                    "SSE live bridge overflow for session {} — dropped event " +
-                                        "kind={} seq={} (slow client; stream gap, refetch /events)",
-                                    sessionId,
-                                    dropped.kind,
-                                    dropped.seq,
-                                )
-                            },
-                        )
-                    launch {
-                        session.bus.stream().collect { liveBridge.send(it) }
-                    }
-
-                    // 1️⃣ Replay all stored events (history) — snapshot AFTER subscribing.
-                    // Replay is NEVER sampled/shed/batched — history must be complete.
-                    val storedEvents = session.store.all()
-                    logger.info("Replaying ${storedEvents.size} stored events for session: $sessionId")
-                    for (event in storedEvents) {
-                        send(event.toSse())
-                    }
-
-                    // Track the last seq we've sent to avoid duplicates. The max-seq
-                    // watermark is sound because VizSession.send finalizes seq atomically
-                    // with the store append (WR-02/WR-12): store order == seq order ==
-                    // bus delivery order, so any live event with seq <= the snapshot max
-                    // was already part of the replayed snapshot.
-                    val lastReplayedSeq = storedEvents.maxOfOrNull { it.seq } ?: 0L
-
-                    // 2️⃣ Drain LIVE events through the egress chain: adaptive-sample →
-                    // structural-shed → hybrid-batch (RESEARCH §2), filtering already-replayed
-                    // seqs out of the upstream FIRST so dedup is exact. Single-event frames stay
-                    // byte-identical (D-04); under load `event: batch` arrays and `event: dropped`
-                    // control frames appear. The store is untouched (D-03) — control frames are
-                    // egress-only and never replayed (Pitfall P7).
-                    val liveUpstream =
-                        liveBridge.consumeAsFlow().filter { it.seq > lastReplayedSeq }
-                    sseEgressFrames(
-                        upstream = liveUpstream,
-                        config = call.application.egressConfig(),
-                        onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
-                    ).collect { frame -> send(frame) }
-                }
+                // History replay, then live events — see sessionSseFrames for the subscribe-before-
+                // snapshot ordering and the exactly-once watermark (#138).
+                sessionSseFrames(
+                    session = session,
+                    config = call.application.egressConfig(),
+                    onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
+                ).collect { frame -> send(frame) }
             } catch (e: CancellationException) {
                 // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
                 // cooperative cancellation; the finally block still decrements the gauge.
@@ -461,6 +408,65 @@ fun Route.registerSessionRoutes() {
         }
     }
 }
+
+/**
+ * The SSE frames for one client of [session]: the stored history (replay), then live events
+ * through the structural-aware egress chain ([sseEgressFrames]).
+ *
+ * Ordering (#138): the live bus subscription is registered BEFORE the store is snapshotted
+ * for replay — the snapshot is taken only once [com.jh.proj.coroutineviz.session.EventBus.stream]
+ * reports the subscriber as registered. [VizSession.send] records and publishes each event
+ * under one lock with a strictly increasing seq (store order == seq order == bus order), so
+ * an event sent during setup is either in the snapshot (seq <= the snapshot's max seq, and
+ * filtered out of the live stream) or arrives live with a higher seq: it is delivered
+ * exactly once.
+ *
+ * There is no intermediate drop-oldest bridge in front of the egress chain: while replay
+ * frames are written, live events queue in the chain's per-subscriber StructuralAwareBuffer
+ * (lifecycle events are never shed; shed events are reported in `event: dropped` frames).
+ * If this subscriber still falls behind the bus capacity, the evicted events are counted
+ * by the bus (`events.dropped.bus`).
+ *
+ * Replay is never sampled, shed or batched — history must be complete.
+ */
+internal fun sessionSseFrames(
+    session: VizSession,
+    config: EgressConfig,
+    onShedDelta: (Long) -> Unit = {},
+): Flow<ServerSentEvent> =
+    flow {
+        coroutineScope {
+            val subscribed = CompletableDeferred<Unit>()
+            val watermark = CompletableDeferred<Long>()
+            val live =
+                session.bus
+                    .stream(onSubscribed = { subscribed.complete(Unit) })
+                    .filter { it.seq > watermark.await() }
+
+            // Live frames are handed over one at a time (rendezvous); until replay is written,
+            // the egress chain keeps draining the bus into its structural-aware buffer.
+            val liveFrames = Channel<ServerSentEvent>(Channel.RENDEZVOUS)
+            launch {
+                try {
+                    sseEgressFrames(upstream = live, config = config, onShedDelta = onShedDelta)
+                        .collect { frame -> liveFrames.send(frame) }
+                } finally {
+                    liveFrames.close()
+                }
+            }
+
+            subscribed.await()
+            val storedEvents = session.store.all()
+            watermark.complete(storedEvents.maxOfOrNull { it.seq } ?: 0L)
+            logger.info("Replaying {} stored events for session: {}", storedEvents.size, session.sessionId)
+            for (event in storedEvents) {
+                emit(event.toSse())
+            }
+            for (frame in liveFrames) {
+                emit(frame)
+            }
+        }
+    }
 
 internal fun VizEvent.toSse(): ServerSentEvent =
     ServerSentEvent(
