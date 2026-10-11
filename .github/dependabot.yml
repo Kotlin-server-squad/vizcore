@@ -53,6 +53,11 @@ updates:
     labels:
       - "dependencies"
       - "backend"
+    ignore:
+      # The IntelliJ plugin is postponed (#130) and is excluded from the default build, so
+      # an IntelliJ Platform bump cannot be validated by CI here. Re-enable with the plugin.
+      - dependency-name: "org.jetbrains.intellij.platform*"
+      - dependency-name: "org.jetbrains.intellij.platform:*"
     groups:
       ktor:
         patterns:

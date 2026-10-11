@@ -34,7 +34,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Scenario completed. Connect to /api/sessions/${session.sessionId}/stream for live events.",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -52,7 +52,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Parallel scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -70,7 +70,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Cancellation scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -89,7 +89,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Deep nesting scenario completed (depth=$depth)",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -107,7 +107,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Mixed scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -125,7 +125,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Exception scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -143,7 +143,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Dispatcher scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -165,7 +165,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Channel rendezvous scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -183,7 +183,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Channel buffered scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -201,7 +201,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Channel fan-out scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -224,7 +224,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Order Processing scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -243,7 +243,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "User Registration scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -262,7 +262,7 @@ fun Route.registerScenarioRunnerRoutes() {
                 success = true,
                 sessionId = session.sessionId,
                 message = "Report Generation scenario completed",
-                coroutineCount = session.snapshot.coroutines.size,
+                coroutineCount = session.snapshot.coroutineCount,
                 eventCount = session.store.all().size,
             )
         }
@@ -290,7 +290,7 @@ fun Route.registerScenarioRunnerRoutes() {
                     success = true,
                     sessionId = session.sessionId,
                     message = "Custom scenario '${request.name}' completed successfully",
-                    coroutineCount = session.snapshot.coroutines.size,
+                    coroutineCount = session.snapshot.coroutineCount,
                     eventCount = session.store.all().size,
                 )
 

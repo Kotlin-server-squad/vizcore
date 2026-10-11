@@ -111,6 +111,6 @@ internal fun VizSession.toCompletionResponse(message: String) =
         success = true,
         sessionId = sessionId,
         message = message,
-        coroutineCount = snapshot.coroutines.size,
+        coroutineCount = snapshot.coroutineCount,
         eventCount = store.all().size,
     )

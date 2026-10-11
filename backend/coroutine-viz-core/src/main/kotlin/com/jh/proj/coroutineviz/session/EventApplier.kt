@@ -33,6 +33,9 @@ import org.slf4j.LoggerFactory
  * - [CoroutineFailed] → Transitions to FAILED state
  * - [ThreadAssigned] → Updates thread information on the node
  *
+ * Every transition replaces the affected [CoroutineNode] with a copy instead of mutating it,
+ * so readers that do not hold the session lock only ever see complete node values.
+ *
  * @property snapshot The runtime snapshot to update
  */
 class EventApplier(
@@ -80,7 +83,7 @@ class EventApplier(
             logger.warn("Invalid state transition: ${node.state} -> ACTIVE for ${e.coroutineId}")
         }
 
-        snapshot.coroutines[e.coroutineId]?.state = CoroutineState.ACTIVE
+        transition(e.coroutineId, CoroutineState.ACTIVE)
     }
 
     private fun handleBodyCompleted(e: CoroutineBodyCompleted) {
@@ -93,36 +96,50 @@ class EventApplier(
 
         // Transition to WAITING_FOR_CHILDREN state
         // This indicates the coroutine's code has finished but it's waiting for children
-        snapshot.coroutines[e.coroutineId]?.state = CoroutineState.WAITING_FOR_CHILDREN
+        transition(e.coroutineId, CoroutineState.WAITING_FOR_CHILDREN)
     }
 
     private fun handleCompleted(e: CoroutineCompleted) {
         // Final completion - all children have also completed
-        snapshot.coroutines[e.coroutineId]?.state = CoroutineState.COMPLETED
+        transition(e.coroutineId, CoroutineState.COMPLETED)
     }
 
     private fun handleCancelled(e: CoroutineCancelled) {
-        snapshot.coroutines[e.coroutineId]?.state = CoroutineState.CANCELLED
+        transition(e.coroutineId, CoroutineState.CANCELLED)
     }
 
     private fun handleSuspended(e: CoroutineSuspended) {
-        snapshot.coroutines[e.coroutineId]?.state = CoroutineState.SUSPENDED
+        transition(e.coroutineId, CoroutineState.SUSPENDED)
     }
 
     private fun handleResumed(e: CoroutineResumed) {
-        snapshot.coroutines[e.coroutineId]?.state = CoroutineState.ACTIVE
+        transition(e.coroutineId, CoroutineState.ACTIVE)
     }
 
     private fun handleThreadAssigned(e: ThreadAssigned) {
-        snapshot.coroutines[e.coroutineId]?.apply {
-            threadId = e.threadId
-            threadName = e.threadName
-            dispatcherName = e.dispatcherName
+        snapshot.coroutines.computeIfPresent(e.coroutineId) { _, node ->
+            node.copy(
+                threadId = e.threadId,
+                threadName = e.threadName,
+                dispatcherName = e.dispatcherName,
+            )
         }
     }
 
     private fun handleFailed(e: CoroutineFailed) {
-        snapshot.coroutines[e.coroutineId]?.state = CoroutineState.FAILED
+        transition(e.coroutineId, CoroutineState.FAILED)
+    }
+
+    /**
+     * Replaces the node with a copy in [state]. Published nodes are never mutated in place, so a
+     * concurrent reader (an HTTP route serializing the snapshot) never observes a half-applied
+     * transition. Unknown coroutines are ignored, as before.
+     */
+    private fun transition(
+        coroutineId: String,
+        state: CoroutineState,
+    ) {
+        snapshot.coroutines.computeIfPresent(coroutineId) { _, node -> node.copy(state = state) }
     }
 
     companion object {
