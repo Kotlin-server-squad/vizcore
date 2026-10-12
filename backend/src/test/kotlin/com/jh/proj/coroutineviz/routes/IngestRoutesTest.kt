@@ -195,6 +195,10 @@ class IngestRoutesTest {
 
             client.webSocket("/api/sessions/$sessionId/ingest") {
                 send(Frame.Text(frameText(event(sessionId, "c-1", "before-delete"))))
+                // Wait until the server has stored the frame: the socket is then attached to
+                // the live session, so the close below can only come from the delete watcher,
+                // not from the handshake's own "Session not found" check.
+                assertEquals(1, eventsWhenSettled(client, sessionId, expected = 1).size)
                 assertEquals(HttpStatusCode.OK, client.delete("/api/sessions/$sessionId").status)
 
                 // The client recreates a session only on this exact close (see the SDK's

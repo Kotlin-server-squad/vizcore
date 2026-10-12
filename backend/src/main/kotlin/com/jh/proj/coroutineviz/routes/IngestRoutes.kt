@@ -10,6 +10,7 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
@@ -85,6 +86,9 @@ fun Route.registerIngestRoutes() {
             }
         try {
             for (frame in incoming) {
+                // Frames already queued when the session was deleted must not land in it;
+                // the watcher above is closing the socket.
+                if (!session.sessionScope.isActive) break
                 if (frame is Frame.Text) {
                     publishFrame(session, sessionId, frame.readText())
                 }
