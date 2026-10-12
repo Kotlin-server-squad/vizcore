@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
@@ -15,8 +16,10 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.send
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -27,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * RCO-05 ingest publish path (memory mode, auth-off — D-04a). Proves that a text
@@ -180,5 +184,25 @@ class IngestRoutesTest {
                         .toLong()
                 }
             assertTrue(seqs.zipWithNext().all { (a, b) -> b > a }, "server-assigned seq must be strictly increasing: $seqs")
+        }
+
+    @Test
+    fun `deleting a session closes its open ingest socket as session not found`() =
+        testApplication {
+            application { module() }
+            val client = wsClient()
+            val sessionId = createSession(client)
+
+            client.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(frameText(event(sessionId, "c-1", "before-delete"))))
+                assertEquals(HttpStatusCode.OK, client.delete("/api/sessions/$sessionId").status)
+
+                // The client recreates a session only on this exact close (see the SDK's
+                // IngestTransport.isSessionGone); without it the socket stays open into a
+                // session that no longer exists.
+                val reason = withTimeout(5.seconds) { closeReason.await() }
+                assertEquals(CloseReason.Codes.VIOLATED_POLICY, reason?.knownReason)
+                assertEquals("Session not found", reason?.message)
+            }
         }
 }

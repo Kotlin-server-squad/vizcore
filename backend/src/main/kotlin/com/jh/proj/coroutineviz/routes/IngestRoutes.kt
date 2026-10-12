@@ -10,6 +10,8 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.json.decodeFromJsonElement
 import org.slf4j.LoggerFactory
@@ -46,7 +48,9 @@ private val ingestLogger = LoggerFactory.getLogger("CoroutineVizIngest")
  * Lifetime: the handler registers the open socket on the session
  * ([com.jh.proj.coroutineviz.session.VizSession.ingestSocketOpened]) and releases it in a
  * `finally`, so [com.jh.proj.coroutineviz.session.RetentionPolicy] never evicts the session
- * a client is still streaming into (#129).
+ * a client is still streaming into (#129). If the session is deleted while the socket is
+ * open, the socket is closed with `VIOLATED_POLICY` "Session not found", so the client
+ * recreates a session instead of streaming into one that no longer exists.
  */
 fun Route.registerIngestRoutes() {
     webSocket("/api/sessions/{id}/ingest") {
@@ -69,6 +73,16 @@ fun Route.registerIngestRoutes() {
         // `finally`, so it is exact on every exit path — normal close, client
         // disconnect, coroutine cancellation and an unexpected throw alike.
         session.ingestSocketOpened()
+        // Deleting a session closes it, which cancels its scope. An open socket would otherwise
+        // keep publishing into the detached session, where nobody can read the events, and the
+        // client would never learn it should recreate one. Close with the same "Session not
+        // found" the handshake uses, which the SDK treats as "create a fresh session".
+        val sessionRemoved =
+            launch {
+                session.sessionScope.coroutineContext.job
+                    .join()
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
+            }
         try {
             for (frame in incoming) {
                 if (frame is Frame.Text) {
@@ -76,6 +90,7 @@ fun Route.registerIngestRoutes() {
                 }
             }
         } finally {
+            sessionRemoved.cancel()
             session.ingestSocketClosed()
         }
     }
