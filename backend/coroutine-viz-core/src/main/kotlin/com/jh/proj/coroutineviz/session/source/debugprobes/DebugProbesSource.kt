@@ -90,6 +90,10 @@ class DebugProbesSource(
     private var loop: Job? = null
     private val installed = AtomicBoolean(false)
 
+    // Guards the installed flag together with the matching acquire()/release(), so an
+    // install() racing stop() can neither release before it acquires nor leak a reference.
+    private val probesLock = Any()
+
     // Registered while running so the close hook fires stop(); reset on stop() so a
     // stop→start restart re-registers (CR-02). Guarded by sessionId at fire time.
     private val closeListenerRegistered = AtomicBoolean(false)
@@ -105,12 +109,25 @@ class DebugProbesSource(
 
     override val isRunning: Boolean get() = loop?.isActive == true
 
+    /**
+     * Install DebugProbes now, without starting the poll loop. DebugProbes only track
+     * coroutines created after installation, so a caller that starts the loop
+     * asynchronously (the SDK's `VizcoreClient`) installs first: otherwise work the app
+     * launches straight after `VizcoreClient.start(...)` is never seen. Idempotent;
+     * [start] calls it too.
+     */
+    fun install() {
+        synchronized(probesLock) {
+            if (installProbes && installed.compareAndSet(false, true)) {
+                DebugProbesInstall.acquire()
+            }
+        }
+    }
+
     override fun start() {
         if (isRunning) return
 
-        if (installProbes && installed.compareAndSet(false, true)) {
-            DebugProbesInstall.acquire()
-        }
+        install()
 
         registerCloseHook()
         // Run-scoped identity: reset both the diff baseline AND the adapter so a
@@ -209,8 +226,10 @@ class DebugProbesSource(
         closeListener?.let { SessionManager.removeOnSessionClosed(it) }
         closeListener = null
         closeListenerRegistered.set(false)
-        if (installed.compareAndSet(true, false)) {
-            DebugProbesInstall.release()
+        synchronized(probesLock) {
+            if (installed.compareAndSet(true, false)) {
+                DebugProbesInstall.release()
+            }
         }
     }
 }

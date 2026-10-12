@@ -115,6 +115,10 @@ class VizcoreClient internal constructor(
     @Volatile
     private var running = false
 
+    // Serializes start()/stop() against the async source start, so a stop() that lands
+    // while the feed is still subscribing cannot be undone by a late source.start().
+    private val lifecycleLock = Any()
+
     /**
      * The server session currently being streamed into. MUTABLE because the backend
      * can lose the session under us (eviction, restart) and the client then
@@ -140,14 +144,20 @@ class VizcoreClient internal constructor(
      * no-socket-yet startup window AND every backoff window).
      */
     fun start() {
-        if (running) return
-        running = true
+        synchronized(lifecycleLock) {
+            if (running) return
+            running = true
+        }
         // Feed-then-source ordering: subscribe the bus and await the subscription
         // before the source can emit, then drive the source. The feed collector lives
         // for the whole client lifetime on the scope.
         scope.launch {
             buffer.feed(session, scope)
-            source.start()
+            // The source owns its own scope, so a source started after stop() would keep
+            // polling (and hold its probe reference) forever. Start it only if still running.
+            synchronized(lifecycleLock) {
+                if (running) source.start()
+            }
         }
         scope.launch { reconnectLoop() }
     }
@@ -219,9 +229,11 @@ class VizcoreClient internal constructor(
      * buffer is closed, and the scope is cancelled.
      */
     fun stop() {
-        if (!running) return
-        running = false
-        source.stop()
+        synchronized(lifecycleLock) {
+            if (!running) return
+            running = false
+            source.stop()
+        }
         buffer.close()
         httpClient.close()
         scope.cancel()
@@ -249,11 +261,23 @@ class VizcoreClient internal constructor(
             backendUrl: String,
             token: String,
             correlation: String? = null,
+        ): VizcoreClient =
+            start(
+                appName = appName,
+                backendUrl = backendUrl,
+                token = token,
+                correlation = correlation,
+                httpClient = HttpClient(CIO) { install(WebSockets) },
+            )
+
+        /** [start] with an injected [httpClient], so tests can drive the real factory in-process. */
+        internal fun start(
+            appName: String,
+            backendUrl: String,
+            token: String,
+            correlation: String?,
+            httpClient: HttpClient,
         ): VizcoreClient {
-            val httpClient =
-                HttpClient(CIO) {
-                    install(WebSockets)
-                }
             // createSession is suspend; bootstrap is a one-shot blocking call before
             // the async loop takes over — acceptable for a start() entry point.
             val serverSessionId =
@@ -261,6 +285,10 @@ class VizcoreClient internal constructor(
             val session = VizSession(sessionId = serverSessionId)
             val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
             val source = DebugProbesSource(session = session)
+            // Install the probes before returning: start() below begins polling
+            // asynchronously, and DebugProbes miss every coroutine created before
+            // installation, so work the app launches right after start(...) was lost.
+            source.install()
             return VizcoreClient(
                 httpClient = httpClient,
                 backendUrl = backendUrl,
