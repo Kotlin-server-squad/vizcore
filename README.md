@@ -110,13 +110,29 @@ the view as a sampled picture, not a complete trace:
   not show its last completions
   ([#207](https://github.com/Kotlin-server-squad/vizcore/issues/207)).
 
-**JVM flags.** DebugProbes attach a Java agent at runtime. JDK 21 allows this but prints a
-warning, and a future JDK will refuse it by default, so run your app with:
+**JVM flags.** DebugProbes load a Java agent into your running app. On JDK 21 this works
+without flags but prints a warning, and a future JDK will refuse it by default. Two flags
+make it explicit:
+
+- `-XX:+EnableDynamicAgentLoading` allows loading an agent at runtime, without the warning.
+- `-Djdk.attach.allowAttachSelf=true` lets the JVM attach to itself directly. Without it, the
+  agent loader falls back to attaching from a helper process.
+
+With the Gradle `application` plugin (`./gradlew run`):
 
 ```kotlin
-// build.gradle.kts, for ./gradlew run (Spring Boot: tasks.bootRun { jvmArgs(...) })
+// build.gradle.kts
 application {
     applicationDefaultJvmArgs = listOf("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
+}
+```
+
+With Spring Boot (`./gradlew bootRun`), as in the worked example:
+
+```kotlin
+// build.gradle.kts
+tasks.bootRun {
+    jvmArgs("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
 }
 ```
 
