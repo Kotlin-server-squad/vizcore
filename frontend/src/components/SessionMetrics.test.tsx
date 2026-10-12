@@ -71,12 +71,12 @@ describe('SessionMetrics', () => {
     expect(screen.getByText(/Loading metrics/i)).toBeInTheDocument()
   })
 
-  it('forwards sessionId/isLive/enabled to the metrics hook', () => {
+  it('observes the metrics query without polling, forwarding sessionId/enabled (#124)', () => {
     useSessionMetricsMock.mockReturnValue({ data: metrics(), isLoading: false })
 
-    render(<SessionMetrics sessionId="s-1" isLive enabled={false} />)
+    render(<SessionMetrics sessionId="s-1" enabled={false} />)
 
-    expect(useSessionMetricsMock).toHaveBeenCalledWith('s-1', true, false)
+    expect(useSessionMetricsMock).toHaveBeenCalledWith('s-1', false, false)
   })
 
   it('reflows the tiles into a horizontal flex strip (Delta L1, not a 2-col grid)', () => {

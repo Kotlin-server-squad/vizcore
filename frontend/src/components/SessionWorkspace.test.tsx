@@ -23,6 +23,8 @@ vi.mock('@/hooks/use-event-stream', () => ({
     error: null,
     clearEvents: vi.fn(),
     droppedCount: 0,
+    receivedCount: 0,
+    reconnect: vi.fn(),
   })),
 }))
 
@@ -497,7 +499,7 @@ describe('SessionWorkspace', () => {
   })
 })
 
-describe('SessionWorkspace - session refetch max-wait under sustained stream (CR-02)', () => {
+describe('SessionWorkspace - live events do not drive snapshot refetches (#137)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
@@ -512,10 +514,12 @@ describe('SessionWorkspace - session refetch max-wait under sustained stream (CR
       error: null,
       clearEvents: vi.fn(),
       droppedCount: 0,
+      receivedCount: 0,
+      reconnect: vi.fn(),
     }))
   })
 
-  it('refetches the session snapshot at least once per max-wait window while events keep arriving', () => {
+  it('never refetches the snapshot per live event — the stream\'s throttled invalidation owns that', () => {
     const refetch = vi.fn()
     mockedUseSession.mockReturnValue({
       data: makeSession(),
@@ -523,13 +527,15 @@ describe('SessionWorkspace - session refetch max-wait under sustained stream (CR
       refetch,
     } as unknown as ReturnType<typeof useSession>)
 
-    // Mutable live-event list driven through the useEventStream mock
     const liveEvents: unknown[] = []
     mockedUseEventStream.mockImplementation(() => ({
       events: [...liveEvents],
       isConnected: true,
       error: null,
       clearEvents: vi.fn(),
+      droppedCount: 0,
+      receivedCount: liveEvents.length,
+      reconnect: vi.fn(),
     }) as unknown as ReturnType<typeof useEventStream>)
 
     // scenarioId auto-enables the live stream (streamEnabled -> true)
@@ -538,10 +544,6 @@ describe('SessionWorkspace - session refetch max-wait under sustained stream (CR
       { wrapper: createWrapper() },
     )
 
-    // Sustained stream: a new event every 250ms (below the 500ms debounce
-    // window) for 2000ms total — longer than the 1500ms max-wait cap. A pure
-    // trailing-edge debounce would be reset forever and never refetch; the
-    // max-wait cap must flush at least once before the stream stops.
     for (let i = 0; i < 8; i++) {
       liveEvents.push({ kind: 'CoroutineCreated' })
       rerender(
@@ -552,7 +554,51 @@ describe('SessionWorkspace - session refetch max-wait under sustained stream (CR
       })
     }
 
-    expect(refetch.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect(refetch).not.toHaveBeenCalled()
+  })
+
+  it('polls the snapshot only as a fallback while the stream is on but disconnected', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession(),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+
+    // Stream off: no polling.
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    expect(mockedUseSession).toHaveBeenLastCalledWith('session-1', { pollMs: false })
+  })
+
+  it('shows the SSE connection problem and dropped-event count, with a reconnect action (#137)', () => {
+    const reconnect = vi.fn()
+    mockedUseSession.mockReturnValue({
+      data: makeSession(),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    mockedUseEventStream.mockImplementation(() => ({
+      events: [],
+      isConnected: false,
+      error: 'Connection lost',
+      clearEvents: vi.fn(),
+      droppedCount: 42,
+      receivedCount: 0,
+      reconnect,
+    }) as unknown as ReturnType<typeof useEventStream>)
+
+    render(
+      <SessionWorkspace sessionId="session-1" scenarioId="sc-1" scenarioName="Test Scenario" />,
+      { wrapper: createWrapper() },
+    )
+
+    expect(screen.getByTestId('stream-status')).toHaveTextContent('Connection lost')
+    expect(screen.getByTestId('dropped-count')).toHaveTextContent('42 events dropped')
+    // The stream is on but disconnected -> the snapshot falls back to a slow poll.
+    expect(mockedUseSession).toHaveBeenLastCalledWith('session-1', { pollMs: 10_000 })
+    act(() => {
+      screen.getByRole('button', { name: /reconnect/i }).click()
+    })
+    expect(reconnect).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -745,7 +791,8 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
       typeof useSessionEvents
     >)
 
-    // Live stream returns more events than the frozen replay snapshot.
+    // Live stream: 3 events received before replay entry, 2 more after.
+    let received = 3
     mockedUseEventStream.mockImplementation(() => ({
       events: [
         ...replayEvents,
@@ -755,10 +802,17 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
       isConnected: true,
       error: null,
       clearEvents: vi.fn(),
+      droppedCount: 0,
+      receivedCount: received,
+      reconnect: vi.fn(),
     }) as unknown as ReturnType<typeof useEventStream>)
 
-    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    const { rerender } = render(<SessionWorkspace sessionId="session-1" />, {
+      wrapper: createWrapper(),
+    })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    received = 5
+    rerender(<SessionWorkspace sessionId="session-1" />)
 
     // 2 events arrived after the frozen snapshot of 3.
     const badge = await screen.findByRole('button', {

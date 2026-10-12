@@ -11,14 +11,11 @@ import {
 } from '@heroui/react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, RateLimitedError } from '@/lib/api-client'
 import { DEP_SNIPPET } from '@/lib/dep-snippet'
+import { resolveRefetchInterval } from '@/lib/poll-interval'
 
 const APP_NAME = 'order-service'
-
-/** Poll resolve every 300ms so the spinner auto-resolves the instant the
- *  connecting app's session binds to the correlation token (D-03). */
-const POLL_INTERVAL_MS = 300
 
 /**
  * The 3-step connect wizard (Phase 08.5, Surface 003 winner A; Phase 9 ONB-01 rewire).
@@ -56,15 +53,24 @@ export function ConnectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const START_SNIPPET = `VizcoreClient.start(appName = "${APP_NAME}", correlation = "${correlation}")`
 
   // Poll resolve (token-scoped) until the connecting app's session binds to the
-  // correlation token (D-02/D-03). resolveCorrelation returns null on 404
-  // (not bound yet) — the queryFn never throws or returns undefined, so the poll
-  // keeps running cleanly until a real session id appears.
-  const { data } = useQuery({
+  // correlation token (D-02/D-03). resolveCorrelation returns null on 404 (not
+  // bound yet) and throws on a 429/5xx; the interval keeps running through
+  // errors (backing off after a 429) and stops once a session id appears.
+  const { data, error } = useQuery<{ sessionId: string } | null, Error>({
     queryKey: ['resolve-correlation', correlation],
     queryFn: () => apiClient.resolveCorrelation(correlation),
     enabled: isOpen,
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: resolveRefetchInterval,
+    // The interval IS the retry policy — an immediate retry would only spend
+    // more of the same rate-limit budget.
+    retry: false,
   })
+  const pollProblem =
+    error instanceof RateLimitedError
+      ? 'The server is rate-limiting requests — checking again shortly.'
+      : error
+        ? `Can't reach vizcore right now (${error.message}) — still trying.`
+        : null
 
   // Reset the one-shot navigate guard when the wizard closes so a re-open with a
   // fresh token can resolve again.
@@ -117,6 +123,11 @@ export function ConnectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
                 Waiting for events from {APP_NAME}…
               </span>
             </div>
+            {pollProblem && (
+              <p role="status" className="text-xs text-warning">
+                {pollProblem}
+              </p>
+            )}
           </Step>
         </ModalBody>
         <ModalFooter className="flex items-center justify-between">

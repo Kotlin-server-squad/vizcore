@@ -34,7 +34,6 @@ interface EvidencePanelsProps {
   categories: EventCategories
   replayActive: boolean
   readOnly: boolean
-  streamEnabled: boolean
   /** Lanes for the threads panel — server snapshot, or projected in replay. */
   threadActivity: ThreadActivity | undefined
 }
@@ -59,7 +58,6 @@ export function EvidencePanels({
   categories,
   replayActive,
   readOnly,
-  streamEnabled,
   threadActivity,
 }: EvidencePanelsProps) {
   const capabilities: Capability[] = [
@@ -130,11 +128,7 @@ export function EvidencePanels({
               </CardBody>
             </Card>
           )}
-          <DispatcherOverview
-            sessionId={sessionId}
-            isLive={streamEnabled}
-            enabled={!readOnly}
-          />
+          <DispatcherOverview sessionId={sessionId} enabled={!readOnly} />
         </EvidenceSection>
 
         {present.map(capability => (

@@ -6,12 +6,6 @@ import type { DispatcherInfo } from '@/types/api'
 interface DispatcherOverviewProps {
   sessionId: string
   /**
-   * Forwarded to the shared ['thread-activity', sessionId] query (WR-15):
-   * while the SSE stream drives updates, polling falls back to the slow 5s
-   * interval instead of re-arming the legacy 2s poll on the shared key.
-   */
-  isLive?: boolean
-  /**
    * Read-only shared view (Plan 06): disables the protected thread-activity
    * fetch/poll. The shared shell carries no Bearer, so this query would 404.
    */
@@ -20,10 +14,11 @@ interface DispatcherOverviewProps {
 
 export function DispatcherOverview({
   sessionId,
-  isLive = false,
   enabled = true,
 }: DispatcherOverviewProps) {
-  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId, isLive, enabled)
+  // A pure observer of the shared thread-activity query — it never polls; the
+  // workspace owns the refresh cadence (#124).
+  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId, enabled)
 
   if (isLoading) {
     return (

@@ -32,6 +32,12 @@ interface SessionHeaderProps {
   /** Live SSE stream state + toggle. */
   streamEnabled: boolean
   isConnected: boolean
+  /** Why the stream is not connected, or null while healthy (#137). */
+  streamError?: string | null
+  /** Events the backend shed under overload since the stream started (#137). */
+  droppedCount?: number
+  /** Re-open the stream once its automatic retries are spent. */
+  onReconnect?: () => void
   onToggleStream: () => void
   /** Replay state + toggle (D-01). */
   replayActive: boolean
@@ -60,6 +66,9 @@ export function SessionHeader({
   readOnly,
   streamEnabled,
   isConnected,
+  streamError = null,
+  droppedCount = 0,
+  onReconnect,
   onToggleStream,
   replayActive,
   newEventsCount,
@@ -167,11 +176,26 @@ export function SessionHeader({
                   className="flex items-center gap-2"
                 >
                   <Chip
-                    color={isConnected ? 'success' : 'warning'}
+                    color={isConnected ? 'success' : streamError ? 'danger' : 'warning'}
                     variant="dot"
+                    data-testid="stream-status"
                   >
-                    {isConnected ? 'Connected' : 'Connecting...'}
+                    {isConnected ? 'Connected' : (streamError ?? 'Connecting...')}
                   </Chip>
+                  {/* Connection problems are surfaced, not swallowed (#137).
+                      While disconnected the panels fall back to a slow poll. */}
+                  {!isConnected && streamError && onReconnect && (
+                    <Button size="sm" variant="light" onPress={onReconnect}>
+                      Reconnect
+                    </Button>
+                  )}
+                  {droppedCount > 0 && (
+                    <Tooltip content="The backend shed these events under load, so the view may be missing detail. Structural events (create/complete) are never shed.">
+                      <Chip color="warning" variant="flat" size="sm" data-testid="dropped-count">
+                        {droppedCount === 1 ? '1 event dropped' : `${droppedCount} events dropped`}
+                      </Chip>
+                    </Tooltip>
+                  )}
                 </motion.div>
               </AnimatePresence>
             )}

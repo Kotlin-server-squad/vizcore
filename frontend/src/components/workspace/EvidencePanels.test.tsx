@@ -42,7 +42,6 @@ function renderPanels(props: Partial<Parameters<typeof EvidencePanels>[0]> = {})
       categories={categories()}
       replayActive={false}
       readOnly={false}
-      streamEnabled={false}
       threadActivity={undefined}
       {...props}
     />,

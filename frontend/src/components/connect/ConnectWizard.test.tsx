@@ -15,30 +15,38 @@ vi.mock('@tanstack/react-router', () => ({
 // the correlation token and use a positive refetchInterval; the test asserts
 // both by inspecting the options the mocked useQuery receives, plus that the
 // queryFn calls resolveCorrelation. ---
+interface CapturedQueryOptions {
+  queryKey?: unknown[]
+  enabled?: boolean
+  refetchInterval?: unknown
+  retry?: unknown
+  queryFn?: () => unknown
+}
 let polledData: { sessionId: string } | undefined
-let lastUseQueryOptions:
-  | { queryKey?: unknown[]; enabled?: boolean; refetchInterval?: number; queryFn?: () => unknown }
-  | undefined
+let polledError: Error | null = null
+let lastUseQueryOptions: CapturedQueryOptions | undefined
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: (opts: {
-    queryKey?: unknown[]
-    enabled?: boolean
-    refetchInterval?: number
-    queryFn?: () => unknown
-  }) => {
+  useQuery: (opts: CapturedQueryOptions) => {
     lastUseQueryOptions = opts
-    return { data: opts.enabled ? polledData : undefined }
+    return { data: opts.enabled ? polledData : undefined, error: polledError }
   },
 }))
 
 const resolveCorrelation = vi.fn()
-vi.mock('@/lib/api-client', () => ({
-  apiClient: { resolveCorrelation: (...args: unknown[]) => resolveCorrelation(...args) },
-}))
+vi.mock('@/lib/api-client', async () => {
+  const errors = await vi.importActual<typeof import('@/lib/api-errors')>('@/lib/api-errors')
+  return {
+    ...errors,
+    apiClient: { resolveCorrelation: (...args: unknown[]) => resolveCorrelation(...args) },
+  }
+})
+
+import { RateLimitedError } from '@/lib/api-errors'
 
 beforeEach(() => {
   vi.clearAllMocks()
   polledData = undefined
+  polledError = null
   lastUseQueryOptions = undefined
 })
 
@@ -83,15 +91,22 @@ describe('ConnectWizard', () => {
     )
   })
 
-  it('polls resolveCorrelation keyed to the correlation token with a positive refetchInterval', () => {
+  it('polls resolveCorrelation keyed to the correlation token at 1–2 s, not 300 ms (#124)', () => {
     render(<ConnectWizard isOpen onClose={vi.fn()} />)
 
     expect(lastUseQueryOptions?.enabled).toBe(true)
     // The query is scoped to the resolve-correlation key (token-scoped), never a
     // shared/stale cache.
     expect(lastUseQueryOptions?.queryKey?.[0]).toBe('resolve-correlation')
-    expect(typeof lastUseQueryOptions?.refetchInterval).toBe('number')
-    expect(lastUseQueryOptions?.refetchInterval).toBeGreaterThan(0)
+    const interval = lastUseQueryOptions?.refetchInterval
+    expect(typeof interval).toBe('function')
+    const firstDelay = (interval as (q: unknown) => number)({
+      state: { data: null, error: null, dataUpdateCount: 0, errorUpdateCount: 0 },
+    })
+    expect(firstDelay).toBeGreaterThanOrEqual(1000)
+    expect(firstDelay).toBeLessThanOrEqual(2000)
+    // An immediate retry would only spend more of the rate-limit budget.
+    expect(lastUseQueryOptions?.retry).toBe(false)
 
     // The queryFn calls apiClient.resolveCorrelation (poll the resolve endpoint).
     lastUseQueryOptions?.queryFn?.()
@@ -107,6 +122,13 @@ describe('ConnectWizard', () => {
       to: '/sessions/$sessionId',
       params: { sessionId: 'real-app-session-1' },
     })
+  })
+
+  it('says so when the server rate-limits the resolve poll, instead of waiting silently', () => {
+    polledError = new RateLimitedError(30_000)
+    render(<ConnectWizard isOpen onClose={vi.fn()} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent(/rate-limiting/i)
   })
 
   it('Cancel fires onClose', () => {
