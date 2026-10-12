@@ -68,8 +68,7 @@ Default configuration needs no secrets: auth is off and storage is in-memory.
 The SDK is a plain Kotlin/JVM 17 library. `VizcoreClient.start(…)` creates a session on the
 backend, installs `kotlinx-coroutines` DebugProbes in your process, and streams the
 synthesized events over a WebSocket — with reconnect and session recovery handled for you.
-Every coroutine in that JVM is captured; name them with `CoroutineName` and the labels show
-up in the UI.
+Name your coroutines with `CoroutineName` and the labels show up in the UI.
 
 ```kotlin
 import com.jh.proj.coroutineviz.client.VizcoreClient
@@ -99,14 +98,61 @@ fun main() {
 `start()` returns an already-running client, so there is no second `start` call to make.
 `stop()` is safe to call from a shutdown hook.
 
+**What gets captured.** The SDK samples the JVM's coroutines about every 150 ms, so treat
+the view as a sampled picture, not a complete trace:
+
+- A coroutine that starts and finishes between two samples does not appear. Fast request
+  handlers (a few milliseconds each) usually fall into this gap; slower work, such as
+  outbound HTTP calls, long-running loops and waiting on I/O, shows up well
+  ([#206](https://github.com/Kotlin-server-squad/vizcore/issues/206)).
+- The SDK's own coroutines (its poll loop and its WebSocket) currently appear alongside
+  yours, and `stop()` drops events that have not been sent yet, so a very short program may
+  not show its last completions
+  ([#207](https://github.com/Kotlin-server-squad/vizcore/issues/207)).
+
+**JVM flags.** DebugProbes load a Java agent into your running app. On JDK 21 this works
+without flags but prints a warning, and a future JDK will refuse it by default. Two flags
+make it explicit:
+
+- `-XX:+EnableDynamicAgentLoading` allows loading an agent at runtime, without the warning.
+- `-Djdk.attach.allowAttachSelf=true` lets the JVM attach to itself directly. Without it, the
+  agent loader falls back to attaching from a helper process.
+
+With the Gradle `application` plugin (`./gradlew run`):
+
+```kotlin
+// build.gradle.kts
+application {
+    applicationDefaultJvmArgs = listOf("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
+}
+```
+
+With Spring Boot (`./gradlew bootRun`), as in the worked example:
+
+```kotlin
+// build.gradle.kts
+tasks.bootRun {
+    jvmArgs("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
+}
+```
+
 The library coordinate is:
 
 ```kotlin
 implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.1.0")
+// the SDK uses kotlinx-coroutines at runtime only; your app (and the example above)
+// needs it on the compile classpath too
+implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 ```
 
-Publishing is still manual, so until a release lands in a repository you can reach, depend on
-locally built jars — this is what the worked example does:
+Publishing is still manual, so until a release lands in a repository you can reach, either
+publish it to your local Maven repository and add `mavenLocal()` to your `repositories`:
+
+```bash
+cd backend && ./gradlew :coroutine-viz-core:publishToMavenLocal :coroutine-viz-client:publishToMavenLocal
+```
+
+or depend on locally built jars — this is what the worked example does:
 
 ```bash
 cd backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar
