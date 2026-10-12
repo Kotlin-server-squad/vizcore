@@ -105,12 +105,23 @@ class DebugProbesSource(
 
     override val isRunning: Boolean get() = loop?.isActive == true
 
-    override fun start() {
-        if (isRunning) return
-
+    /**
+     * Install DebugProbes now, without starting the poll loop. DebugProbes only track
+     * coroutines created after installation, so a caller that starts the loop
+     * asynchronously (the SDK's `VizcoreClient`) installs first: otherwise work the app
+     * launches straight after `VizcoreClient.start(...)` is never seen. Idempotent;
+     * [start] calls it too.
+     */
+    fun install() {
         if (installProbes && installed.compareAndSet(false, true)) {
             DebugProbesInstall.acquire()
         }
+    }
+
+    override fun start() {
+        if (isRunning) return
+
+        install()
 
         registerCloseHook()
         // Run-scoped identity: reset both the diff baseline AND the adapter so a

@@ -261,6 +261,10 @@ class VizcoreClient internal constructor(
             val session = VizSession(sessionId = serverSessionId)
             val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
             val source = DebugProbesSource(session = session)
+            // Install the probes before returning: start() below begins polling
+            // asynchronously, and DebugProbes miss every coroutine created before
+            // installation, so work the app launches right after start(...) was lost.
+            source.install()
             return VizcoreClient(
                 httpClient = httpClient,
                 backendUrl = backendUrl,

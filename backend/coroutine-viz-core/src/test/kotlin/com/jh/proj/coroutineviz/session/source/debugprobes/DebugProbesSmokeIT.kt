@@ -76,4 +76,41 @@ class DebugProbesSmokeIT {
                 // harmless to leave for the JVM's lifetime in this single smoke run.
             }
         }
+
+    @Test
+    fun `a coroutine launched after install but before start is captured`() =
+        runBlocking {
+            // The SDK's VizcoreClient installs, returns to the app, and starts polling
+            // asynchronously. Work the app launches in that window must still be seen.
+            val session = VizSession("install-before-start-it")
+            val appScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = 40.milliseconds,
+                    installProbes = true,
+                )
+
+            try {
+                source.install()
+                val work =
+                    appScope.launch(CoroutineName("early-worker")) {
+                        delay(500)
+                    }
+                delay(100)
+                source.start()
+                delay(300)
+                source.stop()
+                work.cancel()
+
+                val created = session.store.all().filterIsInstance<CoroutineCreated>()
+                assertTrue(
+                    created.any { it.label == "early-worker" },
+                    "a coroutine launched between install() and start() must be captured",
+                )
+            } finally {
+                source.stop()
+                appScope.cancel()
+            }
+        }
 }
