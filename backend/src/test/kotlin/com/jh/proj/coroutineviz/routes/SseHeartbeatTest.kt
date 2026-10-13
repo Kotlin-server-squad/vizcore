@@ -145,6 +145,36 @@ class SseHeartbeatTest {
             ?: error("a heartbeat must carry an epoch-ms ts, got ${frame.data}")
 
     @Test
+    fun `deleting a session ends its open stream with session not found`() =
+        testApplication {
+            oneSecondHeartbeats()
+            val client = jsonClient()
+            val sessionId = SessionManager.createSession("sse-deleted").sessionId
+
+            withContext(Dispatchers.Default) {
+                client.prepareGet("/api/sessions/$sessionId/stream").execute { response ->
+                    assertEquals(HttpStatusCode.OK, response.status)
+                    val channel = response.bodyAsChannel()
+                    // A heartbeat proves the stream is attached to the live session.
+                    assertEquals("heartbeat", withTimeout(3_000) { channel.readFrame() }?.event)
+
+                    SessionManager.deleteSession(sessionId)
+
+                    // Heartbeats may still be in flight; the stream must then say the session
+                    // is gone and end, instead of streaming heartbeats indefinitely.
+                    val rest =
+                        withTimeout(5_000) {
+                            channel.framesUntil { frames -> frames.lastOrNull()?.event == "error" }
+                        }
+                    val last = assertNotNull(rest.lastOrNull(), "the stream must send a final frame")
+                    assertEquals("error", last.event, "frames after the delete: $rest")
+                    assertTrue(last.data.orEmpty().contains("Session not found"), "got ${last.data}")
+                    assertNull(withTimeout(5_000) { channel.readFrame() }, "the stream must end after it")
+                }
+            }
+        }
+
+    @Test
     fun `an idle stream keeps receiving heartbeats`() =
         testApplication {
             oneSecondHeartbeats()

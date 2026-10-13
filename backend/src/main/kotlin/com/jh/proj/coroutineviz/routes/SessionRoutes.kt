@@ -26,6 +26,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
@@ -388,14 +390,33 @@ fun Route.registerSessionRoutes() {
                 // to browser EventSource listeners, so no frontend changes are required.
                 send(ServerSentEvent(comments = "connected"))
 
-                // History replay, then live events — see sessionSseFrames for the subscribe-before-
-                // snapshot ordering and the exactly-once watermark (#138).
-                sessionSseFrames(
-                    session = session,
-                    config = call.application.egressConfig(),
-                    heartbeatMillis = call.application.sseHeartbeatSeconds() * SECOND_MILLIS,
-                    onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
-                ).collect { frame -> send(frame) }
+                coroutineScope {
+                    // History replay, then live events — see sessionSseFrames for the subscribe-
+                    // before-snapshot ordering and the exactly-once watermark (#138).
+                    val frames =
+                        launch {
+                            sessionSseFrames(
+                                session = session,
+                                config = call.application.egressConfig(),
+                                heartbeatMillis = call.application.sseHeartbeatSeconds() * SECOND_MILLIS,
+                                onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
+                            ).collect { frame -> send(frame) }
+                        }
+                    // Deleting the session ends its scope. Without this the stream would keep
+                    // sending heartbeats into a session that no longer exists, and the SPA would
+                    // show it as connected indefinitely (same contract as the ingest socket).
+                    val sessionRemoved =
+                        launch {
+                            session.sessionScope.coroutineContext.job
+                                .join()
+                            frames.cancel()
+                        }
+                    frames.join()
+                    sessionRemoved.cancel()
+                    if (!session.sessionScope.isActive) {
+                        send(ServerSentEvent(data = """{"error": "Session not found"}""", event = "error"))
+                    }
+                }
             } catch (e: CancellationException) {
                 // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
                 // cooperative cancellation; the finally block still decrements the gauge.
