@@ -19,12 +19,12 @@ internal suspend fun awaitSessionRemoved(session: VizSession) {
     val removed = CompletableDeferred<Unit>()
     val onClosed: (String) -> Unit = { id -> if (id == session.sessionId) removed.complete(Unit) }
     SessionManager.addOnSessionClosed(onClosed)
-    val dbStore = SessionManager.backingStore() as? ExposedSessionStore
-    if (dbStore != null && !dbStore.sessionExists(session.sessionId)) removed.complete(Unit)
     val onScopeEnd =
         session.sessionScope.coroutineContext.job
             .invokeOnCompletion { removed.complete(Unit) }
     try {
+        val dbStore = SessionManager.backingStore() as? ExposedSessionStore
+        if (dbStore != null && !dbStore.sessionExists(session.sessionId)) removed.complete(Unit)
         removed.await()
     } finally {
         SessionManager.removeOnSessionClosed(onClosed)

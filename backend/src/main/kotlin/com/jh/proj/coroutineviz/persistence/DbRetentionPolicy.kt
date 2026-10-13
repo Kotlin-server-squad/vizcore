@@ -120,15 +120,33 @@ class DbRetentionPolicy(
                                 (SharesTable.expiresAt.isNull() or (SharesTable.expiresAt greater now))
                         }
 
-                val expired =
+                // The ids are read first so their streams can be closed afterwards. The delete
+                // repeats the full guard, so a share created in between still protects its
+                // session, and only the rows that are really gone are reported.
+                val candidates =
                     SessionsTable
                         .select(SessionsTable.id)
                         .where { (SessionsTable.createdAt less cutoff) and NotExists(activeShareSubquery) }
                         .map { it[SessionsTable.id] }
-                if (expired.isNotEmpty()) SessionsTable.deleteWhere { SessionsTable.id inList expired }
-                expired
+                if (candidates.isEmpty()) return@transaction emptyList()
+                SessionsTable.deleteWhere {
+                    (SessionsTable.id inList candidates) and
+                        (SessionsTable.createdAt less cutoff) and
+                        NotExists(activeShareSubquery)
+                }
+                val kept =
+                    SessionsTable
+                        .select(SessionsTable.id)
+                        .where { SessionsTable.id inList candidates }
+                        .map { it[SessionsTable.id] }
+                        .toSet()
+                candidates.filterNot { it in kept }
             }
-        deletedSessions.forEach(onSessionDeleted)
+        // One failing listener must not stop the others, the event trim or the retention loop.
+        deletedSessions.forEach { sessionId ->
+            runCatching { onSessionDeleted(sessionId) }
+                .onFailure { e -> logger.warn("Session-deleted callback failed for {}", sessionId, e) }
+        }
 
         trimEvents()
 
