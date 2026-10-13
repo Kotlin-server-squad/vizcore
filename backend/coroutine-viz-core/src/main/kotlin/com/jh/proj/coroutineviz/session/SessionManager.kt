@@ -179,11 +179,16 @@ object SessionManager : SessionStoreInterface {
     /**
      * Fire the legacy closed-slot then every registered close-listener, in
      * registration order. Centralizes the composition so both deleteSession
-     * branches stay identical.
+     * branches stay identical. A listener that throws is logged and skipped, so
+     * it cannot keep the others (such as open streams' watchers) from hearing
+     * about the delete.
      */
     private fun fireSessionClosed(sessionId: String) {
-        onSessionClosed?.invoke(sessionId)
-        onSessionClosedListeners.forEach { it(sessionId) }
+        val listeners = listOfNotNull(onSessionClosed) + onSessionClosedListeners
+        listeners.forEach { listener ->
+            runCatching { listener(sessionId) }
+                .onFailure { e -> logger.warn("Session-closed listener failed for {}", sessionId, e) }
+        }
     }
 
     /**
