@@ -7,7 +7,7 @@
 //
 // Prove resolution with:
 //   gradle dependencies --configuration runtimeClasspath
-// and confirm `com.jh.coroutine-visualizer:coroutine-viz-client:0.1.0` appears
+// and confirm `com.jh.coroutine-visualizer:coroutine-viz-client:0.2.0` appears
 // with no "Could not find" error.
 
 plugins {
@@ -15,5 +15,5 @@ plugins {
 }
 
 dependencies {
-    implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.1.0")
+    implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.2.0")
 }

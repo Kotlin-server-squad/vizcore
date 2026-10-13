@@ -5,9 +5,9 @@ client library (`coroutine-viz-client`), the validation engine (`coroutine-viz-c
 and the standalone CLI validator (`coroutine-viz-cli`).
 
 All three share ONE locked Maven coordinate group: `com.jh.coroutine-visualizer`,
-version `0.1.0`. The client coordinate is the single source of truth in
-[`frontend/src/lib/dep-snippet.ts`](../../frontend/src/lib/dep-snippet.ts) — the
-publish job and these docs are contractually bound to it (Phase 9, D-06/D-08).
+version `0.2.0`. The client coordinate is the single source of truth in
+[`frontend/src/lib/connect-snippets.ts`](../../frontend/src/lib/connect-snippets.ts), which
+the connect wizard shows; its guard test fails when that and the build scripts disagree.
 
 ---
 
@@ -19,7 +19,7 @@ the locked coordinate:
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.1.0")
+    implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.2.0")
 }
 ```
 
@@ -33,7 +33,7 @@ repositories {
     mavenCentral()
     maven {
         name = "GitHubPackages"
-        url = uri("https://maven.pkg.github.com/hermanngeorge15/visualizer-for-coroutines")
+        url = uri("https://maven.pkg.github.com/Kotlin-server-squad/vizcore")
         credentials {
             username = System.getenv("GITHUB_ACTOR")   // your GitHub username
             password = System.getenv("GITHUB_TOKEN")   // a PAT with read:packages
@@ -49,11 +49,18 @@ export GITHUB_TOKEN=<a-read:packages-PAT>
 
 ---
 
-## 2. Publish (developer / maintainer, one-shot)
+## 2. Publish (maintainer)
 
-> **The remote publish is a deliberate, credential-gated human step.** CI does
-> NOT auto-publish on tag (D-01/D-03). The canonical publish is the command
-> below, run by a maintainer holding a `write:packages` PAT.
+Pushing a `v*` release tag publishes core and client: `release.yml` calls
+`publish-maven.yml` **before** it creates the GitHub Release, so a release never
+exists without its SDK. The SDK keeps its own version (`0.x`, from
+`build.gradle.kts`), independent of the app's release tag (`v1.x`). A version
+that is already published is skipped, so a release that does not change the SDK
+still goes through; bump the version in both build scripts and in
+`connect-snippets.ts` to ship SDK changes.
+
+`publish-maven.yml` can also be run by hand (Actions → Publish to Maven →
+Run workflow). Publishing from a workstation needs a `write:packages` PAT:
 
 ```bash
 cd backend
@@ -62,10 +69,10 @@ GITHUB_TOKEN=<a-write:packages-PAT> \
 ./gradlew :coroutine-viz-core:publish :coroutine-viz-client:publish
 ```
 
-Expect `BUILD SUCCESSFUL`; both `0.1.0` artifacts appear under the repository's
+Expect `BUILD SUCCESSFUL`; both `0.2.0` artifacts appear under the repository's
 **Packages**.
 
-> **GitHub Packages `0.1.0` is IMMUTABLE.** Once published, you cannot
+> **GitHub Packages `0.2.0` is IMMUTABLE.** Once published, you cannot
 > re-publish the same version over a wrong POM/jar — you must delete the version
 > in the Packages UI first (a 409 on re-publish; see RESEARCH Pitfall 5). To
 > avoid this, the POM and coordinate are asserted **locally first** via
@@ -84,13 +91,13 @@ The CLI is a self-contained Shadow fat JAR. Build it:
 ```bash
 cd backend
 ./gradlew :coroutine-viz-cli:shadowJar
-# produces: backend/coroutine-viz-cli/build/libs/coroutine-viz-cli-0.1.0-all.jar
+# produces: backend/coroutine-viz-cli/build/libs/coroutine-viz-cli-0.2.0-all.jar
 ```
 
 Run it against a recorded events export:
 
 ```bash
-java -jar coroutine-viz-cli-0.1.0-all.jar <path/to/events.json>
+java -jar coroutine-viz-cli-0.2.0-all.jar <path/to/events.json>
 ```
 
 - **Exit 0** — clean (no validation failures, no ERROR/WARNING anti-patterns).
@@ -122,7 +129,7 @@ tasks.register<JavaExec>("coroutineVizCheck") {
     group = "verification"
     description = "Validate a recorded coroutine events export against the visualizer rules."
     // Point at the published CLI fat JAR (download it, or copy it into libs/).
-    classpath = files("libs/coroutine-viz-cli-0.1.0-all.jar")
+    classpath = files("libs/coroutine-viz-cli-0.2.0-all.jar")
     mainClass.set("com.jh.proj.coroutineviz.cli.MainKt")
     // The events.json export to validate (body of GET /api/sessions/{id}/events).
     args(layout.projectDirectory.file("events.json").asFile.absolutePath)

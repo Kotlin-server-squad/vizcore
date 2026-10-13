@@ -1,14 +1,16 @@
 name: Publish to Maven
 
 on:
+  # Called by release.yml on a v* tag, BEFORE the GitHub Release is created, so a release
+  # never exists without its SDK. (A `release: published` trigger never fired: release.yml
+  # creates the Release with GITHUB_TOKEN, and events made with that token start no workflows.)
+  workflow_call:
   workflow_dispatch:
     inputs:
       version_override:
         description: 'Version override (leave empty to use build.gradle.kts version)'
         required: false
         type: string
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -50,17 +52,18 @@ jobs:
           # NOT textual ${{ }} substitution into the run: line) to avoid GitHub
           # Actions script injection from untrusted version_override input.
           VERSION_OVERRIDE: ${{ inputs.version_override }}
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
+          # The SDK is versioned on its own (0.x), not by the app's release tag (v1.x):
+          # the version in build.gradle.kts is the one the connect wizard pins.
           if [[ -n "$VERSION_OVERRIDE" ]]; then
             VERSION="$VERSION_OVERRIDE"
-          elif [[ "$EVENT_NAME" == "release" ]]; then
-            # Strip leading 'v' from release tag
-            VERSION="${RELEASE_TAG#v}"
           else
-            # Fall back to version in build.gradle.kts
-            VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' coroutine-viz-core/build.gradle.kts | head -1)
+            VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' coroutine-viz-core/build.gradle.kts | head -1)
+            CLIENT_VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' coroutine-viz-client/build.gradle.kts | head -1)
+            if [[ "$VERSION" != "$CLIENT_VERSION" ]]; then
+              echo "error: core ($VERSION) and client ($CLIENT_VERSION) versions differ" >&2
+              exit 1
+            fi
           fi
           # Guard the resolved version against a sane semver-ish shape before it
           # ever reaches a publish coordinate.
@@ -70,7 +73,29 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # GitHub Packages versions are immutable: re-publishing one fails with 409. A release
+      # that does not change the SDK (say v1.2.1 on SDK 0.2.0) must still go through, so an
+      # already-published version is skipped instead of failing the release.
+      - name: Check whether this version is already published
+        id: exists
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          POM="https://maven.pkg.github.com/${REPOSITORY}/com/jh/coroutine-visualizer/coroutine-viz-client/${VERSION}/coroutine-viz-client-${VERSION}.pom"
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" "$POM")
+          echo "client ${VERSION} POM lookup: HTTP ${STATUS}"
+          if [[ "$STATUS" == "200" ]]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::coroutine-viz-client ${VERSION} is already published; skipping."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to GitHub Packages
+        if: steps.exists.outputs.published != 'true'
         env:
           PUBLISH_VERSION: ${{ steps.version.outputs.VERSION }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

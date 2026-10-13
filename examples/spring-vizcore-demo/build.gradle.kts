@@ -41,8 +41,8 @@ repositories {
 //   cd ../../backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar
 val vizcoreJars =
 	files(
-		"../../backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.1.0.jar",
-		"../../backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.1.0.jar",
+		"../../backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.0.jar",
+		"../../backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.0.jar",
 	)
 
 dependencies {

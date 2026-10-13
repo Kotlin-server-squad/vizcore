@@ -15,10 +15,11 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Job 1: Build and test coroutine-viz-core, publish JAR artifact
+  # Job 1: Test and build the JVM deliverables: core + client jars, and the
+  # standalone agent and CLI fat jars
   # ---------------------------------------------------------------------------
   build-core:
-    name: Build Core Library
+    name: Build JVM Artifacts
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,24 +37,45 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Run core tests
-        run: ./gradlew :coroutine-viz-core:test
+      - name: Run tests
+        run: >-
+          ./gradlew
+          :coroutine-viz-core:test :coroutine-viz-client:test
+          :coroutine-viz-cli:test :coroutine-viz-agent:test
 
-      - name: Build core JAR
-        run: ./gradlew :coroutine-viz-core:jar
+      - name: Build JARs
+        run: >-
+          ./gradlew
+          :coroutine-viz-core:jar :coroutine-viz-core:sourcesJar
+          :coroutine-viz-client:jar
+          :coroutine-viz-cli:shadowJar :coroutine-viz-agent:shadowJar
 
-      - name: Build sources JAR
-        run: ./gradlew :coroutine-viz-core:sourcesJar
-
-      - name: Upload core JAR
+      - name: Upload JARs
         uses: actions/upload-artifact@v7
         with:
-          name: coroutine-viz-core-jar
-          path: backend/coroutine-viz-core/build/libs/*.jar
+          name: jvm-jars
+          path: |
+            backend/coroutine-viz-core/build/libs/*.jar
+            backend/coroutine-viz-client/build/libs/*.jar
+            backend/coroutine-viz-cli/build/libs/*-all.jar
+            backend/coroutine-viz-agent/build/libs/*-all.jar
+          if-no-files-found: error
           retention-days: 30
 
   # ---------------------------------------------------------------------------
-  # Job 2: Build frontend static assets
+  # Job 2: Publish coroutine-viz-core + coroutine-viz-client to GitHub Packages,
+  # before the Release exists, so a release never points at a missing SDK
+  # ---------------------------------------------------------------------------
+  publish-sdk:
+    name: Publish SDK
+    needs: build-core
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish-maven.yml
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Build frontend static assets
   # ---------------------------------------------------------------------------
   build-frontend:
     name: Build Frontend
@@ -100,11 +122,11 @@ jobs:
           retention-days: 30
 
   # ---------------------------------------------------------------------------
-  # Job 3: Create GitHub Release with all artifacts
+  # Job 4: Create GitHub Release with all artifacts and their checksums
   # ---------------------------------------------------------------------------
   create-release:
     name: Create GitHub Release
-    needs: [build-core, build-frontend]
+    needs: [build-core, build-frontend, publish-sdk]
     runs-on: ubuntu-latest
 
     steps:
@@ -112,11 +134,11 @@ jobs:
         with:
           fetch-depth: 0  # Full history for changelog generation
 
-      - name: Download core JAR
+      - name: Download JARs
         uses: actions/download-artifact@v8
         with:
-          name: coroutine-viz-core-jar
-          path: release-assets/core
+          name: jvm-jars
+          path: release-assets/jvm
 
       - name: Download frontend dist
         uses: actions/download-artifact@v8
@@ -136,8 +158,15 @@ jobs:
           # Write to file for the release body (handles multiline safely)
           echo "$CHANGELOG" > release-notes.md
 
-      - name: List release assets
-        run: find release-assets -type f | sort
+      # One flat directory for upload, plus SHA-256 checksums of every asset.
+      - name: Collect assets and checksums
+        run: |
+          mkdir -p release-assets/upload
+          find release-assets/jvm -name '*.jar' -exec cp {} release-assets/upload/ \;
+          cp release-assets/frontend/frontend-dist.tar.gz release-assets/upload/
+          cd release-assets/upload
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -147,9 +176,7 @@ jobs:
           body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') }}
-          files: |
-            release-assets/core/*.jar
-            release-assets/frontend/frontend-dist.tar.gz
-          fail_on_unmatched_files: false
+          files: release-assets/upload/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

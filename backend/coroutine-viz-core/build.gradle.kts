@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.1.0"
+version = "0.2.0"
 
 dependencies {
     // Core dependencies only — no Ktor, no web framework
@@ -77,7 +77,7 @@ publishing {
             pom {
                 name.set("Coroutine Viz Core")
                 description.set("Core library for Kotlin coroutine visualization — events, wrappers, session management, and validation")
-                url.set("https://github.com/hermanngeorge15/visualizer-for-coroutines")
+                url.set("https://github.com/Kotlin-server-squad/vizcore")
                 licenses {
                     license {
                         name.set("MIT License")
@@ -90,7 +90,7 @@ publishing {
     repositories {
         maven {
             name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/hermanngeorge15/visualizer-for-coroutines")
+            url = uri("https://maven.pkg.github.com/Kotlin-server-squad/vizcore")
             credentials {
                 username = System.getenv("GITHUB_ACTOR") ?: ""
                 password = System.getenv("GITHUB_TOKEN") ?: ""

@@ -42,6 +42,7 @@ vi.mock('@/lib/api-client', async () => {
 })
 
 import { RateLimitedError } from '@/lib/api-errors'
+import { SDK_VERSION } from '@/lib/connect-snippets'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -61,7 +62,7 @@ describe('ConnectWizard', () => {
     // The dependency snippet renders the LOCKED canonical coordinate (D-06),
     // not the stale com.jh:vizcore-client:0.1.
     expect(
-      screen.getByText(/com\.jh\.coroutine-visualizer:coroutine-viz-client:0\.1\.0/),
+      screen.getByText(new RegExp(`com\\.jh\\.coroutine-visualizer:coroutine-viz-client:${SDK_VERSION.replace(/\./g, '\\.')}`)),
     ).toBeInTheDocument()
     // The start snippet carries the client-minted correlation token (D-01).
     const start = screen.getByLabelText('Kotlin start call')
