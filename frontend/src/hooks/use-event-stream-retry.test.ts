@@ -243,6 +243,32 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
     expect(result.current.events).toHaveLength(3)
   })
 
+  it('stops for good when the server says the session is gone', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    const source = latest()
+    act(() => {
+      source.onopen?.()
+      source.simulateEvent('error', JSON.stringify({ error: 'Session not found' }))
+      // The server then closes the stream; the browser would report that too.
+      source.onerror?.()
+    })
+
+    expect(source.close).toHaveBeenCalled()
+    expect(result.current.isConnected).toBe(false)
+    expect(result.current.error).toBe('Session not found')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sessions', 'session-1'], exact: true })
+
+    // No retry loop: nothing reconnects afterwards.
+    act(() => {
+      vi.advanceTimersByTime(5 * 60_000)
+    })
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(1)
+    expect(result.current.error).toBe('Session not found')
+  })
+
   it('ignores callbacks from a connection that has been replaced', () => {
     const { result } = renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),

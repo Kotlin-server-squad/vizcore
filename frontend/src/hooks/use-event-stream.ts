@@ -449,7 +449,22 @@ export function useEventStream(
           if (messageEvent.data) {
             try {
               const errorData = JSON.parse(messageEvent.data)
-              setError(errorData.error || 'Unknown error')
+              const message: string = errorData.error || 'Unknown error'
+              if (/not found/i.test(message)) {
+                // Final: the server no longer has this session (in-memory
+                // sessions are gone after a restart). The stream answers with
+                // this frame and closes, so without stopping here the browser's
+                // own EventSource reconnect asks again every few seconds forever
+                // and each answer is overwritten by "Connection lost". Refetch
+                // the session so the workspace shows its not-found state.
+                eventSource.close()
+                eventSourceRef.current = null
+                setIsConnected(false)
+                setError('Session not found')
+                void queryClient.invalidateQueries({ queryKey: ['sessions', sessionId], exact: true })
+                return
+              }
+              setError(message)
             } catch {
               // ignore
             }
