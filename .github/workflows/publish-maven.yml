@@ -74,9 +74,11 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       # GitHub Packages versions are immutable: re-publishing one fails with 409. A release
-      # that does not change the SDK (say v1.2.1 on SDK 0.2.0) must still go through, so an
-      # already-published version is skipped instead of failing the release.
-      - name: Check whether this version is already published
+      # that does not change the SDK (say v1.2.1 on SDK 0.2.0) must still go through, so a
+      # module whose version is already published is skipped. Each module is checked on its
+      # own, so a run that published only one of them earlier completes the other. Any answer
+      # other than "found" (200) or "not found" (404) stops the release instead of guessing.
+      - name: Check which modules are already published
         id: exists
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
@@ -84,23 +86,33 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          POM="https://maven.pkg.github.com/${REPOSITORY}/com/jh/coroutine-visualizer/coroutine-viz-client/${VERSION}/coroutine-viz-client-${VERSION}.pom"
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" "$POM")
-          echo "client ${VERSION} POM lookup: HTTP ${STATUS}"
-          if [[ "$STATUS" == "200" ]]; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::coroutine-viz-client ${VERSION} is already published; skipping."
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
+          TASKS=""
+          for MODULE in coroutine-viz-core coroutine-viz-client; do
+            POM="https://maven.pkg.github.com/${REPOSITORY}/com/jh/coroutine-visualizer/${MODULE}/${VERSION}/${MODULE}-${VERSION}.pom"
+            # -L: the registry answers an existing file with a redirect to its storage.
+            STATUS=$(curl -sL -o /dev/null -w '%{http_code}' -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" "$POM")
+            echo "${MODULE} ${VERSION} POM lookup: HTTP ${STATUS}"
+            case "$STATUS" in
+              200) echo "::notice::${MODULE} ${VERSION} is already published; skipping it." ;;
+              404) TASKS="${TASKS} :${MODULE}:publish" ;;
+              *)
+                echo "error: cannot tell whether ${MODULE} ${VERSION} is published (HTTP ${STATUS})" >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "tasks=${TASKS# }" >> "$GITHUB_OUTPUT"
 
       - name: Publish to GitHub Packages
-        if: steps.exists.outputs.published != 'true'
+        if: steps.exists.outputs.tasks != ''
         env:
           PUBLISH_VERSION: ${{ steps.version.outputs.VERSION }}
+          PUBLISH_TASKS: ${{ steps.exists.outputs.tasks }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: ./gradlew :coroutine-viz-core:publish :coroutine-viz-client:publish -Pversion="$PUBLISH_VERSION"
+        run: |
+          read -ra TASKS <<< "$PUBLISH_TASKS"
+          ./gradlew "${TASKS[@]}" -Pversion="$PUBLISH_VERSION"
 
       - name: Summary
         run: |

@@ -50,6 +50,20 @@ jobs:
           :coroutine-viz-client:jar
           :coroutine-viz-cli:shadowJar :coroutine-viz-agent:shadowJar
 
+      # One upload takes all four patterns and fails only when NONE match, so check that
+      # every module produced its jar before anything is uploaded.
+      - name: Check every expected JAR exists
+        run: |
+          for JAR in \
+            coroutine-viz-core/build/libs/coroutine-viz-core-*[0-9].jar \
+            coroutine-viz-core/build/libs/coroutine-viz-core-*-sources.jar \
+            coroutine-viz-client/build/libs/coroutine-viz-client-*[0-9].jar \
+            coroutine-viz-cli/build/libs/coroutine-viz-cli-*-all.jar \
+            coroutine-viz-agent/build/libs/coroutine-viz-agent-*-all.jar; do
+            [[ -f "$JAR" ]] || { echo "error: missing ${JAR}" >&2; exit 1; }
+            echo "ok: ${JAR}"
+          done
+
       - name: Upload JARs
         uses: actions/upload-artifact@v7
         with:
@@ -165,6 +179,13 @@ jobs:
           find release-assets/jvm -name '*.jar' -exec cp {} release-assets/upload/ \;
           cp release-assets/frontend/frontend-dist.tar.gz release-assets/upload/
           cd release-assets/upload
+          # core, core sources, client, CLI and agent jars plus the frontend bundle.
+          COUNT=$(find . -maxdepth 1 -type f | wc -l)
+          if [[ "$COUNT" -ne 6 ]]; then
+            echo "error: expected 6 release assets, found ${COUNT}:" >&2
+            ls -1 >&2
+            exit 1
+          fi
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
 

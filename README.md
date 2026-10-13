@@ -145,8 +145,11 @@ implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.2.0")
 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 ```
 
-Publishing is still manual, so until a release lands in a repository you can reach, either
-publish it to your local Maven repository and add `mavenLocal()` to your `repositories`:
+Each `v*` release publishes the SDK to this repository's GitHub Packages
+(`https://maven.pkg.github.com/Kotlin-server-squad/vizcore`), which needs a GitHub token with
+`read:packages` even for reads; see [SDK distribution](docs/guides/sdk-distribution.md). To try an
+unreleased build instead, publish it to your local Maven repository and add `mavenLocal()` to your
+`repositories`:
 
 ```bash
 cd backend && ./gradlew :coroutine-viz-core:publishToMavenLocal :coroutine-viz-client:publishToMavenLocal
