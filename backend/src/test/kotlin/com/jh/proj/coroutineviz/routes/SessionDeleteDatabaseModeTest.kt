@@ -1,0 +1,163 @@
+package com.jh.proj.coroutineviz.routes
+
+import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
+import com.jh.proj.coroutineviz.module
+import com.jh.proj.coroutineviz.persistence.DatabaseFactory
+import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.session.SessionManager
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.config.MapApplicationConfig
+import io.ktor.server.testing.ApplicationTestBuilder
+import io.ktor.server.testing.testApplication
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readUTF8Line
+import io.ktor.websocket.CloseReason
+import io.ktor.websocket.Frame
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.PolymorphicSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import java.util.UUID
+import javax.sql.DataSource
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+
+/**
+ * Deleting a session through the API must end its open SSE stream and close its open ingest
+ * socket with "Session not found" when sessions are stored in a database, as it already does in
+ * memory mode. In database mode every read builds a fresh session object and the delete goes
+ * straight to the store, so nothing ended either connection: the SPA kept showing the session as
+ * connected, and the SDK kept streaming into a session that no longer existed.
+ */
+class SessionDeleteDatabaseModeTest {
+    private lateinit var dataSource: HikariDataSource
+
+    @BeforeEach
+    fun setUp() {
+        val name = "test_${UUID.randomUUID().toString().replace("-", "")}"
+        dataSource =
+            HikariDataSource(
+                HikariConfig().apply {
+                    jdbcUrl = "jdbc:h2:mem:$name;DB_CLOSE_DELAY=-1;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
+                    driverClassName = "org.h2.Driver"
+                    username = "sa"
+                    password = ""
+                    maximumPoolSize = 4
+                    isAutoCommit = false
+                },
+            )
+        SessionManager.useStore(ExposedSessionStore(DatabaseFactory.init(dataSource as DataSource)))
+    }
+
+    @AfterEach
+    fun tearDown() {
+        SessionManager.useStore(null)
+        dataSource.close()
+    }
+
+    private fun ApplicationTestBuilder.oneSecondHeartbeats() {
+        environment {
+            config = MapApplicationConfig("sse.heartbeatSeconds" to "1")
+        }
+        application { module() }
+    }
+
+    private suspend fun createSession(client: HttpClient): String {
+        val resp = client.post("/api/sessions?name=db-delete")
+        assertEquals(HttpStatusCode.Created, resp.status)
+        return Json
+            .parseToJsonElement(resp.bodyAsText())
+            .jsonObject["sessionId"]!!
+            .jsonPrimitive.content
+    }
+
+    /** Reads lines until one equals `event: [name]`; returns the next `data:` value, or null at end of stream. */
+    private suspend fun ByteReadChannel.dataOfNext(name: String): String? {
+        var inEvent = false
+        var line = readUTF8Line()
+        while (line != null && !(inEvent && line.startsWith("data:"))) {
+            if (line.trim() == "event: $name") inEvent = true
+            line = readUTF8Line()
+        }
+        return line?.substringAfter(':')?.trim()
+    }
+
+    @Test
+    fun `deleting a database session ends its open stream with session not found`() =
+        testApplication {
+            oneSecondHeartbeats()
+            val client = createClient {}
+            val sessionId = createSession(client)
+
+            withContext(Dispatchers.Default) {
+                client.prepareGet("/api/sessions/$sessionId/stream").execute { response ->
+                    assertEquals(HttpStatusCode.OK, response.status)
+                    val channel = response.bodyAsChannel()
+                    withTimeout(3_000) { channel.dataOfNext("heartbeat") }
+
+                    assertEquals(HttpStatusCode.OK, client.delete("/api/sessions/$sessionId").status)
+
+                    val error = withTimeout(5_000) { channel.dataOfNext("error") }
+                    assertTrue(error.orEmpty().contains("Session not found"), "got $error")
+                    assertEquals(null, withTimeout(5_000) { channel.readUTF8Line()?.takeIf { it.isNotBlank() } })
+                }
+            }
+        }
+
+    @Test
+    fun `deleting a database session closes its open ingest socket as session not found`() =
+        testApplication {
+            application { module() }
+            val client = createClient { install(WebSockets) }
+            val sessionId = createSession(client)
+            val event: VizEvent =
+                CoroutineCreated(
+                    sessionId = sessionId,
+                    seq = 1L,
+                    tsNanos = 0L,
+                    coroutineId = "c-1",
+                    jobId = "j-1",
+                    parentCoroutineId = null,
+                    scopeId = "scope-1",
+                    label = "before-delete",
+                )
+
+            client.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)))
+                // Once the frame is stored the socket is attached, so the close below can only come
+                // from the delete, not from the handshake's own "Session not found" check.
+                withTimeout(5.seconds) {
+                    while (Json.parseToJsonElement(client.get("/api/sessions/$sessionId/events").bodyAsText()).jsonArray.isEmpty()) {
+                        delay(20)
+                    }
+                }
+                assertEquals(HttpStatusCode.OK, client.delete("/api/sessions/$sessionId").status)
+
+                val reason = withTimeout(5.seconds) { closeReason.await() }
+                assertEquals(CloseReason.Codes.VIOLATED_POLICY, reason?.knownReason)
+                assertEquals("Session not found", reason?.message)
+            }
+        }
+}

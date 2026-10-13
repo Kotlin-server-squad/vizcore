@@ -167,6 +167,16 @@ object SessionManager : SessionStoreInterface {
     }
 
     /**
+     * Fire the close listeners for a session that a backing store deleted directly, as the
+     * tenant-filtered DELETE route does. Without this, listeners only hear about deletes
+     * that go through [deleteSession].
+     */
+    fun notifySessionDeleted(sessionId: String) {
+        logger.info("Closed session (tenant-scoped store): $sessionId")
+        fireSessionClosed(sessionId)
+    }
+
+    /**
      * Fire the legacy closed-slot then every registered close-listener, in
      * registration order. Centralizes the composition so both deleteSession
      * branches stay identical.

@@ -26,11 +26,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicBoolean
 
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
 
@@ -206,7 +205,9 @@ fun Route.registerSessionRoutes() {
         val success =
             if (store != null) {
                 // Tenant-filtered delete: a cross-tenant id is a no-op (NotFound).
-                store.deleteSession(sessionId, call.resolveTenant())
+                store.deleteSession(sessionId, call.resolveTenant()).also { deleted ->
+                    if (deleted) SessionManager.notifySessionDeleted(sessionId)
+                }
             } else {
                 SessionManager.closeSession(sessionId)
             }
@@ -402,18 +403,19 @@ fun Route.registerSessionRoutes() {
                                 onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
                             ).collect { frame -> send(frame) }
                         }
-                    // Deleting the session ends its scope. Without this the stream would keep
-                    // sending heartbeats into a session that no longer exists, and the SPA would
-                    // show it as connected indefinitely (same contract as the ingest socket).
+                    // Without this the stream would keep sending heartbeats into a session that
+                    // no longer exists, and the SPA would show it as connected indefinitely
+                    // (same contract as the ingest socket).
+                    val removed = AtomicBoolean(false)
                     val sessionRemoved =
                         launch {
-                            session.sessionScope.coroutineContext.job
-                                .join()
+                            awaitSessionRemoved(session)
+                            removed.set(true)
                             frames.cancel()
                         }
                     frames.join()
                     sessionRemoved.cancel()
-                    if (!session.sessionScope.isActive) {
+                    if (removed.get()) {
                         send(ServerSentEvent(data = """{"error": "Session not found"}""", event = "error"))
                     }
                 }
