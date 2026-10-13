@@ -222,6 +222,41 @@ describe('useEventStream - heartbeat watchdog', () => {
     expect(result.current.error).toBe('Connection lost')
   })
 
+  it('recovers through Reconnect when the server stops sending heartbeats', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    openWithHeartbeat()
+
+    // From now on the server sends none: automatic retries treat each quiet
+    // connection as dead and the budget runs out.
+    const opened = new Set<MockEventSource>([latest()])
+    for (let step = 0; step < 120; step++) {
+      advance(5000)
+      const current = latest()
+      if (!opened.has(current)) {
+        opened.add(current)
+        act(() => {
+          current.onopen?.()
+        })
+      }
+    }
+    expect(result.current.error).toBe('Connection lost')
+
+    // A manual reconnect forgets the old heartbeat, so a quiet connection stays up.
+    act(() => {
+      result.current.reconnect()
+    })
+    act(() => {
+      latest().onopen?.()
+    })
+    const created = mockedApiClient.createEventSource.mock.calls.length
+    advance(5 * 60_000)
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(created)
+    expect(result.current.isConnected).toBe(true)
+    expect(result.current.error).toBeNull()
+  })
+
   it('clears the watchdog on unmount', () => {
     const { unmount } = renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),

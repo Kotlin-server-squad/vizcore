@@ -214,6 +214,35 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
     expect(result.current.error).toBe('Connection lost')
   })
 
+  it('a replay of already-seen history does not reset the retry budget', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    // The first connection delivers events 1..3 (new data: budget is full).
+    act(() => {
+      latest().onopen?.()
+      for (let seq = 1; seq <= 3; seq++) latest().simulateEvent('CoroutineCreated', eventPayload(seq))
+    })
+
+    // Every later attempt replays the same history, then fails.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      act(() => {
+        fatalError(latest())
+      })
+      act(() => {
+        vi.advanceTimersByTime(8000)
+      })
+      act(() => {
+        latest().onopen?.()
+        for (let seq = 1; seq <= 3; seq++) latest().simulateEvent('CoroutineCreated', eventPayload(seq))
+      })
+    }
+
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(6)
+    expect(result.current.error).toBe('Connection lost')
+    expect(result.current.events).toHaveLength(3)
+  })
+
   it('ignores callbacks from a connection that has been replaced', () => {
     const { result } = renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),
@@ -231,9 +260,10 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
     expect(result.current.isConnected).toBe(true)
 
     // A late error from the first, already-closed source must not mark the new
-    // connection lost or schedule another retry.
+    // connection lost or schedule another retry, nor may a late server error frame.
     act(() => {
       first.onerror?.()
+      first.simulateEvent('error', JSON.stringify({ error: 'stale' }))
     })
     act(() => {
       vi.advanceTimersByTime(60_000)

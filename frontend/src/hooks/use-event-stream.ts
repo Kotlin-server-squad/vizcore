@@ -189,6 +189,10 @@ export function useEventStream(
   // delivered any frame). Read by the heartbeat watchdog.
   const lastFrameAtRef = useRef(0)
   // True once the server has sent a heartbeat; until then the watchdog is idle.
+  // It is a property of the server, so it survives automatic reconnects: a
+  // replacement connection to a server known to send heartbeats that stays
+  // silent is dead. Only a new session or a manual reconnect() clears it, which
+  // is also how a server that stopped sending heartbeats mid-session recovers.
   const heartbeatSeenRef = useRef(false)
   // The heartbeat watchdog interval, cleared on teardown.
   const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -292,10 +296,11 @@ export function useEventStream(
       lastFrameAtRef.current = Date.now()
     }
 
-    // A frame from the server proves the connection really works, so it also
-    // restores the full retry budget. An open alone does not: a connection
-    // that opens and then stays silent would otherwise reset the budget on
-    // every attempt and retry forever, never reaching "Connection lost".
+    // NEW data or a heartbeat proves the connection really works, so it also
+    // restores the full retry budget. An open alone does not, and neither does
+    // the replay of already-seen history every connection starts with: either
+    // would reset the budget on every attempt and retry forever, never
+    // reaching "Connection lost". Other frames only feed the watchdog.
     const confirmAlive = () => {
       markAlive()
       retryCountRef.current = 0
@@ -363,11 +368,14 @@ export function useEventStream(
         SSE_EVENT_TYPES.forEach(eventType => {
           eventSource.addEventListener(eventType, (e: Event) => {
             if (!isCurrent()) return
-            confirmAlive()
+            markAlive()
             const messageEvent = e as MessageEvent
             try {
               const event = accept(JSON.parse(messageEvent.data), eventType)
-              if (event) append([event])
+              if (event) {
+                confirmAlive()
+                append([event])
+              }
             } catch {
               // Silently ignore malformed events
             }
@@ -384,7 +392,7 @@ export function useEventStream(
         // by the try/catch so one bad frame cannot kill the listener (T-10-14).
         eventSource.addEventListener('batch', (e: Event) => {
           if (!isCurrent()) return
-          confirmAlive()
+          markAlive()
           const messageEvent = e as MessageEvent
           try {
             const parsed: unknown = JSON.parse(messageEvent.data)
@@ -396,6 +404,7 @@ export function useEventStream(
               const event = accept(rawEvent)
               if (event) accepted.push(event)
             }
+            if (accepted.length > 0) confirmAlive()
             append(accepted)
           } catch {
             // Silently ignore malformed batch frames
@@ -411,7 +420,7 @@ export function useEventStream(
         // control-frame listener below.
         eventSource.addEventListener('dropped', (e: Event) => {
           if (!isCurrent()) return
-          confirmAlive()
+          markAlive()
           const messageEvent = e as MessageEvent
           try {
             const data = JSON.parse(messageEvent.data)
@@ -435,6 +444,7 @@ export function useEventStream(
 
         // Also listen for error events from server
         eventSource.addEventListener('error', (e: Event) => {
+          if (!isCurrent()) return
           const messageEvent = e as MessageEvent
           if (messageEvent.data) {
             try {
