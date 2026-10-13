@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.builtins.ListSerializer
+import org.slf4j.LoggerFactory
 
 /**
  * Per-subscriber egress tuning for the SSE `/stream` chain (Plan 03, D-02/D-04/D-07).
@@ -78,15 +79,42 @@ const val DEFAULT_SSE_HEARTBEAT_SECONDS: Long = 15
 const val SECOND_MILLIS: Long = 1_000
 
 /**
+ * Longest `/stream` heartbeat interval the server will use. The SPA watchdog treats 45 s without
+ * a frame as a lost connection, so a longer interval would make it drop healthy, quiet streams.
+ */
+const val MAX_SSE_HEARTBEAT_SECONDS: Long = 30
+
+private val heartbeatLog = LoggerFactory.getLogger("com.jh.proj.coroutineviz.routes.SseHeartbeat")
+
+/**
  * Read the `/stream` keep-alive interval from `sse.heartbeatSeconds` (same `propertyOrNull`
  * idiom as [egressConfig]), falling back to [DEFAULT_SSE_HEARTBEAT_SECONDS].
  */
 fun Application.sseHeartbeatSeconds(): Long =
-    environment.config
-        .propertyOrNull("sse.heartbeatSeconds")
-        ?.getString()
-        ?.toLongOrNull()
-        ?: DEFAULT_SSE_HEARTBEAT_SECONDS
+    resolveSseHeartbeatSeconds(
+        environment.config
+            .propertyOrNull("sse.heartbeatSeconds")
+            ?.getString(),
+    )
+
+/**
+ * The configured heartbeat interval, kept within `1..`[MAX_SSE_HEARTBEAT_SECONDS]. A missing or
+ * unparseable value falls back to [DEFAULT_SSE_HEARTBEAT_SECONDS]; an out-of-range one is clamped
+ * with a warning rather than silently breaking the SPA's dead-connection detection.
+ */
+internal fun resolveSseHeartbeatSeconds(raw: String?): Long {
+    val configured = raw?.trim()?.toLongOrNull() ?: return DEFAULT_SSE_HEARTBEAT_SECONDS
+    val clamped = configured.coerceIn(1, MAX_SSE_HEARTBEAT_SECONDS)
+    if (clamped != configured) {
+        heartbeatLog.warn(
+            "sse.heartbeatSeconds={} is outside 1..{}; using {}",
+            configured,
+            MAX_SSE_HEARTBEAT_SECONDS,
+            clamped,
+        )
+    }
+    return clamped
+}
 
 /**
  * The `/stream` keep-alive frame: a NAMED event, because browser `EventSource` silently drops

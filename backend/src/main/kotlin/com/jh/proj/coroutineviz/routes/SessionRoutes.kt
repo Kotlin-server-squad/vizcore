@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicBoolean
 
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
 
@@ -204,7 +205,9 @@ fun Route.registerSessionRoutes() {
         val success =
             if (store != null) {
                 // Tenant-filtered delete: a cross-tenant id is a no-op (NotFound).
-                store.deleteSession(sessionId, call.resolveTenant())
+                store.deleteSession(sessionId, call.resolveTenant()).also { deleted ->
+                    if (deleted) SessionManager.notifySessionDeleted(sessionId)
+                }
             } else {
                 SessionManager.closeSession(sessionId)
             }
@@ -388,14 +391,34 @@ fun Route.registerSessionRoutes() {
                 // to browser EventSource listeners, so no frontend changes are required.
                 send(ServerSentEvent(comments = "connected"))
 
-                // History replay, then live events — see sessionSseFrames for the subscribe-before-
-                // snapshot ordering and the exactly-once watermark (#138).
-                sessionSseFrames(
-                    session = session,
-                    config = call.application.egressConfig(),
-                    heartbeatMillis = call.application.sseHeartbeatSeconds() * SECOND_MILLIS,
-                    onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
-                ).collect { frame -> send(frame) }
+                coroutineScope {
+                    // History replay, then live events — see sessionSseFrames for the subscribe-
+                    // before-snapshot ordering and the exactly-once watermark (#138).
+                    val frames =
+                        launch {
+                            sessionSseFrames(
+                                session = session,
+                                config = call.application.egressConfig(),
+                                heartbeatMillis = call.application.sseHeartbeatSeconds() * SECOND_MILLIS,
+                                onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
+                            ).collect { frame -> send(frame) }
+                        }
+                    // Without this the stream would keep sending heartbeats into a session that
+                    // no longer exists, and the SPA would show it as connected indefinitely
+                    // (same contract as the ingest socket).
+                    val removed = AtomicBoolean(false)
+                    val sessionRemoved =
+                        launch {
+                            awaitSessionRemoved(session)
+                            removed.set(true)
+                            frames.cancel()
+                        }
+                    frames.join()
+                    sessionRemoved.cancel()
+                    if (removed.get()) {
+                        send(ServerSentEvent(data = """{"error": "Session not found"}""", event = "error"))
+                    }
+                }
             } catch (e: CancellationException) {
                 // Normal client disconnect — Ktor cancels the handler. Rethrow to honor
                 // cooperative cancellation; the finally block still decrements the gauge.

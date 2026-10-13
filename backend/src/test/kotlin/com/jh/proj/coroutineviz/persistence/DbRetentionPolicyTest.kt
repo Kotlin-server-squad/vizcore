@@ -135,6 +135,37 @@ class DbRetentionPolicyTest {
     }
 
     @Test
+    fun `cleanup reports exactly the deleted sessions and survives a failing callback`() {
+        insertSession("old-1", createdAtMs = nowMs - 40 * dayMs)
+        insertSession("old-2", createdAtMs = nowMs - 41 * dayMs)
+        insertSession("shared", createdAtMs = nowMs - 42 * dayMs)
+        insertShare("tok", "shared", expiresAtMs = null)
+        insertSession("recent", createdAtMs = nowMs - dayMs)
+        repeat(3) { insertEvent("recent", it + 1L) }
+
+        val reported = mutableListOf<String>()
+        val removed =
+            DbRetentionPolicy(
+                db = db,
+                maxAgeDays = 30,
+                maxEventsPerSession = 1,
+                clock = { nowMs },
+                onSessionDeleted = { id ->
+                    reported += id
+                    error("listener failure")
+                },
+            ).cleanup()
+
+        assertEquals(2, removed)
+        // Every deleted session is reported even though each callback throws, and the
+        // protected and recent sessions are not.
+        assertEquals(setOf("old-1", "old-2"), reported.toSet())
+        assertEquals(2, reported.size)
+        // The event trim still ran after the failing callbacks.
+        assertEquals(1, eventCount("recent"))
+    }
+
+    @Test
     fun `cleanup trims a session beyond maxEventsPerSession to the cap (oldest first)`() {
         insertSession("s", createdAtMs = nowMs - dayMs)
         // 10 events, seq 1..10; cap at 4 → oldest 6 (seq 1..6) trimmed, seq 7..10 kept.

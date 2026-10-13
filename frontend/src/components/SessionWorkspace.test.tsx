@@ -921,11 +921,11 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
       coro('c-cancelled', 'CANCELLED'),
     ])
 
-    expect(screen.getByText('No live coroutines yet')).toBeInTheDocument()
+    expect(screen.getByText('Nothing running now')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Failed 2' }))
 
-    expect(screen.queryByText('No live coroutines yet')).not.toBeInTheDocument()
+    expect(screen.queryByText('Nothing running now')).not.toBeInTheDocument()
     expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
       'data-ids',
       'a-failed,b-failed'
@@ -1063,9 +1063,24 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
   })
 
-  it('shows the "No live coroutines yet" empty state when nothing is active', () => {
+  it('says everything finished, not "start your app", when only completed coroutines remain', () => {
     mountSession([coro('c-completed', 'COMPLETED')])
+    expect(screen.getByText('Nothing running now')).toBeInTheDocument()
+    expect(screen.getByText(/All 1 coroutines in this session have finished/)).toBeInTheDocument()
+    expect(screen.queryByText(/Start your instrumented app/)).not.toBeInTheDocument()
+  })
+
+  it('tells an app session with no coroutines to start the instrumented app', () => {
+    mountSession([], 'order-service-1791897636047')
     expect(screen.getByText('No live coroutines yet')).toBeInTheDocument()
+    expect(screen.getByText(/Start your instrumented app/)).toBeInTheDocument()
+  })
+
+  it('tells a demo session with no coroutines to run the scenario', () => {
+    mountSession([], 'scenario-order-processing-1791897636047')
+    expect(screen.getByText('No coroutines yet')).toBeInTheDocument()
+    expect(screen.getByText('Run the scenario to see its coroutines here.')).toBeInTheDocument()
+    expect(screen.queryByText(/Start your instrumented app/)).not.toBeInTheDocument()
   })
 })
 

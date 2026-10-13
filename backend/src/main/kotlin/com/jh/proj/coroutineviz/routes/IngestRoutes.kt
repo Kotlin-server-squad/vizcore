@@ -10,12 +10,11 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.json.decodeFromJsonElement
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicBoolean
 
 private val ingestLogger = LoggerFactory.getLogger("CoroutineVizIngest")
 
@@ -74,21 +73,22 @@ fun Route.registerIngestRoutes() {
         // `finally`, so it is exact on every exit path — normal close, client
         // disconnect, coroutine cancellation and an unexpected throw alike.
         session.ingestSocketOpened()
-        // Deleting a session closes it, which cancels its scope. An open socket would otherwise
-        // keep publishing into the detached session, where nobody can read the events, and the
-        // client would never learn it should recreate one. Close with the same "Session not
-        // found" the handshake uses, which the SDK treats as "create a fresh session".
+        // An open socket would otherwise keep publishing into a deleted session, where nobody
+        // can read the events, and the client would never learn it should recreate one. Close
+        // with the same "Session not found" the handshake uses, which the SDK treats as
+        // "create a fresh session".
+        val removed = AtomicBoolean(false)
         val sessionRemoved =
             launch {
-                session.sessionScope.coroutineContext.job
-                    .join()
+                awaitSessionRemoved(session)
+                removed.set(true)
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
             }
         try {
             for (frame in incoming) {
                 // Frames already queued when the session was deleted must not land in it;
                 // the watcher above is closing the socket.
-                if (!session.sessionScope.isActive) break
+                if (removed.get()) break
                 if (frame is Frame.Text) {
                     publishFrame(session, sessionId, frame.readText())
                 }

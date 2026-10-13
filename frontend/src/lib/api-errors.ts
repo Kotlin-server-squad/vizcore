@@ -123,11 +123,23 @@ export function describeApiError(error: unknown, subject = 'This resource'): Des
         retryable: false,
       }
     }
-    if (error.status === 401 || error.status === 403) {
+    if (error.status === 401) {
       return {
         kind: 'unauthorized',
         title: 'Sign-in required',
         message: 'This server requires you to sign in to see this.',
+        retryable: false,
+      }
+    }
+    // 403 is not "please sign in": the request was understood and refused. Besides
+    // missing access, a vizcore server answers it when the page's address is not in
+    // its allowed origins (cors.allowedOrigins).
+    if (error.status === 403) {
+      return {
+        kind: 'unauthorized',
+        title: 'Not allowed',
+        message:
+          'The vizcore server refused this request (HTTP 403). Your account may not have access, or the server does not accept requests from this page\'s address (cors.allowedOrigins).',
         retryable: false,
       }
     }

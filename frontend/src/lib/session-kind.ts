@@ -21,7 +21,12 @@ const VIZCORE_OWNED_ID = /^(scenario-|auto-\d+$|api-session-\d+$)/
  * Pure function so it is unit-testable in isolation.
  */
 export function deriveSessionKind(session: SessionInfo): 'live' | 'demo' {
-  return VIZCORE_OWNED_ID.test(session.sessionId) ? 'demo' : 'live'
+  return isDemoSessionId(session.sessionId) ? 'demo' : 'live'
+}
+
+/** Whether vizcore minted this session id for one of its own runs (see [deriveSessionKind]). */
+export function isDemoSessionId(sessionId: string): boolean {
+  return VIZCORE_OWNED_ID.test(sessionId)
 }
 
 /** Trailing `-<epoch millis>` the backend appends to a named session's id. */

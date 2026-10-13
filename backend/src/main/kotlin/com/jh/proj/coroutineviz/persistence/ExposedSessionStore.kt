@@ -86,17 +86,20 @@ class ExposedSessionStore(
     override fun getSession(
         sessionId: String,
         tenant: TenantContext,
-    ): VizSession? {
-        val exists =
-            transaction(db) {
-                SessionsTable
-                    .selectAll()
-                    .where { tenantPredicate(tenant) and (SessionsTable.id eq sessionId) }
-                    .limit(1)
-                    .any()
-            }
-        return if (exists) buildSession(sessionId) else null
-    }
+    ): VizSession? = if (sessionExists(sessionId, tenant)) buildSession(sessionId) else null
+
+    /** Whether the session's row exists, without rebuilding the session from its events. */
+    fun sessionExists(
+        sessionId: String,
+        tenant: TenantContext = TenantContext.Unscoped,
+    ): Boolean =
+        transaction(db) {
+            SessionsTable
+                .selectAll()
+                .where { tenantPredicate(tenant) and (SessionsTable.id eq sessionId) }
+                .limit(1)
+                .any()
+        }
 
     override fun listSessions(tenant: TenantContext): List<SessionInfo> =
         transaction(db) {

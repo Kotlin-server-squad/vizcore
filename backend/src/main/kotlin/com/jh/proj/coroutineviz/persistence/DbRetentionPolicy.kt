@@ -12,11 +12,13 @@ import org.jetbrains.exposed.v1.core.NotExists
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
@@ -48,6 +50,9 @@ import kotlin.time.Instant
  * injectable [clock] for deterministic tests.
  *
  * @property clock current time in epoch millis; override in tests.
+ * @property onSessionDeleted called with each deleted session's id after the delete commits, so
+ *   open streams and ingest sockets of those sessions are closed (the application passes
+ *   [com.jh.proj.coroutineviz.session.SessionManager.notifySessionDeleted]).
  */
 @OptIn(ExperimentalTime::class)
 class DbRetentionPolicy(
@@ -56,6 +61,7 @@ class DbRetentionPolicy(
     private val maxEventsPerSession: Int = 100_000,
     private val cleanupIntervalMinutes: Long = 60,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val onSessionDeleted: (String) -> Unit = {},
 ) {
     private val logger = LoggerFactory.getLogger(DbRetentionPolicy::class.java)
     private var job: Job? = null
@@ -114,14 +120,37 @@ class DbRetentionPolicy(
                                 (SharesTable.expiresAt.isNull() or (SharesTable.expiresAt greater now))
                         }
 
+                // The ids are read first so their streams can be closed afterwards. The delete
+                // repeats the full guard, so a share created in between still protects its
+                // session, and only the rows that are really gone are reported.
+                val candidates =
+                    SessionsTable
+                        .select(SessionsTable.id)
+                        .where { (SessionsTable.createdAt less cutoff) and NotExists(activeShareSubquery) }
+                        .map { it[SessionsTable.id] }
+                if (candidates.isEmpty()) return@transaction emptyList()
                 SessionsTable.deleteWhere {
-                    (SessionsTable.createdAt less cutoff) and NotExists(activeShareSubquery)
+                    (SessionsTable.id inList candidates) and
+                        (SessionsTable.createdAt less cutoff) and
+                        NotExists(activeShareSubquery)
                 }
+                val kept =
+                    SessionsTable
+                        .select(SessionsTable.id)
+                        .where { SessionsTable.id inList candidates }
+                        .map { it[SessionsTable.id] }
+                        .toSet()
+                candidates.filterNot { it in kept }
             }
+        // One failing listener must not stop the others, the event trim or the retention loop.
+        deletedSessions.forEach { sessionId ->
+            runCatching { onSessionDeleted(sessionId) }
+                .onFailure { e -> logger.warn("Session-deleted callback failed for {}", sessionId, e) }
+        }
 
         trimEvents()
 
-        return deletedSessions
+        return deletedSessions.size
     }
 
     /**

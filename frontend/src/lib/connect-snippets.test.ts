@@ -52,11 +52,12 @@ function sdkStartParams(): KotlinParam[] {
 
 /** Named arguments of the `VizcoreClient.start(...)` call in a snippet. */
 function snippetArgs(snippet: string): Map<string, string> {
-  const body = /VizcoreClient\.start\(([\s\S]*?)\n\)/.exec(snippet)
+  const body = /VizcoreClient\.start\(([\s\S]*?)\n\s*\)/.exec(snippet)
   if (!body) throw new Error('snippet has no VizcoreClient.start( … ) call')
   const args = new Map<string, string>()
   for (const raw of body[1]!.split('\n')) {
-    const line = raw.replace(/\/\/.*$/, '').trim().replace(/,$/, '')
+    // Drop a trailing `, // comment` only; `//` inside a string (an http:// URL) stays.
+    const line = raw.replace(/,\s*\/\/.*$/, ',').trim().replace(/,$/, '')
     if (!line) continue
     const m = /^(\w+)\s*=\s*(.+)$/.exec(line)
     if (!m) throw new Error(`positional or unparseable argument: ${raw}`)
@@ -111,6 +112,23 @@ describe('start snippet vs the SDK signature', () => {
     const pkg = /^package\s+([\w.]+)/m.exec(clientSource)![1]
     expect(SDK_CLIENT_FQN).toBe(`${pkg}.VizcoreClient`)
     expect(snippet).toContain(`import ${SDK_CLIENT_FQN}`)
+  })
+
+  it('is a complete file: the import at file level, the call inside a function', () => {
+    const lines = snippet.split('\n')
+    const importAt = lines.findIndex(l => l.startsWith('import '))
+    const mainAt = lines.findIndex(l => /^fun main\(\)\s*\{$/.test(l))
+    const callAt = lines.findIndex(l => l.includes('VizcoreClient.start('))
+    expect(importAt).toBe(0)
+    expect(mainAt).toBeGreaterThan(importAt)
+    expect(callAt).toBeGreaterThan(mainAt)
+    // Every statement after `fun main() {` is indented until its closing brace.
+    expect(lines.at(-1)).toBe('}')
+    for (const l of lines.slice(mainAt + 1, -1)) expect(l === '' || l.startsWith('    ')).toBe(true)
+  })
+
+  it('keeps the full backend URL when the parser reads it back', () => {
+    expect(snippetArgs(snippet).get('backendUrl')).toBe('"http://localhost:8080"')
   })
 
   it('uses the backend URL and correlation it was given, and escapes the app name', () => {

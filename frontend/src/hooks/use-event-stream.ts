@@ -183,12 +183,20 @@ export function useEventStream(
   // later without a common lock, so events can legitimately arrive out of
   // seq order — a watermark would silently drop them (REVIEW WR-13).
   const seenSeqsRef = useRef<Set<number>>(new Set())
+  // Highest seq accepted so far. Only an event above it counts as new data
+  // for the retry budget: once a long session's oldest seqs have left the
+  // bounded seen-set, its replay is accepted again but is not new.
+  const highestSeqRef = useRef(Number.NEGATIVE_INFINITY)
   // The current EventSource (reconnects replace it within one effect run).
   const eventSourceRef = useRef<EventSource | null>(null)
   // When the current connection attempt last showed signs of life (opened or
   // delivered any frame). Read by the heartbeat watchdog.
   const lastFrameAtRef = useRef(0)
   // True once the server has sent a heartbeat; until then the watchdog is idle.
+  // It is a property of the server, so it survives automatic reconnects: a
+  // replacement connection to a server known to send heartbeats that stays
+  // silent is dead. Only a new session or a manual reconnect() clears it, which
+  // is also how a server that stopped sending heartbeats mid-session recovers.
   const heartbeatSeenRef = useRef(false)
   // The heartbeat watchdog interval, cleared on teardown.
   const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -218,6 +226,7 @@ export function useEventStream(
     retryCountRef.current = 0
     heartbeatSeenRef.current = false
     seenSeqsRef.current = new Set()
+    highestSeqRef.current = Number.NEGATIVE_INFINITY
     lastRefreshAtRef.current = Number.NEGATIVE_INFINITY
     setEvents([])
     setDroppedCount(0)
@@ -288,8 +297,28 @@ export function useEventStream(
       return event
     }
 
+    // True when [event] is past everything accepted before (or carries no
+    // seq), so it can restore the retry budget. See highestSeqRef.
+    const advancesSeq = (event: VizEvent): boolean => {
+      const seq = (event as { seq?: unknown }).seq
+      if (typeof seq !== 'number') return true
+      if (seq <= highestSeqRef.current) return false
+      highestSeqRef.current = seq
+      return true
+    }
+
     const markAlive = () => {
       lastFrameAtRef.current = Date.now()
+    }
+
+    // NEW data or a heartbeat proves the connection really works, so it also
+    // restores the full retry budget. An open alone does not, and neither does
+    // the replay of already-seen history every connection starts with: either
+    // would reset the budget on every attempt and retry forever, never
+    // reaching "Connection lost". Other frames only feed the watchdog.
+    const confirmAlive = () => {
+      markAlive()
+      retryCountRef.current = 0
     }
 
     // Shared by a CLOSED EventSource and the heartbeat watchdog: drop the
@@ -322,18 +351,22 @@ export function useEventStream(
         const eventSource = apiClient.createEventSource(sessionId)
         eventSourceRef.current = eventSource
 
+        // Callbacks from a source that has since been replaced or closed must
+        // not touch the current connection's state.
+        const isCurrent = () => eventSourceRef.current === eventSource
+
         eventSource.onopen = () => {
+          if (!isCurrent()) return
           markAlive()
           setIsConnected(true)
           setError(null)
-          // A successful open restores the full retry budget.
-          retryCountRef.current = 0
         }
 
         eventSource.onerror = () => {
+          if (!isCurrent()) return
           setIsConnected(false)
 
-          if (eventSourceRef.current?.readyState === EVENTSOURCE_CLOSED) {
+          if (eventSource.readyState === EVENTSOURCE_CLOSED) {
             // FATAL: per the EventSource spec, CLOSED is the terminal state
             // after a non-200 response — the browser will not reconnect on
             // its own (exactly the UAT gap 2 failure mode).
@@ -349,11 +382,15 @@ export function useEventStream(
         // from the shared kind constants) plus the legacy kebab-case names.
         SSE_EVENT_TYPES.forEach(eventType => {
           eventSource.addEventListener(eventType, (e: Event) => {
+            if (!isCurrent()) return
             markAlive()
             const messageEvent = e as MessageEvent
             try {
               const event = accept(JSON.parse(messageEvent.data), eventType)
-              if (event) append([event])
+              if (event) {
+                if (advancesSeq(event)) confirmAlive()
+                append([event])
+              }
             } catch {
               // Silently ignore malformed events
             }
@@ -369,6 +406,7 @@ export function useEventStream(
         // single state update (#137). A malformed/non-array frame is skipped
         // by the try/catch so one bad frame cannot kill the listener (T-10-14).
         eventSource.addEventListener('batch', (e: Event) => {
+          if (!isCurrent()) return
           markAlive()
           const messageEvent = e as MessageEvent
           try {
@@ -377,10 +415,15 @@ export function useEventStream(
               return
             }
             const accepted: VizEvent[] = []
+            let advanced = false
             for (const rawEvent of parsed) {
               const event = accept(rawEvent)
-              if (event) accepted.push(event)
+              if (event) {
+                accepted.push(event)
+                if (advancesSeq(event)) advanced = true
+              }
             }
+            if (advanced) confirmAlive()
             append(accepted)
           } catch {
             // Silently ignore malformed batch frames
@@ -395,6 +438,7 @@ export function useEventStream(
         // it would render as a phantom node (T-10-13). Mirrors the `error`
         // control-frame listener below.
         eventSource.addEventListener('dropped', (e: Event) => {
+          if (!isCurrent()) return
           markAlive()
           const messageEvent = e as MessageEvent
           try {
@@ -412,17 +456,34 @@ export function useEventStream(
         // watchdog on first sight and resets its silence window. Like
         // `dropped`, it never routes through accept/append.
         eventSource.addEventListener('heartbeat', () => {
+          if (!isCurrent()) return
           heartbeatSeenRef.current = true
-          markAlive()
+          confirmAlive()
         })
 
         // Also listen for error events from server
         eventSource.addEventListener('error', (e: Event) => {
+          if (!isCurrent()) return
           const messageEvent = e as MessageEvent
           if (messageEvent.data) {
             try {
               const errorData = JSON.parse(messageEvent.data)
-              setError(errorData.error || 'Unknown error')
+              const message: string = errorData.error || 'Unknown error'
+              if (/not found/i.test(message)) {
+                // Final: the server no longer has this session (in-memory
+                // sessions are gone after a restart). The stream answers with
+                // this frame and closes, so without stopping here the browser's
+                // own EventSource reconnect asks again every few seconds forever
+                // and each answer is overwritten by "Connection lost". Refetch
+                // the session so the workspace shows its not-found state.
+                eventSource.close()
+                eventSourceRef.current = null
+                setIsConnected(false)
+                setError('Session not found')
+                void queryClient.invalidateQueries({ queryKey: ['sessions', sessionId], exact: true })
+                return
+              }
+              setError(message)
             } catch {
               // ignore
             }
