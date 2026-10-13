@@ -3,13 +3,60 @@ name: Deploy
 on:
   push:
     branches: [main]
+    # A release tag also publishes images tagged with it (TAG=v1.2.0 in docs/DEPLOYMENT.md).
+    tags: ['v*']
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
+  JAVA_VERSION: '21'
+  NODE_VERSION: '24'
+  PNPM_VERSION: '9'
 
 jobs:
+  # Images are only published from a commit whose checks pass: the same lint and tests as
+  # ci-backend.yml and ci-frontend.yml run here first, and both image jobs need them.
+  verify-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - run: chmod +x gradlew
+      - run: ./gradlew ktlintCheck detekt test
+
+  verify-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: npx tsc --noEmit
+      - run: pnpm test
+
   build-backend:
+    needs: [verify-backend, verify-frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,11 +67,25 @@ jobs:
       # A GHCR reference must be lowercase, but github.repository keeps the owner's casing
       # ("Kotlin-server-squad/vizcore"), so interpolating it straight into a tag produces an
       # invalid reference and the push fails. Lowercase it once here instead.
-      - name: Resolve the lowercase image name
+      - name: Resolve the lowercase image name and its tags
         id: image
         env:
           REPOSITORY: ${{ github.repository }}
-        run: echo "name=${REGISTRY}/${REPOSITORY,,}/backend" >> "$GITHUB_OUTPUT"
+        run: |
+          name="${REGISTRY}/${REPOSITORY,,}/backend"
+          # Every image carries its commit SHA; main also moves `latest`, a v* tag adds itself.
+          tags="${name}:${GITHUB_SHA}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tags+=$'\n'"${name}:${GITHUB_REF_NAME}"
+          elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            tags+=$'\n'"${name}:latest"
+          fi
+          {
+            echo "name=${name}"
+            echo "tags<<TAGS"
+            echo "$tags"
+            echo "TAGS"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v4
         with:
@@ -39,11 +100,10 @@ jobs:
           context: .
           file: backend/Dockerfile
           push: true
-          tags: |
-            ${{ steps.image.outputs.name }}:latest
-            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          tags: ${{ steps.image.outputs.tags }}
 
   build-frontend:
+    needs: [verify-backend, verify-frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,11 +111,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Resolve the lowercase image name
+      - name: Resolve the lowercase image name and its tags
         id: image
         env:
           REPOSITORY: ${{ github.repository }}
-        run: echo "name=${REGISTRY}/${REPOSITORY,,}/frontend" >> "$GITHUB_OUTPUT"
+        run: |
+          name="${REGISTRY}/${REPOSITORY,,}/frontend"
+          # Every image carries its commit SHA; main also moves `latest`, a v* tag adds itself.
+          tags="${name}:${GITHUB_SHA}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tags+=$'\n'"${name}:${GITHUB_REF_NAME}"
+          elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            tags+=$'\n'"${name}:latest"
+          fi
+          {
+            echo "name=${name}"
+            echo "tags<<TAGS"
+            echo "$tags"
+            echo "TAGS"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v4
         with:
@@ -71,6 +145,4 @@ jobs:
           file: frontend/Dockerfile
           target: production
           push: true
-          tags: |
-            ${{ steps.image.outputs.name }}:latest
-            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          tags: ${{ steps.image.outputs.tags }}

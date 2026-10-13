@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.1.0"
+version = "0.2.0"
 
 dependencies {
     // The embeddable client reuses core for VizEvent types + the shared appJson
@@ -65,7 +65,7 @@ java {
 }
 
 // Maven publishing configuration — mirrors coroutine-viz-core's already-working
-// block (D-02). The locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.1.0
+// block (D-02). The locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.2.0
 // MUST match frontend/src/lib/dep-snippet.ts verbatim (the ConnectWizard snippet).
 publishing {
     publications {
@@ -79,7 +79,7 @@ publishing {
             pom {
                 name.set("Coroutine Viz Client")
                 description.set("Embeddable client library for streaming coroutine events to a vizcore backend")
-                url.set("https://github.com/hermanngeorge15/visualizer-for-coroutines")
+                url.set("https://github.com/Kotlin-server-squad/vizcore")
                 licenses {
                     license {
                         name.set("MIT License")
@@ -92,7 +92,7 @@ publishing {
     repositories {
         maven {
             name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/hermanngeorge15/visualizer-for-coroutines")
+            url = uri("https://maven.pkg.github.com/Kotlin-server-squad/vizcore")
             credentials {
                 username = System.getenv("GITHUB_ACTOR") ?: ""
                 password = System.getenv("GITHUB_TOKEN") ?: ""

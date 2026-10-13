@@ -35,10 +35,13 @@ BACKEND_PORT=18081 FRONTEND_PORT=13001 docker compose up -d
 ```
 
 `.github/workflows/deploy.yml` publishes both images to the repository's GHCR namespace on
-every push to `main`:
+every push to `main` and on every `v*` release tag, once the backend and frontend lint and
+tests pass:
 
-- `ghcr.io/kotlin-server-squad/vizcore/backend:{latest,<sha>}`
-- `ghcr.io/kotlin-server-squad/vizcore/frontend:{latest,<sha>}`
+- `ghcr.io/kotlin-server-squad/vizcore/backend:{latest,<sha>,<tag>}`
+- `ghcr.io/kotlin-server-squad/vizcore/frontend:{latest,<sha>,<tag>}`
+
+`latest` follows `main`; a release tag such as `v1.2.0` is published under that exact name.
 
 Authenticate before pulling them:
 

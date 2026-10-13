@@ -10,7 +10,7 @@
  */
 
 /** Released SDK version. The ONE place the wizard's version string comes from. */
-export const SDK_VERSION = '0.1.0'
+export const SDK_VERSION = '0.2.0'
 
 /** Maven coordinates (mirror `coroutine-viz-client/build.gradle.kts` publishing). */
 export const SDK_GROUP = 'com.jh.coroutine-visualizer'
@@ -18,7 +18,7 @@ export const SDK_ARTIFACT = 'coroutine-viz-client'
 
 /** The GitHub Packages repository the SDK is published to. */
 export const SDK_REPOSITORY_URL =
-  'https://maven.pkg.github.com/hermanngeorge15/visualizer-for-coroutines'
+  'https://maven.pkg.github.com/Kotlin-server-squad/vizcore'
 
 /** Fully qualified name of the SDK entry point. */
 export const SDK_CLIENT_FQN = 'com.jh.proj.coroutineviz.client.VizcoreClient'
