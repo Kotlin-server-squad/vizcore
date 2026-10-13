@@ -4,13 +4,10 @@ on:
   # Called by release.yml on a v* tag, BEFORE the GitHub Release is created, so a release
   # never exists without its SDK. (A `release: published` trigger never fired: release.yml
   # creates the Release with GITHUB_TOKEN, and events made with that token start no workflows.)
+  # The published version is always the one in build.gradle.kts: Gradle sets it while
+  # configuring the build, so a -Pversion override would never reach the artifacts.
   workflow_call:
   workflow_dispatch:
-    inputs:
-      version_override:
-        description: 'Version override (leave empty to use build.gradle.kts version)'
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -47,27 +44,18 @@ jobs:
 
       - name: Resolve publish version
         id: version
-        env:
-          # Route workflow_dispatch / release inputs through env (shell variables,
-          # NOT textual ${{ }} substitution into the run: line) to avoid GitHub
-          # Actions script injection from untrusted version_override input.
-          VERSION_OVERRIDE: ${{ inputs.version_override }}
         run: |
           # The SDK is versioned on its own (0.x), not by the app's release tag (v1.x):
           # the version in build.gradle.kts is the one the connect wizard pins.
-          if [[ -n "$VERSION_OVERRIDE" ]]; then
-            VERSION="$VERSION_OVERRIDE"
-          else
-            VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' coroutine-viz-core/build.gradle.kts | head -1)
-            CLIENT_VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' coroutine-viz-client/build.gradle.kts | head -1)
-            if [[ "$VERSION" != "$CLIENT_VERSION" ]]; then
-              echo "error: core ($VERSION) and client ($CLIENT_VERSION) versions differ" >&2
-              exit 1
-            fi
+          VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' coroutine-viz-core/build.gradle.kts | head -1)
+          CLIENT_VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' coroutine-viz-client/build.gradle.kts | head -1)
+          if [[ "$VERSION" != "$CLIENT_VERSION" ]]; then
+            echo "error: core ($VERSION) and client ($CLIENT_VERSION) versions differ" >&2
+            exit 1
           fi
-          # Guard the resolved version against a sane semver-ish shape before it
-          # ever reaches a publish coordinate.
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          # The whole string must be a version, so nothing else can reach a publish
+          # coordinate or a later step.
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "error: resolved version '$VERSION' is not a valid semantic version" >&2
             exit 1
           fi
@@ -106,24 +94,25 @@ jobs:
       - name: Publish to GitHub Packages
         if: steps.exists.outputs.tasks != ''
         env:
-          PUBLISH_VERSION: ${{ steps.version.outputs.VERSION }}
           PUBLISH_TASKS: ${{ steps.exists.outputs.tasks }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
           read -ra TASKS <<< "$PUBLISH_TASKS"
-          ./gradlew "${TASKS[@]}" -Pversion="$PUBLISH_VERSION"
+          ./gradlew "${TASKS[@]}"
 
       - name: Summary
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           echo "### Published coroutine-viz-core + coroutine-viz-client" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Version:** ${{ steps.version.outputs.VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Registry:** GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Group:** com.jh.coroutine-visualizer" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Artifacts:** coroutine-viz-core, coroutine-viz-client" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo '```kotlin' >> "$GITHUB_STEP_SUMMARY"
-          echo "implementation(\"com.jh.coroutine-visualizer:coroutine-viz-core:${{ steps.version.outputs.VERSION }}\")" >> "$GITHUB_STEP_SUMMARY"
-          echo "implementation(\"com.jh.coroutine-visualizer:coroutine-viz-client:${{ steps.version.outputs.VERSION }}\")" >> "$GITHUB_STEP_SUMMARY"
+          echo "implementation(\"com.jh.coroutine-visualizer:coroutine-viz-core:${VERSION}\")" >> "$GITHUB_STEP_SUMMARY"
+          echo "implementation(\"com.jh.coroutine-visualizer:coroutine-viz-client:${VERSION}\")" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
