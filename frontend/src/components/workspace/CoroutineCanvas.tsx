@@ -18,6 +18,8 @@ interface CoroutineCanvasProps {
   moreCount: number
   /** Which chip the state bar has active — decides which empty state is honest. */
   stateFilter: StateFilter
+  /** A vizcore demo run, not the user's app: its empty state says to run the scenario. */
+  isDemo?: boolean
   selectedCoroutineId: string | null
   /** Undefined makes the canvas non-interactive (replay / read-only shared, PD-01). */
   onSelect?: (id: string) => void
@@ -41,6 +43,7 @@ export function CoroutineCanvas({
   onToggleCompleted,
   moreCount,
   stateFilter,
+  isDemo = false,
   selectedCoroutineId,
   onSelect,
   panelRef,
@@ -68,10 +71,24 @@ export function CoroutineCanvas({
           "no app connected" empty state. */}
       {coroutines.length === 0 ? (
         stateFilter === 'all' ? (
-          <EmptyState
-            title="No live coroutines yet"
-            description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
-          />
+          // Say what is actually true: everything finished, a demo not run yet,
+          // or an app that has not sent anything yet.
+          completedCount > 0 ? (
+            <EmptyState
+              title="Nothing running now"
+              description={`All ${completedCount} coroutines in this session have finished. Use "Show completed" to see them.`}
+            />
+          ) : isDemo ? (
+            <EmptyState
+              title="No coroutines yet"
+              description="Run the scenario to see its coroutines here."
+            />
+          ) : (
+            <EmptyState
+              title="No live coroutines yet"
+              description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
+            />
+          )
         ) : (
           <EmptyState
             title={`No ${stateFilter} coroutines`}

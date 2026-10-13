@@ -38,6 +38,7 @@ import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
 import type { ThreadActivity } from '@/types/api'
 import { CoroutineState } from '@/types/api'
+import { isDemoSessionId } from '@/lib/session-kind'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -412,6 +413,7 @@ export function SessionWorkspace({
               onToggleCompleted={() => setShowCompleted(prev => !prev)}
               moreCount={moreCount}
               stateFilter={stateFilter}
+              isDemo={hasScenario || isDemoSessionId(sessionId)}
               selectedCoroutineId={selectedCoroutineId}
               // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
               // view stay presentational, with no added interactivity.

@@ -8,6 +8,16 @@ afterEach(() => {
 })
 
 describe('ErrorState (#139)', () => {
+  it('tells a refused request (403) apart from a missing sign-in (401)', () => {
+    const { rerender } = render(<ErrorState error={new ApiError(401, 'unauthorized')} subject="This session" />)
+    expect(screen.getByText('Sign-in required')).toBeInTheDocument()
+
+    rerender(<ErrorState error={new ApiError(403, 'forbidden')} subject="This session" />)
+    expect(screen.getByText('Not allowed')).toBeInTheDocument()
+    expect(screen.queryByText('Sign-in required')).not.toBeInTheDocument()
+    expect(screen.getByText(/refused this request \(HTTP 403\)/)).toBeInTheDocument()
+  })
+
   it('retries a rate-limited read by itself once Retry-After has passed', () => {
     vi.useFakeTimers()
     const onRetry = vi.fn()
