@@ -315,8 +315,9 @@ describe('SessionWorkspace', () => {
       wrapper: createWrapper(),
     })
 
-    expect(screen.getByText('Session Details')).toBeInTheDocument()
-    expect(screen.getByText('session-abc')).toBeInTheDocument()
+    // The heading names the session, not a generic "Session Details" (#145).
+    expect(screen.getByRole('heading', { name: 'session-abc' })).toBeInTheDocument()
+    expect(screen.queryByText('Session Details')).not.toBeInTheDocument()
     expect(screen.getByText('5 coroutines')).toBeInTheDocument()
     expect(screen.getByText('42 events')).toBeInTheDocument()
   })
@@ -1105,6 +1106,20 @@ describe('SessionWorkspace — the tabs are retired (spec: where the eight tabs 
     expect(screen.getByRole('button', { name: /^events \(/i })).toBeInTheDocument()
     expect(screen.getByText('Select a coroutine to inspect it')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Evidence' })).toBeInTheDocument()
+  })
+
+  it('never invites a selection that cannot work: replay and shared views say why (#145)', async () => {
+    const { unmount } = render(<SessionWorkspace sessionId="session-1" readOnly />, {
+      wrapper: createWrapper(),
+    })
+    expect(screen.queryByText('Select a coroutine to inspect it')).not.toBeInTheDocument()
+    expect(screen.getByText(/not included in a shared link/i)).toBeInTheDocument()
+    unmount()
+
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    expect(screen.queryByText('Select a coroutine to inspect it')).not.toBeInTheDocument()
+    expect(screen.getByText(/paused during replay/i)).toBeInTheDocument()
   })
 
   it('keeps the thread lanes reachable in replay', async () => {

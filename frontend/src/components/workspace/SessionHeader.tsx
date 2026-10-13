@@ -11,6 +11,7 @@ import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiShare2, FiCheckSqu
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCapabilities } from '@/hooks/use-capabilities'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
+import { sessionDisplayName } from '@/lib/session-kind'
 import { ExportMenu } from '../export/ExportMenu'
 import type { SessionSnapshot, VizEvent } from '@/types/api'
 
@@ -94,12 +95,11 @@ export function SessionHeader({
       <CardHeader className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Session Details</h1>
-            {hasScenario && scenarioName && (
-              <Chip color="primary" variant="bordered" size="lg">
-                {scenarioName}
-              </Chip>
-            )}
+            {/* Whose session this is (#145): the scenario's name, or the app
+                name the session id was minted from — not a generic label. */}
+            <h1 className="text-2xl font-bold">
+              {hasScenario && scenarioName ? scenarioName : sessionDisplayName(sessionId)}
+            </h1>
           </div>
           <div className="flex items-center gap-2">
             <p className="font-mono text-sm text-default-500">{sessionId}</p>

@@ -57,9 +57,10 @@ describe('WorkspaceBody', () => {
       />,
     )
 
-    // LivePill (driven by streamEnabled) shows in the dock header.
+    // LivePill (driven by streamEnabled) shows in the dock header, without the
+    // invented "~150ms poll" sub-label (#145).
     expect(screen.getByText('LIVE')).toBeInTheDocument()
-    expect(screen.getByText('~150ms poll')).toBeInTheDocument()
+    expect(screen.queryByText(/150ms/)).not.toBeInTheDocument()
 
     // The reflowed SessionMetrics tiles (un-buried from the Threads tab).
     expect(screen.getByText('Active')).toBeInTheDocument()

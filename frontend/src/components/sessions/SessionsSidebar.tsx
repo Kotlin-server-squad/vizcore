@@ -9,13 +9,13 @@ import { SessionRow } from './SessionRow'
 /**
  * The badged sessions-sidebar-as-home (Phase 08.5, Surface 003 winner C).
  *
- * One grouped, badged list: a "Live apps" group then a "Demo scenarios" group,
- * each row carrying an unmistakable LIVE/DEMO badge (PD-10). A primary `+ Connect`
+ * One grouped, badged list: a "Your apps" group then a "Demo scenarios" group,
+ * each row carrying an unmistakable APP/DEMO badge (PD-10, #145). A primary `+ Connect`
  * action opens the 3-step connect wizard (wired by the route via `onConnect`).
  * When the whole list is empty the "No app connected" empty state folds INLINE
  * into the list region (not a standalone screen, UI-SPEC line 145) with both CTAs.
  *
- * Reuses the shipped `useSessions` hook + `LivePill`. Literal Tailwind only (IN-12).
+ * Reuses the shipped `useSessions` hook. Literal Tailwind only (IN-12).
  */
 export function SessionsSidebar({
   onConnect,
@@ -112,7 +112,7 @@ export function SessionsSidebar({
           <div className="flex flex-col gap-4">
             {live.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className="text-xs uppercase tracking-wide text-default-400">Live apps</span>
+                <span className="text-xs uppercase tracking-wide text-default-400">Your apps</span>
                 {live.map(session => (
                   <SessionRow
                     key={session.sessionId}

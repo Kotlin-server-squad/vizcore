@@ -8,6 +8,8 @@ interface WorkspaceBodyProps {
   sessionId: string
   /** Drives the LivePill. */
   streamEnabled: boolean
+  /** Whether the SSE stream is open — LIVE is only claimed when it is (#145). */
+  isConnected?: boolean
   /**
    * Read-only shared view (T-08-08): the shared shell carries no Bearer, so the
    * protected /metrics fetch/poll must be disabled. Forwarded as `!readOnly` to
@@ -60,6 +62,7 @@ interface WorkspaceBodyProps {
 export function WorkspaceBody({
   sessionId,
   streamEnabled,
+  isConnected = true,
   readOnly,
   showMetrics,
   liveList,
@@ -75,7 +78,7 @@ export function WorkspaceBody({
       {/* Header strip: LIVE/DEMO pill + tiles-only metric strip (PD-04a). */}
       {showMetrics && (
         <div className="flex items-center justify-between gap-4 p-6">
-          <LivePill streamEnabled={streamEnabled} />
+          <LivePill streamEnabled={streamEnabled} connected={isConnected} />
           <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
         </div>
       )}

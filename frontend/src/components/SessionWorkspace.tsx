@@ -146,7 +146,7 @@ export function SessionWorkspace({
   // In read-only mode the protected /threads fetch is disabled — the shared
   // shell has no Bearer; thread lanes are derived from the shared events below.
   const { data: threadActivity } = useThreadActivity(sessionId, fallbackPollMs, !readOnly)
-  const eventCategories = useEventCategories(sessionId)
+  const eventCategories = useEventCategories(sessionId, streamEnabled ? liveEvents : undefined)
   // Which rung this session is on (D-6), and the leak set behind the leak chip.
   const rung = useMemo(
     () => deriveRung(sessionId, eventCategories),
@@ -396,6 +396,7 @@ export function SessionWorkspace({
       <WorkspaceBody
         sessionId={sessionId}
         streamEnabled={streamEnabled}
+        isConnected={isConnected}
         readOnly={readOnly}
         // The metric strip is live-only: in replay it would report current
         // numbers over a frozen view, and the shared shell has no Bearer for
@@ -427,6 +428,15 @@ export function SessionWorkspace({
             sessionId={sessionId}
             coroutine={isLiveView ? selectedCoroutine : null}
             readOnly={readOnly}
+            // Selection is live-only, so outside the live view the inspector
+            // must not invite a click that cannot work (#145).
+            placeholder={
+              replayActive
+                ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
+                : readOnly
+                  ? 'Coroutine details are not included in a shared link.'
+                  : undefined
+            }
             threadActivity={panelThreadActivity}
           />
         }

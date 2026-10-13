@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { SessionInfo } from '@/types/api'
-import { deriveSessionKind } from '@/lib/session-kind'
+import { deriveSessionKind, sessionDisplayName } from '@/lib/session-kind'
 import { SessionsSidebar } from './SessionsSidebar'
 import { ApiError, NetworkError, RateLimitedError } from '@/lib/api-errors'
 
@@ -35,28 +35,43 @@ describe('deriveSessionKind', () => {
     expect(deriveSessionKind({ sessionId: 'order-service-7', coroutineCount: 1 })).toBe('live')
   })
 
+  it('classifies vizcore-owned scenario-runner sessions (auto-*, api-session-*) as demo', () => {
+    expect(deriveSessionKind({ sessionId: 'auto-1728383000000', coroutineCount: 4 })).toBe('demo')
+    expect(deriveSessionKind({ sessionId: 'api-session-1728383000000', coroutineCount: 4 })).toBe('demo')
+    // ...but an app that merely starts with "auto" is still the user's app.
+    expect(deriveSessionKind({ sessionId: 'autoscaler-1728383000000', coroutineCount: 1 })).toBe('live')
+  })
+
   it('defaults unknown/ambiguous sessions to live', () => {
     expect(deriveSessionKind({ sessionId: '', coroutineCount: 0 })).toBe('live')
   })
 })
 
 describe('SessionsSidebar', () => {
-  it('renders a LIVE pill for a live session and a DEMO chip for a scenario session', () => {
+  it('badges an app session APP and a scenario session DEMO — never an unverified LIVE (#145)', () => {
     useSessionsMock.mockReturnValue({ data: [liveSession, demoSession], isLoading: false })
     render(<SessionsSidebar onConnect={vi.fn()} />)
 
-    // The live session carries the LIVE pill (reused LivePill → "LIVE" + poll sub-label).
-    expect(screen.getByText('LIVE')).toBeInTheDocument()
-    expect(screen.getByText('~150ms poll')).toBeInTheDocument()
-    // The scenario session carries the neutral DEMO chip.
+    // SessionInfo carries no liveness, so no row may claim LIVE.
+    expect(screen.queryByText('LIVE')).not.toBeInTheDocument()
+    expect(screen.queryByText(/150ms/)).not.toBeInTheDocument()
+    expect(screen.getByText('APP')).toBeInTheDocument()
     expect(screen.getByText('DEMO')).toBeInTheDocument()
+  })
+
+  it('labels the count as coroutines, not "active" — it includes finished ones (#145)', () => {
+    useSessionsMock.mockReturnValue({ data: [liveSession], isLoading: false })
+    render(<SessionsSidebar onConnect={vi.fn()} />)
+
+    expect(screen.getByText(/3 coroutines/)).toBeInTheDocument()
+    expect(screen.queryByText(/active/)).not.toBeInTheDocument()
   })
 
   it('renders both group headers when both kinds exist', () => {
     useSessionsMock.mockReturnValue({ data: [liveSession, demoSession], isLoading: false })
     render(<SessionsSidebar onConnect={vi.fn()} />)
 
-    expect(screen.getByText('Live apps')).toBeInTheDocument()
+    expect(screen.getByText('Your apps')).toBeInTheDocument()
     expect(screen.getByText('Demo scenarios')).toBeInTheDocument()
   })
 
@@ -138,5 +153,14 @@ describe('SessionsSidebar - failed loads are not an empty list (#139)', () => {
 
     expect(screen.getByText('order-service-1')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+describe('sessionDisplayName (#145)', () => {
+  it('names a session after the app or scenario it was minted from', () => {
+    expect(sessionDisplayName('order-service-1728383000000')).toBe('order-service')
+    expect(sessionDisplayName('scenario-Nested-Coroutines-1728383000000')).toBe('Nested Coroutines')
+    expect(sessionDisplayName('auto-1728383000000')).toBe('Scenario run')
+    expect(sessionDisplayName('custom-id')).toBe('custom-id')
   })
 })

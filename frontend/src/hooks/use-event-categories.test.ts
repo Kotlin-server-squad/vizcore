@@ -228,4 +228,15 @@ describe('useEventCategories', () => {
 
     expect(result.current.hasJobs).toBe(true)
   })
+
+  it('also scans live-streamed events, so a wrapper used after page load is noticed (#145)', async () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([makeEvent('CoroutineCreated', 1)])
+
+    const live = [makeEvent('MutexLockRequested', 2)]
+    const { result } = renderHook(() => useEventCategories('session-1', live), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.hasSyncPrimitives).toBe(true))
+  })
 })

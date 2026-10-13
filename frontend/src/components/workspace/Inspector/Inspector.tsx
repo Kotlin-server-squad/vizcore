@@ -15,7 +15,9 @@ interface InspectorProps {
   /**
    * Read-only shared view: the shell carries no Bearer, so every
    * timeline-backed card is omitted rather than rendered against a 401.
-   * Identity needs no fetch, so it is what remains.
+   * Identity needs no fetch, so it is what remains. The workspace does not
+   * offer selection in the shared view (PD-01) and passes a `placeholder`
+   * saying so; this guard stays as a no-protected-fetch guarantee.
    */
   readOnly: boolean
   /**
@@ -24,6 +26,8 @@ interface InspectorProps {
    * read-only shared view where the protected /threads fetch is disabled.
    */
   threadActivity?: ThreadActivity
+  /** What to say while nothing is selected (e.g. why selection is unavailable). */
+  placeholder?: string
 }
 
 /**
@@ -43,6 +47,7 @@ export function Inspector({
   coroutine,
   readOnly,
   threadActivity,
+  placeholder = 'Select a coroutine to inspect it',
 }: InspectorProps) {
   const showTimeline = !!coroutine && !readOnly
   const { data: timeline, refetch: refetchTimeline } = useCoroutineTimeline(
@@ -77,7 +82,7 @@ export function Inspector({
   if (!coroutine) {
     return (
       <div className="text-sm text-default-400">
-        Select a coroutine to inspect it
+        {placeholder}
       </div>
     )
   }
