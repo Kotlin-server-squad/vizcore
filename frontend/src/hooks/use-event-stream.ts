@@ -292,6 +292,15 @@ export function useEventStream(
       lastFrameAtRef.current = Date.now()
     }
 
+    // A frame from the server proves the connection really works, so it also
+    // restores the full retry budget. An open alone does not: a connection
+    // that opens and then stays silent would otherwise reset the budget on
+    // every attempt and retry forever, never reaching "Connection lost".
+    const confirmAlive = () => {
+      markAlive()
+      retryCountRef.current = 0
+    }
+
     // Shared by a CLOSED EventSource and the heartbeat watchdog: drop the
     // source and retry ourselves with bounded exponential backoff.
     const failAndRetry = () => {
@@ -322,18 +331,22 @@ export function useEventStream(
         const eventSource = apiClient.createEventSource(sessionId)
         eventSourceRef.current = eventSource
 
+        // Callbacks from a source that has since been replaced or closed must
+        // not touch the current connection's state.
+        const isCurrent = () => eventSourceRef.current === eventSource
+
         eventSource.onopen = () => {
+          if (!isCurrent()) return
           markAlive()
           setIsConnected(true)
           setError(null)
-          // A successful open restores the full retry budget.
-          retryCountRef.current = 0
         }
 
         eventSource.onerror = () => {
+          if (!isCurrent()) return
           setIsConnected(false)
 
-          if (eventSourceRef.current?.readyState === EVENTSOURCE_CLOSED) {
+          if (eventSource.readyState === EVENTSOURCE_CLOSED) {
             // FATAL: per the EventSource spec, CLOSED is the terminal state
             // after a non-200 response — the browser will not reconnect on
             // its own (exactly the UAT gap 2 failure mode).
@@ -349,7 +362,8 @@ export function useEventStream(
         // from the shared kind constants) plus the legacy kebab-case names.
         SSE_EVENT_TYPES.forEach(eventType => {
           eventSource.addEventListener(eventType, (e: Event) => {
-            markAlive()
+            if (!isCurrent()) return
+            confirmAlive()
             const messageEvent = e as MessageEvent
             try {
               const event = accept(JSON.parse(messageEvent.data), eventType)
@@ -369,7 +383,8 @@ export function useEventStream(
         // single state update (#137). A malformed/non-array frame is skipped
         // by the try/catch so one bad frame cannot kill the listener (T-10-14).
         eventSource.addEventListener('batch', (e: Event) => {
-          markAlive()
+          if (!isCurrent()) return
+          confirmAlive()
           const messageEvent = e as MessageEvent
           try {
             const parsed: unknown = JSON.parse(messageEvent.data)
@@ -395,7 +410,8 @@ export function useEventStream(
         // it would render as a phantom node (T-10-13). Mirrors the `error`
         // control-frame listener below.
         eventSource.addEventListener('dropped', (e: Event) => {
-          markAlive()
+          if (!isCurrent()) return
+          confirmAlive()
           const messageEvent = e as MessageEvent
           try {
             const data = JSON.parse(messageEvent.data)
@@ -412,8 +428,9 @@ export function useEventStream(
         // watchdog on first sight and resets its silence window. Like
         // `dropped`, it never routes through accept/append.
         eventSource.addEventListener('heartbeat', () => {
+          if (!isCurrent()) return
           heartbeatSeenRef.current = true
-          markAlive()
+          confirmAlive()
         })
 
         // Also listen for error events from server

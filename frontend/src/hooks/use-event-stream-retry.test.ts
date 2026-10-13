@@ -162,7 +162,7 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
     expect(result.current.error).toBe('Connection lost')
   })
 
-  it('a successful open resets the retry budget', () => {
+  it('a reconnect that delivers a frame resets the retry budget', () => {
     const { result } = renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),
     })
@@ -175,9 +175,10 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
     })
     expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(2)
 
-    // The reconnect succeeds — budget restored
+    // The reconnect succeeds and the server sends a frame — budget restored
     act(() => {
       latest().onopen?.()
+      latest().simulateEvent('heartbeat', '{"ts":1}')
     })
     expect(result.current.isConnected).toBe(true)
     expect(result.current.error).toBeNull()
@@ -190,6 +191,56 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
       vi.advanceTimersByTime(1000)
     })
     expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(3)
+  })
+
+  it('an open without any frame does not reset the retry budget', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    // Every attempt opens and then fails before the server sends anything.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      act(() => {
+        latest().onopen?.()
+        fatalError(latest())
+      })
+      act(() => {
+        vi.advanceTimersByTime(8000)
+      })
+    }
+
+    // One initial connection plus the five budgeted retries, then it gives up.
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(6)
+    expect(result.current.error).toBe('Connection lost')
+  })
+
+  it('ignores callbacks from a connection that has been replaced', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    const first = latest()
+    act(() => {
+      fatalError(first)
+    })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    act(() => {
+      latest().onopen?.()
+    })
+    expect(result.current.isConnected).toBe(true)
+
+    // A late error from the first, already-closed source must not mark the new
+    // connection lost or schedule another retry.
+    act(() => {
+      first.onerror?.()
+    })
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(result.current.isConnected).toBe(true)
+    expect(result.current.error).toBeNull()
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(2)
   })
 
   it('does not duplicate replayed history after reconnect (seq seen-set dedup)', () => {

@@ -72,18 +72,24 @@ function kotlinString(value: string): string {
 export function startSnippet({ appName, backendUrl, authRequired, correlation }: StartSnippetOptions): string {
   const name = appName.trim() || APP_NAME_PLACEHOLDER
   const tokenLine = authRequired
-    ? '    token = System.getenv("VIZCORE_TOKEN") ?: error("Set VIZCORE_TOKEN"),'
-    : '    token = "", // this vizcore server runs without auth'
+    ? '        token = System.getenv("VIZCORE_TOKEN") ?: error("Set VIZCORE_TOKEN"),'
+    : '        token = "", // this vizcore server runs without auth'
+  // A whole file, not loose statements: the import has to sit at file level and
+  // the call inside a function, so pasting it as one block must compile.
   return [
     `import ${SDK_CLIENT_FQN}`,
     '',
-    '// Call once at application startup (e.g. first line of main).',
-    'val vizcore = VizcoreClient.start(',
-    `    appName = ${kotlinString(name)},`,
-    `    backendUrl = ${kotlinString(backendUrl)},`,
+    'fun main() {',
+    '    // First thing at startup, before the app launches any coroutines.',
+    '    val vizcore = VizcoreClient.start(',
+    `        appName = ${kotlinString(name)},`,
+    `        backendUrl = ${kotlinString(backendUrl)},`,
     tokenLine,
-    `    correlation = ${kotlinString(correlation)},`,
-    ')',
-    'Runtime.getRuntime().addShutdownHook(Thread { vizcore.stop() })',
+    `        correlation = ${kotlinString(correlation)},`,
+    '    )',
+    '    Runtime.getRuntime().addShutdownHook(Thread { vizcore.stop() })',
+    '',
+    '    // … the rest of your application',
+    '}',
   ].join('\n')
 }

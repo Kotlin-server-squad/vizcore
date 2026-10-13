@@ -44,7 +44,7 @@ sse:
   # Keep-alive for GET /api/sessions/{id}/stream. A named `heartbeat` event (not an SSE
   # comment — browser EventSource drops comments) is merged into the frame flow every
   # interval, whether or not the session emits. The SPA watchdog treats 45 s of silence
-  # as a lost connection, so keep this well under that.
+  # as a lost connection, so keep this well under that; values above 30 are clamped to 30.
   heartbeatSeconds: ${SSE_HEARTBEAT_SECONDS:15}
 
 app:

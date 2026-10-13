@@ -198,6 +198,30 @@ describe('useEventStream - heartbeat watchdog', () => {
     expect(result.current.error).toBe('Connection lost')
   })
 
+  it('stops after the retry budget when every new connection opens but stays silent', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    openWithHeartbeat()
+
+    // Each replacement connection opens (a proxy accepting it, say) but never
+    // delivers a frame: the open must not restore the budget.
+    const opened = new Set<MockEventSource>([latest()])
+    for (let step = 0; step < 120; step++) {
+      advance(5000)
+      const current = latest()
+      if (!opened.has(current)) {
+        opened.add(current)
+        act(() => {
+          current.onopen?.()
+        })
+      }
+    }
+
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(6)
+    expect(result.current.error).toBe('Connection lost')
+  })
+
   it('clears the watchdog on unmount', () => {
     const { unmount } = renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),

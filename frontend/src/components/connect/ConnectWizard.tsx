@@ -183,11 +183,8 @@ export function ConnectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
             <Button variant="ghost" size="sm" onPress={onClose}>
               Cancel
             </Button>
-            <CopyButton
-              color="primary"
-              label="Copy setup snippet"
-              text={`${depSnippet}\n\n${codeSnippet}`}
-            />
+            {/* Kotlin only: the Gradle block goes in a different file and has its own copy button. */}
+            <CopyButton color="primary" label="Copy Kotlin code" text={codeSnippet} />
           </div>
         </ModalFooter>
       </ModalContent>
@@ -281,17 +278,23 @@ function CopyButton({
   const feedback = state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed — select the text' : null
 
   if (iconOnly) {
+    // The button keeps its name; the outcome is shown next to it and announced.
     return (
-      <Button
-        isIconOnly
-        size="sm"
-        variant="light"
-        aria-label={feedback ?? label}
-        title={feedback ?? label}
-        onPress={() => void copy()}
-      >
-        {state === 'copied' ? <FiCheck /> : <FiCopy />}
-      </Button>
+      <span className="flex items-center gap-1">
+        <span aria-live="polite" className="text-xs text-default-500">
+          {feedback}
+        </span>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          aria-label={label}
+          title={label}
+          onPress={() => void copy()}
+        >
+          {state === 'copied' ? <FiCheck /> : <FiCopy />}
+        </Button>
+      </span>
     )
   }
   return (

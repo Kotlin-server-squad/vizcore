@@ -213,15 +213,19 @@ describe('ConnectWizard snippet and flow (#126)', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     render(<ConnectWizard isOpen onClose={vi.fn()} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy setup snippet' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Kotlin code' }))
 
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
     expect(writeText.mock.calls[0]![0]).toContain('VizcoreClient.start(')
+    // Kotlin only: the Gradle block belongs in another file.
+    expect(writeText.mock.calls[0]![0]).not.toContain('implementation(')
 
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
     fireEvent.click(screen.getByLabelText('Copy kotlin start call'))
     await waitFor(() =>
-      expect(screen.getByLabelText(/copy failed/i)).toBeInTheDocument(),
+      expect(screen.getByText(/copy failed/i)).toBeInTheDocument(),
     )
+    // The icon button keeps its name, so assistive tech can still find it.
+    expect(screen.getByLabelText('Copy kotlin start call')).toBeInTheDocument()
   })
 })
