@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Layout } from '@/components/Layout'
 import { SessionsSidebar } from '@/components/sessions/SessionsSidebar'
 import { ConnectWizard } from '@/components/connect/ConnectWizard'
+import { NewDemoSessionModal } from '@/components/sessions/NewDemoSessionModal'
 
 export const Route = createFileRoute('/sessions/')({
   component: SessionsPage,
@@ -18,13 +19,20 @@ export const Route = createFileRoute('/sessions/')({
  */
 function SessionsPage() {
   const [wizardOpen, setWizardOpen] = useState(false)
+  // The empty state's "Run a demo scenario instead" opens the picker in place
+  // here too, so the CTA is never dead in either placement (#139).
+  const [demoOpen, setDemoOpen] = useState(false)
 
   return (
     <Layout>
       <div className="container-custom py-8">
-        <SessionsSidebar onConnect={() => setWizardOpen(true)} />
+        <SessionsSidebar
+          onConnect={() => setWizardOpen(true)}
+          onNewDemo={() => setDemoOpen(true)}
+        />
       </div>
       <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <NewDemoSessionModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
     </Layout>
   )
 }

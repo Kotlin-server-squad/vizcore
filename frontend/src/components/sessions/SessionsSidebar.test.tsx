@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import type { SessionInfo } from '@/types/api'
 import { deriveSessionKind } from '@/lib/session-kind'
 import { SessionsSidebar } from './SessionsSidebar'
+import { ApiError, NetworkError, RateLimitedError } from '@/lib/api-errors'
 
 // Router navigate is mocked so the "Run a demo scenario instead" CTA is assertable
 // without a real router context.
@@ -70,8 +71,9 @@ describe('SessionsSidebar', () => {
 
   it('renders the inline "No app connected" empty state with both CTAs when the list is empty', () => {
     const onConnect = vi.fn()
+    const onNewDemo = vi.fn()
     useSessionsMock.mockReturnValue({ data: [], isLoading: false })
-    render(<SessionsSidebar onConnect={onConnect} />)
+    render(<SessionsSidebar onConnect={onConnect} onNewDemo={onNewDemo} />)
 
     expect(screen.getByText('No app connected')).toBeInTheDocument()
 
@@ -80,9 +82,61 @@ describe('SessionsSidebar', () => {
     fireEvent.click(connectYourApp)
     expect(onConnect).toHaveBeenCalledTimes(1)
 
-    // Ghost CTA navigates to the scenarios route.
+    // Ghost CTA opens the demo picker in place (#139: /scenarios only
+    // redirected back here).
     const runDemo = screen.getByRole('button', { name: 'Run a demo scenario instead' })
     fireEvent.click(runDemo)
-    expect(navigate).toHaveBeenCalledWith({ to: '/scenarios' })
+    expect(onNewDemo).toHaveBeenCalledTimes(1)
+    expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+describe('SessionsSidebar - failed loads are not an empty list (#139)', () => {
+  const cases: Array<[string, Error, RegExp]> = [
+    ['429', new RateLimitedError(20_000), /rate limited/i],
+    ['401', new ApiError(401, 'Unauthorized'), /sign-in required/i],
+    ['5xx', new ApiError(503, 'Service Unavailable'), /server error/i],
+    ['network', new NetworkError(new TypeError('Failed to fetch')), /can't reach vizcore/i],
+  ]
+
+  it.each(cases)('a %s renders its own state with Retry, never "No app connected"', (_, error, title) => {
+    const refetch = vi.fn()
+    useSessionsMock.mockReturnValue({ data: undefined, isLoading: false, isError: true, error, refetch })
+    render(<SessionsSidebar onConnect={vi.fn()} />)
+
+    expect(screen.queryByText('No app connected')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(title)
+    if (!(error instanceof ApiError && error.status === 401)) {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(refetch).toHaveBeenCalled()
+    }
+  })
+
+  it('a paused retry (pending, not fetching) still reads as loading, not "No app connected"', () => {
+    useSessionsMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isPending: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    render(<SessionsSidebar onConnect={vi.fn()} />)
+
+    expect(screen.queryByText('No app connected')).not.toBeInTheDocument()
+  })
+
+  it('keeps showing an earlier list through a failed background refresh', () => {
+    useSessionsMock.mockReturnValue({
+      data: [liveSession],
+      isLoading: false,
+      isError: true,
+      error: new ApiError(503, 'x'),
+      refetch: vi.fn(),
+    })
+    render(<SessionsSidebar onConnect={vi.fn()} />)
+
+    expect(screen.getByText('order-service-1')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
