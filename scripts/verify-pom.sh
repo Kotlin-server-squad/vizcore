@@ -4,7 +4,7 @@
 #
 # GitHub Packages 0.2.0 is immutable, so we prove the POM/coordinate locally
 # first: run publishToMavenLocal for core + client, then grep each resulting
-# ~/.m2 POM for the MIT license, the locked groupId, and the artifactId.
+# ~/.m2 POM for the Apache-2.0 license (backend/LICENSE), the locked groupId, and the artifactId.
 #
 # Usage:
 #   ./scripts/verify-pom.sh
@@ -62,15 +62,15 @@ for artifact in "${ARTIFACTS[@]}"; do
     artifact_failed=1
   fi
 
-  # Anchor to the license name element — a bare "MIT" substring would pass on a
+  # Anchor to the license name element — a bare "Apache" substring would pass on a
   # comment, a URL, or a transitive dependency artifactId.
-  if ! grep -q "<name>MIT License</name>" "${POM}"; then
-    echo "    FAIL: MIT license element not found in ${artifact} POM"
+  if ! grep -q "<name>Apache License, Version 2.0</name>" "${POM}"; then
+    echo "    FAIL: Apache-2.0 license element not found in ${artifact} POM"
     artifact_failed=1
   fi
 
   if [[ "${artifact_failed}" -eq 0 ]]; then
-    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (MIT) asserted"
+    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (Apache-2.0) asserted"
   else
     FAILED=1
   fi
@@ -81,4 +81,4 @@ if [[ "${FAILED}" -ne 0 ]]; then
   exit 1
 fi
 
-echo "==> verify-pom.sh: PASSED — core + client POMs carry the MIT license + locked coordinate."
+echo "==> verify-pom.sh: PASSED — core + client POMs carry the Apache-2.0 license + locked coordinate."
