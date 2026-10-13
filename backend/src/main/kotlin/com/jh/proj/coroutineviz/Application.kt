@@ -334,6 +334,7 @@ private fun Application.startDbRetention(db: org.jetbrains.exposed.v1.jdbc.Datab
             maxAgeDays = maxAgeDays,
             maxEventsPerSession = maxEventsPerSession,
             cleanupIntervalMinutes = cleanupIntervalMinutes,
+            onSessionDeleted = SessionManager::notifySessionDeleted,
         )
     policy.start(this)
     monitor.subscribe(ApplicationStopping) { policy.stop() }

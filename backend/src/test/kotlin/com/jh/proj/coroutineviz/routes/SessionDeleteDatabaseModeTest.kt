@@ -5,6 +5,7 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
+import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.zaxxer.hikari.HikariConfig
@@ -35,12 +36,14 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.jetbrains.exposed.v1.jdbc.Database
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -53,6 +56,7 @@ import kotlin.time.Duration.Companion.seconds
  */
 class SessionDeleteDatabaseModeTest {
     private lateinit var dataSource: HikariDataSource
+    private lateinit var db: Database
 
     @BeforeEach
     fun setUp() {
@@ -68,7 +72,8 @@ class SessionDeleteDatabaseModeTest {
                     isAutoCommit = false
                 },
             )
-        SessionManager.useStore(ExposedSessionStore(DatabaseFactory.init(dataSource as DataSource)))
+        db = DatabaseFactory.init(dataSource as DataSource)
+        SessionManager.useStore(ExposedSessionStore(db))
     }
 
     @AfterEach
@@ -104,6 +109,42 @@ class SessionDeleteDatabaseModeTest {
         return line?.substringAfter(':')?.trim()
     }
 
+    /**
+     * Opens [sessionId]'s stream, waits for a heartbeat (the stream is attached), runs [delete],
+     * then requires a final "Session not found" error frame and the end of the stream.
+     */
+    private suspend fun ApplicationTestBuilder.assertStreamEndsWhenDeleted(
+        sessionId: String,
+        delete: suspend () -> Unit,
+    ) {
+        val client = createClient {}
+        withContext(Dispatchers.Default) {
+            client.prepareGet("/api/sessions/$sessionId/stream").execute { response ->
+                assertEquals(HttpStatusCode.OK, response.status)
+                val channel = response.bodyAsChannel()
+                withTimeout(3_000) { channel.dataOfNext("heartbeat") }
+
+                delete()
+
+                val error = withTimeout(5_000) { channel.dataOfNext("error") }
+                assertTrue(error.orEmpty().contains("Session not found"), "got $error")
+                // Times out unless the server ends the stream after the error frame.
+                val trailing = withTimeout(5_000) { channel.remainingLines() }
+                assertTrue(trailing.all { it.isBlank() }, "nothing may follow the error frame: $trailing")
+            }
+        }
+    }
+
+    private suspend fun ByteReadChannel.remainingLines(): List<String> {
+        val lines = mutableListOf<String>()
+        var line = readUTF8Line()
+        while (line != null) {
+            lines += line
+            line = readUTF8Line()
+        }
+        return lines
+    }
+
     @Test
     fun `deleting a database session ends its open stream with session not found`() =
         testApplication {
@@ -111,19 +152,40 @@ class SessionDeleteDatabaseModeTest {
             val client = createClient {}
             val sessionId = createSession(client)
 
-            withContext(Dispatchers.Default) {
-                client.prepareGet("/api/sessions/$sessionId/stream").execute { response ->
-                    assertEquals(HttpStatusCode.OK, response.status)
-                    val channel = response.bodyAsChannel()
-                    withTimeout(3_000) { channel.dataOfNext("heartbeat") }
-
-                    assertEquals(HttpStatusCode.OK, client.delete("/api/sessions/$sessionId").status)
-
-                    val error = withTimeout(5_000) { channel.dataOfNext("error") }
-                    assertTrue(error.orEmpty().contains("Session not found"), "got $error")
-                    assertEquals(null, withTimeout(5_000) { channel.readUTF8Line()?.takeIf { it.isNotBlank() } })
-                }
+            assertStreamEndsWhenDeleted(sessionId) {
+                assertEquals(HttpStatusCode.OK, client.delete("/api/sessions/$sessionId").status)
             }
+        }
+
+    @Test
+    fun `retention deleting a database session ends its open stream`() =
+        testApplication {
+            oneSecondHeartbeats()
+            val sessionId = createSession(createClient {})
+            // Every session is past a zero-day age limit, so one cleanup pass deletes it.
+            val retention =
+                DbRetentionPolicy(
+                    db = db,
+                    maxAgeDays = 0,
+                    clock = { System.currentTimeMillis() + 1_000 },
+                    onSessionDeleted = SessionManager::notifySessionDeleted,
+                )
+
+            assertStreamEndsWhenDeleted(sessionId) {
+                assertEquals(1, retention.cleanup())
+            }
+        }
+
+    @Test
+    fun `a session deleted before its watcher starts is still reported as removed`() =
+        testApplication {
+            application { module() }
+            val sessionId = createSession(createClient {})
+            // Resolved first, deleted next, watched last: the gap a request can fall into.
+            val session = assertNotNull(SessionManager.getSession(sessionId))
+            assertTrue((SessionManager.backingStore() as ExposedSessionStore).deleteSession(sessionId))
+
+            withTimeout(5.seconds) { awaitSessionRemoved(session) }
         }
 
     @Test
