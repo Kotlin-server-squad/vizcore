@@ -243,6 +243,37 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
     expect(result.current.events).toHaveLength(3)
   })
 
+  it('a replay of history older than the seen-set does not reset the retry budget', () => {
+    const { result } = renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    // A long session: more events than the bounded seen-set keeps, so the
+    // oldest seqs (1..5) have been evicted from it by the end of this batch.
+    const history = Array.from({ length: 10_005 }, (_, i) => JSON.parse(eventPayload(i + 1)))
+    act(() => {
+      latest().onopen?.()
+      latest().simulateEvent('batch', JSON.stringify(history))
+    })
+
+    // Every later attempt replays that evicted history, then fails. It is
+    // accepted again, but nothing in it is newer than what was already seen.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      act(() => {
+        fatalError(latest())
+      })
+      act(() => {
+        vi.advanceTimersByTime(8000)
+      })
+      act(() => {
+        latest().onopen?.()
+        latest().simulateEvent('batch', JSON.stringify(history.slice(0, 5)))
+      })
+    }
+
+    expect(mockedApiClient.createEventSource).toHaveBeenCalledTimes(6)
+    expect(result.current.error).toBe('Connection lost')
+  })
+
   it('stops for good when the server says the session is gone', () => {
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
     const { result } = renderHook(() => useEventStream('session-1', true), {

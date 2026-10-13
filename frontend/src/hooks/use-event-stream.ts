@@ -183,6 +183,10 @@ export function useEventStream(
   // later without a common lock, so events can legitimately arrive out of
   // seq order — a watermark would silently drop them (REVIEW WR-13).
   const seenSeqsRef = useRef<Set<number>>(new Set())
+  // Highest seq accepted so far. Only an event above it counts as new data
+  // for the retry budget: once a long session's oldest seqs have left the
+  // bounded seen-set, its replay is accepted again but is not new.
+  const highestSeqRef = useRef(Number.NEGATIVE_INFINITY)
   // The current EventSource (reconnects replace it within one effect run).
   const eventSourceRef = useRef<EventSource | null>(null)
   // When the current connection attempt last showed signs of life (opened or
@@ -222,6 +226,7 @@ export function useEventStream(
     retryCountRef.current = 0
     heartbeatSeenRef.current = false
     seenSeqsRef.current = new Set()
+    highestSeqRef.current = Number.NEGATIVE_INFINITY
     lastRefreshAtRef.current = Number.NEGATIVE_INFINITY
     setEvents([])
     setDroppedCount(0)
@@ -290,6 +295,16 @@ export function useEventStream(
         }
       }
       return event
+    }
+
+    // True when [event] is past everything accepted before (or carries no
+    // seq), so it can restore the retry budget. See highestSeqRef.
+    const advancesSeq = (event: VizEvent): boolean => {
+      const seq = (event as { seq?: unknown }).seq
+      if (typeof seq !== 'number') return true
+      if (seq <= highestSeqRef.current) return false
+      highestSeqRef.current = seq
+      return true
     }
 
     const markAlive = () => {
@@ -373,7 +388,7 @@ export function useEventStream(
             try {
               const event = accept(JSON.parse(messageEvent.data), eventType)
               if (event) {
-                confirmAlive()
+                if (advancesSeq(event)) confirmAlive()
                 append([event])
               }
             } catch {
@@ -400,11 +415,15 @@ export function useEventStream(
               return
             }
             const accepted: VizEvent[] = []
+            let advanced = false
             for (const rawEvent of parsed) {
               const event = accept(rawEvent)
-              if (event) accepted.push(event)
+              if (event) {
+                accepted.push(event)
+                if (advancesSeq(event)) advanced = true
+              }
             }
-            if (accepted.length > 0) confirmAlive()
+            if (advanced) confirmAlive()
             append(accepted)
           } catch {
             // Silently ignore malformed batch frames
