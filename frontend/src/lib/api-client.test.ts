@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { apiClient, ApiError, RateLimitedError } from './api-client'
+import { apiClient, ApiError, NetworkError, RateLimitedError } from './api-client'
 import { getToken, setToken, clearToken } from './auth-store'
 import { registerNavigator } from './navigation'
 
@@ -137,7 +137,7 @@ describe('ApiClient', () => {
         json: () => Promise.reject(new Error('not json')),
       })
 
-      await expect(apiClient.listSessions()).rejects.toThrow('Unknown error')
+      await expect(apiClient.listSessions()).rejects.toThrow('HTTP 500')
     })
   })
 
@@ -379,6 +379,54 @@ describe('ApiClient', () => {
         '/api/sessions/resolve?correlation=a%20b%2Fc%3Fd',
         { headers: { 'Content-Type': 'application/json' } },
       )
+    })
+  })
+
+  describe('truthful errors (#139)', () => {
+    it('uses a short plain-text error body instead of "Unknown error"', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: () => Promise.resolve('Missing parameter: name'),
+      })
+
+      const error = await apiClient.listSessions().catch(e => e)
+
+      expect(error).toBeInstanceOf(ApiError)
+      expect(error.status).toBe(400)
+      expect(error.message).toBe('Missing parameter: name')
+    })
+
+    it('never surfaces an HTML error page as the message', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        text: () => Promise.resolve('<html><body>nginx</body></html>'),
+      })
+
+      await expect(apiClient.listSessions()).rejects.toThrow('HTTP 502 Bad Gateway')
+    })
+
+    it('throws a NetworkError when no response arrives', async () => {
+      mockFetch.mockRejectedValue(new TypeError('Failed to fetch'))
+
+      await expect(apiClient.getSession('s-1')).rejects.toBeInstanceOf(NetworkError)
+    })
+
+    it('getSharedSession distinguishes 5xx, 401 and network failure from not-found', async () => {
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({}, 503))
+      expect(await apiClient.getSharedSession('t')).toEqual({ status: 'server-error', httpStatus: 503 })
+
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({}, 401))
+      expect(await apiClient.getSharedSession('t')).toEqual({ status: 'unauthorized' })
+
+      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      expect(await apiClient.getSharedSession('t')).toEqual({ status: 'network-error' })
+
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({}, 404))
+      expect(await apiClient.getSharedSession('t')).toEqual({ status: 'not-found' })
     })
   })
 

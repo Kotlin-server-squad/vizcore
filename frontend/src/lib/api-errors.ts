@@ -55,6 +55,102 @@ export function parseRetryAfter(header: string | null | undefined, now = Date.no
   return Math.min(Math.max(ms, 1000), MAX_RETRY_AFTER_MS)
 }
 
+/**
+ * The request never got an HTTP response: the server is down, the network is
+ * gone, or the browser blocked the call. Distinct from an ApiError so the UI
+ * can say "can't reach vizcore" rather than inventing a status.
+ */
+export class NetworkError extends Error {
+  /** The underlying fetch rejection, for debugging. */
+  readonly reason: unknown
+
+  constructor(reason?: unknown) {
+    super("Can't reach the vizcore server")
+    this.name = 'NetworkError'
+    this.reason = reason
+  }
+}
+
+export type ApiErrorKind =
+  | 'not-found'
+  | 'unauthorized'
+  | 'rate-limited'
+  | 'server'
+  | 'network'
+  | 'client'
+  | 'unknown'
+
+export interface DescribedError {
+  kind: ApiErrorKind
+  title: string
+  message: string
+  /** Whether trying the same request again can succeed. */
+  retryable: boolean
+  /** For rate limits: how long the server asked us to wait. */
+  retryAfterMs?: number
+}
+
+/**
+ * Turn any thrown value into a truthful, user-facing description (#139).
+ * `subject` names the thing that failed to load ("This session").
+ */
+export function describeApiError(error: unknown, subject = 'This resource'): DescribedError {
+  if (error instanceof RateLimitedError) {
+    return {
+      kind: 'rate-limited',
+      title: 'Rate limited',
+      message: `The vizcore server is throttling requests. Retrying in ${Math.ceil(
+        error.retryAfterMs / 1000,
+      )}s.`,
+      retryable: true,
+      retryAfterMs: error.retryAfterMs,
+    }
+  }
+  if (error instanceof NetworkError) {
+    return {
+      kind: 'network',
+      title: "Can't reach vizcore",
+      message: 'The vizcore server did not respond. Check that it is still running, then retry.',
+      retryable: true,
+    }
+  }
+  if (error instanceof ApiError) {
+    if (error.status === 404 || error.status === 410) {
+      return {
+        kind: 'not-found',
+        title: 'Not found',
+        message: `${subject} does not exist on this server. It may have been deleted, or the server restarted (sessions are kept in memory).`,
+        retryable: false,
+      }
+    }
+    if (error.status === 401 || error.status === 403) {
+      return {
+        kind: 'unauthorized',
+        title: 'Sign-in required',
+        message: 'This server requires you to sign in to see this.',
+        retryable: false,
+      }
+    }
+    if (error.status >= 500) {
+      return {
+        kind: 'server',
+        title: 'Server error',
+        message: error.message.startsWith('HTTP ')
+          ? `The vizcore server failed to answer (${error.message}).`
+          : `The vizcore server failed to answer (HTTP ${error.status}): ${error.message}`,
+        retryable: true,
+      }
+    }
+    return { kind: 'client', title: 'Request failed', message: error.message, retryable: false }
+  }
+  return {
+    kind: 'unknown',
+    title: 'Something went wrong',
+    message: error instanceof Error ? error.message : String(error),
+    retryable: true,
+  }
+}
+
 /** True for client errors that retrying the same request cannot fix. */
 export function isNonRetryable(error: unknown): boolean {
   return error instanceof ApiError && error.status >= 400 && error.status < 500

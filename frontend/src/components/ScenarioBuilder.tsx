@@ -363,7 +363,8 @@ export function ScenarioBuilder() {
         </button>
 
         <button
-          onClick={() => navigate({ to: '/scenarios' })}
+          // Back to the sessions list: /scenarios only redirects there (#139).
+          onClick={() => navigate({ to: '/' })}
           className="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-semibold"
         >
           Cancel
