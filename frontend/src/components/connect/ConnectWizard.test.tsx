@@ -19,6 +19,7 @@ interface CapturedQueryOptions {
   queryKey?: unknown[]
   enabled?: boolean
   refetchInterval?: unknown
+  refetchIntervalInBackground?: boolean
   retry?: unknown
   queryFn?: () => unknown
 }
@@ -110,6 +111,8 @@ describe('ConnectWizard', () => {
     expect(firstDelay).toBeLessThanOrEqual(2000)
     // An immediate retry would only spend more of the rate-limit budget.
     expect(lastUseQueryOptions?.retry).toBe(false)
+    // The user starts the app from another window, so a hidden tab keeps polling.
+    expect(lastUseQueryOptions?.refetchIntervalInBackground).toBe(true)
 
     // The queryFn calls apiClient.resolveCorrelation (poll the resolve endpoint).
     lastUseQueryOptions?.queryFn?.()

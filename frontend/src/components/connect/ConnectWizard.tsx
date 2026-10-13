@@ -78,6 +78,11 @@ export function ConnectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
     queryFn: () => apiClient.resolveCorrelation(correlation),
     enabled: isOpen,
     refetchInterval: resolveRefetchInterval,
+    // Keep polling while the tab is hidden: the user is in their IDE starting the
+    // app, which is exactly when the session appears. TanStack Query pauses
+    // interval refetches in a hidden tab by default, so the wizard only noticed
+    // the app once the user came back (found in UAT).
+    refetchIntervalInBackground: true,
     // The interval IS the retry policy — an immediate retry would only spend
     // more of the same rate-limit budget.
     retry: false,
