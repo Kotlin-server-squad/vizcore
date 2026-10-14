@@ -9,6 +9,9 @@ import java.util.concurrent.ConcurrentHashMap
  * the database session store builds a fresh `VizSession` on every lookup: a counter on
  * the instance the ingest route resolved is invisible to the instance another route
  * resolves. Checks reads this to tell a running app's live coroutines from leaked ones.
+ *
+ * Process-local, like the rest of a live session's state (event bus, SSE streams): ingest
+ * and Checks must reach the same backend process.
  */
 object IngestConnections {
     private val open = ConcurrentHashMap<String, Int>()
