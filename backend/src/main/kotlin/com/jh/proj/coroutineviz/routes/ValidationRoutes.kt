@@ -14,6 +14,10 @@ data class ValidationResponse(
     val sessionId: String,
     val results: List<ValidationResult>,
     val timing: TimingReport,
+    /** Whether an app is streaming into this session right now (an open ingest socket). */
+    val appConnected: Boolean,
+    /** Coroutines started without a terminal event; on a connected app these are running, not leaked. */
+    val stillRunning: Int,
 )
 
 @Serializable
@@ -47,7 +51,8 @@ fun Route.registerValidationRoutes() {
 
         // Run all validators. A session with an open ingest socket belongs to a running app,
         // so its unfinished coroutines are still running rather than leaked.
-        results += LifecycleValidator.validate(events, sessionLive = session.hasOpenIngestSocket)
+        val appConnected = IngestConnections.isConnected(sessionId)
+        results += LifecycleValidator.validate(events, sessionLive = appConnected)
         results += HierarchyValidator.validate(events)
         results += StructuredConcurrencyValidator.validate(events)
         results += SequenceChecker.checkNoDuplicateSequenceNumbers(events)
@@ -61,6 +66,8 @@ fun Route.registerValidationRoutes() {
                 sessionId = sessionId,
                 results = results,
                 timing = timingReport,
+                appConnected = appConnected,
+                stillRunning = LifecycleValidator.unfinishedCoroutineIds(events).size,
             )
 
         call.respond(HttpStatusCode.OK, response)

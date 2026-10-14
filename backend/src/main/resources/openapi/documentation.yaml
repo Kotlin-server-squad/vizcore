@@ -2069,7 +2069,7 @@ components:
       description: >
         Aggregated validation results for a session, including individual
         rule outcomes and a timing analysis report.
-      required: [sessionId, results, timing]
+      required: [sessionId, results, timing, appConnected, stillRunning]
       properties:
         sessionId:
           type: string
@@ -2081,6 +2081,15 @@ components:
             $ref: "#/components/schemas/ValidationResult"
         timing:
           $ref: "#/components/schemas/TimingReport"
+        appConnected:
+          type: boolean
+          description: >
+            Whether an app is streaming into the session right now (an open ingest
+            socket). While it is, StartedHasTerminal reports unfinished coroutines
+            as still running instead of failing them.
+        stillRunning:
+          type: integer
+          description: Number of coroutines started without a terminal event
 
     ValidationResult:
       type: object

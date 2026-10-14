@@ -57,6 +57,16 @@ object LifecycleValidator {
         return results
     }
 
+    /** Ids of coroutines that started and have no terminal event, in first-seen order. */
+    fun unfinishedCoroutineIds(events: List<VizEvent>): List<String> =
+        events
+            .filterIsInstance<CoroutineEvent>()
+            .groupBy { it.coroutineId }
+            .filter { (_, coroutineEvents) ->
+                coroutineEvents.any { it is CoroutineStarted } && coroutineEvents.none { it.kind in TERMINAL_KINDS }
+            }.keys
+            .toList()
+
     private fun checkCreatedHasStarted(
         coroutineId: String,
         events: List<CoroutineEvent>,

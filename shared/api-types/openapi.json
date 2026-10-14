@@ -1622,7 +1622,9 @@
         "required": [
           "sessionId",
           "results",
-          "timing"
+          "timing",
+          "appConnected",
+          "stillRunning"
         ],
         "properties": {
           "sessionId": {
@@ -1636,6 +1638,12 @@
           },
           "timing": {
             "$ref": "#/components/schemas/TimingReport"
+          },
+          "appConnected": {
+            "type": "boolean"
+          },
+          "stillRunning": {
+            "type": "integer"
           }
         }
       },

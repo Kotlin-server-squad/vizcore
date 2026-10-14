@@ -73,6 +73,7 @@ fun Route.registerIngestRoutes() {
         // `finally`, so it is exact on every exit path — normal close, client
         // disconnect, coroutine cancellation and an unexpected throw alike.
         session.ingestSocketOpened()
+        IngestConnections.opened(sessionId)
         // An open socket would otherwise keep publishing into a deleted session, where nobody
         // can read the events, and the client would never learn it should recreate one. Close
         // with the same "Session not found" the handshake uses, which the SDK treats as
@@ -96,6 +97,7 @@ fun Route.registerIngestRoutes() {
         } finally {
             sessionRemoved.cancel()
             session.ingestSocketClosed()
+            IngestConnections.closed(sessionId)
         }
     }
 }

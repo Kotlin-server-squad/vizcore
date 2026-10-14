@@ -618,6 +618,10 @@ export interface ValidationResponse {
   sessionId: string
   results: ValidationRuleResult[]
   timing: BackendTimingReport
+  /** An app is streaming into the session right now (open ingest socket). Absent on older backends. */
+  appConnected?: boolean
+  /** Coroutines started without a terminal event; while the app is connected these are running, not leaked. */
+  stillRunning?: number
 }
 
 /** Individual rule result — type discriminator is 'Pass' | 'Fail' (no Warning variant) */
