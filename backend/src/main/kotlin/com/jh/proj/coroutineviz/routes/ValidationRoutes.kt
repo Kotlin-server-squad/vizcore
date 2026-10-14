@@ -45,8 +45,9 @@ fun Route.registerValidationRoutes() {
 
         val results = mutableListOf<ValidationResult>()
 
-        // Run all validators
-        results += LifecycleValidator.validate(events)
+        // Run all validators. A session with an open ingest socket belongs to a running app,
+        // so its unfinished coroutines are still running rather than leaked.
+        results += LifecycleValidator.validate(events, sessionLive = session.hasOpenIngestSocket)
         results += HierarchyValidator.validate(events)
         results += StructuredConcurrencyValidator.validate(events)
         results += SequenceChecker.checkNoDuplicateSequenceNumbers(events)
@@ -74,7 +75,8 @@ fun Route.registerValidationRoutes() {
                 ),
                 ValidationRule(
                     "StartedHasTerminal",
-                    "Every started coroutine must reach a terminal state (Completed, Cancelled, or Failed)",
+                    "Every started coroutine must reach a terminal state (Completed, Cancelled, or Failed); " +
+                        "while the app is still connected, unfinished coroutines are reported as running",
                 ),
                 ValidationRule(
                     "NoEventsAfterTerminal",

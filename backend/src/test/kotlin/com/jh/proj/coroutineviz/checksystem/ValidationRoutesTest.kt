@@ -1,5 +1,7 @@
 package com.jh.proj.coroutineviz.checksystem
 
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.plugins.contentnegotiation.*
@@ -100,5 +102,59 @@ class ValidationRoutesTest {
 
             val response = client.post("/api/validate/session/non-existent")
             assertEquals(HttpStatusCode.NotFound, response.status)
+        }
+
+    @Test
+    fun `POST validate session reports unfinished coroutines as running while the app is connected`() =
+        testApplication {
+            application { module() }
+            val client = jsonClient()
+
+            val createResponse = client.post("/api/sessions?name=live-app")
+            val sessionId =
+                Json
+                    .parseToJsonElement(createResponse.bodyAsText())
+                    .jsonObject["sessionId"]!!
+                    .jsonPrimitive.content
+            val session = SessionManager.getSession(sessionId)!!
+            session.send(
+                CoroutineCreated(
+                    sessionId = sessionId,
+                    seq = 1,
+                    tsNanos = 1_000,
+                    coroutineId = "c1",
+                    jobId = "job-c1",
+                    parentCoroutineId = null,
+                    scopeId = "scope-1",
+                    label = "sse-stream",
+                ),
+            )
+            session.send(
+                CoroutineStarted(
+                    sessionId = sessionId,
+                    seq = 2,
+                    tsNanos = 2_000,
+                    coroutineId = "c1",
+                    jobId = "job-c1",
+                    parentCoroutineId = null,
+                    scopeId = "scope-1",
+                    label = "sse-stream",
+                ),
+            )
+
+            suspend fun startedHasTerminalType(): String {
+                val body = Json.parseToJsonElement(client.post("/api/validate/session/$sessionId").bodyAsText())
+                return body.jsonObject["results"]!!
+                    .jsonArray
+                    .map { it.jsonObject }
+                    .first { it["ruleName"]?.jsonPrimitive?.content == "StartedHasTerminal" }["type"]!!
+                    .jsonPrimitive.content
+            }
+
+            session.ingestSocketOpened()
+            assertEquals("Pass", startedHasTerminalType(), "Connected app: the coroutine is still running")
+
+            session.ingestSocketClosed()
+            assertEquals("Fail", startedHasTerminalType(), "Disconnected app: the coroutine never terminated")
         }
 }
