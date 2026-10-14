@@ -53,15 +53,18 @@ internal object RuntimeRequirements {
         }
 
     /**
-     * Turns a [LinkageError] from the start path into the same kind of message [check] gives.
+     * Turns a [LinkageError] from the start path into a message that points at the requirements.
      * [check] can miss an old library (a repackaged jar without its version resource, or an
-     * unusual class loader), and the start path would then fail with the bare error again.
+     * unusual class loader), and the start path would then fail with the bare error again. The
+     * error can also come from a missing library, so the message names both possibilities.
      */
     fun linkageFailure(error: LinkageError): IllegalStateException =
         IllegalStateException(
-            "vizcore: a library on the app's classpath is older than the vizcore SDK needs ($error). " +
-                "The SDK needs kotlin-stdlib $MIN_KOTLIN_STDLIB or newer and kotlinx-coroutines " +
-                "$MIN_COROUTINES_VERSION or newer. See the Requirements section of the vizcore README.",
+            "vizcore: the SDK could not start because a library it uses is missing or older than it " +
+                "needs ($error). Check that kotlin-stdlib is $MIN_KOTLIN_STDLIB or newer, kotlinx-coroutines " +
+                "is $MIN_COROUTINES_VERSION or newer, and the SDK's own dependencies (Ktor client, " +
+                "kotlinx-coroutines-debug, kotlinx-serialization) are on the runtime classpath. " +
+                "See the Requirements section of the vizcore README.",
             error,
         )
 

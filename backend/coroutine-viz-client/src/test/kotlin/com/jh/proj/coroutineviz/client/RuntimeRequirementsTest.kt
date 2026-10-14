@@ -68,7 +68,8 @@ class RuntimeRequirementsTest {
         val error = RuntimeRequirements.linkageFailure(cause)
         val message = error.message.orEmpty()
         assertTrue("runBlockingK" in message, message)
-        assertTrue("kotlinx-coroutines 1.10.2" in message, message)
+        assertTrue("kotlinx-coroutines is 1.10.2 or newer" in message, message)
+        assertTrue("missing or older" in message, message)
         assertEquals(cause, error.cause)
     }
 

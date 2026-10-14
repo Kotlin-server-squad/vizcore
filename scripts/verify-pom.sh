@@ -20,6 +20,7 @@ VERSION="0.2.1"
 # kotlinx-coroutines must be able to use the SDK (see RuntimeRequirements.kt).
 STDLIB_VERSION="2.2.21"
 COROUTINES_VERSION="1.10.2"
+SERIALIZATION_VERSION="1.9.0"
 GROUP_PATH="com/jh/coroutine-visualizer"
 M2_REPO="${HOME}/.m2/repository"
 ARTIFACTS=("coroutine-viz-core" "coroutine-viz-client")
@@ -84,8 +85,13 @@ for artifact in "${ARTIFACTS[@]}"; do
     artifact_failed=1
   fi
 
+  if ! grep -A1 "<artifactId>kotlinx-serialization-json-jvm</artifactId>" "${POM}" | grep -q "<version>${SERIALIZATION_VERSION}</version>"; then
+    echo "    FAIL: kotlinx-serialization-json-jvm ${SERIALIZATION_VERSION} not declared in ${artifact} POM"
+    artifact_failed=1
+  fi
+
   if [[ "${artifact_failed}" -eq 0 ]]; then
-    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (Apache-2.0, stdlib ${STDLIB_VERSION}, coroutines ${COROUTINES_VERSION}) asserted"
+    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (Apache-2.0, stdlib ${STDLIB_VERSION}, coroutines ${COROUTINES_VERSION}, serialization ${SERIALIZATION_VERSION}) asserted"
   else
     FAILED=1
   fi
