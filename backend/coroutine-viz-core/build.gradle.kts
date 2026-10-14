@@ -8,15 +8,15 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.2.0"
+version = "0.2.1"
 
 dependencies {
     // Core dependencies only — no Ktor, no web framework
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     // DebugProbes runtime introspection (RCO-02). implementation (NOT api) so the
     // debug module stays off consumers' compile classpath. Version-parity with
-    // kotlinx-coroutines-core 1.11.0 (same JetBrains release train). JVM 17 OK.
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
+    // kotlinx-coroutines-core 1.10.2 (same JetBrains release train). JVM 17 OK.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.slf4j:slf4j-api:2.0.9")
 
@@ -24,7 +24,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("ch.qos.logback:logback-classic:1.6.3")
 }
 
@@ -106,8 +106,15 @@ publishing {
 // the plugin's 17 classpath. A 17 lib runs fine on the JVM-21 backend, so 17 is
 // the lowest common denominator that satisfies both consumers.
 kotlin {
+    // Compile to the Kotlin 2.2 language and API level and declare the matching stdlib, so apps
+    // on Kotlin 2.2 or newer can read the SDK (the default, the build's own compiler version,
+    // locks out every app on an older Kotlin). 2.2 is the floor anyway: Ktor 3.3 needs
+    // kotlin-stdlib 2.2 at runtime, and Spring Boot pins the stdlib to the app's Kotlin version.
+    coreLibrariesVersion = "2.2.21"
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
+        apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
         // Compile against the JDK 17 API, not just to JVM-17 bytecode: on a JDK-21 toolchain a
         // JDK 19+ call (e.g. Thread#threadId) otherwise compiles and then throws NoSuchMethodError
         // for SDK consumers on Java 17. checkBytecode only sees class-file versions, not API use.

@@ -18,11 +18,6 @@ plugins {
 group = "com.jh.vizcore.demo"
 version = "0.0.1-SNAPSHOT"
 
-// The vizcore jars were compiled against kotlinx-coroutines 1.11.0. Spring Boot's dependency
-// management otherwise pins a different coroutines version at runtime, causing a runBlocking
-// NoSuchMethodError (compile-vs-runtime ABI mismatch). Override the managed version everywhere.
-extra["kotlin-coroutines.version"] = "1.11.0"
-
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
@@ -41,8 +36,8 @@ repositories {
 //   cd ../../backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar
 val vizcoreJars =
 	files(
-		"../../backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.0.jar",
-		"../../backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.0.jar",
+		"../../backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.1.jar",
+		"../../backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.1.jar",
 	)
 
 dependencies {

@@ -139,11 +139,35 @@ tasks.bootRun {
 The library coordinate is:
 
 ```kotlin
-implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.2.0")
+implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.2.1")
 // the SDK uses kotlinx-coroutines at runtime only; your app (and the example above)
 // needs it on the compile classpath too
-implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 ```
+
+**Requirements.**
+
+| | Minimum | Why |
+|---|---|---|
+| Java | 17 | |
+| Kotlin (your Kotlin Gradle plugin) | 2.2 | The SDK's HTTP client needs kotlin-stdlib 2.2 at runtime, and Spring Boot sets the stdlib to your Kotlin version. |
+| kotlinx-coroutines | 1.10.2 | The SDK and its HTTP client are built against it. |
+
+Spring Boot 4 meets both as it is. Spring Boot 3.x defaults to Kotlin 1.9.25 and pins
+kotlinx-coroutines 1.8.1, so raise both in `build.gradle.kts`:
+
+```kotlin
+plugins {
+    kotlin("jvm") version "2.2.21"
+    kotlin("plugin.spring") version "2.2.21"
+    // …
+}
+
+extra["kotlin-coroutines.version"] = "1.10.2"
+```
+
+If either is too old, `VizcoreClient.start` throws an `IllegalStateException` that names what to
+change.
 
 Each `v*` release publishes the SDK to this repository's GitHub Packages
 (`https://maven.pkg.github.com/Kotlin-server-squad/vizcore`), which needs a GitHub token with
@@ -165,13 +189,13 @@ cd backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar
 dependencies {
     implementation(
         files(
-            "<vizcore>/backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.0.jar",
-            "<vizcore>/backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.0.jar",
+            "<vizcore>/backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.1.jar",
+            "<vizcore>/backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.1.jar",
         ),
     )
     // flat-file jars carry no transitive metadata, so declare their runtime deps
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("io.ktor:ktor-client-core:3.3.2")
     implementation("io.ktor:ktor-client-cio:3.3.2")
