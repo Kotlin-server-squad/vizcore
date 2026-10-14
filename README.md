@@ -166,7 +166,9 @@ plugins {
 extra["kotlin-coroutines.version"] = "1.10.2"
 ```
 
-If either is too old, `VizcoreClient.start` throws an `IllegalStateException` that names what to
+With an older Kotlin compiler, the build fails because it cannot read the SDK's classes. If the
+compiler is new enough but the app runs an older kotlin-stdlib or kotlinx-coroutines (the versions
+Spring Boot pins win), `VizcoreClient.start` throws an `IllegalStateException` that names what to
 change.
 
 Each `v*` release publishes the SDK to this repository's GitHub Packages
@@ -196,7 +198,7 @@ dependencies {
     // flat-file jars carry no transitive metadata, so declare their runtime deps
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("io.ktor:ktor-client-core:3.3.2")
     implementation("io.ktor:ktor-client-cio:3.3.2")
     implementation("io.ktor:ktor-client-websockets:3.3.2")

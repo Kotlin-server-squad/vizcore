@@ -49,7 +49,7 @@ class RuntimeRequirementsTest {
     }
 
     @Test
-    fun `versions compare numerically and ignore qualifiers`() {
+    fun `versions compare numerically and order a pre-release before its release`() {
         assertTrue(RuntimeRequirements.isAtLeast("1.10.2", "1.10.2"))
         assertTrue(RuntimeRequirements.isAtLeast("1.11.0", "1.10.2"))
         assertTrue(RuntimeRequirements.isAtLeast("2.0", "1.10.2"))
@@ -57,6 +57,19 @@ class RuntimeRequirementsTest {
         assertFalse(RuntimeRequirements.isAtLeast("1.9.0", "1.10.2"))
         assertFalse(RuntimeRequirements.isAtLeast("1.10.1", "1.10.2"))
         assertFalse(RuntimeRequirements.isAtLeast("1.10.2-RC", "1.10.3"))
+        assertFalse(RuntimeRequirements.isAtLeast("1.10.2-RC", "1.10.2"))
+        assertTrue(RuntimeRequirements.isAtLeast("1.10.3-RC", "1.10.2"))
+        assertTrue(RuntimeRequirements.isAtLeast("1.10.2-RC2", "1.10.2-RC"))
+    }
+
+    @Test
+    fun `a linkage error from an undetected old library still gets the requirements message`() {
+        val cause = NoSuchMethodError("kotlinx.coroutines.BuildersKt.runBlockingK")
+        val error = RuntimeRequirements.linkageFailure(cause)
+        val message = error.message.orEmpty()
+        assertTrue("runBlockingK" in message, message)
+        assertTrue("kotlinx-coroutines 1.10.2" in message, message)
+        assertEquals(cause, error.cause)
     }
 
     @Test

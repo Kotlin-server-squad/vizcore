@@ -49,9 +49,9 @@ dependencies {
 
 	// External runtime deps of coroutine-viz-client + coroutine-viz-core. Versions match
 	// backend/gradle.properties + the modules' build.gradle.kts. Maven resolves THEIR transitives.
-	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
-	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
-	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
+	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 	implementation("io.ktor:ktor-client-core:3.3.2")
 	implementation("io.ktor:ktor-client-cio:3.3.2")
 	implementation("io.ktor:ktor-client-websockets:3.3.2")

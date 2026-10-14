@@ -17,7 +17,7 @@ dependencies {
     // debug module stays off consumers' compile classpath. Version-parity with
     // kotlinx-coroutines-core 1.10.2 (same JetBrains release train). JVM 17 OK.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.slf4j:slf4j-api:2.0.9")
 
     // Test

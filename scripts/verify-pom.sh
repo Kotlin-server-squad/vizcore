@@ -16,6 +16,10 @@ set -euo pipefail
 
 GROUP_ID="com.jh.coroutine-visualizer"
 VERSION="0.2.1"
+# What consumers get on their classpath: apps on Kotlin 2.2 and Spring Boot's pinned
+# kotlinx-coroutines must be able to use the SDK (see RuntimeRequirements.kt).
+STDLIB_VERSION="2.2.21"
+COROUTINES_VERSION="1.10.2"
 GROUP_PATH="com/jh/coroutine-visualizer"
 M2_REPO="${HOME}/.m2/repository"
 ARTIFACTS=("coroutine-viz-core" "coroutine-viz-client")
@@ -69,8 +73,19 @@ for artifact in "${ARTIFACTS[@]}"; do
     artifact_failed=1
   fi
 
+  # Each dependency's <version> is on the line after its <artifactId>.
+  if ! grep -A1 "<artifactId>kotlin-stdlib</artifactId>" "${POM}" | grep -q "<version>${STDLIB_VERSION}</version>"; then
+    echo "    FAIL: kotlin-stdlib ${STDLIB_VERSION} not declared in ${artifact} POM"
+    artifact_failed=1
+  fi
+
+  if ! grep -A1 "<artifactId>kotlinx-coroutines-core-jvm</artifactId>" "${POM}" | grep -q "<version>${COROUTINES_VERSION}</version>"; then
+    echo "    FAIL: kotlinx-coroutines-core-jvm ${COROUTINES_VERSION} not declared in ${artifact} POM"
+    artifact_failed=1
+  fi
+
   if [[ "${artifact_failed}" -eq 0 ]]; then
-    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (Apache-2.0) asserted"
+    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (Apache-2.0, stdlib ${STDLIB_VERSION}, coroutines ${COROUTINES_VERSION}) asserted"
   else
     FAILED=1
   fi

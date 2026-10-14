@@ -18,7 +18,7 @@ dependencies {
     // core exposes appJson but pulls kotlinx-serialization-json as `implementation`
     // (off consumers' compile classpath), so the client declares it directly to use
     // the shared PolymorphicSerializer + parse the bootstrap JSON response.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     // Ktor client — first-party JetBrains modules, pinned to the project ktor BOM
     // version (T-07-SC). CIO engine + WebSockets for the ingest send loop; core for

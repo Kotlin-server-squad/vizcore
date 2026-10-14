@@ -52,6 +52,19 @@ internal object RuntimeRequirements {
                 "extra[\"kotlin-coroutines.version\"] = \"$MIN_COROUTINES_VERSION\"."
         }
 
+    /**
+     * Turns a [LinkageError] from the start path into the same kind of message [check] gives.
+     * [check] can miss an old library (a repackaged jar without its version resource, or an
+     * unusual class loader), and the start path would then fail with the bare error again.
+     */
+    fun linkageFailure(error: LinkageError): IllegalStateException =
+        IllegalStateException(
+            "vizcore: a library on the app's classpath is older than the vizcore SDK needs ($error). " +
+                "The SDK needs kotlin-stdlib $MIN_KOTLIN_STDLIB or newer and kotlinx-coroutines " +
+                "$MIN_COROUTINES_VERSION or newer. See the Requirements section of the vizcore README.",
+            error,
+        )
+
     /** The kotlinx-coroutines version on the classpath, or null when the jar does not say. */
     fun coroutinesVersion(loader: ClassLoader? = Job::class.java.classLoader): String? =
         loader
@@ -60,7 +73,10 @@ internal object RuntimeRequirements {
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
-    /** Compares dotted versions numerically, ignoring a qualifier such as `-RC`. */
+    /**
+     * Compares dotted versions numerically. A pre-release (`1.10.2-RC`) comes before its release,
+     * so it does not meet a minimum of `1.10.2`.
+     */
     internal fun isAtLeast(
         version: String,
         minimum: String,
@@ -72,8 +88,10 @@ internal object RuntimeRequirements {
             val r = required.getOrElse(i) { 0 }
             if (a != r) return a > r
         }
-        return true
+        return !isPreRelease(version) || isPreRelease(minimum)
     }
+
+    private fun isPreRelease(version: String): Boolean = '-' in version
 
     private fun numericParts(version: String): List<Int> =
         version

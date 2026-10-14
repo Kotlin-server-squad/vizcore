@@ -43,8 +43,8 @@ and climbs to the nearest **observed** ancestor (direct parents are intermediate
 
 - Needs JDK 21 (Gradle toolchain). DebugProbes self-attaches a byte-buddy agent, so `bootRun`/`spike`
   pass `-Djdk.attach.allowAttachSelf=true`.
-- `kotlin-coroutines.version` is pinned to `1.11.0` to match the vizcore jars (Spring's BOM otherwise
-  forces a different version → `runBlocking` ABI mismatch).
+- Spring Boot 4 pins kotlinx-coroutines 1.10.2, the version the vizcore jars are built against, so no
+  override is needed. On Spring Boot 3.x see the Requirements in the root README.
 - Depends on the prebuilt `coroutine-viz-client` / `coroutine-viz-core` jars under
   `../../backend/.../build/libs`. Rebuild them if missing:
   `cd ../../backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar`.
