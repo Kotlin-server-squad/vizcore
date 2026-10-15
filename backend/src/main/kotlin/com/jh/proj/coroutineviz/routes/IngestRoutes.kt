@@ -84,6 +84,9 @@ fun Route.registerIngestRoutes() {
                 removed.set(true)
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
             }
+        // Registered right before the try and released first in the finally, so nothing between
+        // the two can leave the session marked connected (which would hide Checks failures).
+        IngestConnections.opened(sessionId)
         try {
             for (frame in incoming) {
                 // Frames already queued when the session was deleted must not land in it;
@@ -94,6 +97,7 @@ fun Route.registerIngestRoutes() {
                 }
             }
         } finally {
+            IngestConnections.closed(sessionId)
             sessionRemoved.cancel()
             session.ingestSocketClosed()
         }

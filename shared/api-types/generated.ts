@@ -565,6 +565,8 @@ export interface components {
             sessionId: string;
             results: components["schemas"]["ValidationResult"][];
             timing: components["schemas"]["TimingReport"];
+            appConnected: boolean;
+            stillRunning: number;
         };
         ValidationResult: {
             /** @enum {string} */

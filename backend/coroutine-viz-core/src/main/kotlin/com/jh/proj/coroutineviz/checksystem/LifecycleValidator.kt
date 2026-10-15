@@ -10,7 +10,9 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
  *
  * Rules enforced:
  * - Every [CoroutineCreated] must have a matching [CoroutineStarted]
- * - Every started coroutine must reach a terminal state (Completed, Cancelled, or Failed)
+ * - Every started coroutine must reach a terminal state (Completed, Cancelled, or Failed),
+ *   judged only once the session has ended — on a live session a coroutine without a
+ *   terminal event is simply still running
  * - No events should appear for a coroutine after its terminal event
  */
 object LifecycleValidator {
@@ -20,9 +22,15 @@ object LifecycleValidator {
      * Run all lifecycle validation rules against the given event list.
      *
      * @param events Full event stream (may contain events for multiple coroutines)
+     * @param sessionLive Whether the app producing [events] is still connected. A live
+     *   session's still-running coroutines are reported as running, not as never terminated:
+     *   an app that is up has long-lived coroutines (servers, SSE streams, consumers).
      * @return List of [ValidationResult] -- one per rule per coroutine
      */
-    fun validate(events: List<VizEvent>): List<ValidationResult> {
+    fun validate(
+        events: List<VizEvent>,
+        sessionLive: Boolean = false,
+    ): List<ValidationResult> {
         val results = mutableListOf<ValidationResult>()
 
         // Group coroutine events by coroutine ID
@@ -34,7 +42,7 @@ object LifecycleValidator {
         for ((coroutineId, coroutineEvents) in byCoroutine) {
             val sorted = coroutineEvents.sortedBy { it.seq }
             results += checkCreatedHasStarted(coroutineId, sorted)
-            results += checkStartedHasTerminal(coroutineId, sorted)
+            results += checkStartedHasTerminal(coroutineId, sorted, sessionLive)
             results += checkNoEventsAfterTerminal(coroutineId, sorted)
         }
 
@@ -48,6 +56,16 @@ object LifecycleValidator {
 
         return results
     }
+
+    /** Ids of coroutines that started and have no terminal event, in first-seen order. */
+    fun unfinishedCoroutineIds(events: List<VizEvent>): List<String> =
+        events
+            .filterIsInstance<CoroutineEvent>()
+            .groupBy { it.coroutineId }
+            .filter { (_, coroutineEvents) ->
+                coroutineEvents.any { it is CoroutineStarted } && coroutineEvents.none { it.kind in TERMINAL_KINDS }
+            }.keys
+            .toList()
 
     private fun checkCreatedHasStarted(
         coroutineId: String,
@@ -74,6 +92,7 @@ object LifecycleValidator {
     private fun checkStartedHasTerminal(
         coroutineId: String,
         events: List<CoroutineEvent>,
+        sessionLive: Boolean,
     ): ValidationResult {
         val ruleName = "StartedHasTerminal"
         val hasStarted = events.any { it is CoroutineStarted }
@@ -86,6 +105,11 @@ object LifecycleValidator {
             ValidationResult.Pass(
                 ruleName,
                 "Coroutine $coroutineId: Started coroutine reached terminal state ($terminalKind)",
+            )
+        } else if (sessionLive) {
+            ValidationResult.Pass(
+                ruleName,
+                "Coroutine $coroutineId is still running (session is live; checked once the app disconnects)",
             )
         } else {
             ValidationResult.Fail(

@@ -108,6 +108,15 @@ export function ValidationPanel({
                     totalCount={data.results.length}
                   />
 
+                  {/* A connected app's unfinished coroutines are running, not leaked */}
+                  {data.appConnected && (data.stillRunning ?? 0) > 0 && (
+                    <div className="text-xs text-default-500" data-testid="validation-still-running">
+                      The app is still connected: {data.stillRunning} coroutine
+                      {data.stillRunning !== 1 ? 's are' : ' is'} still running. Whether they
+                      terminate is checked once the app disconnects.
+                    </div>
+                  )}
+
                   {/* Failures */}
                   {failures.length > 0 && (
                     <div className="space-y-2">

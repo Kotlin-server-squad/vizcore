@@ -46,6 +46,42 @@ describe('ValidationPanel', () => {
     vi.clearAllMocks()
   })
 
+  it('notes still-running coroutines while the app is connected', async () => {
+    mockedApiClient.validateSession.mockResolvedValue({
+      sessionId: 'session-1',
+      results: [
+        { type: 'Pass', ruleName: 'StartedHasTerminal', message: 'Coroutine c-1 is still running' },
+      ],
+      timing: { coroutineDurations: {}, suspensionDurations: {}, totalDuration: 0 },
+      appConnected: true,
+      stillRunning: 3,
+    })
+
+    render(<ValidationPanel sessionId="session-1" />, { wrapper: createWrapper() })
+    fireEvent.click(screen.getByTestId('run-validation-btn'))
+
+    const note = await screen.findByTestId('validation-still-running')
+    expect(note).toHaveTextContent('3 coroutines are still running')
+  })
+
+  it('shows no still-running note once the app has disconnected', async () => {
+    mockedApiClient.validateSession.mockResolvedValue({
+      sessionId: 'session-1',
+      results: [
+        { type: 'Fail', ruleName: 'StartedHasTerminal', message: 'Coroutine c-1 was started but never terminated' },
+      ],
+      timing: { coroutineDurations: {}, suspensionDurations: {}, totalDuration: 0 },
+      appConnected: false,
+      stillRunning: 1,
+    })
+
+    render(<ValidationPanel sessionId="session-1" />, { wrapper: createWrapper() })
+    fireEvent.click(screen.getByTestId('run-validation-btn'))
+
+    await screen.findByTestId('validation-summary')
+    expect(screen.queryByTestId('validation-still-running')).not.toBeInTheDocument()
+  })
+
   it('renders empty state with run button initially', () => {
     render(<ValidationPanel sessionId="session-1" />, {
       wrapper: createWrapper(),

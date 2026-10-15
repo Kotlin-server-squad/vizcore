@@ -298,9 +298,13 @@ Response `200`:
 {
   "sessionId": "string",
   "results": [...],
-  "timing": {...}
+  "timing": {...},
+  "appConnected": true,
+  "stillRunning": 3
 }
 ```
+
+`appConnected` is true while an app streams into the session. Its unfinished coroutines (`stillRunning`) are then reported as still running, not as "started but never terminated".
 
 ### Comprehensive Validation Report
 

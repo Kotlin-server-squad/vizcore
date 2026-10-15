@@ -199,4 +199,39 @@ class LifecycleValidatorTest {
             "Should fail when started coroutine has no terminal event",
         )
     }
+
+    @Test
+    fun `started coroutine without terminal event is running, not failed, on a live session`() {
+        val events: List<VizEvent> =
+            listOf(
+                created("c1", 1),
+                started("c1", 2),
+                suspended("c1", 3),
+            )
+
+        val results = LifecycleValidator.validate(events, sessionLive = true)
+        val startedHasTerminal = results.first { it.ruleName == "StartedHasTerminal" }
+        assertTrue(
+            startedHasTerminal is ValidationResult.Pass,
+            "A live session's unfinished coroutine is still running, not a failure",
+        )
+        assertTrue(startedHasTerminal.message.contains("still running"), startedHasTerminal.message)
+    }
+
+    @Test
+    fun `live session still fails other lifecycle rules`() {
+        val events: List<VizEvent> =
+            listOf(
+                created("c1", 1),
+                started("c1", 2),
+                completed("c1", 3),
+                suspended("c1", 4),
+            )
+
+        val results = LifecycleValidator.validate(events, sessionLive = true)
+        assertTrue(
+            results.first { it.ruleName == "NoEventsAfterTerminal" } is ValidationResult.Fail,
+            "sessionLive only relaxes StartedHasTerminal",
+        )
+    }
 }
