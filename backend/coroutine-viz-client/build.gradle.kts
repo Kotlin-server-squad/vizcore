@@ -3,7 +3,7 @@ val ktor_version: String by project
 
 plugins {
     kotlin("jvm") version "2.3.21"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
     id("maven-publish")
 }
 
@@ -14,11 +14,11 @@ dependencies {
     // The embeddable client reuses core for VizEvent types + the shared appJson
     // serializer (Plan 07-01) so wire format == ingest format == SSE/FE format.
     implementation(project(":coroutine-viz-core"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     // core exposes appJson but pulls kotlinx-serialization-json as `implementation`
     // (off consumers' compile classpath), so the client declares it directly to use
     // the shared PolymorphicSerializer + parse the bootstrap JSON response.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Ktor client — first-party JetBrains modules, pinned to the project ktor BOM
     // version (T-07-SC). CIO engine + WebSockets for the ingest send loop; core for
@@ -33,7 +33,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 
     // In-process server for the round-trip test: stand up the real ingest route
     // shape (configureWebSockets + webSocket) without a live network.
