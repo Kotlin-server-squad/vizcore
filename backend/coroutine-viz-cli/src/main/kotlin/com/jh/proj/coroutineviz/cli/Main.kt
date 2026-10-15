@@ -37,7 +37,7 @@ private const val EXIT_USAGE = 2
  */
 fun runCli(path: String): Int {
     if (path.isBlank()) {
-        System.err.println("usage: java -jar coroutine-viz-cli-0.2.0-all.jar <events.json>")
+        System.err.println("usage: java -jar coroutine-viz-cli-0.2.1-all.jar <events.json>")
         return EXIT_USAGE
     }
 

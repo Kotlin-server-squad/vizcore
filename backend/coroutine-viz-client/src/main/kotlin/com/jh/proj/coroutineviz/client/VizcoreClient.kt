@@ -255,20 +255,31 @@ class VizcoreClient internal constructor(
          * and imports no `TenantContext`/server-auth type, so this module stays
          * pure-Kotlin JVM-17 (D-12); correlation is create-path metadata only and does
          * NOT touch `VizSession.send()` (D-13).
+         *
+         * @throws IllegalStateException when the app's kotlin-stdlib or kotlinx-coroutines is older than
+         *   the SDK needs (see [RuntimeRequirements]).
          */
         fun start(
             appName: String,
             backendUrl: String,
             token: String,
             correlation: String? = null,
-        ): VizcoreClient =
-            start(
-                appName = appName,
-                backendUrl = backendUrl,
-                token = token,
-                correlation = correlation,
-                httpClient = HttpClient(CIO) { install(WebSockets) },
-            )
+        ): VizcoreClient {
+            // Before the Ktor client is built: with too old a kotlin-stdlib or kotlinx-coroutines that
+            // fails with a NoSuchMethodError instead of a message saying what to change.
+            RuntimeRequirements.check()
+            return try {
+                start(
+                    appName = appName,
+                    backendUrl = backendUrl,
+                    token = token,
+                    correlation = correlation,
+                    httpClient = HttpClient(CIO) { install(WebSockets) },
+                )
+            } catch (e: LinkageError) {
+                throw RuntimeRequirements.linkageFailure(e)
+            }
+        }
 
         /** [start] with an injected [httpClient], so tests can drive the real factory in-process. */
         internal fun start(

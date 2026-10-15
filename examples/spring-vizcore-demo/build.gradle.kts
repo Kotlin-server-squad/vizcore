@@ -1,9 +1,8 @@
 import org.springframework.boot.gradle.tasks.run.BootRun
 
 plugins {
-	// Track the backend toolchain that builds the vizcore jars (kotlin jvm 2.3.21 +
-	// serialization 2.4.0 -> jars carry 2.4.0 metadata; a compiler older than 2.3 cannot
-	// read them). NOTE: the visualizer -javaagent MUST NOT be attached to an
+	// The vizcore jars carry Kotlin 2.2 metadata, so any Kotlin 2.2+ compiler reads them; this
+	// example tracks the backend's newer toolchain. NOTE: the visualizer -javaagent MUST NOT be attached to an
 	// exploded-classpath launch of this app (IDE Application/Kotlin run configs) — the app's
 	// ktor/kotlinx jars shadow the agent's bundled copies during premain and its session
 	// bootstrap dies on an empty HTTP body. Launch the agent flow via the Boot fat jar
@@ -17,11 +16,6 @@ plugins {
 
 group = "com.jh.vizcore.demo"
 version = "0.0.1-SNAPSHOT"
-
-// The vizcore jars were compiled against kotlinx-coroutines 1.11.0. Spring Boot's dependency
-// management otherwise pins a different coroutines version at runtime, causing a runBlocking
-// NoSuchMethodError (compile-vs-runtime ABI mismatch). Override the managed version everywhere.
-extra["kotlin-coroutines.version"] = "1.11.0"
 
 java {
 	toolchain {
@@ -41,8 +35,8 @@ repositories {
 //   cd ../../backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar
 val vizcoreJars =
 	files(
-		"../../backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.0.jar",
-		"../../backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.0.jar",
+		"../../backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.1.jar",
+		"../../backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.1.jar",
 	)
 
 dependencies {
@@ -54,9 +48,9 @@ dependencies {
 
 	// External runtime deps of coroutine-viz-client + coroutine-viz-core. Versions match
 	// backend/gradle.properties + the modules' build.gradle.kts. Maven resolves THEIR transitives.
-	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
-	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
-	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
+	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 	implementation("io.ktor:ktor-client-core:3.3.2")
 	implementation("io.ktor:ktor-client-cio:3.3.2")
 	implementation("io.ktor:ktor-client-websockets:3.3.2")

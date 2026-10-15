@@ -6,6 +6,8 @@ import {
   SDK_ARTIFACT,
   SDK_CLIENT_FQN,
   SDK_GROUP,
+  SDK_MIN_COROUTINES,
+  SDK_MIN_KOTLIN,
   SDK_REPOSITORY_URL,
   SDK_VERSION,
   dependencySnippet,
@@ -28,6 +30,10 @@ const clientSource = readFileSync(
   'utf8',
 )
 const buildScript = readFileSync(resolve(clientModule, 'build.gradle.kts'), 'utf8')
+const requirementsSource = readFileSync(
+  resolve(clientModule, 'src/main/kotlin/com/jh/proj/coroutineviz/client/RuntimeRequirements.kt'),
+  'utf8',
+)
 
 interface KotlinParam {
   name: string
@@ -153,5 +159,14 @@ describe('dependency snippet vs the client build script', () => {
     const dep = dependencySnippet()
     expect(dep).toContain(`url = uri("${SDK_REPOSITORY_URL}")`)
     expect(dep).toMatch(/credentials\s*\{[\s\S]*username[\s\S]*password[\s\S]*\}/)
+  })
+
+  it('states the requirements the SDK checks at start', () => {
+    const [major, minor] = SDK_MIN_KOTLIN.split('.')
+    expect(requirementsSource).toContain(`MIN_KOTLIN_STDLIB = KotlinVersion(${major}, ${minor})`)
+    expect(requirementsSource).toContain(`MIN_COROUTINES_VERSION = "${SDK_MIN_COROUTINES}"`)
+    const dep = dependencySnippet()
+    expect(dep).toContain(`Kotlin ${SDK_MIN_KOTLIN}+`)
+    expect(dep).toContain(`extra["kotlin-coroutines.version"] = "${SDK_MIN_COROUTINES}"`)
   })
 })

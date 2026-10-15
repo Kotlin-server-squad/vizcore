@@ -10,7 +10,7 @@
  */
 
 /** Released SDK version. The ONE place the wizard's version string comes from. */
-export const SDK_VERSION = '0.2.0'
+export const SDK_VERSION = '0.2.1'
 
 /** Maven coordinates (mirror `coroutine-viz-client/build.gradle.kts` publishing). */
 export const SDK_GROUP = 'com.jh.coroutine-visualizer'
@@ -22,6 +22,10 @@ export const SDK_REPOSITORY_URL =
 
 /** Fully qualified name of the SDK entry point. */
 export const SDK_CLIENT_FQN = 'com.jh.proj.coroutineviz.client.VizcoreClient'
+
+/** What the app needs to run the SDK (mirrors `RuntimeRequirements.kt` in the client). */
+export const SDK_MIN_KOTLIN = '2.2'
+export const SDK_MIN_COROUTINES = '1.10.2'
 
 /** Placeholder app name the user is expected to replace. */
 export const APP_NAME_PLACEHOLDER = 'my-app'
@@ -40,6 +44,9 @@ export function dependencySnippet(version: string = SDK_VERSION): string {
     '    }',
     '}',
     '',
+    `// Needs Kotlin ${SDK_MIN_KOTLIN}+ and kotlinx-coroutines ${SDK_MIN_COROUTINES}+. On Spring Boot 3.x, raise`,
+    `// the Kotlin plugin to ${SDK_MIN_KOTLIN} or newer and add:`,
+    `// extra["kotlin-coroutines.version"] = "${SDK_MIN_COROUTINES}"`,
     'dependencies {',
     `    implementation("${SDK_GROUP}:${SDK_ARTIFACT}:${version}")`,
     '}',

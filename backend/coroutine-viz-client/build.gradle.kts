@@ -8,17 +8,17 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.2.0"
+version = "0.2.1"
 
 dependencies {
     // The embeddable client reuses core for VizEvent types + the shared appJson
     // serializer (Plan 07-01) so wire format == ingest format == SSE/FE format.
     implementation(project(":coroutine-viz-core"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     // core exposes appJson but pulls kotlinx-serialization-json as `implementation`
     // (off consumers' compile classpath), so the client declares it directly to use
     // the shared PolymorphicSerializer + parse the bootstrap JSON response.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     // Ktor client — first-party JetBrains modules, pinned to the project ktor BOM
     // version (T-07-SC). CIO engine + WebSockets for the ingest send loop; core for
@@ -33,7 +33,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 
     // In-process server for the round-trip test: stand up the real ingest route
     // shape (configureWebSockets + webSocket) without a live network.
@@ -49,8 +49,15 @@ tasks.named<Test>("test") {
 // Target JVM 17 exactly like coroutine-viz-core: the client is consumed by JVM apps
 // and must stay on the lowest common denominator that core publishes against.
 kotlin {
+    // Compile to the Kotlin 2.2 language and API level and declare the matching stdlib, so apps
+    // on Kotlin 2.2 or newer can read the SDK (the default, the build's own compiler version,
+    // locks out every app on an older Kotlin). 2.2 is the floor anyway: Ktor 3.3 needs
+    // kotlin-stdlib 2.2 at runtime, and Spring Boot pins the stdlib to the app's Kotlin version.
+    coreLibrariesVersion = "2.2.21"
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
+        apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
         // Compile against the JDK 17 API, not just to JVM-17 bytecode: on a JDK-21 toolchain a
         // JDK 19+ call (e.g. Thread#threadId) otherwise compiles and then throws NoSuchMethodError
         // for SDK consumers on Java 17. checkBytecode only sees class-file versions, not API use.
@@ -65,7 +72,7 @@ java {
 }
 
 // Maven publishing configuration — mirrors coroutine-viz-core's already-working
-// block (D-02). The locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.2.0
+// block (D-02). The locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.2.1
 // MUST match frontend/src/lib/dep-snippet.ts verbatim (the ConnectWizard snippet).
 publishing {
     publications {

@@ -2,7 +2,7 @@
 # Assert the publishToMavenLocal POM for the SDK artifacts BEFORE the immutable
 # one-shot remote publish to GitHub Packages.
 #
-# GitHub Packages 0.2.0 is immutable, so we prove the POM/coordinate locally
+# GitHub Packages 0.2.1 is immutable, so we prove the POM/coordinate locally
 # first: run publishToMavenLocal for core + client, then grep each resulting
 # ~/.m2 POM for the Apache-2.0 license (backend/LICENSE), the locked groupId, and the artifactId.
 #
@@ -15,7 +15,12 @@
 set -euo pipefail
 
 GROUP_ID="com.jh.coroutine-visualizer"
-VERSION="0.2.0"
+VERSION="0.2.1"
+# What consumers get on their classpath: apps on Kotlin 2.2 and Spring Boot's pinned
+# kotlinx-coroutines must be able to use the SDK (see RuntimeRequirements.kt).
+STDLIB_VERSION="2.2.21"
+COROUTINES_VERSION="1.10.2"
+SERIALIZATION_VERSION="1.9.0"
 GROUP_PATH="com/jh/coroutine-visualizer"
 M2_REPO="${HOME}/.m2/repository"
 ARTIFACTS=("coroutine-viz-core" "coroutine-viz-client")
@@ -69,8 +74,24 @@ for artifact in "${ARTIFACTS[@]}"; do
     artifact_failed=1
   fi
 
+  # Each dependency's <version> is on the line after its <artifactId>.
+  if ! grep -A1 "<artifactId>kotlin-stdlib</artifactId>" "${POM}" | grep -q "<version>${STDLIB_VERSION}</version>"; then
+    echo "    FAIL: kotlin-stdlib ${STDLIB_VERSION} not declared in ${artifact} POM"
+    artifact_failed=1
+  fi
+
+  if ! grep -A1 "<artifactId>kotlinx-coroutines-core-jvm</artifactId>" "${POM}" | grep -q "<version>${COROUTINES_VERSION}</version>"; then
+    echo "    FAIL: kotlinx-coroutines-core-jvm ${COROUTINES_VERSION} not declared in ${artifact} POM"
+    artifact_failed=1
+  fi
+
+  if ! grep -A1 "<artifactId>kotlinx-serialization-json-jvm</artifactId>" "${POM}" | grep -q "<version>${SERIALIZATION_VERSION}</version>"; then
+    echo "    FAIL: kotlinx-serialization-json-jvm ${SERIALIZATION_VERSION} not declared in ${artifact} POM"
+    artifact_failed=1
+  fi
+
   if [[ "${artifact_failed}" -eq 0 ]]; then
-    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (Apache-2.0) asserted"
+    echo "    OK: ${GROUP_ID}:${artifact}:${VERSION} (Apache-2.0, stdlib ${STDLIB_VERSION}, coroutines ${COROUTINES_VERSION}, serialization ${SERIALIZATION_VERSION}) asserted"
   else
     FAILED=1
   fi

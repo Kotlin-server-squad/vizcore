@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.2.0"
+version = "0.2.1"
 
 // The agent links the embeddable client, which inherits the JVM-17 purity invariant
 // (the published-library floor enforced by checkBytecode). UNLIKE the CLI (a JVM-21-free
@@ -79,7 +79,7 @@ tasks.shadowJar {
         attributes["Premain-Class"] = "com.jh.proj.coroutineviz.agent.boot.VizcoreAgentPremain"
     }
     // Shadow configuration: keep the default `all` classifier (yields
-    // coroutine-viz-agent-0.2.0-all.jar) and do NOT relocate kotlin.* / kotlinx.* —
+    // coroutine-viz-agent-0.2.1-all.jar) and do NOT relocate kotlin.* / kotlinx.* —
     // relocating them breaks DebugProbes' byte-buddy package-name introspection at runtime
     // (RESEARCH Pitfall 4). The coroutines packages MUST ship under their real names.
     //
