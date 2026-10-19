@@ -160,6 +160,12 @@ export function ConnectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
               <span className="font-mono">{backendUrl}</span>. The correlation value is new
               each time this wizard opens, so copy the snippet again after reopening it.
             </p>
+            <p className="text-xs text-default-500">
+              The SDK samples your app&apos;s coroutines about every 150 ms. A coroutine that
+              starts and finishes between two samples, such as a fast request handler, doesn&apos;t
+              appear. SDK releases after 0.2.1 take{' '}
+              <code className="font-mono">pollIntervalMillis</code> to sample more often.
+            </p>
           </Step>
 
           <Step index={3} title="Run your app">

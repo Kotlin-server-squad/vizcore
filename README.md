@@ -104,7 +104,11 @@ the view as a sampled picture, not a complete trace:
 - A coroutine that starts and finishes between two samples does not appear. Fast request
   handlers (a few milliseconds each) usually fall into this gap; slower work, such as
   outbound HTTP calls, long-running loops and waiting on I/O, shows up well
-  ([#206](https://github.com/Kotlin-server-squad/vizcore/issues/206)).
+  ([#206](https://github.com/Kotlin-server-squad/vizcore/issues/206)). From the SDK release
+  after 0.2.1, you can sample more often by passing an interval in milliseconds:
+  `VizcoreClient.start(appName, backendUrl, token, pollIntervalMillis = 50)`, or `poll=50`
+  with the Java agent. Each sample dumps every coroutine in the JVM, so keep it at 10 ms or
+  more and expect more CPU use on apps with many coroutines.
 - The SDK leaves its own coroutines (its poll loop, its session bookkeeping and the Ktor
   client it streams with) out of your session. A few Ktor coroutines remain, because nothing
   ties them to the SDK: the socket reader and writer for its connection
