@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { ComparisonView } from './ComparisonView'
@@ -144,5 +145,55 @@ describe('ComparisonView with preloaded comparison', () => {
     render(<ComparisonView />, { wrapper: createWrapper() })
 
     expect(screen.getByText('Session Comparison')).toBeInTheDocument()
+  })
+})
+
+describe('ComparisonView session pickers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedApiClient.listSessions.mockResolvedValue(mockSessions)
+    mockedApiClient.compareSessions.mockResolvedValue(mockComparison)
+  })
+
+  // HeroUI forwards data-testid to the picker's trigger button.
+  const pickerA = () => screen.getByTestId('select-session-a')
+
+  it('shows the selected sessions in the closed pickers', async () => {
+    render(<ComparisonView a="session-1" b="session-2" onAChange={vi.fn()} onBChange={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(pickerA()).toHaveTextContent('session-1'))
+    expect(screen.getByTestId('select-session-b')).toHaveTextContent('session-2')
+  })
+
+  it('keeps session A when its picker is opened and closed without a choice', async () => {
+    const user = userEvent.setup()
+    const onAChange = vi.fn()
+    render(<ComparisonView a="session-1" b="session-2" onAChange={onAChange} onBChange={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(pickerA()).toHaveTextContent('session-1'))
+
+    await user.click(pickerA())
+    expect(await screen.findByRole('listbox')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument())
+
+    expect(onAChange).not.toHaveBeenCalled()
+  })
+
+  it('still switches session A to another session', async () => {
+    const user = userEvent.setup()
+    const onAChange = vi.fn()
+    render(<ComparisonView a="session-1" b="session-2" onAChange={onAChange} onBChange={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(pickerA()).toHaveTextContent('session-1'))
+
+    await user.click(pickerA())
+    await user.click(await screen.findByRole('option', { name: /session-3/ }))
+
+    expect(onAChange).toHaveBeenCalledWith('session-3')
   })
 })

@@ -101,6 +101,7 @@ export function ComparisonView({
               placeholder="Select session A"
               data-testid="select-session-a"
               isLoading={sessionsLoading}
+              disallowEmptySelection
               selectedKeys={sessionAId ? [sessionAId] : []}
               onSelectionChange={(keys) => {
                 const selected = Array.from(keys)[0] as string | undefined
@@ -110,7 +111,7 @@ export function ComparisonView({
               className="flex-1"
             >
               {(sessions ?? []).map((s) => (
-                <SelectItem key={s.sessionId}>
+                <SelectItem key={s.sessionId} textValue={s.sessionId}>
                   {s.sessionId} ({s.coroutineCount} coroutines)
                 </SelectItem>
               ))}
@@ -121,6 +122,7 @@ export function ComparisonView({
               placeholder="Select session B"
               data-testid="select-session-b"
               isLoading={sessionsLoading}
+              disallowEmptySelection
               selectedKeys={sessionBId ? [sessionBId] : []}
               onSelectionChange={(keys) => {
                 const selected = Array.from(keys)[0] as string | undefined
@@ -130,7 +132,7 @@ export function ComparisonView({
               className="flex-1"
             >
               {(sessions ?? []).map((s) => (
-                <SelectItem key={s.sessionId}>
+                <SelectItem key={s.sessionId} textValue={s.sessionId}>
                   {s.sessionId} ({s.coroutineCount} coroutines)
                 </SelectItem>
               ))}
