@@ -60,9 +60,17 @@ class OutboundBuffer(
 
     private val channel = Channel<VizEvent>(capacity = capacity)
     private val droppedCount = AtomicLong(0)
+    private val offeredCount = AtomicLong(0)
+    private val sentCount = AtomicLong(0)
 
     /** Number of events dropped on overflow — surfaced so loss is never silent. */
     val dropped: Long get() = droppedCount.get()
+
+    /** Number of events the feed has put into the buffer; tests wait on it. */
+    internal val offered: Long get() = offeredCount.get()
+
+    /** Number of events [drain] has handed off (its send returned); tests read it. */
+    internal val sent: Long get() = sentCount.get()
 
     /**
      * Launch the SINGLE lifetime feed: one long-lived collector on [scope] that
@@ -109,6 +117,7 @@ class OutboundBuffer(
     suspend fun drain(send: suspend (VizEvent) -> Unit) {
         for (event in channel) {
             send(event)
+            sentCount.incrementAndGet()
         }
     }
 
@@ -116,7 +125,7 @@ class OutboundBuffer(
     private fun offer(event: VizEvent) {
         val result = channel.trySend(event)
         when {
-            result.isSuccess -> Unit
+            result.isSuccess -> offeredCount.incrementAndGet()
             // Channel closed → the client is stopping; not a backpressure loss.
             result.isClosed -> Unit
             // Buffer full → surfaced, counted drop-newest-when-full.
