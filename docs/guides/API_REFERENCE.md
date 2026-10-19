@@ -95,6 +95,11 @@ GET /api/sessions/{id}/coroutines/{coroutineId}/timeline
 
 Response `200`: Timeline data with suspension points for a specific coroutine.
 
+For a coroutine that has not finished, `openPhase` (`ACTIVE` or `SUSPENDED`) and
+`openPhaseSinceNanos` give the phase since its last recorded transition. `createdAtNanos`,
+`createdAtEpochMs` and `observedAtEpochMs` (the backend's wall clock) let a client count that
+phase up to now; `activeDuration` and `suspendedDuration` cover closed intervals only.
+
 ### SSE Event Stream
 
 ```

@@ -13,12 +13,28 @@ import type { CoroutineTimeline } from '@/types/api'
 /**
  * Fetch timeline for a specific coroutine
  */
-export function useCoroutineTimeline(sessionId: string | undefined, coroutineId: string | undefined) {
+/** How often an unfinished coroutine's timeline is re-read while the inspector shows it. */
+export const OPEN_PHASE_REFETCH_MS = 2000
+
+export function useCoroutineTimeline(
+  sessionId: string | undefined,
+  coroutineId: string | undefined,
+  /**
+   * Re-read the timeline while the coroutine is unfinished: a suspend and resume between two
+   * snapshots leaves its state unchanged, the inspector counts the open phase on (#218), and a
+   * reconnecting app brings the open phase back. One observer per view asks for it, since every
+   * observer with an interval runs its own timer.
+   */
+  options: { followOpenPhase?: boolean } = {},
+) {
   return useQuery({
     queryKey: ['sessions', sessionId, 'coroutines', coroutineId, 'timeline'],
     queryFn: () => apiClient.getCoroutineTimeline(sessionId!, coroutineId!),
     enabled: !!sessionId && !!coroutineId,
     staleTime: 5000,
+    refetchInterval: options.followOpenPhase
+      ? (query) => (query.state.data && query.state.data.totalDuration == null ? OPEN_PHASE_REFETCH_MS : false)
+      : false,
   })
 }
 

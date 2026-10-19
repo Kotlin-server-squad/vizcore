@@ -50,9 +50,10 @@ export function Inspector({
   placeholder = 'Select a coroutine to inspect it',
 }: InspectorProps) {
   const showTimeline = !!coroutine && !readOnly
-  const { data: timeline, refetch: refetchTimeline } = useCoroutineTimeline(
+  const { data: timeline, dataUpdatedAt, refetch: refetchTimeline } = useCoroutineTimeline(
     showTimeline ? sessionId : undefined,
     showTimeline ? coroutine.id : undefined,
+    { followOpenPhase: true },
   )
 
   // Keep the selected coroutine's timeline current while it runs. The live
@@ -91,7 +92,7 @@ export function Inspector({
     <div data-testid="inspector" className="space-y-3">
       {showTimeline && (
         <>
-          <TimingCard timeline={timeline} />
+          <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
           <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
           <RunsOnCard runsOn={runsOn} />
         </>

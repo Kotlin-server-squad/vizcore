@@ -336,7 +336,12 @@ fun Route.registerSessionRoutes() {
             return@get
         }
 
-        call.respond(HttpStatusCode.OK, timeline)
+        // The open phase lets a client count a still-running coroutine up to now (#218). For an
+        // app session only a still-streaming app vouches that the coroutine is still running:
+        // once its ingest socket is gone, its fate is unknown, so stop the clock. vizcore's own
+        // runs execute in this JVM and need no socket.
+        val live = IngestConnections.isConnected(sessionId) || VIZCORE_OWNED_SESSION_ID.containsMatchIn(sessionId)
+        call.respond(HttpStatusCode.OK, if (live) timeline else timeline.copy(openPhase = null, openPhaseSinceNanos = null))
     }
 
     // Authenticated SSE stream. This route is registered INSIDE authenticatedApi { } (see Routing.kt),
@@ -534,3 +539,11 @@ internal fun VizEvent.toSse(): ServerSentEvent =
         event = kind,
         id = "$sessionId-$seq",
     )
+
+/**
+ * Ids vizcore mints for its own runs (demo scenarios, the scenario runner and API), whose
+ * coroutines run in this JVM rather than in a connected app. Mirrors
+ * `frontend/src/lib/session-kind.ts`. An app that names itself `scenario-…` is taken for a demo
+ * here too; then its timeline keeps an open phase after the app disconnects.
+ */
+private val VIZCORE_OWNED_SESSION_ID = Regex("^(scenario-|auto-\\d+(-\\d+)?$|api-session-\\d+$)")

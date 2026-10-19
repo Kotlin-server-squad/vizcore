@@ -51,6 +51,20 @@ function timelineWithCreation() {
   }
 }
 
+/** [timeline] with a newest suspension event at [seq] and an open SUSPENDED phase. */
+function suspendedAt(timeline: ReturnType<typeof timelineWithCreation>, seq: number) {
+  return {
+    ...timeline,
+    data: {
+      ...timeline.data,
+      events: [...timeline.data.events, { seq, timestamp: 200, kind: 'coroutine.suspended' }],
+      openPhase: 'SUSPENDED',
+      openPhaseSinceNanos: 200,
+      totalDuration: null,
+    },
+  }
+}
+
 const userSuspension = {
   function: 'com.app.Service.fetch',
   fileName: 'Service.kt',
@@ -114,8 +128,8 @@ describe('CoroutineSourceStack', () => {
   })
 
   it('collapsed default renders the compact Created at / Suspended at chips (not the full stack)', () => {
-    useCoroutineTimeline.mockReturnValue(timelineWithCreation())
-    useSuspensionPoints.mockReturnValue([userSuspension])
+    useCoroutineTimeline.mockReturnValue(suspendedAt(timelineWithCreation(), 2))
+    useSuspensionPoints.mockReturnValue([{ ...userSuspension, eventSeq: 2 }])
 
     render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
 
@@ -195,5 +209,64 @@ describe('CoroutineSourceStack', () => {
 
     expect(screen.queryByRole('button', { name: /Jump to code/ })).not.toBeInTheDocument()
     expect(screen.getByText('Delay.kt:12')).toBeInTheDocument()
+  })
+
+  it('labels the newest suspension "Last suspended at" once the coroutine has resumed (#218)', () => {
+    const running = timelineWithCreation()
+    useCoroutineTimeline.mockReturnValue({
+      ...running,
+      data: { ...running.data, openPhase: 'ACTIVE', openPhaseSinceNanos: 500, totalDuration: null },
+    })
+    const older = { ...userSuspension, lineNumber: 65, timestamp: 150 }
+    useSuspensionPoints.mockReturnValue([older, userSuspension])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    expect(screen.getByText('Last suspended at')).toBeInTheDocument()
+    expect(screen.queryByText('Suspended at')).toBeNull()
+    // The chip shows the newest suspension, not the first one recorded.
+    expect(screen.getByText('Service.kt:99')).toBeInTheDocument()
+    expect(screen.queryByText('Service.kt:65')).toBeNull()
+  })
+
+  it('keeps "Suspended at" while the coroutine is suspended at that frame', () => {
+    useCoroutineTimeline.mockReturnValue(suspendedAt(timelineWithCreation(), 2))
+    useSuspensionPoints.mockReturnValue([{ ...userSuspension, eventSeq: 2 }])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    expect(screen.getByText('Suspended at')).toBeInTheDocument()
+  })
+
+  it('says "Last suspended at" when its newest suspension has no frame', () => {
+    // Suspended now (seq 3), but only an earlier suspension (seq 2) carried a frame.
+    useCoroutineTimeline.mockReturnValue(suspendedAt(timelineWithCreation(), 3))
+    useSuspensionPoints.mockReturnValue([{ ...userSuspension, eventSeq: 2 }])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    expect(screen.getByText('Last suspended at')).toBeInTheDocument()
+  })
+
+  it('says "Last suspended at" when the backend does not say whether it is suspended now', () => {
+    useCoroutineTimeline.mockReturnValue(timelineWithCreation())
+    useSuspensionPoints.mockReturnValue([userSuspension])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    expect(screen.getByText('Last suspended at')).toBeInTheDocument()
+  })
+
+  it('skips a newest suspension point without a file for the chip, and does not call it current', () => {
+    useCoroutineTimeline.mockReturnValue(suspendedAt(timelineWithCreation(), 3))
+    useSuspensionPoints.mockReturnValue([
+      { ...userSuspension, eventSeq: 2 },
+      { ...userSuspension, fileName: null, lineNumber: null, eventSeq: 3 },
+    ])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    expect(screen.getByText('Last suspended at')).toBeInTheDocument()
+    expect(screen.getByText('Service.kt:99')).toBeInTheDocument()
   })
 })

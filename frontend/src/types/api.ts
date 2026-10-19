@@ -517,6 +517,14 @@ export interface CoroutineTimeline {
   parentId?: string | null
   childrenIds: string[]
   events: TimelineEvent[]
+  /** Unfinished only: the phase since the last recorded transition, and when it began (tsNanos). */
+  openPhase?: 'ACTIVE' | 'SUSPENDED' | null
+  openPhaseSinceNanos?: number | null
+  /** Creation on the app JVM's monotonic (tsNanos) and wall (epoch ms) clocks. */
+  createdAtNanos?: number | null
+  createdAtEpochMs?: number | null
+  /** The backend's wall clock when it built this timeline (epoch ms). */
+  observedAtEpochMs?: number | null
 }
 
 export interface TimelineEvent {

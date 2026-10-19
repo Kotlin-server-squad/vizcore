@@ -20,6 +20,17 @@ data class CoroutineTimeline(
     val parentId: String? = null,
     val childrenIds: List<String> = emptyList(),
     val events: List<TimelineEventSummary> = emptyList(),
+    // The phase an unfinished coroutine has been in since its last recorded transition
+    // ("ACTIVE" or "SUSPENDED"), and that transition's tsNanos. Null once finished.
+    val openPhase: String? = null,
+    val openPhaseSinceNanos: Long? = null,
+    // Creation on the emitting JVM's two clocks: tsNanos (monotonic) and wall-clock millis.
+    // With [observedAtEpochMs] a client can estimate the emitting JVM's "now" in tsNanos
+    // terms (assuming the two hosts' wall clocks agree, as the leak age does).
+    val createdAtNanos: Long? = null,
+    val createdAtEpochMs: Long? = null,
+    // The backend's wall clock when it built this timeline.
+    val observedAtEpochMs: Long? = null,
 )
 
 /**
