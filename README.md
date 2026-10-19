@@ -105,10 +105,14 @@ the view as a sampled picture, not a complete trace:
   handlers (a few milliseconds each) usually fall into this gap; slower work, such as
   outbound HTTP calls, long-running loops and waiting on I/O, shows up well
   ([#206](https://github.com/Kotlin-server-squad/vizcore/issues/206)).
-- The SDK's own coroutines (its poll loop and its WebSocket) currently appear alongside
-  yours, and `stop()` drops events that have not been sent yet, so a very short program may
-  not show its last completions
-  ([#207](https://github.com/Kotlin-server-squad/vizcore/issues/207)).
+- The SDK leaves its own coroutines (its poll loop, its session bookkeeping and the Ktor
+  client it streams with) out of your session. A few Ktor coroutines remain, because nothing
+  ties them to the SDK: the socket reader and writer for its connection
+  (`cio-from-nio-reader`, `cio-to-nio-writer`), `cio-request-timeout` while it makes an HTTP
+  request, and Ktor's process-wide `nonce-generator`
+  ([#225](https://github.com/Kotlin-server-squad/vizcore/issues/225)).
+- `stop()` drops events that have not been sent yet, so a very short program may not show
+  its last completions ([#207](https://github.com/Kotlin-server-squad/vizcore/issues/207)).
 
 **JVM flags.** DebugProbes load a Java agent into your running app. On JDK 21 this works
 without flags but prints a warning, and a future JDK will refuse it by default. Two flags

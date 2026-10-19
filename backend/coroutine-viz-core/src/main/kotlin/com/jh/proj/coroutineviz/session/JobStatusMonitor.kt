@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session
 
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -29,7 +30,7 @@ class JobStatusMonitor(
 
     fun start() {
         monitorJob =
-            session.sessionScope.launch {
+            session.sessionScope.launch(VizcoreInternal) {
                 while (isActive) {
                     delay(poolingIntervalMs)
                     pollAllJobs()

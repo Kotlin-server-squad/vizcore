@@ -15,7 +15,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import java.util.Collections
+import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -63,9 +66,15 @@ class DebugProbesSource(
     private val session: VizSession,
     private val pollInterval: Duration = 150.milliseconds,
     private val sampler: EventSampler? = null,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+    // The poll loop is vizcore's own work: VizcoreInternal keeps it out of the dump it takes.
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal),
     private val installProbes: Boolean = true,
     private val adapter: CoroutineInfoAdapter = CoroutineInfoAdapter(),
+    // Dispatchers vizcore runs its own work on (the SDK's Ktor client); see excludeSdkOwned.
+    private val internalDispatchers: Set<ContinuationInterceptor> = emptySet(),
+    // The SDK client's request Jobs seen so far, weakly held. Synchronized: a start() right after
+    // stop() can run a new loop while the old one is still finishing its tick.
+    private val transportRoots: MutableSet<Job> = Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap())),
     private val dump: () -> List<CoroutineSnapshot> = {
         // Batch path (Phase 8): one pass reconstructs the parent/child hierarchy so
         // each snapshot carries parentKey (nearest observed ancestor) keyed by the
@@ -76,7 +85,7 @@ class DebugProbesSource(
         // lastObservedThread, so the Java bridge maps the unwrapped impl dump
         // straight into RawInfo — keeping the observed thread for ThreadAssigned
         // synthesis.
-        adapter.toSnapshots(DebugProbesImplBridge.dumpRawInfos())
+        adapter.toSnapshots(excludeSdkOwned(DebugProbesImplBridge.dumpRawInfos(), internalDispatchers, transportRoots))
     },
 ) : InstrumentationSource {
     private val logger = LoggerFactory.getLogger(DebugProbesSource::class.java)

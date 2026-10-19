@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.client
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.session.source.InstrumentationSource
 import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesSource
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
@@ -18,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.random.Random
 
 /**
@@ -26,6 +28,9 @@ import kotlin.random.Random
  * an immediate close and must keep the backoff growing.
  */
 private const val DEFAULT_STABLE_CONNECTION_MS = 5_000L
+
+// Threads the SDK's Ktor client may use at once: its selector loop holds one, the WebSocket the rest.
+private const val TRANSPORT_PARALLELISM = 4
 
 /**
  * The embeddable client half of real-app transport (RCO-04).
@@ -269,12 +274,20 @@ class VizcoreClient internal constructor(
             // fails with a NoSuchMethodError instead of a message saying what to change.
             RuntimeRequirements.check()
             return try {
+                // A dispatcher of the SDK's own: every coroutine Ktor runs for this client is on it,
+                // which is how the DebugProbes source tells them from the app's (#225).
+                val transport = Dispatchers.IO.limitedParallelism(TRANSPORT_PARALLELISM)
                 start(
                     appName = appName,
                     backendUrl = backendUrl,
                     token = token,
                     correlation = correlation,
-                    httpClient = HttpClient(CIO) { install(WebSockets) },
+                    httpClient =
+                        HttpClient(CIO) {
+                            engine { dispatcher = transport }
+                            install(WebSockets)
+                        },
+                    internalDispatchers = setOf(transport),
                 )
             } catch (e: LinkageError) {
                 throw RuntimeRequirements.linkageFailure(e)
@@ -288,14 +301,16 @@ class VizcoreClient internal constructor(
             token: String,
             correlation: String?,
             httpClient: HttpClient,
+            internalDispatchers: Set<ContinuationInterceptor> = emptySet(),
         ): VizcoreClient {
             // createSession is suspend; bootstrap is a one-shot blocking call before
             // the async loop takes over — acceptable for a start() entry point.
             val serverSessionId =
                 runBlocking { createSession(httpClient, backendUrl, appName, token, correlation) }
             val session = VizSession(sessionId = serverSessionId)
-            val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-            val source = DebugProbesSource(session = session)
+            // The client's own loops (feed, transport, reconnect) stay out of the app's session.
+            val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal)
+            val source = DebugProbesSource(session = session, internalDispatchers = internalDispatchers)
             // Install the probes before returning: start() below begins polling
             // asynchronously, and DebugProbes miss every coroutine created before
             // installation, so work the app launches right after start(...) was lost.
