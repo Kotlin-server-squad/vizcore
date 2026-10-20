@@ -34,14 +34,22 @@ const STYLE_WHITELIST = [
  *
  * @returns the element itself if it is an `<svg>`, else the first descendant
  *   `svg[viewBox]` / `svg[width]`, else `null` (panel is not SVG-native →
- *   the SVG export option is hidden and PNG remains).
+ *   the SVG export option is hidden and PNG remains). A panel that draws HTML
+ *   over SVG marks itself `data-export-raster="true"` (the coroutine graph: HTML
+ *   cards, an SVG layer for its lines, icon svgs in its toolbar) and also gets
+ *   `null`: any one of its svgs would export without the rest of the picture.
  */
 export function findSvgRoot(el: HTMLElement): SVGSVGElement | null {
   if (el.matches('svg')) {
     return el as unknown as SVGSVGElement
   }
+  if (el.matches(RASTER_ONLY) || el.querySelector(RASTER_ONLY)) {
+    return null
+  }
   return el.querySelector<SVGSVGElement>('svg[viewBox], svg[width]')
 }
+
+const RASTER_ONLY = '[data-export-raster="true"]'
 
 /**
  * Inline the whitelisted computed styles from `source` onto `target`, then
