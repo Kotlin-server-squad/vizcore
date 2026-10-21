@@ -60,7 +60,7 @@ jobs:
         run: |
           docker network create vizcore-smoke
           docker run -d --name backend --network vizcore-smoke vizcore-backend:smoke
-          docker run -d --name frontend --network vizcore-smoke -p 3000:3000 vizcore-frontend:smoke
+          docker run -d --name frontend --network vizcore-smoke -p 3000:3000 -p 3080:3000 vizcore-frontend:smoke
           for i in $(seq 1 60); do
             curl -sf --max-time 2 -o /dev/null http://localhost:3000/api/health && break
             [ "$i" = 60 ] && { echo "backend not healthy through the proxy"; exit 1; }
@@ -74,6 +74,21 @@ jobs:
           # The stream never ends on its own, so curl always stops at --max-time; only its output counts.
           curl -s -N --max-time 5 -o stream.txt "http://localhost:3000/api/sessions/$id/stream" || true
           grep -q connected stream.txt || { echo "no SSE frames through the proxy"; cat stream.txt; exit 1; }
+
+      # A browser sends its page's Origin with every POST. The backend allows only localhost:3000 and
+      # 127.0.0.1:3000 by default, so a UI on another loopback port works only if the proxy keeps
+      # that port in Host, which makes the request same-origin. A foreign Origin, and a non-loopback Host
+      # matching its own Origin (DNS rebinding), must still be rejected.
+      - name: Same-origin POST from a UI on another port
+        run: |
+          post() { curl -s --max-time 5 -o /dev/null -w '%{http_code}' -X POST -H "Host: $1" -H "Origin: $2" \
+            'http://localhost:3080/api/sessions?name=origin'; }
+          expect() { [ "$1" = "$2" ] || { echo "$3: got $1, expected $2"; exit 1; }; }
+          expect "$(post localhost:3080 http://localhost:3080)" 201 "the UI's own POST"
+          expect "$(post 127.0.0.1:3080 http://127.0.0.1:3080)" 201 "the UI's own POST on 127.0.0.1"
+          expect "$(post '[::1]:3080' 'http://[::1]:3080')" 201 "the UI's own POST on [::1]"
+          expect "$(post localhost:3080 http://foreign.example)" 403 "a foreign Origin"
+          expect "$(post rebind.example:3080 http://rebind.example:3080)" 403 "a non-loopback Host"
 
       - name: Container logs
         if: failure()
