@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /**
  * The real [VizcoreClient.start] factory, driven in-process. DebugProbes only track
@@ -54,4 +56,13 @@ class VizcoreClientStartTest {
             client.stop()
             assertEquals(before, DebugProbesInstall.count(), "stop() must release the probe reference")
         }
+
+    @Test
+    fun `start rejects a poll interval below the minimum before touching the network`() {
+        val failure =
+            assertFailsWith<IllegalArgumentException> {
+                VizcoreClient.start(appName = "a", backendUrl = "http://localhost:1", token = "t", pollIntervalMillis = 1)
+            }
+        assertTrue("at least ${VizcoreClient.MIN_POLL_INTERVAL_MILLIS}" in failure.message.orEmpty())
+    }
 }

@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.random.Random
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * How long an ingest socket must stay up before its close is treated as the end of a
@@ -269,7 +271,29 @@ class VizcoreClient internal constructor(
             backendUrl: String,
             token: String,
             correlation: String? = null,
+        ): VizcoreClient = start(appName, backendUrl, token, DEFAULT_POLL_INTERVAL_MILLIS, correlation)
+
+        /**
+         * [start] with how often, in milliseconds, the SDK samples the app's coroutines. A
+         * coroutine that starts and finishes between two samples is not seen, so a shorter
+         * interval catches shorter work, at the cost of one DebugProbes dump per interval
+         * (#206). The default is [DEFAULT_POLL_INTERVAL_MILLIS]; values below
+         * [MIN_POLL_INTERVAL_MILLIS] are rejected.
+         *
+         * A separate overload rather than a new parameter of [start], so apps compiled against
+         * the four-argument signature keep working.
+         */
+        @JvmOverloads
+        fun start(
+            appName: String,
+            backendUrl: String,
+            token: String,
+            pollIntervalMillis: Long,
+            correlation: String? = null,
         ): VizcoreClient {
+            require(pollIntervalMillis >= MIN_POLL_INTERVAL_MILLIS) {
+                "pollIntervalMillis must be at least $MIN_POLL_INTERVAL_MILLIS, was $pollIntervalMillis"
+            }
             // Before the Ktor client is built: with too old a kotlin-stdlib or kotlinx-coroutines that
             // fails with a NoSuchMethodError instead of a message saying what to change.
             RuntimeRequirements.check()
@@ -288,11 +312,18 @@ class VizcoreClient internal constructor(
                             install(WebSockets)
                         },
                     internalDispatchers = setOf(transport),
+                    pollInterval = pollIntervalMillis.milliseconds,
                 )
             } catch (e: LinkageError) {
                 throw RuntimeRequirements.linkageFailure(e)
             }
         }
+
+        /** How often [start] samples coroutines unless told otherwise. */
+        const val DEFAULT_POLL_INTERVAL_MILLIS: Long = 150
+
+        /** The shortest interval [start] accepts; each sample dumps every coroutine in the JVM. */
+        const val MIN_POLL_INTERVAL_MILLIS: Long = 10
 
         /** [start] with an injected [httpClient], so tests can drive the real factory in-process. */
         internal fun start(
@@ -302,6 +333,7 @@ class VizcoreClient internal constructor(
             correlation: String?,
             httpClient: HttpClient,
             internalDispatchers: Set<ContinuationInterceptor> = emptySet(),
+            pollInterval: Duration = DEFAULT_POLL_INTERVAL_MILLIS.milliseconds,
         ): VizcoreClient {
             // createSession is suspend; bootstrap is a one-shot blocking call before
             // the async loop takes over — acceptable for a start() entry point.
@@ -310,7 +342,12 @@ class VizcoreClient internal constructor(
             val session = VizSession(sessionId = serverSessionId)
             // The client's own loops (feed, transport, reconnect) stay out of the app's session.
             val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal)
-            val source = DebugProbesSource(session = session, internalDispatchers = internalDispatchers)
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = pollInterval,
+                    internalDispatchers = internalDispatchers,
+                )
             // Install the probes before returning: start() below begins polling
             // asynchronously, and DebugProbes miss every coroutine created before
             // installation, so work the app launches right after start(...) was lost.

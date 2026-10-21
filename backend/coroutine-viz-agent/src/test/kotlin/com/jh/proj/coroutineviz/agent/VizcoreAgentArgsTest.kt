@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.agent
 
+import com.jh.proj.coroutineviz.client.VizcoreClient
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -59,5 +60,13 @@ class VizcoreAgentArgsTest {
         val parsed = AgentBootstrap.parseArgs("")
 
         assertTrue(parsed.isEmpty(), "empty arg string must yield an empty map (defaults path)")
+    }
+
+    @Test
+    fun `poll sets the sampling interval and falls back to the default when absent or unusable`() {
+        assertEquals(50L, AgentBootstrap.pollIntervalMillis("50"))
+        assertEquals(VizcoreClient.DEFAULT_POLL_INTERVAL_MILLIS, AgentBootstrap.pollIntervalMillis(null))
+        assertEquals(VizcoreClient.DEFAULT_POLL_INTERVAL_MILLIS, AgentBootstrap.pollIntervalMillis("fast"))
+        assertEquals(VizcoreClient.DEFAULT_POLL_INTERVAL_MILLIS, AgentBootstrap.pollIntervalMillis("1"))
     }
 }

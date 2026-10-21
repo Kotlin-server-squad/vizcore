@@ -23,6 +23,7 @@ import com.jh.proj.coroutineviz.client.VizcoreClient
  *  - `backend` — backend base URL (default `"http://localhost:8080"`)
  *  - `token`   — dev JWT for session create (default `""`)
  *  - `corr`    — optional correlation token so a watching IDE can resolve this session
+ *  - `poll`    — sampling interval in milliseconds (default 150); shorter catches shorter coroutines
  *
  * The returned [VizcoreClient] is intentionally NOT captured: it owns a private `SupervisorJob`
  * scope (never `GlobalScope`, CLAUDE.md) that keeps it alive for the JVM's lifetime.
@@ -48,6 +49,7 @@ object AgentBootstrap {
                 appName = args["app"] ?: "app",
                 backendUrl = backendUrl,
                 token = args["token"] ?: "",
+                pollIntervalMillis = pollIntervalMillis(args["poll"]),
                 correlation = args["corr"],
             )
         } catch (failure: Throwable) {
@@ -57,6 +59,18 @@ object AgentBootstrap {
                 "[coroutine-viz-agent] DISABLED — bootstrap against $backendUrl failed: ${failure.message}",
             )
         }
+    }
+
+    /** The `poll` arg as milliseconds; the default when absent, and a message plus the default when unusable. */
+    internal fun pollIntervalMillis(arg: String?): Long {
+        if (arg == null) return VizcoreClient.DEFAULT_POLL_INTERVAL_MILLIS
+        val millis = arg.trim().toLongOrNull()
+        if (millis != null && millis >= VizcoreClient.MIN_POLL_INTERVAL_MILLIS) return millis
+        System.err.println(
+            "[coroutine-viz-agent] poll=$arg ignored: expected milliseconds, at least " +
+                "${VizcoreClient.MIN_POLL_INTERVAL_MILLIS}; using ${VizcoreClient.DEFAULT_POLL_INTERVAL_MILLIS}",
+        )
+        return VizcoreClient.DEFAULT_POLL_INTERVAL_MILLIS
     }
 
     /**
