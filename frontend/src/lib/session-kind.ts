@@ -4,10 +4,11 @@ import type { SessionInfo } from '@/types/api'
  * Session ids vizcore mints for its OWN runs (#145) — never a user's app:
  * - `scenario-<name>-<ts>`: a demo session created from the demo picker;
  * - `auto-<ts>`: a session the scenario runner/builder creates when a run is
- *   started without one (ScenarioRunnerRoutes);
+ *   started without one (ScenarioRunnerRoutes); the session manager appends its
+ *   own `-<ts>`, so the id reaches the client as `auto-<ts>-<ts>`;
  * - `api-session-<ts>`: a one-off session of the scenario API (VizScenarioRoutes).
  */
-const VIZCORE_OWNED_ID = /^(scenario-|auto-\d+$|api-session-\d+$)/
+const VIZCORE_OWNED_ID = /^(scenario-|auto-\d+(-\d+)?$|api-session-\d+$)/
 
 /**
  * Client-side app vs demo derivation (Phase 08.5, PD-10).
@@ -38,7 +39,7 @@ const TIMESTAMP_SUFFIX = /-\d{10,}$/
  * suffix. `order-service-1728383000000` → `order-service`.
  */
 export function sessionDisplayName(sessionId: string): string {
-  if (/^auto-\d+$/.test(sessionId) || /^api-session-\d+$/.test(sessionId)) return 'Scenario run'
+  if (/^auto-\d+(-\d+)?$/.test(sessionId) || /^api-session-\d+$/.test(sessionId)) return 'Scenario run'
   const base = sessionId.replace(TIMESTAMP_SUFFIX, '')
   if (base.startsWith('scenario-')) return base.slice('scenario-'.length).replace(/-/g, ' ') || 'Demo'
   return base || sessionId

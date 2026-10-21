@@ -37,6 +37,8 @@ describe('deriveSessionKind', () => {
 
   it('classifies vizcore-owned scenario-runner sessions (auto-*, api-session-*) as demo', () => {
     expect(deriveSessionKind({ sessionId: 'auto-1728383000000', coroutineCount: 4 })).toBe('demo')
+    // As served: the session manager appends its own timestamp to the runner's name.
+    expect(deriveSessionKind({ sessionId: 'auto-1728383000000-1728383000001', coroutineCount: 4 })).toBe('demo')
     expect(deriveSessionKind({ sessionId: 'api-session-1728383000000', coroutineCount: 4 })).toBe('demo')
     // ...but an app that merely starts with "auto" is still the user's app.
     expect(deriveSessionKind({ sessionId: 'autoscaler-1728383000000', coroutineCount: 1 })).toBe('live')
@@ -161,6 +163,7 @@ describe('sessionDisplayName (#145)', () => {
     expect(sessionDisplayName('order-service-1728383000000')).toBe('order-service')
     expect(sessionDisplayName('scenario-Nested-Coroutines-1728383000000')).toBe('Nested Coroutines')
     expect(sessionDisplayName('auto-1728383000000')).toBe('Scenario run')
+    expect(sessionDisplayName('auto-1728383000000-1728383000001')).toBe('Scenario run')
     expect(sessionDisplayName('custom-id')).toBe('custom-id')
   })
 })

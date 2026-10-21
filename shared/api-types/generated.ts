@@ -459,6 +459,8 @@ export interface components {
             activeChildrenIds: string[];
             /** @default 0 */
             activeChildrenCount: number;
+            creationPoint?: components["schemas"]["SuspensionPoint"];
+            lastSuspensionPoint?: components["schemas"]["SuspensionPoint"];
         };
         CoroutineTimeline: {
             coroutineId: string;
@@ -484,6 +486,31 @@ export interface components {
             childrenIds: string[];
             /** @default [] */
             events: components["schemas"]["TimelineEventSummary"][];
+            /**
+             * @description For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished.
+             * @enum {string|null}
+             */
+            openPhase?: "ACTIVE" | "SUSPENDED" | null;
+            /**
+             * Format: int64
+             * @description tsNanos of the transition that opened openPhase (the emitting JVM's monotonic clock).
+             */
+            openPhaseSinceNanos?: number | null;
+            /**
+             * Format: int64
+             * @description Creation time on the emitting JVM's monotonic clock (tsNanos).
+             */
+            createdAtNanos?: number | null;
+            /**
+             * Format: int64
+             * @description Creation time on the emitting JVM's wall clock, in epoch milliseconds.
+             */
+            createdAtEpochMs?: number | null;
+            /**
+             * Format: int64
+             * @description The backend's wall clock when it built this timeline. With createdAtNanos and createdAtEpochMs a client can estimate the emitting JVM's current tsNanos, assuming both hosts' wall clocks agree.
+             */
+            observedAtEpochMs?: number | null;
         };
         TimelineEventSummary: {
             /** Format: int64 */

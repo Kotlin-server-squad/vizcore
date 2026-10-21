@@ -16,6 +16,8 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.Test
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -171,5 +174,44 @@ class TimelineRouteAssembledTest {
             val lineNumber = suspensionPoint["lineNumber"]?.jsonPrimitive?.content?.toIntOrNull()
             assertNotNull(lineNumber, "suspensionPoint must carry a line number, not null")
             assertTrue(lineNumber > 0, "suspensionPoint must carry a real line number, not a stub")
+        }
+
+    @Test
+    fun `the open phase is served only while the app is streaming into the session (#218)`() =
+        testApplication {
+            application { module() }
+            val session = SessionManager.createSession("timeline-open-phase")
+            val coroutineId = "request-open"
+            driveSuspendedCoroutine(session, coroutineId)
+            val client = jsonClient()
+
+            suspend fun openPhase(): String? {
+                val body = client.get("/api/sessions/${session.sessionId}/coroutines/$coroutineId/timeline").bodyAsText()
+                val value = appJson.parseToJsonElement(body).jsonObject["openPhase"]
+                return (value as? JsonPrimitive)?.contentOrNull
+            }
+
+            // No app connected: nothing vouches that the coroutine is still suspended.
+            assertNull(openPhase())
+
+            IngestConnections.opened(session.sessionId)
+            try {
+                assertEquals("SUSPENDED", openPhase())
+            } finally {
+                IngestConnections.closed(session.sessionId)
+            }
+        }
+
+    @Test
+    fun `a session vizcore runs itself keeps its open phase without an app connected`() =
+        testApplication {
+            application { module() }
+            val session = SessionManager.createSession("scenario-open-phase")
+            val coroutineId = "worker"
+            driveSuspendedCoroutine(session, coroutineId)
+
+            val body = jsonClient().get("/api/sessions/${session.sessionId}/coroutines/$coroutineId/timeline").bodyAsText()
+            val openPhase = appJson.parseToJsonElement(body).jsonObject["openPhase"] as? JsonPrimitive
+            assertEquals("SUSPENDED", openPhase?.contentOrNull, "in ${session.sessionId}")
         }
 }

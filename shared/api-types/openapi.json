@@ -1349,6 +1349,39 @@
               "$ref": "#/components/schemas/TimelineEventSummary"
             },
             "default": []
+          },
+          "openPhase": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "ACTIVE",
+              "SUSPENDED"
+            ],
+            "description": "For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished."
+          },
+          "openPhaseSinceNanos": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "tsNanos of the transition that opened openPhase (the emitting JVM's monotonic clock)."
+          },
+          "createdAtNanos": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Creation time on the emitting JVM's monotonic clock (tsNanos)."
+          },
+          "createdAtEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Creation time on the emitting JVM's wall clock, in epoch milliseconds."
+          },
+          "observedAtEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "The backend's wall clock when it built this timeline. With createdAtNanos and createdAtEpochMs a client can estimate the emitting JVM's current tsNanos, assuming both hosts' wall clocks agree."
           }
         }
       },

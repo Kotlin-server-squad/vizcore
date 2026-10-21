@@ -172,6 +172,35 @@ describe('Inspector', () => {
     expect(await within(timing).findByText('~3.00s so far')).toBeInTheDocument()
   })
 
+  it('counts a running coroutine up to now and flags a long run without suspending (#218)', async () => {
+    // Resumed 3 s after creation and silent since: blocked in a call on its thread.
+    const createdAtEpochMs = Date.now() - 60_000
+    getCoroutineTimeline.mockResolvedValue(
+      timeline({
+        totalDuration: null,
+        activeDuration: 100_000_000,
+        suspendedDuration: 2_900_000_000,
+        events: [
+          { seq: 1, tsNanos: 0, kind: 'coroutine.created' },
+          { seq: 2, tsNanos: 100_000_000, kind: 'coroutine.suspended' },
+        ],
+        openPhase: 'ACTIVE',
+        openPhaseSinceNanos: 3_000_000_000,
+        createdAtNanos: 0,
+        createdAtEpochMs,
+        observedAtEpochMs: createdAtEpochMs + 60_000,
+      } as Partial<CoroutineTimeline>),
+    )
+
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, {
+      wrapper: createWrapper(),
+    })
+
+    const timing = await screen.findByTestId('timing-card')
+    expect(await within(timing).findByText(/^~60\.\d{2}s so far$/)).toBeInTheDocument()
+    expect(within(timing).getByTestId('possibly-blocked')).toHaveTextContent('without suspending')
+  })
+
   it('names the thread and dispatcher from thread activity', () => {
     render(
       <Inspector

@@ -170,8 +170,18 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
     )
   }
 
-  // The first suspension point backs the collapsed "Suspended at" compact chip.
-  const firstSuspension = hasSuspensionFrames ? suspensionPoints[0] : undefined
+  // The newest suspension point backs the collapsed chip. It is where the coroutine is waiting
+  // only while it is suspended; once it has resumed (and may be running or blocked elsewhere) or
+  // finished, it is where it last waited (#218).
+  // "Suspended at" only when it is known to be waiting there now: suspended (an old backend sends
+  // no open phase) and the chip's frame is from its newest suspension, not an earlier one.
+  const latestSuspension = [...suspensionPoints].reverse().find((point) => !!point.fileName)
+  const newestSuspensionSeq = Math.max(
+    -Infinity,
+    ...(timeline?.events ?? []).filter((e) => e.kind === 'coroutine.suspended').map((e) => e.seq),
+  )
+  const suspendedNow = timeline?.openPhase === 'SUSPENDED' && latestSuspension?.eventSeq === newestSuspensionSeq
+  const suspensionLabel = suspendedNow ? 'Suspended at' : 'Last suspended at'
 
   return (
     <div className="space-y-4">
@@ -191,14 +201,14 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
           </div>
         )}
 
-        {firstSuspension?.fileName && (
+        {latestSuspension?.fileName && (
           <div className="flex items-center gap-2">
-            <span className="text-xs uppercase tracking-wide text-default-400">Suspended at</span>
+            <span className="text-xs uppercase tracking-wide text-default-400">{suspensionLabel}</span>
             <span className="font-mono text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-md">
               <TimelineSourceRef
-                fn={firstSuspension.function}
-                fileName={firstSuspension.fileName}
-                lineNumber={firstSuspension.lineNumber}
+                fn={latestSuspension.function}
+                fileName={latestSuspension.fileName}
+                lineNumber={latestSuspension.lineNumber}
               />
             </span>
           </div>

@@ -46,6 +46,8 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 class ProjectionService(
     private val session: VizSession,
+    // Wall clock for CoroutineTimeline.observedAtEpochMs; injectable for tests.
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     // In-memory state
     private val coroutines = ConcurrentHashMap<String, HierarchyNode>()
@@ -294,6 +296,7 @@ class ProjectionService(
         val raw = session.getCoroutineTimeline(coroutineId, newestFirst = false)
         val events = raw.mapNotNull { toSummary(it) }
         val durations = computeDurations(raw)
+        val created = raw.firstOrNull { it is CoroutineCreated } as CoroutineCreated?
 
         return CoroutineTimeline(
             coroutineId = coroutineId,
@@ -304,6 +307,12 @@ class ProjectionService(
             activeDuration = durations.active,
             suspendedDuration = durations.suspended,
             events = events,
+            openPhase = durations.openPhase?.name,
+            openPhaseSinceNanos = durations.openPhaseSinceNanos,
+            createdAtNanos = node.createdAtNanos,
+            // Zero is the field's default when the emitter did not set it: unknown, not 1970.
+            createdAtEpochMs = created?.createdAtEpochMs?.takeIf { it > 0 },
+            observedAtEpochMs = clock(),
         )
     }
 
@@ -312,6 +321,9 @@ class ProjectionService(
     private data class DurationBreakdown(
         val active: Long?,
         val suspended: Long?,
+        // The phase still open after the last event, and when it began (null once terminal).
+        val openPhase: Phase? = null,
+        val openPhaseSinceNanos: Long? = null,
     )
 
     /**
@@ -324,7 +336,8 @@ class ProjectionService(
      * CRITICAL CLOCK RULE: `tsNanos` originates in the EMITTING process (the agent JVM on the
      * attach path) and has no fixed origin across JVM lifetimes — these values may ONLY be
      * subtracted from EACH OTHER, never from the backend's System.nanoTime(). Therefore a live
-     * coroutine's OPEN tail phase is never extrapolated; only CLOSED intervals contribute.
+     * coroutine's OPEN tail phase is never extrapolated; only CLOSED intervals contribute. The
+     * open phase and its start are returned as they are, for a client to extrapolate (#218).
      * When no interval closed, the corresponding duration is null (not 0) — preserving the
      * "legit wire null" contract so evicted/empty timelines degrade cleanly.
      */
@@ -376,6 +389,8 @@ class ProjectionService(
         return DurationBreakdown(
             active = if (anyActive) active else null,
             suspended = if (anySuspended) suspended else null,
+            openPhase = phase,
+            openPhaseSinceNanos = phaseStartTs.takeIf { phase != null },
         )
     }
 
