@@ -197,6 +197,7 @@ export function ComparisonView({
             transition={{ duration: 0.4 }}
           >
             <SummaryStats comparison={comparison} />
+            <IdMatchingNote />
             <UniqueCoroutines comparison={comparison} />
             <CommonCoroutines comparison={comparison} />
             <ComparisonTrees
@@ -318,6 +319,23 @@ function DiffStat({ label, diff, formatValue }: DiffStatProps) {
         </Chip>
       </div>
     </div>
+  )
+}
+
+/**
+ * Coroutines are matched by id (#239), and an id is not a stable identity across sessions: the
+ * SDK derives it from the running JVM (`dp-job:<identityHashCode>`, or `dp-synthetic:#<n>` in
+ * observation order for a coroutine without a Job), and scenarios allocate them from the
+ * session's sequence counter, which events share (`coroutine-<seq>`), so they depend on timing.
+ */
+function IdMatchingNote() {
+  return (
+    <p className="text-xs text-default-500 px-1" data-testid="comparison-id-note">
+      Coroutines are matched by id, and ids are not stable between sessions: an app's ids usually
+      change each time it runs, and a scenario's depend on what ran first in that session. The same
+      coroutine can be listed as unique in both sessions, and a shared id isn't always the same
+      coroutine.
+    </p>
   )
 }
 
