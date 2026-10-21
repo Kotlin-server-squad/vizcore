@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.wrappers
 
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.deferred.DeferredValueAvailable
 import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
@@ -223,7 +224,7 @@ class VizScope(
                 emitTerminalEvents(ctx, job, cause)
                 terminalSignal.complete(Unit)
             } else {
-                session.sessionScope.launch {
+                session.sessionScope.launch(VizcoreInternal) {
                     children.forEach { childId -> terminalEmitted[childId]?.await() }
                     emitStartedIfMissing(ctx, startedEmitted)
                     emitTerminalEvents(ctx, job, cause)

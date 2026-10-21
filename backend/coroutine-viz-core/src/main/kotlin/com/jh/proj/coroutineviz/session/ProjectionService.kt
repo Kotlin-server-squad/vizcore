@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session
 
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.WaitingForChildren
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineBodyCompleted
@@ -60,7 +61,7 @@ class ProjectionService(
         // constructor returns. A plain launch subscribed later, and events sent right after
         // the session was created were lost for good (178/200 sessions in
         // BusSubscriptionRaceTest, #150 / #138).
-        session.sessionScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        session.sessionScope.launch(VizcoreInternal, start = CoroutineStart.UNDISPATCHED) {
             session.eventBus.stream().collect { event ->
                 processEvent(event)
             }
