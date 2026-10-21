@@ -197,3 +197,58 @@ describe('ComparisonView session pickers', () => {
     expect(onAChange).toHaveBeenCalledWith('session-3')
   })
 })
+
+describe('ComparisonView coroutine matching note (#239)', () => {
+  const appComparison: SessionComparison = {
+    ...mockComparison,
+    sessionA: 'order-service-1792427969372',
+    sessionB: 'order-service-1792440220195',
+    coroutinesOnlyInA: ['dp-job:107929125'],
+    coroutinesOnlyInB: ['dp-job:55120871'],
+    commonCoroutines: [],
+  }
+
+  function renderComparison(comparison: SessionComparison) {
+    mockedApiClient.listSessions.mockResolvedValue([
+      { sessionId: comparison.sessionA, coroutineCount: 1 },
+      { sessionId: comparison.sessionB, coroutineCount: 1 },
+    ])
+    mockedApiClient.compareSessions.mockResolvedValue(comparison)
+    render(
+      <ComparisonView a={comparison.sessionA} b={comparison.sessionB} onAChange={vi.fn()} onBChange={vi.fn()} />,
+      { wrapper: createWrapper() },
+    )
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('says that ids are not stable between sessions, next to unique coroutines', async () => {
+    renderComparison(appComparison)
+
+    const note = await screen.findByTestId('comparison-id-note')
+    expect(note).toHaveTextContent('matched by id')
+    expect(note).toHaveTextContent('not stable between sessions')
+    expect(screen.getByTestId('unique-coroutines')).toBeInTheDocument()
+  })
+
+  it('shows the note when two scenario runs share all their ids, too', async () => {
+    renderComparison({
+      ...mockComparison,
+      sessionA: 'scenario-nested-1792427969372',
+      sessionB: 'scenario-nested-1792440220195',
+      coroutinesOnlyInA: [],
+      coroutinesOnlyInB: [],
+      commonCoroutines: [
+        { coroutineId: 'coroutine-1', label: null, stateA: 'COMPLETED', stateB: 'COMPLETED', eventCountA: 4, eventCountB: 4 },
+      ],
+    })
+
+    expect(await screen.findByTestId('comparison-id-note')).toHaveTextContent(
+      "a shared id isn't always the same coroutine",
+    )
+    expect(screen.getByTestId('common-coroutines')).toBeInTheDocument()
+    expect(screen.queryByTestId('unique-coroutines')).not.toBeInTheDocument()
+  })
+})
