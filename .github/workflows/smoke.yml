@@ -53,3 +53,28 @@ jobs:
 
       - name: Build frontend image
         run: docker build -f frontend/Dockerfile --target production -t vizcore-frontend:smoke .
+
+      # The UI image proxies /api to the backend. A gzip-compressed response (anything over 1 KB)
+      # must end, and the SSE stream must still reach the browser through the proxy.
+      - name: API through the frontend proxy
+        run: |
+          docker network create vizcore-smoke
+          docker run -d --name backend --network vizcore-smoke vizcore-backend:smoke
+          docker run -d --name frontend --network vizcore-smoke -p 3000:3000 vizcore-frontend:smoke
+          for i in $(seq 1 60); do
+            curl -sf --max-time 2 -o /dev/null http://localhost:3000/api/health && break
+            [ "$i" = 60 ] && { echo "backend not healthy through the proxy"; exit 1; }
+            sleep 2
+          done
+          curl -sf --compressed --max-time 10 -D headers.txt -o /dev/null -w 'compressed /api/scenarios: %{time_total}s\n' \
+            http://localhost:3000/api/scenarios
+          grep -qi '^content-encoding: gzip' headers.txt || { echo "expected a gzip response"; cat headers.txt; exit 1; }
+          id=$(curl -sf --max-time 5 -X POST 'http://localhost:3000/api/sessions?name=smoke' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["sessionId"])')
+          # The stream never ends on its own, so curl always stops at --max-time; only its output counts.
+          curl -s -N --max-time 5 -o stream.txt "http://localhost:3000/api/sessions/$id/stream" || true
+          grep -q connected stream.txt || { echo "no SSE frames through the proxy"; cat stream.txt; exit 1; }
+
+      - name: Container logs
+        if: failure()
+        run: docker logs backend; docker logs frontend
