@@ -77,8 +77,17 @@ export function ExportMenu({
 }: ExportMenuProps) {
   const [isExporting, setIsExporting] = useState(false)
 
-  const panelEl = getPanelEl()
-  const svgRoot = panelEl ? findSvgRoot(panelEl) : null
+  // Whether the panel has an SVG to export is decided when the menu opens: the panel can change
+  // under an unchanged menu (List → Graph View), and a render-time answer would then be stale.
+  const [svgRoot, setSvgRoot] = useState<SVGSVGElement | null>(null)
+  const onOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) return
+      const el = getPanelEl()
+      setSvgRoot(el ? findSvgRoot(el) : null)
+    },
+    [getPanelEl]
+  )
   const videoSupported = isVideoRecordingSupported()
 
   const runExport = useCallback(
@@ -176,7 +185,7 @@ export function ExportMenu({
   ]
 
   return (
-    <Dropdown>
+    <Dropdown onOpenChange={onOpenChange}>
       <DropdownTrigger>
         <Button
           size="sm"

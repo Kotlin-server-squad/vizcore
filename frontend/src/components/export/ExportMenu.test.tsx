@@ -103,6 +103,19 @@ describe('ExportMenu', () => {
     expect(screen.getByTestId('export-svg')).toBeInTheDocument()
   })
 
+  it('decides about the SVG item when the menu opens, not from an earlier view', async () => {
+    // List View had icon svgs; the user has switched to the graph, which exports as a picture
+    const user = userEvent.setup()
+    mockFindSvgRoot.mockReturnValue(
+      document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    )
+    renderMenu()
+    mockFindSvgRoot.mockReturnValue(null)
+    await openMenu(user)
+
+    expect(screen.queryByTestId('export-svg')).not.toBeInTheDocument()
+  })
+
   it('disables the Record item with the unsupported tooltip when MediaRecorder is undefined (D-25)', async () => {
     const user = userEvent.setup()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

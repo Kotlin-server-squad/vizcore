@@ -76,6 +76,18 @@ describe('findSvgRoot (D-21 auto-detect)', () => {
     panel.innerHTML = '<div class="node">coroutine graph</div>'
     expect(findSvgRoot(panel)).toBeNull()
   })
+
+  it('returns null for a panel that draws HTML over SVG, however many svgs it holds', () => {
+    // the coroutine graph: HTML cards, an SVG layer for its lines, and icon svgs in its toolbar
+    const panel = document.createElement('div')
+    panel.innerHTML =
+      '<div data-export-raster="true">' +
+      '<button><svg viewBox="0 0 24 24"></svg></button>' +
+      '<svg width="600" height="400"><path d="M 0 0 L 10 10"></path></svg>' +
+      '<div class="node">coroutine</div>' +
+      '</div>'
+    expect(findSvgRoot(panel)).toBeNull()
+  })
 })
 
 describe('exportToSvg', () => {
