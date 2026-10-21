@@ -70,7 +70,7 @@ class ReconnectTest {
             val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
             // Transport throws on the first two attempts (dropped), succeeds on the
             // third (clean return = socket closed), then we stop the loop.
-            val transport: suspend (String) -> Unit = {
+            val transport: suspend (String, SocketLifetime) -> Unit = { _, _ ->
                 when (attempts.getAndIncrement()) {
                     0, 1 -> throw java.io.IOException("dropped")
                     else -> succeeded.set(true)
@@ -105,7 +105,7 @@ class ReconnectTest {
         runTest {
             val attempts = AtomicInteger(0)
             val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
-            val transport: suspend (String) -> Unit = {
+            val transport: suspend (String, SocketLifetime) -> Unit = { _, _ ->
                 attempts.incrementAndGet()
                 throw CancellationException("cancelled")
             }

@@ -90,11 +90,12 @@ class VizcoreClient internal constructor(
      * The single-connection transport attempt. Defaults to the real Ktor client WS
      * send loop ([stream]) draining the lifetime [buffer]; injectable so [ReconnectTest]
      * drives a fake transport (e.g. one that throws) under runTest virtual time.
-     * Returns when the socket closes; throws on a connection error (→ the loop
+     * Records in its `SocketLifetime` when the socket opened and ended, which is what
+     * the backoff reset is timed from. Returns when the socket closes; throws on a connection error (→ the loop
      * reconnects with backoff).
      */
-    private val transport: suspend (sessionId: String) -> Unit = { id ->
-        stream(httpClient, backendUrl, id, token, buffer)
+    private val transport: suspend (sessionId: String, lifetime: SocketLifetime) -> Unit = { id, lifetime ->
+        stream(httpClient, backendUrl, id, token, buffer, IngestTimeouts(), lifetime)
     },
     /**
      * Bootstrap a REPLACEMENT server session and return its id, used when the
@@ -175,7 +176,10 @@ class VizcoreClient internal constructor(
      *
      * Backoff reset rule (#129): ONLY a socket that streamed for at least
      * [stableConnectionMillis] counts as a healthy connection and resets the attempt
-     * counter. A socket that returns immediately — which is what an
+     * counter, timed from when the transport reports it open to when it reports it
+     * ended: an attempt that never opened a socket (a handshake timeout, a refused
+     * upgrade) never resets it, and neither does a session lookup after a socket failed,
+     * however long either took. A socket that returns immediately — which is what an
      * accepted-then-closed handshake against a dead backend or a refusing route does
      * — keeps the counter growing, so the loop backs off instead of spinning at the
      * base delay forever. The previous code reset on every clean return, turning that
@@ -190,21 +194,24 @@ class VizcoreClient internal constructor(
     private suspend fun reconnectLoop() {
         var attempt = 0
         while (currentCoroutineContext().isActive && running) {
-            val connectedAtMs = clock()
+            val lifetime = SocketLifetime(clock)
             var sessionGone = false
             try {
-                transport(sessionIdRef.get())
+                transport(sessionIdRef.get(), lifetime)
             } catch (ce: CancellationException) {
                 // Cooperative cancellation (stop()/scope cancel) must propagate; never retry.
                 throw ce
             } catch (gone: SessionGoneException) {
                 sessionGone = true
                 logger.warn("Backend no longer has session {}", sessionIdRef.get(), gone)
+            } catch (silent: IngestHandshakeTimeoutException) {
+                // Its stack says nothing the message does not.
+                logger.warn("Ingest connection dropped; reconnecting with backoff: {}", silent.message)
             } catch (t: Throwable) {
                 logger.warn("Ingest connection dropped; reconnecting with backoff", t)
             }
             if (!currentCoroutineContext().isActive || !running) break
-            if (clock() - connectedAtMs >= stableConnectionMillis) attempt = 0
+            if (lifetime.lastedAtLeast(stableConnectionMillis)) attempt = 0
             if (sessionGone) recoverSession()
             delay(backoff.delayMillis(attempt))
             attempt++

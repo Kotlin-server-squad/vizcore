@@ -107,7 +107,7 @@ class VizcoreClientTest {
             // the real buffer-draining WS send loop. This exercises the reconnect window.
             val feedGate = FakeSource()
             val attempts = AtomicInteger(0)
-            val transport: suspend (String) -> Unit = {
+            val transport: suspend (String, SocketLifetime) -> Unit = { _, _ ->
                 if (attempts.getAndIncrement() == 0) {
                     throw IOException("forced first-attempt drop")
                 }

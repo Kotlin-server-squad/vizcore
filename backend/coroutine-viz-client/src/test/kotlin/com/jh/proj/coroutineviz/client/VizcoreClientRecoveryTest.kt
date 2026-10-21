@@ -27,6 +27,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.PolymorphicSerializer
@@ -167,9 +168,9 @@ class VizcoreClientRecoveryTest {
             // REAL transport, pointed at whatever id the loop currently holds — a recovery
             // only takes effect if the loop re-reads the id, so the lambda must use its
             // parameter and never a captured constant.
-            val transport: suspend (String) -> Unit = { id ->
+            val transport: suspend (String, SocketLifetime) -> Unit = { id, lifetime ->
                 attempts.incrementAndGet()
-                stream(testClient, "", id, "test-token", buffer)
+                stream(testClient, "", id, "test-token", buffer, IngestTimeouts(), lifetime)
             }
 
             val client =
@@ -247,7 +248,10 @@ class VizcoreClientRecoveryTest {
             // attempt counter — the delays must keep doubling instead of pinning at 500ms.
             val callTimes = CopyOnWriteArrayList<Long>()
             val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
-            val transport: suspend (String) -> Unit = { callTimes += testScheduler.currentTime }
+            val transport: suspend (String, SocketLifetime) -> Unit = { _, lifetime ->
+                callTimes += testScheduler.currentTime
+                lifetime.opened()
+            }
 
             val client =
                 VizcoreClient(
@@ -276,5 +280,133 @@ class VizcoreClientRecoveryTest {
                 gaps,
                 "an immediate close must keep the backoff doubling, not reset it to the base delay",
             )
+        }
+
+    @Test
+    fun `an attempt that never opens a socket does not reset the backoff`() =
+        runTest {
+            // Every attempt takes 10 s and fails before a socket opens: a handshake that timed
+            // out behind a forwarder, or a refused upgrade followed by a slow session lookup.
+            // The attempt lasted longer than stableConnectionMillis, yet no socket ever opened,
+            // so it must not count as a healthy connection.
+            val callTimes = CopyOnWriteArrayList<Long>()
+            val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
+            val transport: suspend (String, SocketLifetime) -> Unit = { _, _ ->
+                callTimes += testScheduler.currentTime
+                delay(10_000L)
+                throw java.io.IOException("no socket")
+            }
+
+            val client =
+                VizcoreClient(
+                    httpClient = HttpClient(),
+                    backendUrl = "",
+                    sessionId = "s",
+                    token = "t",
+                    session = VizSession("s"),
+                    source = NoopSource(),
+                    scope = scope,
+                    backoff = Backoff(baseMillis = 500L, capMillis = 30_000L, random = FixedZeroRandom),
+                    transport = transport,
+                    clock = { testScheduler.currentTime },
+                )
+            client.start()
+            // Four 10 s handshakes plus 500 + 1000 + 2000 of backoff between them.
+            testScheduler.advanceTimeBy(43_600L)
+            testScheduler.runCurrent()
+            client.stop()
+            testScheduler.advanceUntilIdle()
+
+            assertTrue(callTimes.size >= 4, "expected four connect attempts, got ${callTimes.size}")
+            val gaps = callTimes.take(4).zipWithNext { previous, next -> next - previous }
+            assertEquals(
+                listOf(10_500L, 11_000L, 12_000L),
+                gaps,
+                "an attempt that never opened a socket must keep the backoff doubling",
+            )
+        }
+
+    @Test
+    fun `a session lookup after a short-lived socket does not reset the backoff`() =
+        runTest {
+            // The socket opens, fails after 1 s, and the session lookup that follows takes 10 s
+            // more. Only the socket's own second counts, so this is not a healthy connection.
+            val callTimes = CopyOnWriteArrayList<Long>()
+            val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
+            val transport: suspend (String, SocketLifetime) -> Unit = { _, lifetime ->
+                callTimes += testScheduler.currentTime
+                lifetime.opened()
+                delay(1_000L)
+                lifetime.ended()
+                delay(10_000L)
+                throw java.io.IOException("send failed")
+            }
+
+            val client =
+                VizcoreClient(
+                    httpClient = HttpClient(),
+                    backendUrl = "",
+                    sessionId = "s",
+                    token = "t",
+                    session = VizSession("s"),
+                    source = NoopSource(),
+                    scope = scope,
+                    backoff = Backoff(baseMillis = 500L, capMillis = 30_000L, random = FixedZeroRandom),
+                    transport = transport,
+                    clock = { testScheduler.currentTime },
+                )
+            client.start()
+            // Four 11 s attempts plus 500 + 1000 + 2000 of backoff between them.
+            testScheduler.advanceTimeBy(47_600L)
+            testScheduler.runCurrent()
+            client.stop()
+            testScheduler.advanceUntilIdle()
+
+            assertTrue(callTimes.size >= 4, "expected four connect attempts, got ${callTimes.size}")
+            val gaps = callTimes.take(4).zipWithNext { previous, next -> next - previous }
+            assertEquals(
+                listOf(11_500L, 12_000L, 13_000L),
+                gaps,
+                "time spent after the socket ended must not count toward a healthy connection",
+            )
+        }
+
+    @Test
+    fun `a socket that stays open past the stable threshold resets the backoff`() =
+        runTest {
+            // Each attempt opens a socket and streams for 6 s before it drops: a healthy
+            // connection every time, so every retry starts again from the base delay.
+            val callTimes = CopyOnWriteArrayList<Long>()
+            val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
+            val transport: suspend (String, SocketLifetime) -> Unit = { _, lifetime ->
+                callTimes += testScheduler.currentTime
+                lifetime.opened()
+                delay(6_000L)
+                throw java.io.IOException("dropped")
+            }
+
+            val client =
+                VizcoreClient(
+                    httpClient = HttpClient(),
+                    backendUrl = "",
+                    sessionId = "s",
+                    token = "t",
+                    session = VizSession("s"),
+                    source = NoopSource(),
+                    scope = scope,
+                    backoff = Backoff(baseMillis = 500L, capMillis = 30_000L, random = FixedZeroRandom),
+                    transport = transport,
+                    clock = { testScheduler.currentTime },
+                )
+            client.start()
+            // Four 6 s sockets with the base 500 ms between them.
+            testScheduler.advanceTimeBy(19_600L)
+            testScheduler.runCurrent()
+            client.stop()
+            testScheduler.advanceUntilIdle()
+
+            assertTrue(callTimes.size >= 4, "expected four connect attempts, got ${callTimes.size}")
+            val gaps = callTimes.take(4).zipWithNext { previous, next -> next - previous }
+            assertEquals(listOf(6_500L, 6_500L, 6_500L), gaps, "a socket open past the threshold must reset the backoff")
         }
 }
