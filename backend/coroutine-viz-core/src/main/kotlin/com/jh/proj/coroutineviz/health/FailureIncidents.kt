@@ -14,10 +14,11 @@ internal object FailureIncidents {
         val byAnchor = HashMap<String, MutableList<CoroutineSummary>>()
         val ungrouped = ArrayList<Incident>()
         for (s in evaluated) {
+            // Only members that finished abnormally are read by [failedRound].
+            if (!s.failed && !s.cancelled) continue
             val anchor = anchoring.anchorOf(s.id)
             when {
-                // Only members that finished abnormally are read by [failedRound].
-                anchor != null -> if (s.failed || s.cancelled) byAnchor.getOrPut(anchor) { mutableListOf() } += s
+                anchor != null -> byAnchor.getOrPut(anchor) { mutableListOf() } += s
                 s.failed -> ungrouped += UngroupedFailureIncident(id = "failure:${s.id}", failure = entry(s), sortSeq = terminalSeq(s))
             }
         }

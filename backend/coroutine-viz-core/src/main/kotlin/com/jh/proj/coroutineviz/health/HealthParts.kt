@@ -19,19 +19,30 @@ internal object HealthParts {
         val active = evaluated.filter { !it.isTerminal }
         val end = { s: CoroutineSummary -> maxOf(watermarkNanos ?: Long.MIN_VALUE, s.lastObservedNanos) }
         // Newest first (spec C-3): by when the coroutine was first observed / last suspended.
-        val longLived =
-            active
-                .filter { end(it) - it.firstObserved.appNanos > leakNanos }
-                .sortedByDescending { it.firstObserved.seq }
-                .map { ObservedAge(it.id, it.name, end(it) - it.firstObserved.appNanos) }
+        val longLived = cappedAges(active.filter { end(it) - it.firstObserved.appNanos > leakNanos }, { it.firstObserved.seq }) {
+            end(it) - it.firstObserved.appNanos
+        }
         val longSuspended =
-            active
-                .filter { it.lastTransition.kind == TransitionKind.SUSPENDED }
-                .filter { end(it) - it.lastTransition.appNanos > input.longSuspendedThresholdNanos }
-                .sortedByDescending { it.lastTransition.seq }
-                .map { ObservedAge(it.id, it.name, end(it) - it.lastTransition.appNanos) }
-        return Observations(Capped.of(longLived), Capped.of(longSuspended))
+            cappedAges(
+                active.filter {
+                    it.lastTransition.kind == TransitionKind.SUSPENDED &&
+                        end(it) - it.lastTransition.appNanos > input.longSuspendedThresholdNanos
+                },
+                { it.lastTransition.seq },
+            ) { end(it) - it.lastTransition.appNanos }
+        return Observations(longLived, longSuspended)
     }
+
+    /** Newest first by [seqOf]; ages are built only for the entries that survive the cap. */
+    private fun cappedAges(
+        matching: List<CoroutineSummary>,
+        seqOf: (CoroutineSummary) -> Long,
+        ageOf: (CoroutineSummary) -> Long,
+    ): Capped<ObservedAge> =
+        Capped(
+            items = matching.sortedByDescending(seqOf).take(HealthThresholds.LIST_CAP).map { ObservedAge(it.id, it.name, ageOf(it)) },
+            total = matching.size,
+        )
 
     fun originCounts(
         view: SummaryView,

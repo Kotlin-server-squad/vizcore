@@ -178,6 +178,7 @@ class SessionHealthDerivationTest {
 
         assertEquals(SessionOrigin.UNKNOWN, health.sessionOrigin)
         assertEquals(HealthState.NO_FAILURES_PARTIAL, health.state)
+        assertEquals(PossiblyBlockedEvaluation(EvaluationStatus.EVALUATED), health.possiblyBlocked)
     }
 
     @Test
@@ -284,10 +285,100 @@ class SessionHealthDerivationTest {
         val script = quietApp()
         script.created("a", at = sec(1), parent = "req")
         script.failed("a", at = sec(2))
+        script.created("orphan", at = sec(1), parent = "never-seen")
+        script.failed("orphan", at = sec(2))
+        script.created("busy", at = sec(1))
+        script.started("busy", at = sec(1))
+        script.thread("busy", at = sec(1), name = "worker-1")
         val health = derive(script)
 
         val json = appJson.encodeToString(SessionHealth.serializer(), health)
         assertEquals(health, appJson.decodeFromString(SessionHealth.serializer(), json))
         assertFalse(health.failuresAtLeast)
+        listOf("FAILED_ROUND", "UNGROUPED_FAILURE", "POSSIBLY_BLOCKED").forEach {
+            assertTrue(json.contains("\"type\":\"$it\""), it)
+        }
+    }
+
+    @Test
+    fun `replay asOfSeq is the cursor, even before anything was observed`() {
+        val health = derive(EventScript(), watermark = null, mode = HealthMode.Replay(atSeq = 5))
+        assertNull(health.asOf)
+        assertEquals(5L, health.asOfSeq)
+    }
+
+    @Test
+    fun `problem rounds are a subset of the counted rounds`() {
+        val script = EventScript()
+        script.created("viz", at = sec(1), origin = CoroutineOrigin.VIZCORE)
+        script.created("v1", at = sec(1), parent = "viz", origin = null)
+        script.created("v2", at = sec(1), parent = "viz", origin = null)
+        script.created("v3", at = sec(1), parent = "viz", origin = null)
+        script.failed("v1", at = sec(2))
+        script.created("req", at = sec(1))
+        script.suspended("req", at = sec(2))
+        val health = derive(script)
+
+        assertEquals(1, health.problemRoundCount)
+        assertEquals(listOf("v1"), health.incidents.items.map { (it as FailedRoundIncident).failures.items.single().coroutineId })
+        assertTrue(health.roundCount >= health.problemRoundCount)
+        assertEquals(2, health.roundCount)
+    }
+
+    @Test
+    fun `demo wins over a stated session origin`() {
+        val script = quietApp()
+        val health =
+            SessionHealthDerivation.derive(
+                HealthInput(script.table(), SessionKind.DEMO, reportedOrigin = SessionOrigin.UNKNOWN),
+            )
+        assertEquals(SessionOrigin.REPORTED, health.sessionOrigin)
+        assertEquals(1, health.counts.app)
+    }
+
+    @Test
+    fun `in replay a loss after the cursor does not make failures at least`() {
+        val after = derive(quietApp(), mode = HealthMode.Replay(3), transport = TransportStatus(lostEvents = 2, sinceSeq = 9))
+        val before = derive(quietApp(), mode = HealthMode.Replay(3), transport = TransportStatus(lostEvents = 2, sinceSeq = 3))
+        val unknownSince = derive(quietApp(), mode = HealthMode.Replay(3), transport = TransportStatus(lostEvents = 2))
+        assertFalse(after.failuresAtLeast)
+        assertTrue(before.failuresAtLeast)
+        assertTrue(unknownSince.failuresAtLeast)
+    }
+
+    @Test
+    fun `not-evaluated reasons follow their precedence`() {
+        val dropped = TransportStatus(lostEvents = 1, sinceSeq = 1)
+        assertEquals(NotEvaluatedReason.DEMO, derive(quietApp(), kind = SessionKind.DEMO, transport = dropped).possiblyBlocked.reason)
+        assertEquals(
+            NotEvaluatedReason.REPLAY,
+            derive(quietApp(), kind = SessionKind.DEMO, mode = HealthMode.Replay(3)).possiblyBlocked.reason,
+        )
+        val script = quietApp().apply { created("extra", at = sec(3)) }
+        assertEquals(NotEvaluatedReason.OVERFLOW, derive(script, watermark = null, trackedCapacity = 1).possiblyBlocked.reason)
+    }
+
+    @Test
+    fun `vizcore coroutines are excluded from observations`() {
+        val script = EventScript()
+        script.created("cio", at = sec(1), origin = CoroutineOrigin.VIZCORE)
+        script.started("cio", at = sec(1))
+        script.created("req", at = sec(1))
+        val health = derive(script)
+        assertEquals(listOf("req"), health.observations.longLived.items.map { it.coroutineId })
+    }
+
+    @Test
+    fun `an ungrouped failure and a failed round interleave newest first`() {
+        val script = EventScript()
+        script.created("req", at = sec(1))
+        script.created("a", at = sec(1), parent = "req")
+        script.failed("a", at = sec(2))
+        script.created("orphan", at = sec(1), parent = "never-seen")
+        script.failed("orphan", at = sec(3))
+        script.created("b", at = sec(1), parent = "req")
+        script.failed("b", at = sec(4))
+        val health = derive(script)
+        assertEquals(listOf("failed:round:req", "failure:orphan"), health.incidents.items.map { it.id })
     }
 }

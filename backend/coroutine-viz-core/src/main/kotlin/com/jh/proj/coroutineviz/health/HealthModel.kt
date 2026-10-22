@@ -209,8 +209,8 @@ data class ProblemRound(
 )
 
 /**
- * The derived health of one session (spec C-3, the parts core computes). [asOfSeq] equals `asOf.seq` when
- * [asOf] is present and is 0 otherwise.
+ * The derived health of one session (spec C-3, the parts core computes). [asOfSeq] equals `asOf.seq`, or the
+ * replay cursor `atSeq` in replay, and is 0 otherwise.
  */
 @Serializable
 data class SessionHealth(
@@ -253,7 +253,9 @@ sealed interface HealthMode {
 
 /**
  * Inputs of [SessionHealthDerivation.derive] (spec C-1). [watermark] and [lastIngestEpochMs] are ignored in
- * replay and demo. [leakThresholdMs] is in milliseconds (matching the API parameter);
+ * replay and demo; [watermark] must be at least as new as every PollWatermark already applied to [summaries].
+ * [transitionsFor] is called once per possibly blocked coroutine, so answer it from an index, not a scan.
+ * [leakThresholdMs] is in milliseconds (matching the API parameter);
  * [longSuspendedThresholdNanos] is in nanoseconds.
  */
 data class HealthInput(

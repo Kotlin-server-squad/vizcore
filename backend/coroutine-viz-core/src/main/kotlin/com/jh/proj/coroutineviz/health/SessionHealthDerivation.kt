@@ -14,15 +14,18 @@ object SessionHealthDerivation {
     fun derive(input: HealthInput): SessionHealth {
         val view = input.summaries
         val demo = input.kind == SessionKind.DEMO
-        val sessionOrigin = input.reportedOrigin ?: sessionOriginOf(view, demo)
+        // Demo sessions are always REPORTED, whatever the producer stated.
+        val sessionOrigin =
+            if (demo) SessionOrigin.REPORTED else input.reportedOrigin ?: sessionOriginOf(view, demo = false)
         val originOf = { s: CoroutineSummary -> effectiveOrigin(s, demo, sessionOrigin) }
         val (vizcore, evaluated) = view.all.partition { originOf(it) == CoroutineOrigin.VIZCORE }
         val anchoring = RoundAnchoring.of(view)
         val asOf = resolveAsOf(input)
         val evaluation = evaluatePossiblyBlocked(input)
         val incidents = incidentsOf(input, evaluated, anchoring, evaluation)
-        val failuresAtLeast = view.untrackedCount > 0 || input.transport.lostEvents > 0 || input.transport.deliveryUncertain
+        val failuresAtLeast = view.untrackedCount > 0 || transportLossApplies(input)
         val problemRounds = HealthParts.problemRounds(incidents, view)
+        val problemAnchors = problemRounds.mapTo(HashSet()) { it.anchorId }
 
         return SessionHealth(
             state =
@@ -36,7 +39,7 @@ object SessionHealthDerivation {
                     green = evaluated.isNotEmpty() && evaluation.status == EvaluationStatus.EVALUATED && !failuresAtLeast,
                 ),
             asOf = asOf,
-            asOfSeq = asOf?.seq ?: 0L,
+            asOfSeq = (input.mode as? HealthMode.Replay)?.atSeq ?: asOf?.seq ?: 0L,
             sessionOrigin = sessionOrigin,
             problemCount = incidents.size,
             failedRoundCount = incidents.count { it is FailedRoundIncident },
@@ -49,7 +52,7 @@ object SessionHealthDerivation {
             failuresAtLeast = failuresAtLeast,
             vizcoreConnection = HealthParts.vizcoreConnection(vizcore),
             transport = input.transport,
-            roundCount = anchoring.anchorIds.count { id -> view.get(id)?.let(originOf) != CoroutineOrigin.VIZCORE },
+            roundCount = anchoring.anchorIds.count { id -> id in problemAnchors || view.get(id)?.let(originOf) != CoroutineOrigin.VIZCORE },
             problemRoundCount = problemRounds.size,
             problemRounds = Capped.of(problemRounds),
         )
@@ -69,6 +72,15 @@ object SessionHealthDerivation {
                 emptyList()
             }
         return (FailureIncidents.build(evaluated, anchoring) + blocked).sortedWith(INCIDENT_ORDER)
+    }
+
+    /** Lost or possibly lost events count in replay only when the loss happened at or before the cursor. */
+    private fun transportLossApplies(input: HealthInput): Boolean {
+        val transport = input.transport
+        if (transport.lostEvents <= 0 && !transport.deliveryUncertain) return false
+        val mode = input.mode
+        val since = transport.sinceSeq
+        return mode !is HealthMode.Replay || since == null || since <= mode.atSeq
     }
 
     /** The watermark observes every coroutine of a live attached app; demo and replay have none. */
