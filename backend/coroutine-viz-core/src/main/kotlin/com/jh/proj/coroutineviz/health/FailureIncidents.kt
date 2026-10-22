@@ -6,6 +6,7 @@ package com.jh.proj.coroutineviz.health
  * depend on the order terminal events were recorded in (#244).
  */
 internal object FailureIncidents {
+    /** Returns the incidents in no particular order; the derivation sorts them. */
     fun build(
         evaluated: List<CoroutineSummary>,
         anchoring: RoundAnchoring,
@@ -15,7 +16,8 @@ internal object FailureIncidents {
         for (s in evaluated) {
             val anchor = anchoring.anchorOf(s.id)
             when {
-                anchor != null -> byAnchor.getOrPut(anchor) { mutableListOf() } += s
+                // Only members that finished abnormally are read by [failedRound].
+                anchor != null -> if (s.failed || s.cancelled) byAnchor.getOrPut(anchor) { mutableListOf() } += s
                 s.failed -> ungrouped += UngroupedFailureIncident(id = "failure:${s.id}", failure = entry(s), sortSeq = terminalSeq(s))
             }
         }
@@ -23,6 +25,7 @@ internal object FailureIncidents {
         return rounds + ungrouped
     }
 
+    /** The [FailureEntry] for a failed coroutine; details are null when its summary was reduced to a stub. */
     fun entry(s: CoroutineSummary): FailureEntry =
         FailureEntry(
             coroutineId = s.id,
@@ -58,5 +61,9 @@ internal object FailureIncidents {
         )
     }
 
+    /**
+     * The seq of the coroutine's terminal event. The [CoroutineSummary.lastModifiedSeq] fallback is defensive:
+     * FAILED and CANCELLED summaries always have a `terminal`, and stubs keep it.
+     */
     fun terminalSeq(s: CoroutineSummary): Long = s.terminal?.seq ?: s.lastModifiedSeq
 }
