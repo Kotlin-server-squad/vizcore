@@ -18,7 +18,8 @@
 
 - Work in a fresh worktree from `origin/main` (1.2.0 is merged there: #230, #231, #232, #234, #246):
   `git -C ~/Documents/workspace-vizcore/vizcore worktree add -b feat/health-core ../vizcore-health-core origin/main`.
-  All Gradle commands below run from `backend/` in that worktree.
+  All Gradle commands below run from `backend/` in that worktree; all `git` commands run from the worktree
+  root (from `backend/`, use `git -C ..`).
 - The spec and this plan are committed only on the local branch `docs/session-triage-design` (not on
   `origin/main`).
   **First step in the new worktree:** bring them in, so the PR carries its design and Task 15's review can
@@ -104,6 +105,15 @@ the same table, so it behaves identically. The spec's "Rounds" paragraph is amen
 - **Orphans.** A coroutine whose parent chain reaches an untracked parent has no round (spec "Ungrouped
   failure"), unlike the plugin, which anchors the top of a dangling chain. Its failures are ungrouped
   incidents; PR 5's round picker must offer a way to reach non-failed orphans (e.g. "All rounds" in List).
+- **Health payload fields.** Spec C-3 lists `asOfWatermark` and `retention` in the health payload; core's
+  `SessionHealth` has neither. PR 2 adds them where it serves the payload.
+
+### Left to PR 3 (SDK) on purpose
+
+- Coroutines launched through the wrappers in an attached session send no origin yet, so they count as
+  `UNKNOWN` until the SDK sets `APP`.
+- `PollWatermark` is not in `StructuralClassifier`'s protected set, so the SDK's sampler and overflow buffer
+  may thin or drop it; PR 3 protects it when the SDK starts sending watermarks.
 
 ### File map
 
@@ -138,7 +148,14 @@ Modify:
 | `session/EventContext.kt` | `coroutineSuspended(..., provenance)` parameter |
 | `wrappers/VizScope.kt` | `vizDelay` passes `REAL_FRAME` |
 | `wrappers/InstrumentedDeferred.kt` | await suspension passes `REAL_FRAME` |
-| `session/VizSession.kt` | own a `SummaryTable`, apply on append and rehydrate, `readSummaries` |
+| `events/SuspensionPoint.kt` | `capturedProvenance()` extension |
+| `session/VizSession.kt` | own a `SummaryTable` (unless `keepSummaries = false`), apply on append and rehydrate, `readSummaries` |
+
+Modify (`backend/coroutine-viz-client/src/main/kotlin/com/jh/proj/coroutineviz/client/`):
+
+| File | Change |
+|---|---|
+| `VizcoreClient.kt` | the SDK's in-app session passes `keepSummaries = false` (it never reads them) |
 
 Tests (under `src/test/kotlin/com/jh/proj/coroutineviz/`): `events/HealthWireTypesTest.kt`,
 `events/VizEventSerializersModuleTest.kt` (modify), `wrappers/SuspensionProvenanceTest.kt`,
@@ -341,7 +358,7 @@ the import `com.jh.proj.coroutineviz.events.CoroutineOrigin`:
             subclass(PollWatermark::class)
 ```
 
-and add `import com.jh.proj.coroutineviz.events.PollWatermark` with the other `events.*` imports.
+(the file already imports `com.jh.proj.coroutineviz.events.*`, so no new import is needed).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -364,7 +381,7 @@ real frame. Without this, the page would show "suspension location unavailable" 
 DebugProbes synthesizer keeps sending `null` provenance here; PR 3 sets it.
 
 **Files:**
-- Modify: `session/EventContext.kt` (function `coroutineSuspended`, ~line 146), `wrappers/VizScope.kt` (~line 497), `wrappers/InstrumentedDeferred.kt` (~line 86)
+- Modify: `session/EventContext.kt` (function `coroutineSuspended`, ~line 146), `wrappers/VizScope.kt` (~line 497), `wrappers/InstrumentedDeferred.kt` (~line 86), `events/SuspensionPoint.kt` (new `capturedProvenance` extension)
 - Test: `wrappers/SuspensionProvenanceTest.kt`
 
 - [ ] **Step 1: Write the failing test**
@@ -850,7 +867,8 @@ data class FailureInfo(
  * [origin] is `null` when the producer did not report one. [failed] is true for a terminal failure
  * that is not a known cancellation and survives reduction. [promotedAtSeq] is set the first time a running
  * genuine root qualifies as a container; new active children never clear it; the root finishing clears it
- * unless the root got a new direct child after promotion.
+ * unless the root got a new direct child after promotion, which [grewAfterPromotion] records (on the
+ * summary, so a restored table decides the same way).
  */
 @Serializable
 data class CoroutineSummary(
@@ -877,6 +895,7 @@ data class CoroutineSummary(
     val dispatcher: String? = null,
     val lastModifiedSeq: Long,
     val promotedAtSeq: Long? = null,
+    val grewAfterPromotion: Boolean = false,
     val reduced: Boolean = false,
 ) {
     val isTerminal: Boolean get() = terminal != null
@@ -1333,6 +1352,28 @@ class SubtreeIndexTest {
         assertEquals("root", index.rootOf("a1"))
         assertEquals("orphan", index.rootOf("orphan"))
     }
+
+    @Test
+    fun `a coroutine naming itself as parent is its own root`() {
+        val index = SubtreeIndex()
+        index.add("x", "x")
+        index.close("x")
+
+        assertEquals("x", index.rootOf("x"))
+        assertFalse(index.qualifiesAsContainer("x"))
+    }
+
+    @Test
+    fun `a parent cycle is not closed`() {
+        val index = SubtreeIndex()
+        index.add("a", "b")
+        index.add("b", "a")
+        index.close("a")
+        index.close("b")
+
+        assertEquals("a", index.rootOf("a"))
+        assertEquals("a", index.rootOf("b"))
+    }
 }
 ```
 
@@ -1353,7 +1394,9 @@ package com.jh.proj.coroutineviz.health
  * its subtree are still open, and for each parent how many of its direct-child subtrees are fully
  * closed. [add] and [close] cost O(depth). A child created before its parent (the DebugProbes poll gives
  * no parent-first order) waits in [pendingChildren] and is linked when the parent arrives; until then, and
- * forever if the parent never arrives, it is its own root.
+ * forever if the parent never arrives, it is its own root. Malformed ancestry (a self-parent, or a pending
+ * child that is already an ancestor of the arriving parent) is never linked, so walks always terminate:
+ * the session's send lock is held while they run.
  */
 internal class SubtreeIndex {
     private val parentOf = HashMap<String, String>()
@@ -1368,11 +1411,12 @@ internal class SubtreeIndex {
     ) {
         if (id in openInSubtree) return
         openInSubtree[id] = 0
-        if (parentId != null) {
+        if (parentId != null && parentId != id) {
             if (parentId in openInSubtree) link(id, parentId) else pendingChildren.getOrPut(parentId) { mutableListOf() } += id
         }
         adjust(id, +1)
-        pendingChildren.remove(id)?.forEach { child -> adopt(child, id) }
+        val idRoot = rootOf(id)
+        pendingChildren.remove(id)?.forEach { child -> if (child != idRoot) adopt(child, id) }
     }
 
     fun close(id: String) {
@@ -1435,7 +1479,7 @@ internal class SubtreeIndex {
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: the command from Step 2. Expected: PASS (5 tests).
+Run: the command from Step 2. Expected: PASS (7 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1497,6 +1541,18 @@ class SummaryTableTest {
         listOf("r4", "r5", "r6").forEach { script.created(it, at = sec(7), parent = "app") }
 
         assertEquals(promotedAt, script.table().get("app")?.promotedAtSeq)
+    }
+
+    @Test
+    fun `growth after promotion is recorded on the summary and survives reduction`() {
+        val script = containerScript()
+        assertFalse(script.table().get("app")!!.grewAfterPromotion)
+        script.created("r4", at = sec(7), parent = "app")
+
+        val app = assertNotNull(script.table().get("app"))
+        assertTrue(app.grewAfterPromotion)
+        assertEquals(script.lastSeq, app.lastModifiedSeq)
+        assertTrue(app.toStub().grewAfterPromotion)
     }
 
     @Test
@@ -1683,9 +1739,6 @@ class SummaryTable(
     private val finishedOk = TreeMap<Long, String>()
     private val finishedFailed = TreeMap<Long, String>()
 
-    // Promoted roots that got a new direct child after their promotion: they stay containers when they finish.
-    private val grownAfterPromotion = HashSet<String>()
-
     /** Summaries that are not stubs. */
     var fullSummaryCount: Int = 0
         private set
@@ -1714,7 +1767,9 @@ class SummaryTable(
         if (e.coroutineId in summaries) return
         // Growth counts even for a child beyond capacity: the root is still a container.
         val parent = e.parentCoroutineId?.let { summaries[it] }
-        if (parent != null && parent.promotedAtSeq != null) grownAfterPromotion += parent.id
+        if (parent != null && parent.promotedAtSeq != null && !parent.grewAfterPromotion) {
+            summaries[parent.id] = parent.copy(grewAfterPromotion = true, lastModifiedSeq = e.seq)
+        }
         if (summaries.size >= trackedCapacity) {
             untrackedCount++
             return
@@ -1740,7 +1795,7 @@ class SummaryTable(
         seq: Long,
     ) {
         // A finished root that never grew after promotion was a request, not a container (spec amendment).
-        if (s.parentId == null && s.promotedAtSeq != null && s.id !in grownAfterPromotion) {
+        if (s.parentId == null && s.promotedAtSeq != null && !s.grewAfterPromotion) {
             summaries[s.id] = s.copy(promotedAtSeq = null, lastModifiedSeq = seq)
         }
         subtrees.close(s.id)
@@ -3474,7 +3529,8 @@ git commit -m "core: sketch boards as health derivation fixtures"
 ### Task 14: `VizSession` keeps the summaries
 
 **Files:**
-- Modify: `session/VizSession.kt` (fields near `applier` ~line 126; `append` ~line 230; `rehydrateFromStore` ~line 260)
+- Modify: `session/VizSession.kt` (constructor; fields near `applier` ~line 126; `append` ~line 230; `rehydrateFromStore` ~line 260)
+- Modify: `backend/coroutine-viz-client/src/main/kotlin/com/jh/proj/coroutineviz/client/VizcoreClient.kt` (~line 349)
 - Test: `session/VizSessionSummariesTest.kt`
 
 - [ ] **Step 1: Write the failing test**
@@ -3488,6 +3544,7 @@ import com.jh.proj.coroutineviz.health.EventScript
 import com.jh.proj.coroutineviz.health.sec
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class VizSessionSummariesTest {
     private fun script(sessionId: String): EventScript =
@@ -3519,6 +3576,15 @@ class VizSessionSummariesTest {
         assertEquals("req", session.readSummaries { it.get("a")?.parentId })
         session.close()
     }
+
+    @Test
+    fun `a session without summaries keeps no table`() {
+        val session = VizSession("summaries-off", keepSummaries = false)
+        script(session.sessionId).events.forEach(session::send)
+
+        assertFailsWith<IllegalStateException> { session.readSummaries { it.lastEventSeq } }
+        session.close()
+    }
 }
 ```
 
@@ -3533,49 +3599,74 @@ use the method `VizSession.append` calls on `store` (`store.record(event)` today
 In `session/VizSession.kt`:
 
 1. Imports: `com.jh.proj.coroutineviz.health.SummaryTable`, `com.jh.proj.coroutineviz.health.SummaryView`.
-2. Next to `private val applier = EventApplier(snapshot)`:
+2. Add a constructor parameter right **before** `eventStoreFactory` (after `createdAtMs`).
+   `eventStoreFactory` must stay last: `SseSubscriptionOrderTest` (backend) passes it as a trailing lambda.
+   No caller passes more than the first argument positionally, so the insertion is safe.
+
+```kotlin
+    /**
+     * Whether to keep the per-coroutine summary table (spec 2026-10-21, C-2). The backend reads it; the
+     * SDK's in-app session never does, so it passes `false` and spares the app the memory and the work.
+     */
+    keepSummaries: Boolean = true,
+```
+
+3. Next to `private val applier = EventApplier(snapshot)`:
 
 ```kotlin
     // Durable per-coroutine summaries (spec 2026-10-21, C-2); guarded by [sendLock] like the snapshot.
-    private val summaryTable = SummaryTable()
+    private val summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
 ```
 
 `sendLock` is declared below `applier`; declare `summaryTable` after `sendLock` if the compiler
 complains about initialization order (it does not read it at construction, so either place compiles).
 
-3. In `append`, right after `applier.apply(event)`:
+4. In `append`, right after `applier.apply(event)`:
 
 ```kotlin
-            summaryTable.apply(event)
+            summaryTable?.apply(event)
 ```
 
-4. In `rehydrateFromStore`, change `events.forEach { applier.apply(it) }` to:
+5. In `rehydrateFromStore`, change `events.forEach { applier.apply(it) }` to:
 
 ```kotlin
             events.forEach {
                 applier.apply(it)
-                summaryTable.apply(it)
+                summaryTable?.apply(it)
             }
 ```
 
-5. Add, next to `nextSeq()`:
+6. Add, next to `nextSeq()`:
 
 ```kotlin
     /**
      * Read the session's summaries under the send lock, so a read never sees a half-applied event.
      * Keep [block] short: it holds up event ingestion while it runs.
+     *
+     * @throws IllegalStateException if the session was created with `keepSummaries = false`.
      */
-    fun <T> readSummaries(block: (SummaryView) -> T): T = synchronized(sendLock) { block(summaryTable) }
+    fun <T> readSummaries(block: (SummaryView) -> T): T {
+        val table = checkNotNull(summaryTable) { "session $sessionId keeps no summaries" }
+        return synchronized(sendLock) { block(table) }
+    }
+```
+
+7. In `VizcoreClient.kt` (`coroutine-viz-client`), the SDK's own session:
+
+```kotlin
+            val session = VizSession(sessionId = serverSessionId, keepSummaries = false)
 ```
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: the command from Step 2. Expected: PASS (2 tests).
+Run: the command from Step 2. Expected: PASS (3 tests). Then
+`./gradlew :coroutine-viz-client:test --rerun` (the client compiles against the new parameter; `--rerun`
+must stay right after that task). Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/coroutine-viz-core/src
+git add backend/coroutine-viz-core/src backend/coroutine-viz-client/src
 git commit -m "core: VizSession keeps durable coroutine summaries"
 ```
 

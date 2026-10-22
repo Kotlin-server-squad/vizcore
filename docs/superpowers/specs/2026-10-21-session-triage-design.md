@@ -286,7 +286,7 @@ updater and never rebuilt from retained events: origin, parent id, name, creatio
 first observation, last transition kind with app-clock time and sequence, terminal state with time and
 sequence, failure type and message, last suspension point with provenance, last thread and dispatcher with the sequence of that thread
 assignment, `lastModifiedSeq` (the sequence of the last event that changed any field), and for roots
-`promotedAtSeq` (see Rounds).
+`promotedAtSeq` and whether a direct child was created after it (see Rounds).
 Round ids and observations (long-lived, long-suspended) are not stored: they depend on the tree, the
 request's leak threshold and the latest watermark, and are computed by `SessionHealthDerivation`.
 A cumulative counter of coroutines beyond capacity is kept beside them.
@@ -295,7 +295,7 @@ A cumulative counter of coroutines beyond capacity is kept beside them.
   finished non-failed
   summaries are reduced oldest first, then failed ones, to a **structural stub** (id, parent id, origin, name,
   creation location, creation time, terminal state with time and sequence, failed flag, and for roots
-  `promotedAtSeq`; search keeps working on name and location), which keeps round anchoring, round
+  `promotedAtSeq` and its growth flag; search keeps working on name and location), which keeps round anchoring, round
   order and "cancelled after the failure" correct. Once a failed summary was
   reduced, its incident shows without exception details ("details dropped").
 - **Stubs are never discarded** (they are small: identity, ancestry, name, location, times, flags), so round anchoring,
