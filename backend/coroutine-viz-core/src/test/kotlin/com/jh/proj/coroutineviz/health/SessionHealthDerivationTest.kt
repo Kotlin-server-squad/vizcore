@@ -378,7 +378,12 @@ class SessionHealthDerivationTest {
         script.failed("orphan", at = sec(3))
         script.created("b", at = sec(1), parent = "req")
         script.failed("b", at = sec(4))
+        script.created("late-orphan", at = sec(1), parent = "also-never-seen")
+        script.failed("late-orphan", at = sec(5))
         val health = derive(script)
-        assertEquals(listOf("failed:round:req", "failure:orphan"), health.incidents.items.map { it.id })
+        assertEquals(
+            listOf("failure:late-orphan", "failed:round:req", "failure:orphan"),
+            health.incidents.items.map { it.id },
+        )
     }
 }
