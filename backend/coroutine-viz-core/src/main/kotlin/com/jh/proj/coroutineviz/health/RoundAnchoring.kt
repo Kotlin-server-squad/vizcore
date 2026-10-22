@@ -23,6 +23,9 @@ data class RoundSummary(
  * plus every direct child of a promoted container root; a container is a singleton round. Round ids are
  * derived, never stored. A coroutine whose parent chain reaches an untracked parent has no round
  * ([anchorOf] returns `null`).
+ *
+ * An instance is valid only while the view is unchanged (build a new one after any event) and is not
+ * thread-safe: it caches resolved anchors lazily.
  */
 class RoundAnchoring private constructor(
     private val view: SummaryView,
@@ -34,18 +37,23 @@ class RoundAnchoring private constructor(
     fun roundIdOf(id: String): String? = anchorOf(id)?.let(::roundId)
 
     fun anchorOf(id: String): String? {
-        val chain = ArrayList<String>()
-        val limit = view.all.size + 1
+        val chain = LinkedHashSet<String>()
         var current: String? = id
         var answer: String? = null
-        while (current != null && answer == null && chain.size <= limit) {
+        while (current != null && answer == null) {
             val node: String = current
             when {
                 node in unresolvable -> current = null
                 node in resolved -> answer = resolved[node]
                 else -> {
-                    chain += node
-                    if (node in anchorIds) answer = node else current = trackedParentOf(node)
+                    // A revisited node means a parent cycle: those nodes can never reach an anchor.
+                    if (!chain.add(node)) {
+                        current = null
+                    } else if (node in anchorIds) {
+                        answer = node
+                    } else {
+                        current = trackedParentOf(node)
+                    }
                 }
             }
         }

@@ -4,6 +4,7 @@ import com.jh.proj.coroutineviz.models.CoroutineState
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class RoundAnchoringTest {
     @Test
@@ -71,7 +72,9 @@ class RoundAnchoringTest {
         script.completed("req1", at = sec(2))
         script.created("req2", at = sec(3))
         val full = RoundAnchoring.of(script.table())
-        val reduced = RoundAnchoring.of(script.table(fullSummaryTarget = 1))
+        val reducedTable = script.table(fullSummaryTarget = 1)
+        assertTrue(reducedTable.get("req1.a")!!.reduced)
+        val reduced = RoundAnchoring.of(reducedTable)
 
         assertEquals("req1", reduced.anchorOf("req1.a"))
         assertEquals(full.rounds().map { it.roundId }, reduced.rounds().map { it.roundId })
@@ -90,5 +93,72 @@ class RoundAnchoringTest {
 
         assertEquals(mapOf(CoroutineState.ACTIVE to 1, CoroutineState.FAILED to 1, CoroutineState.CANCELLED to 1), round.countsByState)
         assertEquals(3, round.memberCount)
+    }
+
+    @Test
+    fun `roundIdOf returns the round id of the anchor`() {
+        val script = EventScript()
+        script.created("req", at = 1)
+        script.created("req.a", at = 2, parent = "req")
+        val anchoring = RoundAnchoring.of(script.table())
+
+        assertEquals("round:req", anchoring.roundIdOf("req.a"))
+        assertNull(anchoring.roundIdOf("unknown"))
+    }
+
+    @Test
+    fun `parent cycles and self-parents have no round`() {
+        val script = EventScript()
+        script.created("self", at = 1, parent = "self")
+        script.created("a", at = 2, parent = "b")
+        script.created("b", at = 3, parent = "a")
+        val anchoring = RoundAnchoring.of(script.table())
+
+        assertNull(anchoring.anchorOf("self"))
+        assertNull(anchoring.anchorOf("a"))
+        assertNull(anchoring.anchorOf("b"))
+        assertEquals(emptyList(), anchoring.rounds())
+    }
+
+    @Test
+    fun `an orphan whose parent arrives later joins that parent's round`() {
+        val script = EventScript()
+        script.created("child", at = 1, parent = "late")
+        assertNull(RoundAnchoring.of(script.table()).anchorOf("child"))
+
+        script.created("late", at = 2)
+        val anchoring = RoundAnchoring.of(script.table())
+        assertEquals("late", anchoring.anchorOf("child"))
+    }
+
+    @Test
+    fun `a promoted container that finishes normally merges its children back into its round`() {
+        val script = promotedContainer()
+        script.completed("app", at = sec(6))
+        val anchoring = RoundAnchoring.of(script.table())
+
+        assertEquals("app", anchoring.anchorOf("r1"))
+        assertEquals(listOf("round:app"), anchoring.rounds().map { it.roundId })
+    }
+
+    @Test
+    fun `a container that grew after promotion and was cancelled keeps its children as separate rounds`() {
+        val script = promotedContainer()
+        script.created("r4", at = sec(6), parent = "app")
+        script.cancelled("app", at = sec(7))
+        val anchoring = RoundAnchoring.of(script.table())
+
+        assertEquals("r1", anchoring.anchorOf("r1"))
+        assertEquals("r4", anchoring.anchorOf("r4"))
+        assertEquals("app", anchoring.anchorOf("app"))
+    }
+
+    private fun promotedContainer(): EventScript {
+        val script = EventScript()
+        script.created("app", at = sec(0))
+        listOf("r1", "r2", "r3").forEachIndexed { i, id -> script.created(id, at = sec(1L + i), parent = "app") }
+        script.completed("r1", at = sec(4))
+        script.completed("r2", at = sec(5))
+        return script
     }
 }
