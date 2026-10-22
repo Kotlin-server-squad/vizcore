@@ -6,14 +6,15 @@ package com.jh.proj.coroutineviz.health
  * closed. [add] and [close] cost O(depth). A child created before its parent (the DebugProbes poll gives
  * no parent-first order) waits in [pendingChildren] and is linked when the parent arrives; until then, and
  * forever if the parent never arrives, it is its own root. Malformed ancestry (a self-parent, or a pending
- * child that is already an ancestor of the arriving parent) is never linked, so walks always terminate:
- * the session's send lock is held while they run.
+ * child that is already an ancestor of the arriving parent) is never linked, so walks always terminate,
+ * which matters because they run under the session's send lock.
  */
 internal class SubtreeIndex {
     private val parentOf = HashMap<String, String>()
     private val directChildren = HashMap<String, Int>()
     private val openInSubtree = HashMap<String, Int>()
     private val closedChildSubtrees = HashMap<String, Int>()
+    private val closed = HashSet<String>()
     private val pendingChildren = HashMap<String, MutableList<String>>()
 
     fun add(
@@ -31,7 +32,7 @@ internal class SubtreeIndex {
     }
 
     fun close(id: String) {
-        if (id in openInSubtree) adjust(id, -1)
+        if (id in openInSubtree && closed.add(id)) adjust(id, -1)
     }
 
     fun rootOf(id: String): String {
@@ -41,6 +42,7 @@ internal class SubtreeIndex {
         }
     }
 
+    /** Child rule only: at least 3 direct children, at least half of them fully finished; the caller checks root-ness and liveness. */
     fun qualifiesAsContainer(id: String): Boolean {
         val children = directChildren[id] ?: 0
         val closed = closedChildSubtrees[id] ?: 0
