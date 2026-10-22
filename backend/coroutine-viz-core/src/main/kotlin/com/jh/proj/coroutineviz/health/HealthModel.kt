@@ -146,6 +146,7 @@ data class PossiblyBlockedIncident(
     val anchorId: String?,
     /** The thread assigned in the current run, `null` when none was observed since the latest start/resume. */
     val lastThread: ThreadObservation?,
+    /** The coroutine's last known dispatcher; unlike [lastThread] it may come from an earlier run. */
     val dispatcher: String?,
     val lastSuspension: SuspensionPoint?,
     val lastSuspensionProvenance: SuspensionProvenance?,

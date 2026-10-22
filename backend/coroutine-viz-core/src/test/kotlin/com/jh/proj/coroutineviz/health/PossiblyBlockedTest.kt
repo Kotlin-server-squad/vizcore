@@ -34,6 +34,7 @@ class PossiblyBlockedTest {
         assertEquals("task", incident.coroutineId)
         assertEquals(sec(10) + 1, incident.runningForNanos)
         assertEquals("round:task", incident.roundId)
+        assertEquals("task", incident.anchorId)
         assertEquals("lettuce-nioEventLoop-", incident.eventLoopClue)
         assertEquals("lettuce-nioEventLoop-5-1", incident.lastThread?.threadName)
         assertEquals("Dispatchers.Unconfined", incident.dispatcher)
@@ -102,5 +103,65 @@ class PossiblyBlockedTest {
         assertEquals(HealthThresholds.TRANSITIONS_CAP, incident.transitions.size)
         assertTrue(incident.transitionsGap)
         assertEquals(TransitionKind.RESUMED, incident.transitions.last().kind)
+        assertEquals(script.lastSeq, incident.transitions.last().seq)
+    }
+
+    @Test
+    fun `created-only, body-completed, failed and cancelled coroutines are never flagged`() {
+        val script = EventScript()
+        script.created("fresh", at = sec(1))
+        script.created("body", at = sec(1))
+        script.started("body", at = sec(1))
+        script.bodyCompleted("body", at = sec(2))
+        script.created("bad", at = sec(1))
+        script.started("bad", at = sec(1))
+        script.failed("bad", at = sec(2))
+        script.created("gone", at = sec(1))
+        script.started("gone", at = sec(1))
+        script.cancelled("gone", at = sec(2))
+
+        assertEquals(emptyList(), blocked(script, watermarkNanos = sec(200)))
+    }
+
+    @Test
+    fun `exactly 20 retained transitions from the first observation have no gap`() {
+        val script = EventScript()
+        script.created("busy", at = 0)
+        script.started("busy", at = 1)
+        for (i in 1..9L) {
+            script.suspended("busy", at = ms(i))
+            script.resumed("busy", at = ms(i) + 1)
+        }
+
+        val incident = blocked(script, watermarkNanos = sec(30)).single()
+        assertEquals(HealthThresholds.TRANSITIONS_CAP, incident.transitions.size)
+        assertFalse(incident.transitionsGap)
+    }
+
+    @Test
+    fun `retention trimming of the early transitions marks a gap even below the cap`() {
+        val script = EventScript()
+        script.created("busy", at = 0)
+        script.started("busy", at = 1)
+
+        val table = script.table()
+        val incident =
+            PossiblyBlockedIncidents
+                .build(table.all.toList(), RoundAnchoring.of(table), sec(30)) { id ->
+                    Transitions.forCoroutine(script.events, id).drop(1)
+                }.single()
+        assertEquals(1, incident.transitions.size)
+        assertTrue(incident.transitionsGap)
+    }
+
+    @Test
+    fun `an orphan with an untracked parent has no round`() {
+        val script = EventScript()
+        script.created("orphan", at = sec(1), parent = "ghost")
+        script.started("orphan", at = sec(1))
+
+        val incident = blocked(script, watermarkNanos = sec(20)).single()
+        assertNull(incident.roundId)
+        assertNull(incident.anchorId)
     }
 }
