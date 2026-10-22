@@ -17,36 +17,37 @@ data class SuspensionPoint(
     val reason: String,
 ) {
     companion object {
-        /**
-         * Helper to capture suspension point from current stack trace.
-         * @param reason The reason for suspension (e.g., "delay", "await")
-         * @param skipFrames Number of stack frames to skip (default 2)
-         */
-        fun capture(
-            reason: String,
-            skipFrames: Int = 2,
-        ): SuspensionPoint {
-            val stackTrace = Throwable().stackTrace
+        /** Function name of the placeholder [capture] returns when no caller frame qualifies. */
+        const val UNKNOWN_FUNCTION = "unknown"
 
-            // Find first non-coroutines-infrastructure frame
-            val relevantFrame =
-                stackTrace
-                    .drop(skipFrames)
-                    .firstOrNull { frame ->
-                        !frame.className.startsWith("kotlinx.coroutines") &&
-                            !frame.className.contains("VizScope")
-                    }
+        private val WRAPPER_CLASSES = listOf("VizScope", "InstrumentedDeferred")
+        private val INFRASTRUCTURE_PREFIXES = listOf("kotlinx.coroutines", "kotlin.coroutines")
+
+        /**
+         * Captures the suspension point from the current stack: the first frame that is the caller's own code.
+         * Frames of this class (incl. `capture$default`), the wrappers that call it, coroutines infrastructure
+         * and line-less synthetic bridges are skipped.
+         * @param reason The reason for suspension (e.g., "delay", "await")
+         */
+        fun capture(reason: String): SuspensionPoint {
+            val relevantFrame = Throwable().stackTrace.firstOrNull { it.isCallerFrame() }
 
             return SuspensionPoint(
-                function = relevantFrame?.methodName ?: "unknown",
+                function = relevantFrame?.methodName ?: UNKNOWN_FUNCTION,
                 fileName = relevantFrame?.fileName,
-                lineNumber = relevantFrame?.lineNumber?.takeIf { it >= 0 },
+                lineNumber = relevantFrame?.lineNumber,
                 reason = reason,
             )
         }
+
+        private fun StackTraceElement.isCallerFrame(): Boolean =
+            lineNumber >= 0 &&
+                !className.startsWith(SuspensionPoint::class.java.name) &&
+                WRAPPER_CLASSES.none { className.contains(it) } &&
+                INFRASTRUCTURE_PREFIXES.none { className.startsWith(it) }
     }
 }
 
 /** Provenance of a point made by [SuspensionPoint.capture]: a frame it read, or `null` for its "unknown" placeholder. */
 fun SuspensionPoint.capturedProvenance(): SuspensionProvenance? =
-    if (function == "unknown" && fileName == null) null else SuspensionProvenance.REAL_FRAME
+    if (function == SuspensionPoint.UNKNOWN_FUNCTION && fileName == null) null else SuspensionProvenance.REAL_FRAME

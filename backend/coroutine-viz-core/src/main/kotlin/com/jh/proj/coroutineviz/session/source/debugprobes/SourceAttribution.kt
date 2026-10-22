@@ -11,9 +11,10 @@ import kotlin.coroutines.CoroutineContext
  * `CoroutineContext`. No DebugProbes dependency — exercised with hand-built
  * stacks/contexts in tests.
  *
- * Frame selection mirrors [com.jh.proj.coroutineviz.events.SuspensionPoint.capture]:
- * the first frame whose `className` is NOT coroutines infrastructure
- * (`kotlinx.coroutines*` / `kotlin.coroutines*`).
+ * Frame selection: the first frame whose `className` is NOT coroutines infrastructure
+ * (`kotlinx.coroutines*` / `kotlin.coroutines*`). Unlike
+ * [com.jh.proj.coroutineviz.events.SuspensionPoint.capture] it does not skip wrapper classes
+ * or frames without a line number.
  */
 object SourceAttribution {
     /** The function/file/line of the first user (non-infrastructure) frame. */
