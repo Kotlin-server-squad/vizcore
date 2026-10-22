@@ -3,6 +3,8 @@ package com.jh.proj.coroutineviz.session
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.job.JobStateChanged
+import com.jh.proj.coroutineviz.health.SummaryTable
+import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.models.RuntimeSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +57,11 @@ class VizSession(
      */
     private val clock: () -> Long = System::currentTimeMillis,
     val createdAtMs: Long = clock(),
+    /**
+     * Whether to keep the per-coroutine summary table (spec 2026-10-21, C-2). The backend reads it; the
+     * SDK's in-app session never does, so it passes `false` and spares the app the memory and the work.
+     */
+    keepSummaries: Boolean = true,
     /**
      * Event-store factory seam. Defaults to the in-memory bounded [EventStore]
      * so the SDK default is byte-for-byte unchanged (D-04a). The persistence
@@ -124,6 +131,9 @@ class VizSession(
     }
 
     private val applier = EventApplier(snapshot)
+
+    // Durable per-coroutine summaries (spec 2026-10-21, C-2); guarded by [sendLock] like the snapshot.
+    private val summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
     private var monitoringEnabled = false
 
     /** Whether job monitoring is currently active (test/diagnostic, WR-07). */
@@ -171,6 +181,17 @@ class VizSession(
      * Allocate next sequence number.
      */
     fun nextSeq(): Long = seqGenerator.incrementAndGet()
+
+    /**
+     * Read the session's summaries under the send lock, so a read never sees a half-applied event.
+     * Keep [block] short: it holds up event ingestion while it runs.
+     *
+     * @throws IllegalStateException if the session was created with `keepSummaries = false`.
+     */
+    fun <T> readSummaries(block: (SummaryView) -> T): T {
+        val table = checkNotNull(summaryTable) { "session $sessionId keeps no summaries" }
+        return synchronized(sendLock) { block(table) }
+    }
 
     /**
      * Non-suspending event send - PREFERRED for most use cases.
@@ -241,6 +262,7 @@ class VizSession(
             lastSentSeq = event.seq
             store.record(event)
             applier.apply(event)
+            summaryTable?.apply(event)
             eventBus.send(event)
             // Retention ages a session by this stamp, not by createdAtMs (#129).
             lastActivityAtMs = clock()
@@ -266,7 +288,10 @@ class VizSession(
         val events = store.all() // ExposedEventStore returns these ordered by seq
         if (events.isEmpty()) return
         synchronized(sendLock) {
-            events.forEach { applier.apply(it) }
+            events.forEach {
+                applier.apply(it)
+                summaryTable?.apply(it)
+            }
             val maxSeq = events.maxOf { it.seq }
             if (maxSeq > lastSentSeq) {
                 lastSentSeq = maxSeq
