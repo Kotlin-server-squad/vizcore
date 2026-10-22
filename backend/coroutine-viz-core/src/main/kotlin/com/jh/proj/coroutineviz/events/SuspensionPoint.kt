@@ -46,3 +46,7 @@ data class SuspensionPoint(
         }
     }
 }
+
+/** Provenance of a point made by [SuspensionPoint.capture]: a frame it read, or `null` for its "unknown" placeholder. */
+fun SuspensionPoint.capturedProvenance(): SuspensionProvenance? =
+    if (function == "unknown" && fileName == null) null else SuspensionProvenance.REAL_FRAME

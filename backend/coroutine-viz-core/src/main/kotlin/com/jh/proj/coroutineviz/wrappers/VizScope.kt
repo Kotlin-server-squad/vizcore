@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.capturedProvenance
 import com.jh.proj.coroutineviz.events.deferred.DeferredValueAvailable
 import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 import com.jh.proj.coroutineviz.events.flow.FlowCreated
@@ -494,7 +495,12 @@ class VizScope(
 
             // Emit suspension with detailed info
             session.sent(
-                ctx.coroutineSuspended(reason = "delay", durationMillis = timeMillis, suspensionPoint = suspensionPoint),
+                ctx.coroutineSuspended(
+                    reason = "delay",
+                    durationMillis = timeMillis,
+                    suspensionPoint = suspensionPoint,
+                    provenance = suspensionPoint.capturedProvenance(),
+                ),
             )
 
             // Actual suspension

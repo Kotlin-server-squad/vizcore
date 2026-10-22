@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.capturedProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.events.deferred.DeferredAwaitCompleted
@@ -95,6 +96,7 @@ class InstrumentedDeferred<T>(
                     reason = "await",
                     durationMillis = null,
                     suspensionPoint = suspensionPoint,
+                    provenance = suspensionPoint.capturedProvenance(),
                 ),
             )
         }

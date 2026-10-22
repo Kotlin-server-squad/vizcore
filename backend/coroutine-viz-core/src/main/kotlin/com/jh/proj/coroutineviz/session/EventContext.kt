@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.session
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.WaitingForChildren
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineBodyCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
@@ -147,6 +148,7 @@ fun EventContext.coroutineSuspended(
     reason: String,
     durationMillis: Long? = null,
     suspensionPoint: SuspensionPoint? = null,
+    provenance: SuspensionProvenance? = null,
 ): CoroutineSuspended =
     CoroutineSuspended(
         sessionId = sessionId,
@@ -160,6 +162,7 @@ fun EventContext.coroutineSuspended(
         reason = reason,
         durationMillis = durationMillis,
         suspensionPoint = suspensionPoint,
+        provenance = provenance,
     )
 
 fun EventContext.coroutineResumed(): CoroutineResumed =
