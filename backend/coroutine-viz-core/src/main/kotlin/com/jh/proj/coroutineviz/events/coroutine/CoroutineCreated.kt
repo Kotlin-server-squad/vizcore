@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.events.coroutine
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -41,6 +42,8 @@ data class CoroutineCreated(
     override val label: String?,
     val createdAtEpochMs: Long = 0L,
     val creationPoint: SuspensionPoint? = null,
+    /** Who launched it; `null` from an SDK without origin support (spec 2026-10-21). */
+    val origin: CoroutineOrigin? = null,
 ) : CoroutineEvent {
     override val kind: String get() = "CoroutineCreated"
 }

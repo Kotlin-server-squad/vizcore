@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.events.coroutine
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -32,6 +33,8 @@ data class CoroutineSuspended(
     val reason: String,
     val durationMillis: Long? = null,
     val suspensionPoint: SuspensionPoint? = null,
+    /** Where [suspensionPoint] came from; `null` when the producer did not say. */
+    val provenance: SuspensionProvenance? = null,
 ) : CoroutineEvent {
     override val kind: String get() = "CoroutineSuspended"
 }

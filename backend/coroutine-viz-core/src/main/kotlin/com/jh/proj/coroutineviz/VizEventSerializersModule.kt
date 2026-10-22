@@ -13,7 +13,7 @@ import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 
 /**
- * Polymorphic SerializersModule registering all 66 VizEvent subclasses.
+ * Polymorphic SerializersModule registering all 67 VizEvent subclasses.
  *
  * Per D-05, VizEvent is NOT sealed to allow extension from subpackages.
  * This module must be kept in sync with D-04 completeness test.
@@ -100,6 +100,8 @@ val vizEventSerializersModule =
             subclass(AntiPatternDetected::class)
             // structured concurrency (1) — in WaitingForChildren.kt
             subclass(WaitingForChildren::class)
+            // health (1) — in PollWatermark.kt
+            subclass(PollWatermark::class)
         }
     }
 
