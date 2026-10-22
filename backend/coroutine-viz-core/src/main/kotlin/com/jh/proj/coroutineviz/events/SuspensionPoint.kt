@@ -20,7 +20,9 @@ data class SuspensionPoint(
         /** Function name of the placeholder [capture] returns when no caller frame qualifies. */
         const val UNKNOWN_FUNCTION = "unknown"
 
-        private val WRAPPER_CLASSES = listOf("VizScope", "InstrumentedDeferred")
+        // Matched as class-name prefixes so their lambdas and inner classes are skipped too, but not user classes.
+        private val WRAPPER_CLASSES =
+            listOf("com.jh.proj.coroutineviz.wrappers.VizScope", "com.jh.proj.coroutineviz.wrappers.InstrumentedDeferred")
         private val INFRASTRUCTURE_PREFIXES = listOf("kotlinx.coroutines", "kotlin.coroutines")
 
         /**
@@ -43,7 +45,7 @@ data class SuspensionPoint(
         private fun StackTraceElement.isCallerFrame(): Boolean =
             lineNumber >= 0 &&
                 !className.startsWith(SuspensionPoint::class.java.name) &&
-                WRAPPER_CLASSES.none { className.contains(it) } &&
+                WRAPPER_CLASSES.none { className.startsWith(it) } &&
                 INFRASTRUCTURE_PREFIXES.none { className.startsWith(it) }
     }
 }

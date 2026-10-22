@@ -62,7 +62,7 @@ class SuspensionProvenanceTest {
 
     @Test
     fun `capture's unknown placeholder is not a real frame`() {
-        assertNull(SuspensionPoint(function = "unknown", reason = "delay").capturedProvenance())
+        assertNull(SuspensionPoint(function = SuspensionPoint.UNKNOWN_FUNCTION, reason = "delay").capturedProvenance())
         assertEquals(
             SuspensionProvenance.REAL_FRAME,
             SuspensionPoint(function = "load", fileName = "Repo.kt", lineNumber = 3, reason = "delay").capturedProvenance(),
