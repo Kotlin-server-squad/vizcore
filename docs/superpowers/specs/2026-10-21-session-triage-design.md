@@ -93,16 +93,22 @@ least half of their subtrees completed), each direct child, with the container i
 Anchoring moves into core unchanged (structural signals only, no name or time heuristics). Round ids are
 **derived**, never stored: `SessionHealthDerivation` computes them from the current summaries (live) or
 from the replay fold, so a root that becomes a container re-keys its descendants consistently.
-Promotion is **sticky** within a session: the first time a root qualifies, its summary records
-`promotedAtSeq` (durable, never cleared), and from then on it is a container (the live view re-keys at
-most once per root; the replay fold treats it as a container from `promotedAtSeq` on). This deliberately
-differs from the plugin's per-pass recomputation, which can flip back and forth.
+Promotion is **sticky while the root runs**: the first time a running root qualifies, its summary records
+`promotedAtSeq`, and new active children never demote it. When the root itself reaches a terminal state,
+the promotion is cleared **unless a direct child was created after `promotedAtSeq`**. An ordinary request
+whose three or more children finish before it (children always finish before their parent) qualifies
+with all its children already created, so it is one round again once it finishes; a long-lived app root
+keeps getting new children after promotion, so a captured shutdown or scope cancellation does not merge
+its request rounds back into one. A request that launches children in waves after qualifying stays split
+(accepted). The live view re-keys at most twice per root (when it qualifies and when it finishes), and the
+replay fold applies the same rule at each sequence. This deliberately differs from the plugin's per-pass
+recomputation, which can flip back and forth while the root runs.
 
 **Problem kinds.** Only two kinds are problems:
 
 | Kind | Rule | Replaces |
 |---|---|---|
-| `FAILED` | terminal state failed with a real exception (not a `CancellationException`, as `ProblemDerivation.isRealException`) | plugin `EXCEPTION`; SPA "Failed" chip |
+| `FAILED` | terminal state failed with an exception that is not a `CancellationException` (as `ProblemDerivation.isRealException`, except that an unknown type counts as a failure: nothing says it was cancelled) | plugin `EXCEPTION`; SPA "Failed" chip |
 | `POSSIBLY_BLOCKED` | last observed state is running, and the time from its latest observed start/resume to the SDK's latest poll watermark (both on the app clock) is over 10 s (#232's threshold) | new; supersedes #232's frontend "may be blocked" hint |
 
 **Observations** (shown, never counted as problems): `LONG_LIVED` (today's leaks: alive longer than the
@@ -124,8 +130,9 @@ longer than 30 s, the plugin's `LONG_SUSPENDED_THRESHOLD_NANOS`, now a core cons
   kind: "Failed (rounds · ungrouped)", "Possibly blocked". Observations are badges on cards and in the
   inspector, never incidents.
 
-**Lifetimes.** Finished: first observation to terminal event. Active: first observation to the latest
-watermark, labelled "so far"; without a watermark, to its last event, labelled "at least".
+**Lifetimes.** Finished: first observation to terminal event. Active: first observation to the later of
+the latest watermark and its own last event, labelled "so far"; without a watermark, to its last event,
+labelled "at least".
 
 **Suspension-point provenance.** `REAL_FRAME` (the SDK read a suspension frame), `CREATION_FALLBACK` (the
 SDK found no usable frame and sent the creation frame, as `DebugProbesEventSynthesizer` does today),
@@ -442,7 +449,9 @@ where the change is visible.
 
 - Core: table tests for `SessionHealthDerivation` — failed rounds with child-first and parent-first
   terminal order, container-root anchoring including an anchor flip that re-keys a failed round and
-  sticky promotion (new active children do not demote it), a failed round with a possibly blocked sibling,
+  sticky promotion (new active children do not demote it; the root finishing does unless it grew after
+  promotion, so a request whose children finish first stays one round and a cancelled app root keeps its
+  rounds), a failed round with a possibly blocked sibling,
   the clue only from a current-phase thread,
   stubs keeping anchoring and round order after reduction, capacity overflow (untracked count, `OVERFLOW`,
   no green state, "at least"), ungrouped failures, cancellation exclusion, origin
@@ -475,7 +484,8 @@ where the change is visible.
   long-lived observations.
 - **Revising D-4** changes a tested surface; `StateBar` tests are kept for its filter role.
 - **Round anchoring flips** early in a session (a root becomes a container after 3 children); promotion is
-  sticky, so the picker re-keys at most once per root.
+  sticky while the root runs, so the picker re-keys at most twice per root (when it qualifies and when it
+  finishes).
 
 ## Later (not in 1.3)
 
