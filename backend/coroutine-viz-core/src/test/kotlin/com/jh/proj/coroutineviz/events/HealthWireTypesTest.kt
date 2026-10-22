@@ -6,6 +6,8 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import kotlinx.serialization.PolymorphicSerializer
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 class HealthWireTypesTest {
@@ -26,6 +28,7 @@ class HealthWireTypesTest {
                 final = true,
             )
         assertEquals(watermark, roundTrip(watermark))
+        assertTrue(appJson.encodeToString(serializer, watermark).contains("\"type\":\"PollWatermark\""))
     }
 
     @Test
@@ -58,6 +61,8 @@ class HealthWireTypesTest {
             )
         assertEquals(created, roundTrip(created))
         assertEquals(suspended, roundTrip(suspended))
+        assertTrue(appJson.encodeToString(serializer, created).contains("\"origin\":\"VIZCORE\""))
+        assertTrue(appJson.encodeToString(serializer, suspended).contains("\"provenance\":\"CREATION_FALLBACK\""))
     }
 
     @Test
@@ -70,5 +75,14 @@ class HealthWireTypesTest {
                 """"parentCoroutineId":null,"scopeId":"sc","label":null,"reason":"delay"}"""
         assertNull((appJson.decodeFromString(serializer, created) as CoroutineCreated).origin)
         assertNull((appJson.decodeFromString(serializer, suspended) as CoroutineSuspended).provenance)
+    }
+
+    @Test
+    fun `a minimal PollWatermark decodes with defaults`() {
+        val json = """{"type":"PollWatermark","sessionId":"s","seq":1,"tsNanos":1,"pollEpochMs":1}"""
+        val decoded = appJson.decodeFromString(serializer, json) as PollWatermark
+        assertEquals(0, decoded.lostEvents)
+        assertFalse(decoded.deliveryUncertain)
+        assertFalse(decoded.final)
     }
 }
