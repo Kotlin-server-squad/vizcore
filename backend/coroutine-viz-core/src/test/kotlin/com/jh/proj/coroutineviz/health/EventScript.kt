@@ -14,6 +14,7 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.events.dispatcher.DispatcherSelected
 import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 
 fun sec(n: Long): Long = n * 1_000_000_000L
@@ -153,6 +154,14 @@ class EventScript(
                 threadName = name,
                 dispatcherName = dispatcher,
             )
+    }
+
+    fun dispatcherSelected(
+        id: String,
+        at: Long,
+        name: String,
+    ) {
+        events += DispatcherSelected(sessionId, ++seq, at, id, "job-$id", parents[id], "scope", id, "dispatcher-$name", name)
     }
 
     fun waitingForChildren(

@@ -47,7 +47,8 @@ object SummaryUpdater {
                     lastModifiedSeq = e.seq,
                 )
             is CoroutineCreated -> s
-            // Any other event about the coroutine (join, waiting for children, channel, …) observes it.
+            // Any other event about the coroutine (join, waiting for children, channel, …) observes it. lastModifiedSeq is bumped
+            // even when no field changes: deliberately conservative, a replay read may answer STALE more often, never mixes states.
             else ->
                 Transitions.of(e)?.let { transition(s, e, it) }
                     ?: s.copy(lastObservedNanos = maxOf(s.lastObservedNanos, e.tsNanos), lastModifiedSeq = e.seq)
@@ -62,21 +63,27 @@ object SummaryUpdater {
         val moved = s.copy(lastTransition = t, lastObservedNanos = maxOf(s.lastObservedNanos, t.appNanos), lastModifiedSeq = t.seq)
         return when (t.kind) {
             TransitionKind.STARTED, TransitionKind.RESUMED -> moved.copy(lastRunStart = t)
-            TransitionKind.SUSPENDED -> suspended(moved, e as CoroutineSuspended)
+            TransitionKind.SUSPENDED -> if (e is CoroutineSuspended) suspended(moved, e) else moved
             TransitionKind.COMPLETED -> moved.copy(terminal = t)
             TransitionKind.CANCELLED -> moved.copy(terminal = t, cancelled = true)
-            TransitionKind.FAILED -> {
-                val failure = e as CoroutineFailed
-                val cancellation = HealthThresholds.isCancellation(failure.exceptionType)
-                moved.copy(
-                    terminal = t,
-                    failed = !cancellation,
-                    cancelled = cancellation,
-                    failure = FailureInfo(failure.exceptionType, failure.message),
-                )
-            }
+            TransitionKind.FAILED -> if (e is CoroutineFailed) failed(moved, e, t) else moved
+            // CREATED is unreachable here: update() returns early for CoroutineCreated.
             TransitionKind.CREATED, TransitionKind.BODY_COMPLETED -> moved
         }
+    }
+
+    private fun failed(
+        s: CoroutineSummary,
+        e: CoroutineFailed,
+        t: Transition,
+    ): CoroutineSummary {
+        val cancellation = HealthThresholds.isCancellation(e.exceptionType)
+        return s.copy(
+            terminal = t,
+            failed = !cancellation,
+            cancelled = cancellation,
+            failure = FailureInfo(e.exceptionType, e.message),
+        )
     }
 
     private fun suspended(

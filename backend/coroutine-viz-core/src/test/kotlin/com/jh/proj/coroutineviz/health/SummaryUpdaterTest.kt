@@ -73,7 +73,80 @@ class SummaryUpdaterTest {
         script.created("a", at = 1)
         script.suspended("a", at = 2, provenance = null)
 
-        assertNull(fold(script).lastSuspensionProvenance)
+        val s = fold(script)
+        assertNull(s.lastSuspensionProvenance)
+        assertEquals(SuspensionPoint(function = "work", fileName = "App.kt", lineNumber = 10, reason = "delay"), s.lastSuspension)
+    }
+
+    @Test
+    fun `a cancelled coroutine is cancelled and terminal`() {
+        val script = EventScript()
+        script.created("a", at = 1)
+        script.cancelled("a", at = 2)
+
+        val s = fold(script)
+        assertTrue(s.cancelled)
+        assertFalse(s.failed)
+        assertEquals(CoroutineState.CANCELLED, s.state)
+        assertEquals(2, s.terminal?.seq)
+    }
+
+    @Test
+    fun `a dispatcher selection overwrites the dispatcher and bumps the seq`() {
+        val script = EventScript()
+        script.created("a", at = 1)
+        script.dispatcherSelected("a", at = 2, name = "Dispatchers.IO")
+
+        val s = fold(script)
+        assertEquals("Dispatchers.IO", s.dispatcher)
+        assertEquals(2, s.lastModifiedSeq)
+    }
+
+    @Test
+    fun `a thread assignment without a dispatcher keeps the previous one`() {
+        val script = EventScript()
+        script.created("a", at = 1)
+        script.dispatcherSelected("a", at = 2, name = "Dispatchers.IO")
+        script.thread("a", at = 3, name = "t", dispatcher = null)
+
+        val s = fold(script)
+        assertEquals("Dispatchers.IO", s.dispatcher)
+        assertEquals("t", s.lastThread?.threadName)
+    }
+
+    @Test
+    fun `suspension provenance moves from fallback to stale to real`() {
+        val script = EventScript()
+        val fallback = SuspensionPoint(function = "create", fileName = "A.kt", lineNumber = 1, reason = "creation")
+        val real = SuspensionPoint(function = "load", fileName = "B.kt", lineNumber = 2, reason = "delay")
+        script.created("a", at = 1)
+        script.suspended("a", at = 2, point = fallback, provenance = SuspensionProvenance.CREATION_FALLBACK)
+        val first = fold(script)
+        script.resumed("a", at = 3)
+        script.suspended("a", at = 4, point = null, provenance = null)
+        val second = fold(script)
+        script.resumed("a", at = 5)
+        script.suspended("a", at = 6, point = real, provenance = SuspensionProvenance.REAL_FRAME)
+        val third = fold(script)
+
+        assertEquals(SuspensionProvenance.CREATION_FALLBACK, first.lastSuspensionProvenance)
+        assertEquals(fallback, first.lastSuspension)
+        assertEquals(SuspensionProvenance.STALE, second.lastSuspensionProvenance)
+        assertEquals(fallback, second.lastSuspension)
+        assertEquals(SuspensionProvenance.REAL_FRAME, third.lastSuspensionProvenance)
+        assertEquals(real, third.lastSuspension)
+    }
+
+    @Test
+    fun `a completed body waits for children`() {
+        val script = EventScript()
+        script.created("a", at = 1)
+        script.started("a", at = 2)
+        script.bodyCompleted("a", at = 3)
+
+        val s = fold(script)
+        assertEquals(CoroutineState.WAITING_FOR_CHILDREN, s.state)
+        assertFalse(s.isTerminal)
     }
 
     @Test
