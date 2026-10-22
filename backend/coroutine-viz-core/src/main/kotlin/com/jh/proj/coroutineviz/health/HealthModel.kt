@@ -36,6 +36,10 @@ data class Capped<T>(
     val items: List<T>,
     val total: Int,
 ) {
+    init {
+        require(items.size <= total) { "items (${items.size}) exceed total ($total)" }
+    }
+
     companion object {
         fun <T> of(all: List<T>): Capped<T> = Capped(all.take(HealthThresholds.LIST_CAP), all.size)
     }
@@ -47,15 +51,38 @@ enum class EvaluationStatus { EVALUATED, NOT_EVALUATED }
 @Serializable
 enum class NotEvaluatedReason { NO_WATERMARK, DEMO, REPLAY, OVERFLOW, EVENTS_DROPPED }
 
+/**
+ * Whether possibly blocked was evaluated. [reason] is set if and only if [status] is NOT_EVALUATED, and only the
+ * highest-precedence reason is kept: REPLAY, DEMO, EVENTS_DROPPED, OVERFLOW, NO_WATERMARK (in that order).
+ */
 @Serializable
 data class PossiblyBlockedEvaluation(
     val status: EvaluationStatus,
     val reason: NotEvaluatedReason? = null,
-)
+) {
+    init {
+        require((status == EvaluationStatus.NOT_EVALUATED) == (reason != null)) { "reason is set iff NOT_EVALUATED" }
+    }
+}
 
 /** The health strip's state (spec "Health strip states"). */
 @Serializable
-enum class HealthState { AWAITING_FIRST_DATA, PROBLEMS, NO_PROBLEMS, NO_FAILURES_PARTIAL, NO_APP_COROUTINES }
+enum class HealthState {
+    /** Live session with no events and no watermark yet. */
+    AWAITING_FIRST_DATA,
+
+    /** At least one incident (failed round, ungrouped failure or possibly blocked coroutine). */
+    PROBLEMS,
+
+    /** No incidents, something evaluated, possibly blocked evaluated, and counts complete (no overflow, no lost events). */
+    NO_PROBLEMS,
+
+    /** No incidents, but not provably clean: possibly blocked is NOT_EVALUATED, failures are "at least", or nothing was evaluated. */
+    NO_FAILURES_PARTIAL,
+
+    /** No incidents and the producer states origins are reported, yet no APP coroutine exists (and nothing went untracked). */
+    NO_APP_COROUTINES,
+}
 
 @Serializable
 enum class IncidentKind { FAILED, POSSIBLY_BLOCKED }
@@ -71,6 +98,10 @@ data class FailureEntry(
     val detailsDropped: Boolean,
 )
 
+/**
+ * The serialized discriminator is the wire tag `type` (FAILED_ROUND, UNGROUPED_FAILURE or POSSIBLY_BLOCKED).
+ * [kind] is derived and not serialized: FAILED_ROUND and UNGROUPED_FAILURE both map to FAILED.
+ */
 @Serializable
 sealed interface Incident {
     val id: String
@@ -176,7 +207,10 @@ data class ProblemRound(
     val kinds: List<IncidentKind>,
 )
 
-/** The derived health of one session (spec C-3, the parts core computes). */
+/**
+ * The derived health of one session (spec C-3, the parts core computes). [asOfSeq] equals `asOf.seq` when
+ * [asOf] is present and is 0 otherwise.
+ */
 @Serializable
 data class SessionHealth(
     val state: HealthState,
@@ -216,14 +250,21 @@ sealed interface HealthMode {
     ) : HealthMode
 }
 
-/** Inputs of [SessionHealthDerivation.derive] (spec C-1). */
+/**
+ * Inputs of [SessionHealthDerivation.derive] (spec C-1). [watermark] and [lastIngestEpochMs] are ignored in
+ * replay and demo. [leakThresholdMs] is in milliseconds (matching the API parameter);
+ * [longSuspendedThresholdNanos] is in nanoseconds.
+ */
 data class HealthInput(
     val summaries: SummaryView,
     val kind: SessionKind,
     val mode: HealthMode = HealthMode.Live,
     val watermark: WatermarkObservation? = null,
     val lastIngestEpochMs: Long? = null,
-    /** The session's origin as the producer stated it (PR 2/3); `null` = infer it from the coroutines. */
+    /**
+     * The session's origin as the producer stated it (PR 2/3). REPORTED means the producer states that origins
+     * are reported, so a session with no APP coroutine is truly app-less; `null` = infer it from the coroutines.
+     */
     val reportedOrigin: SessionOrigin? = null,
     val transport: TransportStatus = TransportStatus(),
     val leakThresholdMs: Long = HealthThresholds.DEFAULT_LEAK_THRESHOLD_MS,
