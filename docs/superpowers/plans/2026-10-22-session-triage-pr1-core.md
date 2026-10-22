@@ -92,6 +92,13 @@ container keeps getting new children after promotion, so it stays a container. T
 launches children in waves after qualifying stays split. A root re-keys at most twice. The replay fold uses
 the same table, so it behaves identically. The spec's "Rounds" paragraph is amended in the same branch.
 
+**Amended again during implementation (Task 6 review):** keeping promotion for every root that grew after
+promotion splits a request that starts its children one after another (`repeat(n) { async { … }.await() }`):
+it qualifies at its third child, grows with the fourth, and a failure would show as two incidents. A
+finished root therefore keeps its promotion only if it grew after promotion **and** was cancelled (how an app
+scope or server shuts down); a request that completes or fails is one round again. `SummaryTable.onTerminal`
+and its tests implement this; the spec's "Rounds" paragraph says the same.
+
 ### Left to PR 2 on purpose
 
 - **Persistence (C-4).** `VizSession.rehydrateFromStore` rebuilds summaries from the stored events in this

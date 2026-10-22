@@ -115,7 +115,7 @@ class SummaryTableTest {
     }
 
     @Test
-    fun `a container that got new children after promotion stays a container when it finishes`() {
+    fun `a container that got new children after promotion stays a container when it is cancelled`() {
         val script = containerScript()
         script.created("r4", at = sec(7), parent = "app")
         script.completed("r3", at = sec(8))
@@ -174,5 +174,61 @@ class SummaryTableTest {
         assertTrue(child.failed)
         assertEquals("root", child.parentId)
         assertNull(child.failure)
+    }
+
+    /** A request that runs four children one after another: promoted at the 3rd child, grows with the 4th. */
+    private fun sequentialRequest(): EventScript =
+        EventScript().apply {
+            created("req", at = sec(0))
+            listOf("c1", "c2", "c3").forEachIndexed { i, id ->
+                created(id, at = sec(1L + i), parent = "req")
+                completed(id, at = sec(1L + i))
+            }
+            created("c4", at = sec(5), parent = "req")
+        }
+
+    @Test
+    fun `a request that starts its children one after another is one round when it fails`() {
+        val script = sequentialRequest()
+        val before = assertNotNull(script.table().get("req"))
+        assertNotNull(before.promotedAtSeq)
+        assertTrue(before.grewAfterPromotion)
+
+        script.failed("c4", at = sec(6))
+        script.failed("req", at = sec(6))
+
+        assertNull(script.table().get("req")?.promotedAtSeq)
+    }
+
+    @Test
+    fun `a request that starts its children one after another is cleared when it completes`() {
+        val script = sequentialRequest()
+        script.completed("c4", at = sec(6))
+        script.completed("req", at = sec(6))
+
+        assertNull(script.table().get("req")?.promotedAtSeq)
+    }
+
+    @Test
+    fun `a child beyond capacity still marks a promoted parent as grown`() {
+        val script = containerScript()
+        val capacity = script.table().all.size
+        script.created("overflow", at = sec(7), parent = "app")
+        val table = script.table(trackedCapacity = capacity)
+
+        assertNull(table.get("overflow"))
+        assertEquals(1, table.untrackedCount)
+        assertTrue(table.get("app")!!.grewAfterPromotion)
+    }
+
+    @Test
+    fun `a child created before its parent promotes the root when the parent arrives`() {
+        val script = EventScript()
+        listOf("a", "b", "c").forEach { script.created(it, at = sec(1), parent = "req") }
+        script.completed("a", at = sec(2))
+        script.completed("b", at = sec(2))
+        script.created("req", at = sec(3))
+
+        assertEquals(script.lastSeq, script.table().get("req")?.promotedAtSeq)
     }
 }

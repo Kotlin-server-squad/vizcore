@@ -95,12 +95,15 @@ Anchoring moves into core unchanged (structural signals only, no name or time he
 from the replay fold, so a root that becomes a container re-keys its descendants consistently.
 Promotion is **sticky while the root runs**: the first time a running root qualifies, its summary records
 `promotedAtSeq`, and new active children never demote it. When the root itself reaches a terminal state,
-the promotion is cleared **unless a direct child was created after `promotedAtSeq`**. An ordinary request
-whose three or more children finish before it (children always finish before their parent) qualifies
-with all its children already created, so it is one round again once it finishes; a long-lived app root
-keeps getting new children after promotion, so a captured shutdown or scope cancellation does not merge
-its request rounds back into one. A request that launches children in waves after qualifying stays split
-(accepted). The live view re-keys at most twice per root (when it qualifies and when it finishes), and the
+the promotion is cleared **unless a direct child was created after `promotedAtSeq` and the root was
+cancelled**. An ordinary request is one round again once it finishes: a request whose three or more
+children finish before it (children always finish before their parent) qualifies with all its children
+already created, and a request that starts its children one after another (`repeat(n) { async { … }.await() }`)
+grows after qualifying but finishes by completing or failing, not by cancellation. A long-lived app root
+keeps getting new children after promotion and ends by cancellation (a captured shutdown or a cancelled app
+scope), so its request rounds are not merged back into one. Accepted: a request that grew after qualifying
+and was then cancelled stays split (cancellations are context, not incidents), and an app root that grew and
+then completed normally or failed is merged back into one round. The live view re-keys at most twice per root (when it qualifies and when it finishes), and the
 replay fold applies the same rule at each sequence. This deliberately differs from the plugin's per-pass
 recomputation, which can flip back and forth while the root runs.
 
@@ -450,8 +453,8 @@ where the change is visible.
 - Core: table tests for `SessionHealthDerivation` — failed rounds with child-first and parent-first
   terminal order, container-root anchoring including an anchor flip that re-keys a failed round and
   sticky promotion (new active children do not demote it; the root finishing does unless it grew after
-  promotion, so a request whose children finish first stays one round and a cancelled app root keeps its
-  rounds), a failed round with a possibly blocked sibling,
+  promotion and was cancelled, so a request whose children finish first, or that starts them one after
+  another, stays one round and a cancelled app root keeps its rounds), a failed round with a possibly blocked sibling,
   the clue only from a current-phase thread,
   stubs keeping anchoring and round order after reduction, capacity overflow (untracked count, `OVERFLOW`,
   no green state, "at least"), ungrouped failures, cancellation exclusion, origin

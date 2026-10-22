@@ -12,7 +12,10 @@ interface SummaryView {
     /** All tracked summaries (full and stubs), in first-observation order. */
     val all: Collection<CoroutineSummary>
 
-    /** Coroutines created after the tracked capacity was reached (only counted). */
+    /**
+     * Creation events received after the tracked capacity was reached (only counted). A repeated
+     * `CoroutineCreated` for an untracked id counts again.
+     */
     val untrackedCount: Long
 
     /** Sequence of the last event applied (any kind, including watermarks), 0 before any. */
@@ -28,11 +31,10 @@ interface SummaryView {
 /**
  * The per-session summary table (spec C-2): one [CoroutineSummary] per tracked coroutine, updated on
  * every event by [apply] and never rebuilt from retained events. It also records container promotion
- * ([CoroutineSummary.promotedAtSeq]: set the first time a running genuine root qualifies; cleared when
- * that root finishes unless it got a new direct child after promotion), enforces [trackedCapacity], and
- * reduces finished summaries to stubs beyond
- * [fullSummaryTarget] (finished non-failed first, then failed, oldest first), checked on every creation
- * and every terminal event.
+ * ([CoroutineSummary.promotedAtSeq]: set the first time a running genuine root qualifies; when that root
+ * finishes it is cleared unless the root got a new direct child after promotion and was cancelled), enforces
+ * [trackedCapacity], and reduces finished summaries to stubs beyond [fullSummaryTarget] (finished non-failed
+ * first, then failed, oldest first), checked on every creation and every terminal event.
  *
  * Not thread-safe: the owner serializes [apply] and reads (VizSession does both under its send lock).
  */
@@ -102,12 +104,14 @@ class SummaryTable(
         s: CoroutineSummary,
         seq: Long,
     ) {
-        // A finished root that never grew after promotion was a request, not a container (spec amendment).
-        if (s.parentId == null && s.promotedAtSeq != null && !s.grewAfterPromotion) {
+        // A finished root stays a container only if it grew after promotion and was cancelled (server shutdown);
+        // otherwise it was a request, which must not stay split (spec amendment).
+        if (s.parentId == null && s.promotedAtSeq != null && !(s.grewAfterPromotion && s.cancelled && !s.failed)) {
             summaries[s.id] = s.copy(promotedAtSeq = null, lastModifiedSeq = seq)
         }
         subtrees.close(s.id)
-        (if (s.failed) finishedFailed else finishedOk)[s.firstObserved.seq] = s.id
+        val queue = if (s.failed) finishedFailed else finishedOk
+        check(queue.put(s.firstObserved.seq, s.id) == null) { "duplicate first-observation seq ${s.firstObserved.seq}" }
         promoteIfQualified(subtrees.rootOf(s.id), seq)
         reduceOverTarget(seq)
     }

@@ -39,8 +39,8 @@ data class FailureInfo(
  * [origin] is `null` when the producer did not report one. [failed] is true for a terminal failure
  * that is not a known cancellation and survives reduction. [promotedAtSeq] is set the first time a running
  * genuine root qualifies as a container; new active children never clear it; the root finishing clears it
- * unless the root got a new direct child after promotion, which [grewAfterPromotion] records (on the
- * summary, so a restored table decides the same way).
+ * unless the root got a new direct child after promotion ([grewAfterPromotion], kept on the summary so a
+ * restored table decides the same way) and was cancelled ([cancelled] and not [failed]).
  */
 @Serializable
 data class CoroutineSummary(
