@@ -11,7 +11,11 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 
-/** Maps lifecycle events to [Transition]s; the backend uses it for a coroutine's retained transitions. */
+/**
+ * Maps lifecycle events to [Transition]s; the backend uses it for a coroutine's retained transitions.
+ * A [CoroutineFailed] is always [TransitionKind.FAILED], even with a cancellation exception, for which
+ * [CoroutineSummary.state] says `CANCELLED`.
+ */
 object Transitions {
     fun of(event: VizEvent): Transition? {
         val kind =

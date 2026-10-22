@@ -30,5 +30,6 @@ class TransitionsTest {
             transitions.map { it.kind },
         )
         assertEquals(listOf(1L, 2L, 4L, 5L, 6L, 7L), transitions.map { it.appNanos })
+        assertEquals(listOf(1L, 2L, 4L, 5L, 6L, 7L), transitions.map { it.seq })
     }
 }

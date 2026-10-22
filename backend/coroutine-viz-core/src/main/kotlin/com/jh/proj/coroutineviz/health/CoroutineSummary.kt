@@ -89,7 +89,10 @@ data class CoroutineSummary(
                     }
             }
 
-    /** The structural stub kept after reduction (spec C-2, "Reduction"). */
+    /**
+     * The structural stub kept after reduction (spec C-2, "Reduction"). Only finished summaries are reduced
+     * ([SummaryTable] enforces it): a stub has no [lastRunStart], so it can never be possibly blocked.
+     */
     fun toStub(): CoroutineSummary =
         copy(
             lastRunStart = null,
