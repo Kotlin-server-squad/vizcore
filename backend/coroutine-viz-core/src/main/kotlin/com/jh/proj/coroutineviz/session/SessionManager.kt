@@ -238,7 +238,7 @@ object SessionManager : SessionStoreInterface {
             name?.let { "${slugifySessionName(it)}-${System.currentTimeMillis()}" }
                 ?: "session-${System.currentTimeMillis()}"
 
-        val session = VizSession(sessionId, maxEvents = maxEventsPerSession)
+        val session = VizSession(sessionId, maxEvents = maxEventsPerSession, keepSummaries = true)
         sessions[sessionId] = session
 
         logger.info("Created session: $sessionId")

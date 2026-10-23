@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.session
 
 import com.jh.proj.coroutineviz.health.EventScript
 import com.jh.proj.coroutineviz.health.sec
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -44,6 +45,26 @@ class VizSessionSummariesTest {
 
         assertFailsWith<IllegalStateException> { session.readSummaries { it.lastEventSeq } }
         session.close()
+    }
+
+    @Test
+    fun `summaries are opt-in`() {
+        val session = VizSession("summaries-default")
+
+        assertFailsWith<IllegalStateException> { session.readSummaries { it.lastEventSeq } }
+        session.close()
+    }
+
+    @Test
+    fun `sessions made by the session manager keep summaries`() {
+        val session = runBlocking { SessionManager.createSession("summaries-manager") }
+        try {
+            script(session.sessionId).events.forEach(session::send)
+
+            assertEquals(true, session.readSummaries { it.get("a")?.failed })
+        } finally {
+            SessionManager.clearAll()
+        }
     }
 
     /** Two creates share seq 1 (the DB has no unique (session_id, seq)). */

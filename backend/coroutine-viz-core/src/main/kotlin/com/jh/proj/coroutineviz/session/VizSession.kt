@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Events flow through the session in the following order:
  * 1. Event is appended to [store] (persistent log)
  * 2. Event is applied to [snapshot] via [EventApplier] (state update)
- * 3. Event is applied to the summary table (durable per-coroutine summaries, unless `keepSummaries = false`)
+ * 3. Event is applied to the summary table (durable per-coroutine summaries, only with `keepSummaries = true`)
  * 4. Event is broadcast via [eventBus] (real-time notifications)
  *
  * All four steps run atomically under a single send lock, and the event's
@@ -61,10 +61,11 @@ class VizSession(
     private val clock: () -> Long = System::currentTimeMillis,
     val createdAtMs: Long = clock(),
     /**
-     * Whether to keep the per-coroutine summary table (spec 2026-10-21, C-2). The backend reads it; the
-     * SDK's in-app session never does, so it passes `false` and spares the app the memory and the work.
+     * Whether to keep the per-coroutine summary table (spec 2026-10-21, C-2). Opt-in: only a host that reads
+     * the summaries asks for it. [SessionManager.createSession] (the backend's in-memory sessions) does; the
+     * SDK's in-app session never reads them and keeps the default, sparing the app the memory and the work.
      */
-    keepSummaries: Boolean = true,
+    keepSummaries: Boolean = false,
     /**
      * Event-store factory seam. Defaults to the in-memory bounded [EventStore]
      * so the SDK default is byte-for-byte unchanged (D-04a). The persistence
@@ -194,7 +195,7 @@ class VizSession(
      * Keep [block] short: it holds up event ingestion while it runs. The view is live and only safe under
      * the lock, so [block] must copy what it returns (e.g. `it.all.toList()`), never the view itself.
      *
-     * @throws SummariesUnavailableException if the session was created with `keepSummaries = false`, or if
+     * @throws SummariesUnavailableException if the session was not created with `keepSummaries = true`, or if
      *   applying an event to the table failed and the table was abandoned (it is never applied again).
      */
     fun <T> readSummaries(block: (SummaryView) -> T): T {
