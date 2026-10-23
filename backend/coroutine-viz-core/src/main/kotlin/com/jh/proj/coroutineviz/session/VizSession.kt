@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.session
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.job.JobStateChanged
+import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.SummaryTable
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.models.RuntimeSnapshot
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -33,9 +35,10 @@ import java.util.concurrent.atomic.AtomicLong
  * Events flow through the session in the following order:
  * 1. Event is appended to [store] (persistent log)
  * 2. Event is applied to [snapshot] via [EventApplier] (state update)
- * 3. Event is broadcast via [eventBus] (real-time notifications)
+ * 3. Event is applied to the summary table (durable per-coroutine summaries, unless `keepSummaries = false`)
+ * 4. Event is broadcast via [eventBus] (real-time notifications)
  *
- * All three steps run atomically under a single send lock, and the event's
+ * All four steps run atomically under a single send lock, and the event's
  * seq is finalized inside the same critical section. This guarantees that
  * store order, seq order, and live-bus delivery order are identical — the
  * invariant SSE replay deduplication (max-seq watermark) depends on.
@@ -134,6 +137,10 @@ class VizSession(
 
     // Durable per-coroutine summaries (spec 2026-10-21, C-2); guarded by [sendLock] like the snapshot.
     private val summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
+
+    // Set once when applying an event to [summaryTable] fails; read by [readSummaries].
+    @Volatile
+    private var summariesDegraded = false
     private var monitoringEnabled = false
 
     /** Whether job monitoring is currently active (test/diagnostic, WR-07). */
@@ -173,7 +180,7 @@ class VizSession(
 
     /**
      * Optional callback invoked with the wall-clock nanos spent processing a single
-     * event inside [send] (store + applier + bus). Used for event.processing.duration.
+     * event inside [send] (store + applier + summaries + bus). Used for event.processing.duration.
      */
     var onEventProcessed: ((Long) -> Unit)? = null
 
@@ -184,13 +191,34 @@ class VizSession(
 
     /**
      * Read the session's summaries under the send lock, so a read never sees a half-applied event.
-     * Keep [block] short: it holds up event ingestion while it runs.
+     * Keep [block] short: it holds up event ingestion while it runs. The view is live and only safe under
+     * the lock, so [block] must copy what it returns (e.g. `it.all.toList()`), never the view itself.
      *
-     * @throws IllegalStateException if the session was created with `keepSummaries = false`.
+     * @throws SummariesUnavailableException if the session was created with `keepSummaries = false`, or if
+     *   applying an event to the table failed and the table was abandoned (it is never applied again).
      */
     fun <T> readSummaries(block: (SummaryView) -> T): T {
-        val table = checkNotNull(summaryTable) { "session $sessionId keeps no summaries" }
-        return synchronized(sendLock) { block(table) }
+        val table = summaryTable ?: throw SummariesUnavailableException("session $sessionId keeps no summaries")
+        return synchronized(sendLock) {
+            if (summariesDegraded) throw SummariesUnavailableException("session $sessionId summaries are degraded")
+            block(table)
+        }
+    }
+
+    /**
+     * Summary bookkeeping must never break ingestion or loading: a failure here (e.g. a duplicate seq in a
+     * stored log) abandons the table, logs once, and leaves store, snapshot and bus untouched.
+     * Caller holds [sendLock].
+     */
+    private fun applyToSummaries(event: VizEvent) {
+        val table = summaryTable ?: return
+        if (summariesDegraded) return
+        try {
+            table.apply(event)
+        } catch (e: RuntimeException) {
+            summariesDegraded = true
+            logger.error("Summaries of session {} abandoned at seq {}", sessionId, event.seq, e)
+        }
     }
 
     /**
@@ -262,7 +290,7 @@ class VizSession(
             lastSentSeq = event.seq
             store.record(event)
             applier.apply(event)
-            summaryTable?.apply(event)
+            applyToSummaries(event)
             eventBus.send(event)
             // Retention ages a session by this stamp, not by createdAtMs (#129).
             lastActivityAtMs = clock()
@@ -281,8 +309,13 @@ class VizSession(
      * timeline projections render empty even though the events exist in the store.
      * Persistence stores call this right after construction. It deliberately does
      * NOT re-[store.record] or re-[eventBus.send] the events (no DB duplication,
-     * no spurious SSE delivery); it only repopulates the in-memory views and
-     * advances the seq watermark so any subsequent live [send] keeps ordering.
+     * no spurious SSE delivery); it only repopulates the in-memory views (snapshot,
+     * projections and summaries) and advances the seq watermark so any subsequent
+     * live [send] keeps ordering.
+     *
+     * Call it once, before the session is published: it reads [store] outside the
+     * send lock. A summary failure (e.g. a duplicate seq in the log) degrades the
+     * summaries only; the rest of the rehydration still completes.
      */
     fun rehydrateFromStore() {
         val events = store.all() // ExposedEventStore returns these ordered by seq
@@ -290,7 +323,7 @@ class VizSession(
         synchronized(sendLock) {
             events.forEach {
                 applier.apply(it)
-                summaryTable?.apply(it)
+                applyToSummaries(it)
             }
             val maxSeq = events.maxOf { it.seq }
             if (maxSeq > lastSentSeq) {
@@ -490,6 +523,10 @@ class VizSession(
                     (coroutineEvents + jobEvents).sortedBy { it.tsNanos }
                 },
         )
+    }
+
+    private companion object {
+        private val logger = LoggerFactory.getLogger(VizSession::class.java)
     }
 }
 
