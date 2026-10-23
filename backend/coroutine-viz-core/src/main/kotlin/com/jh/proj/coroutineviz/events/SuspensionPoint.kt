@@ -52,7 +52,7 @@ data class SuspensionPoint(
         @Deprecated("frames are chosen by what they are", ReplaceWith("capture(reason)"))
         fun capture(
             reason: String,
-            skipFrames: Int,
+            skipFrames: Int = 2,
         ): SuspensionPoint = capture(reason)
 
         /** The first caller frame with a line number, else the first caller frame without one, else `null`. */

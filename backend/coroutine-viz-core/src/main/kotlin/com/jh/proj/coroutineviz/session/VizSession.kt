@@ -75,6 +75,19 @@ class VizSession(
      */
     eventStoreFactory: (sessionId: String) -> EventStoreInterface = { EventStore(maxEvents) },
 ) {
+    /**
+     * The 0.2.x constructor, kept (hidden from source) so code compiled against 0.2.x still links:
+     * `keepSummaries` was added in the middle of the parameter list, which changed the JVM signatures.
+     */
+    @Deprecated("binary compatibility with 0.2.x", level = DeprecationLevel.HIDDEN)
+    constructor(
+        sessionId: String,
+        maxEvents: Int = 100_000,
+        clock: () -> Long = System::currentTimeMillis,
+        createdAtMs: Long = clock(),
+        eventStoreFactory: (String) -> EventStoreInterface = { EventStore(maxEvents) },
+    ) : this(sessionId, maxEvents, clock, createdAtMs, false, eventStoreFactory)
+
     // Session-scoped coroutine scope for async operations
     val sessionScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
