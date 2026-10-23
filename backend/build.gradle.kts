@@ -58,7 +58,7 @@ dependencies {
     // BOM pins the version; all other coordinates inherit it (no per-artifact versions).
     // Do NOT add opentelemetry-sdk-extension-autoconfigure — it eagerly constructs/sets
     // a global, defeating the OTEL-01 construction gate (RESEARCH anti-pattern).
-    implementation(platform("io.opentelemetry:opentelemetry-bom:1.63.0"))
+    implementation(platform("io.opentelemetry:opentelemetry-bom:1.66.0"))
     implementation("io.opentelemetry:opentelemetry-api")
     implementation("io.opentelemetry:opentelemetry-sdk")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")
