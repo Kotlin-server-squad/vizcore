@@ -136,7 +136,7 @@ class SketchBoardsTest {
     /**
      * Strip text: "No app coroutines captured · Nothing possibly blocked · Long-lived 0 · as of 12:00:30".
      * A 1.3 session always has a watermark, so board 3 has the last one before the disconnect. That the app
-     * disconnected is PR 2's `appConnected` and out of scope for core.
+     * disconnected is the backend's `appConnected` (spec C-3) and out of scope for core.
      */
     @Test
     fun `board 3, no app coroutines captured, app disconnected`() {

@@ -64,7 +64,10 @@ class RoundAnchoring private constructor(
 
     private fun trackedParentOf(id: String): String? = view.get(id)?.parentId?.takeIf { view.get(it) != null }
 
-    /** Every round, newest anchor first. */
+    /**
+     * Every round, newest anchor first, including rounds anchored by Vizcore's own coroutines. This is more than
+     * `SessionHealth.roundCount`, which counts only rounds with a problem or a non-`VIZCORE` anchor.
+     */
     fun rounds(): List<RoundSummary> {
         val members = HashMap<String, MutableList<CoroutineSummary>>()
         for (s in view.all) {

@@ -23,7 +23,9 @@ interface SummaryView {
 
     /**
      * Greatest app-clock time of any event applied, `null` before any. A max, not the last one: appends are
-     * not in timestamp order. Attached sessions receive events only through ingest, so all carry the app clock.
+     * not in timestamp order. Valid only while every applied event carries the app clock: attached sessions
+     * receive events only through ingest, so they do. Backend-generated monitor events must not be applied to
+     * an attached session's table.
      */
     val latestEventAppNanos: Long?
 }

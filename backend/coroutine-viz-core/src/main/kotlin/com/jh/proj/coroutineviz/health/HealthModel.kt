@@ -265,7 +265,7 @@ data class HealthInput(
     val watermark: WatermarkObservation? = null,
     val lastIngestEpochMs: Long? = null,
     /**
-     * The session's origin as the producer stated it (PR 2/3). REPORTED means the producer states that origins
+     * The session's origin as the producer stated it (spec C-3 session API, ingest). REPORTED means the producer states that origins
      * are reported, so a session with no APP coroutine is truly app-less; `null` = infer it from the coroutines.
      */
     val reportedOrigin: SessionOrigin? = null,

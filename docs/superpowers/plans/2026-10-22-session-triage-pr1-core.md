@@ -62,7 +62,7 @@
 | Session origin `UNKNOWN` when no coroutine reported `APP` or `VIZCORE`: every coroutine `UNKNOWN`, nothing hidden | derivation |
 | `FAILED` = terminal failure that is not a `CancellationException` (an unknown type counts as a failure; only a known cancellation type does not) | `HealthThresholds.isCancellation`, `SummaryUpdater` |
 | `POSSIBLY_BLOCKED` = running, and watermark − latest start/resume > 10 s (app clock) | `PossiblyBlockedIncidents` |
-| Round anchors = genuine roots + direct children of promoted containers; container itself a singleton round; promotion sticky (`promotedAtSeq`) while the root runs; cleared when the root finishes only if it got no new direct child after promotion (see "Spec amendment" below) | `SubtreeIndex`, `SummaryTable`, `RoundAnchoring` |
+| Round anchors = genuine roots + direct children of promoted containers; container itself a singleton round; promotion sticky (`promotedAtSeq`) while the root runs; cleared when the root finishes unless it got a new direct child after promotion and was cancelled (see "Spec amendment" below) | `SubtreeIndex`, `SummaryTable`, `RoundAnchoring` |
 | Failed round = all `FAILED` of one round; cancellations recorded after its first failure are context | `FailureIncidents` |
 | Ungrouped failure = `FAILED` whose ancestry cannot be resolved | `FailureIncidents` |
 | Observations (never problems): long-lived (> leak threshold, default 30 s), long-suspended (> 30 s); an active age ends at the later of the latest watermark and the coroutine's own last event (without a watermark, at its own last event) | `HealthParts.observations` |

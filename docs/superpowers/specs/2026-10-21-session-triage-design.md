@@ -1,7 +1,7 @@
 # Session page, triage first — honest health on the shared domain
 
 **Date:** 2026-10-21
-**Status:** Design — pending review
+**Status:** Design — PR 1 (core) implemented; amendments pending review
 **Target:** vizcore 1.3
 **Relation to the 2026-08-23 SPA workspace redesign:** this is that spec's **sub-project 4** (shared
 domain projections, D-8): problem definitions, round anchors and suspension sites move into
@@ -90,7 +90,9 @@ vizcore observed, and the definition of a problem lives once, in `coroutine-viz-
 **Rounds.** A round is an anchor plus its subtree, anchored as in the plugin's `RoundGrouping`: each
 genuine root (no parent), and, for a container root (never completes, at least 3 direct children, at
 least half of their subtrees completed), each direct child, with the container itself a singleton round.
-Anchoring moves into core unchanged (structural signals only, no name or time heuristics). Round ids are
+Anchoring moves into core unchanged (structural signals only, no name or time heuristics); core differs from
+the plugin on orphans only: a coroutine whose ancestry reaches an untracked parent has no round, and its failures
+are ungrouped incidents. Round ids are
 **derived**, never stored: `SessionHealthDerivation` computes them from the current summaries (live) or
 from the replay fold, so a root that becomes a container re-keys its descendants consistently.
 Promotion is **sticky while the root runs**: the first time a running root qualifies, its summary records
