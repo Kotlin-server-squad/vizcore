@@ -2,7 +2,6 @@ package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import com.jh.proj.coroutineviz.events.SuspensionPoint
-import com.jh.proj.coroutineviz.events.capturedProvenance
 import com.jh.proj.coroutineviz.events.deferred.DeferredValueAvailable
 import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 import com.jh.proj.coroutineviz.events.flow.FlowCreated
@@ -491,7 +490,7 @@ class VizScope(
                 )
 
             // Capture suspension point with stack trace
-            val suspensionPoint = SuspensionPoint.capture("delay")
+            val (suspensionPoint, provenance) = SuspensionPoint.captureWithProvenance("delay")
 
             // Emit suspension with detailed info
             session.sent(
@@ -499,7 +498,7 @@ class VizScope(
                     reason = "delay",
                     durationMillis = timeMillis,
                     suspensionPoint = suspensionPoint,
-                    provenance = suspensionPoint.capturedProvenance(),
+                    provenance = provenance,
                 ),
             )
 

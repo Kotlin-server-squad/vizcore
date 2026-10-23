@@ -2,7 +2,6 @@ package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
-import com.jh.proj.coroutineviz.events.capturedProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.runBlocking
@@ -62,10 +61,27 @@ class SuspensionProvenanceTest {
 
     @Test
     fun `capture's unknown placeholder is not a real frame`() {
-        assertNull(SuspensionPoint(function = SuspensionPoint.UNKNOWN_FUNCTION, reason = "delay").capturedProvenance())
-        assertEquals(
-            SuspensionProvenance.REAL_FRAME,
-            SuspensionPoint(function = "load", fileName = "Repo.kt", lineNumber = 3, reason = "delay").capturedProvenance(),
-        )
+        val (point, provenance) = SuspensionPoint.fromFrames(emptyArray(), "delay")
+
+        assertEquals(SuspensionPoint.UNKNOWN_FUNCTION, point.function)
+        assertNull(provenance)
+    }
+
+    @Test
+    fun `a selected frame is a real frame even when it is a method called unknown without a file`() {
+        val stripped = StackTraceElement("com.example.Repo", SuspensionPoint.UNKNOWN_FUNCTION, null, -1)
+        val (point, provenance) = SuspensionPoint.fromFrames(arrayOf(stripped), "delay")
+
+        assertEquals(SuspensionPoint.UNKNOWN_FUNCTION, point.function)
+        assertNull(point.fileName)
+        assertEquals(SuspensionProvenance.REAL_FRAME, provenance)
+    }
+
+    @Test
+    fun `captureWithProvenance reads the live stack`() {
+        val (point, provenance) = SuspensionPoint.captureWithProvenance("delay")
+
+        assertEquals(SuspensionProvenance.REAL_FRAME, provenance)
+        assertEquals("SuspensionProvenanceTest.kt", point.fileName)
     }
 }

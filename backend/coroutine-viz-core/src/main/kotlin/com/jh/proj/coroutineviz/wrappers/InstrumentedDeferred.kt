@@ -1,7 +1,6 @@
 package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
-import com.jh.proj.coroutineviz.events.capturedProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.events.deferred.DeferredAwaitCompleted
@@ -82,7 +81,7 @@ class InstrumentedDeferred<T>(
 
         // Emit suspension point (only if awaiter exists)
         if (awaiterId != null) {
-            val suspensionPoint = SuspensionPoint.capture("await")
+            val (suspensionPoint, provenance) = SuspensionPoint.captureWithProvenance("await")
             session.sent(
                 CoroutineSuspended(
                     sessionId = session.sessionId,
@@ -96,7 +95,7 @@ class InstrumentedDeferred<T>(
                     reason = "await",
                     durationMillis = null,
                     suspensionPoint = suspensionPoint,
-                    provenance = suspensionPoint.capturedProvenance(),
+                    provenance = provenance,
                 ),
             )
         }

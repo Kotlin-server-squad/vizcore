@@ -37,15 +37,26 @@ data class SuspensionPoint(
          * the method name then, without a line).
          * @param reason The reason for suspension (e.g., "delay", "await")
          */
-        fun capture(reason: String): SuspensionPoint {
-            val relevantFrame = selectCallerFrame(Throwable().stackTrace)
+        fun capture(reason: String): SuspensionPoint = captureWithProvenance(reason).first
 
-            return SuspensionPoint(
-                function = relevantFrame?.methodName ?: UNKNOWN_FUNCTION,
-                fileName = relevantFrame?.fileName,
-                lineNumber = relevantFrame?.lineNumber?.takeIf { it >= 0 },
-                reason = reason,
-            )
+        /** [capture] plus where the point came from: [SuspensionProvenance.REAL_FRAME], or `null` for the placeholder. */
+        internal fun captureWithProvenance(reason: String): Pair<SuspensionPoint, SuspensionProvenance?> =
+            fromFrames(Throwable().stackTrace, reason)
+
+        /** The point for [frames] and its provenance: a real frame was selected, or `null` when only the placeholder fits. */
+        internal fun fromFrames(
+            frames: Array<StackTraceElement>,
+            reason: String,
+        ): Pair<SuspensionPoint, SuspensionProvenance?> {
+            val relevantFrame = selectCallerFrame(frames)
+            val point =
+                SuspensionPoint(
+                    function = relevantFrame?.methodName ?: UNKNOWN_FUNCTION,
+                    fileName = relevantFrame?.fileName,
+                    lineNumber = relevantFrame?.lineNumber?.takeIf { it >= 0 },
+                    reason = reason,
+                )
+            return point to relevantFrame?.let { SuspensionProvenance.REAL_FRAME }
         }
 
         /** Kept for source and binary compatibility; frames are chosen by what they are, so [skipFrames] is ignored. */
@@ -66,7 +77,3 @@ data class SuspensionPoint(
                 INFRASTRUCTURE_PREFIXES.none { className.startsWith(it) }
     }
 }
-
-/** Provenance of a point made by [SuspensionPoint.capture]: a frame it read, or `null` for its "unknown" placeholder. */
-internal fun SuspensionPoint.capturedProvenance(): SuspensionProvenance? =
-    if (function == SuspensionPoint.UNKNOWN_FUNCTION && fileName == null) null else SuspensionProvenance.REAL_FRAME
