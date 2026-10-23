@@ -97,7 +97,7 @@ promotion splits a request that starts its children one after another (`repeat(n
 it qualifies at its third child, grows with the fourth, and a failure would show as two incidents. A
 finished root therefore keeps its promotion only if it grew after promotion **and** was cancelled (how an app
 scope or server shuts down); a request that completes or fails is one round again. `SummaryTable.onTerminal`
-and its tests implement this; the spec's "Rounds" paragraph says the same.
+and its tests implement this; the spec's "Rounds" paragraph says the same. Accepted as rare: if the only direct child created after promotion is first observed after the root's terminal event (possible within the final poll), the root's promotion is already cleared and its rounds merge.
 
 ### Left to PR 2 on purpose
 

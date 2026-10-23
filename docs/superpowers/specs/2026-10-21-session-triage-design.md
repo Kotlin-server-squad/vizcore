@@ -105,7 +105,7 @@ grows after qualifying but finishes by completing or failing, not by cancellatio
 keeps getting new children after promotion and ends by cancellation (a captured shutdown or a cancelled app
 scope), so its request rounds are not merged back into one. Accepted: a request that grew after qualifying
 and was then cancelled stays split (cancellations are context, not incidents), and an app root that grew and
-then completed normally or failed is merged back into one round. The live view re-keys at most twice per root (when it qualifies and when it finishes), and the
+then completed normally or failed is merged back into one round. Accepted as rare: if the only direct child created after promotion is first observed after the root's terminal event (possible within the final poll), the root's promotion is already cleared and its rounds merge. The live view re-keys at most twice per root (when it qualifies and when it finishes), and the
 replay fold applies the same rule at each sequence. This deliberately differs from the plugin's per-pass
 recomputation, which can flip back and forth while the root runs.
 

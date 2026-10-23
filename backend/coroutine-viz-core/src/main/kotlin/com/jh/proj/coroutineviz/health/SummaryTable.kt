@@ -113,6 +113,8 @@ class SummaryTable(
     ) {
         // A finished root stays a container only if it grew after promotion and was cancelled (server shutdown);
         // otherwise it was a request, which must not stay split (spec amendment).
+        // Known edge: a lone child created after promotion but first observed after this terminal event (possible
+        // within the final poll) finds the promotion already cleared, so the root's rounds merge; accepted as rare.
         if (s.parentId == null && s.promotedAtSeq != null && !(s.grewAfterPromotion && s.cancelled && !s.failed)) {
             summaries[s.id] = s.copy(promotedAtSeq = null, lastModifiedSeq = seq)
         }
