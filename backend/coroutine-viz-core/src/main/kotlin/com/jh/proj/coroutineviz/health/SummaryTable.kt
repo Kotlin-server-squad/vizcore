@@ -54,7 +54,7 @@ class SummaryTable(
     private var nextCreationOrder = 0L
 
     /** Summaries that are not stubs. */
-    var fullSummaryCount: Int = 0
+    internal var fullSummaryCount: Int = 0
         private set
 
     override var untrackedCount: Long = 0L

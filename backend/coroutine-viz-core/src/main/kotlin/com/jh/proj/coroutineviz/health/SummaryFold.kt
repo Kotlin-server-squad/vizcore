@@ -12,7 +12,7 @@ object SummaryFold {
     fun foldTo(
         events: Iterable<VizEvent>,
         atSeq: Long,
-    ): SummaryTable {
+    ): SummaryView {
         val table = SummaryTable()
         for (event in events) {
             if (event.seq > atSeq) break

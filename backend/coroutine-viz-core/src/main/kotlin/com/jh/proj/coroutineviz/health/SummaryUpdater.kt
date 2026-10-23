@@ -9,7 +9,7 @@ import com.jh.proj.coroutineviz.events.dispatcher.DispatcherSelected
 import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
 
 /** Pure per-summary updates (spec C-2): the one place a summary changes. */
-object SummaryUpdater {
+internal object SummaryUpdater {
     fun created(e: CoroutineCreated): CoroutineSummary {
         val transition = Transition(TransitionKind.CREATED, e.tsNanos, e.seq)
         return CoroutineSummary(
