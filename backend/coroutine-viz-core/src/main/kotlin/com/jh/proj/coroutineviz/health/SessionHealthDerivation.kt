@@ -35,8 +35,11 @@ object SessionHealthDerivation {
                     // Spec: never claimed with origin UNKNOWN, nor when coroutines went untracked.
                     noAppCoroutines =
                         evaluated.isEmpty() && sessionOrigin == SessionOrigin.REPORTED && view.untrackedCount == 0L,
-                    // Green needs something evaluated, both kinds evaluated, and complete counts.
-                    green = evaluated.isNotEmpty() && evaluation.status == EvaluationStatus.EVALUATED && !failuresAtLeast,
+                    // Green needs app coroutines evaluated (so a known origin: unknown is never counted as healthy,
+                    // spec H-3), both kinds evaluated, and complete counts.
+                    green =
+                        evaluated.isNotEmpty() && sessionOrigin == SessionOrigin.REPORTED &&
+                            evaluation.status == EvaluationStatus.EVALUATED && !failuresAtLeast,
                 ),
             asOf = asOf,
             asOfSeq = (input.mode as? HealthMode.Replay)?.atSeq ?: asOf?.seq ?: 0L,

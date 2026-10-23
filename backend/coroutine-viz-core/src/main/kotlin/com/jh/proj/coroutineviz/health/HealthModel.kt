@@ -74,10 +74,16 @@ enum class HealthState {
     /** At least one incident (failed round, ungrouped failure or possibly blocked coroutine). */
     PROBLEMS,
 
-    /** No incidents, something evaluated, possibly blocked evaluated, and counts complete (no overflow, no lost events). */
+    /**
+     * No incidents, the session origin is reported (application coroutines are known), something evaluated,
+     * possibly blocked evaluated, and counts complete (no overflow, no lost events). Never with origin UNKNOWN.
+     */
     NO_PROBLEMS,
 
-    /** No incidents, but not provably clean: possibly blocked is NOT_EVALUATED, failures are "at least", or nothing was evaluated. */
+    /**
+     * No incidents, but not provably clean: the session origin is UNKNOWN, possibly blocked is NOT_EVALUATED,
+     * failures are "at least", or nothing was evaluated.
+     */
     NO_FAILURES_PARTIAL,
 
     /** No incidents and the producer states origins are reported, yet no APP coroutine exists (and nothing went untracked). */

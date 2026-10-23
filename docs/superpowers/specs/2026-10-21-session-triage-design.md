@@ -233,7 +233,7 @@ problems".
   failures detected in the captured coroutines · possibly blocked not evaluated (<reason>) · as of <t>".
 - No app coroutines captured: neutral (not green) "No application coroutines captured · nothing to
   evaluate yet · as of <t>", with the sampling explanation.
-- Origin `UNKNOWN`: never the "no application coroutines" state; the strip evaluates all captured
+- Origin `UNKNOWN`: never green and never the "no application coroutines" state; the strip evaluates all captured
   coroutines and says "origin not available: vizcore's own connection may be included".
 - Awaiting first observation (a new session with no data yet): "Waiting for the first data from the app";
   no "as of" until data exists.
