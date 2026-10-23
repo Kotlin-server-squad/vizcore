@@ -34,7 +34,7 @@ import kotlin.test.assertTrue
  *
  * After FIX-01:
  * - appJson is wired into ContentNegotiation
- * - All 66 VizEvent subclasses are registered in vizEventSerializersModule
+ * - All 67 VizEvent subclasses are registered in vizEventSerializersModule
  * - GET /api/sessions/{id}/events returns a valid JSON array with type discriminators
  */
 class SessionEventsIntegrationTest {

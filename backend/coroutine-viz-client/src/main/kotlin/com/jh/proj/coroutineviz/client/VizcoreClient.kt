@@ -346,7 +346,7 @@ class VizcoreClient internal constructor(
             // the async loop takes over — acceptable for a start() entry point.
             val serverSessionId =
                 runBlocking { createSession(httpClient, backendUrl, appName, token, correlation) }
-            val session = VizSession(sessionId = serverSessionId)
+            val session = VizSession(sessionId = serverSessionId, keepSummaries = false)
             // The client's own loops (feed, transport, reconnect) stay out of the app's session.
             val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal)
             val source =

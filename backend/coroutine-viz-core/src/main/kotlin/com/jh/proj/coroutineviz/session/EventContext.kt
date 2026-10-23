@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.session
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.WaitingForChildren
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineBodyCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
@@ -147,6 +148,7 @@ fun EventContext.coroutineSuspended(
     reason: String,
     durationMillis: Long? = null,
     suspensionPoint: SuspensionPoint? = null,
+    provenance: SuspensionProvenance? = null,
 ): CoroutineSuspended =
     CoroutineSuspended(
         sessionId = sessionId,
@@ -160,7 +162,16 @@ fun EventContext.coroutineSuspended(
         reason = reason,
         durationMillis = durationMillis,
         suspensionPoint = suspensionPoint,
+        provenance = provenance,
     )
+
+/** Kept so code compiled against 0.2.x still links (its JVM signature has no `provenance`). */
+@Deprecated("binary compatibility with 0.2.x", level = DeprecationLevel.HIDDEN)
+fun EventContext.coroutineSuspended(
+    reason: String,
+    durationMillis: Long? = null,
+    suspensionPoint: SuspensionPoint? = null,
+): CoroutineSuspended = coroutineSuspended(reason, durationMillis, suspensionPoint, provenance = null)
 
 fun EventContext.coroutineResumed(): CoroutineResumed =
     CoroutineResumed(

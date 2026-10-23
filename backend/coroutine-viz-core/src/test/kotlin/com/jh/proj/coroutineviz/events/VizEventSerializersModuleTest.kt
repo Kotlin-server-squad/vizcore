@@ -104,9 +104,11 @@ class VizEventSerializersModuleTest {
                 AntiPatternDetected::class,
                 // structured concurrency (1)
                 WaitingForChildren::class,
+                // health (1)
+                PollWatermark::class,
             )
 
-        assertEquals(66, knownSubclasses.size, "Should have exactly 66 VizEvent subclasses")
+        assertEquals(67, knownSubclasses.size, "Should have exactly 67 VizEvent subclasses")
 
         // Verify each class is registered: look up by qualified name (FQN) or simple name,
         // depending on which serialization runtime is active. At minimum the class must
