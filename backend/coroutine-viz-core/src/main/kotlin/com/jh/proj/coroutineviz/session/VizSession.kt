@@ -314,7 +314,7 @@ class VizSession(
      * live [send] keeps ordering.
      *
      * Call it once, before the session is published: it reads [store] outside the
-     * send lock. A summary failure (e.g. a duplicate seq in the log) degrades the
+     * send lock. A summary failure degrades the
      * summaries only; the rest of the rehydration still completes.
      */
     fun rehydrateFromStore() {

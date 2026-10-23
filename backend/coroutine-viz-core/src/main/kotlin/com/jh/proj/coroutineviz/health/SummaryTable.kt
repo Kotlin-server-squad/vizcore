@@ -45,9 +45,13 @@ class SummaryTable(
     private val summaries = LinkedHashMap<String, CoroutineSummary>()
     private val subtrees = SubtreeIndex()
 
-    // Finished summaries eligible for reduction, keyed by first-observation seq so the oldest goes first.
+    // Finished summaries eligible for reduction, keyed by a per-table creation counter (first-observation
+    // order, the LinkedHashMap order) so the oldest goes first. Event seqs are not unique keys: the DB has no
+    // unique (session_id, seq), so a stored log can repeat one.
     private val finishedOk = TreeMap<Long, String>()
     private val finishedFailed = TreeMap<Long, String>()
+    private val creationOrder = HashMap<String, Long>()
+    private var nextCreationOrder = 0L
 
     /** Summaries that are not stubs. */
     var fullSummaryCount: Int = 0
@@ -85,6 +89,7 @@ class SummaryTable(
             return
         }
         summaries[e.coroutineId] = SummaryUpdater.created(e)
+        creationOrder[e.coroutineId] = nextCreationOrder++
         fullSummaryCount++
         subtrees.add(e.coroutineId, e.parentCoroutineId)
         promoteIfQualified(subtrees.rootOf(e.coroutineId), e.seq)
@@ -111,7 +116,7 @@ class SummaryTable(
         }
         subtrees.close(s.id)
         val queue = if (s.failed) finishedFailed else finishedOk
-        check(queue.put(s.firstObserved.seq, s.id) == null) { "duplicate first-observation seq ${s.firstObserved.seq}" }
+        queue[creationOrder.getValue(s.id)] = s.id
         promoteIfQualified(subtrees.rootOf(s.id), seq)
         reduceOverTarget(seq)
     }
@@ -131,6 +136,7 @@ class SummaryTable(
     private fun reduceOverTarget(seq: Long) {
         while (fullSummaryCount > fullSummaryTarget) {
             val id = (finishedOk.pollFirstEntry() ?: finishedFailed.pollFirstEntry())?.value ?: return
+            creationOrder.remove(id)
             summaries[id] = summaries.getValue(id).toStub().copy(lastModifiedSeq = seq)
             fullSummaryCount--
         }

@@ -161,6 +161,22 @@ class SummaryTableTest {
     }
 
     @Test
+    fun `two creates sharing one seq are both reducible in first-observation order`() {
+        val script = EventScript()
+        script.created("first", at = 1)
+        script.created("second", at = 2)
+        script.completed("first", at = 3)
+        script.completed("second", at = 4)
+        script.created("z", at = 5)
+        script.events[1].seq = script.events[0].seq
+        val table = script.table(fullSummaryTarget = 2)
+
+        assertTrue(table.get("first")!!.reduced)
+        assertFalse(table.get("second")!!.reduced)
+        assertEquals(2, table.fullSummaryCount)
+    }
+
+    @Test
     fun `a reduced failure keeps its failed flag and ancestry`() {
         val script = EventScript()
         script.created("root", at = 1)
