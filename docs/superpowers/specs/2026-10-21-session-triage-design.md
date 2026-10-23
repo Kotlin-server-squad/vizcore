@@ -294,7 +294,7 @@ assignment, `lastModifiedSeq` (the sequence of the last event that changed any f
 `promotedAtSeq` and whether a direct child was created after it (see Rounds).
 Round ids and observations (long-lived, long-suspended) are not stored: they depend on the tree, the
 request's leak threshold and the latest watermark, and are computed by `SessionHealthDerivation`.
-A cumulative counter of coroutines beyond capacity is kept beside them.
+A cumulative counter of creation events beyond capacity is kept beside them. It equals the number of coroutines beyond capacity because every producer emits one `CoroutineCreated` per coroutine; a duplicate creation (for example a re-delivered event) may overcount, which is accepted: deduplicating would mean remembering every untracked id and defeat the capacity limit, and the counter is only ever read as "at least".
 - **Reduction:** a best-effort target of 50,000 full summaries per session (configurable); active
   coroutines always keep their full summary, and the capacity below is the hard limit. Over the target,
   finished non-failed

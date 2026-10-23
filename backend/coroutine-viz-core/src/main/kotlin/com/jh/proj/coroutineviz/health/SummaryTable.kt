@@ -13,8 +13,10 @@ interface SummaryView {
     val all: Collection<CoroutineSummary>
 
     /**
-     * Creation events received after the tracked capacity was reached (only counted). A repeated
-     * `CoroutineCreated` for an untracked id counts again.
+     * Creation events received after the tracked capacity was reached (only counted). This equals the number of
+     * coroutines beyond capacity because every producer emits one `CoroutineCreated` per coroutine. A repeated
+     * `CoroutineCreated` for an untracked id (e.g. a re-delivered event) counts again and may overcount; that is
+     * accepted, as deduplicating would mean remembering every untracked id, and the value is only read as "at least".
      */
     val untrackedCount: Long
 
