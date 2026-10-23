@@ -91,9 +91,12 @@ internal object SummaryUpdater {
         e: CoroutineSuspended,
     ): CoroutineSummary {
         val point = e.suspensionPoint
+        // A creation fallback carries no suspension frame either: it must not replace a known location (spec provenance).
+        val frameless = point == null || e.provenance == SuspensionProvenance.CREATION_FALLBACK
         return when {
+            frameless && s.lastSuspension != null ->
+                s.copy(everSuspended = true, lastSuspensionProvenance = SuspensionProvenance.STALE)
             point != null -> s.copy(everSuspended = true, lastSuspension = point, lastSuspensionProvenance = e.provenance)
-            s.lastSuspension != null -> s.copy(everSuspended = true, lastSuspensionProvenance = SuspensionProvenance.STALE)
             else -> s.copy(everSuspended = true)
         }
     }

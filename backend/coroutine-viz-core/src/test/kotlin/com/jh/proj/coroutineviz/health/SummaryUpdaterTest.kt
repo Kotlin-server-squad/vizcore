@@ -138,6 +138,21 @@ class SummaryUpdaterTest {
     }
 
     @Test
+    fun `a creation fallback after a real frame keeps the real location as stale`() {
+        val script = EventScript()
+        val real = SuspensionPoint(function = "load", fileName = "B.kt", lineNumber = 2, reason = "delay")
+        val fallback = SuspensionPoint(function = "create", fileName = "A.kt", lineNumber = 1, reason = "creation")
+        script.created("a", at = 1)
+        script.suspended("a", at = 2, point = real, provenance = SuspensionProvenance.REAL_FRAME)
+        script.resumed("a", at = 3)
+        script.suspended("a", at = 4, point = fallback, provenance = SuspensionProvenance.CREATION_FALLBACK)
+
+        val s = fold(script)
+        assertEquals(real, s.lastSuspension)
+        assertEquals(SuspensionProvenance.STALE, s.lastSuspensionProvenance)
+    }
+
+    @Test
     fun `a completed body waits for children`() {
         val script = EventScript()
         script.created("a", at = 1)
