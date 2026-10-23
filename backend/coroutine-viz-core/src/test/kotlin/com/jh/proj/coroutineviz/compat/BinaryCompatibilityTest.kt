@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.compat
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.session.EventContext
 import com.jh.proj.coroutineviz.session.VizSession
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -107,5 +108,21 @@ class BinaryCompatibilityTest {
         assertEquals("delay", event.reason)
         assertEquals(5L, event.durationMillis)
         assertNull(event.provenance)
+    }
+
+    @Test
+    fun `EventContext coroutineSuspended keeps its 0_2_x JVM methods`() {
+        val helpers = Class.forName("com.jh.proj.coroutineviz.session.EventContextKt")
+        val old =
+            arrayOf(
+                EventContext::class.java,
+                String::class.java,
+                java.lang.Long::class.java,
+                SuspensionPoint::class.java,
+            )
+        assertNotNull(helpers.getDeclaredMethod("coroutineSuspended", *old))
+        assertNotNull(
+            helpers.getDeclaredMethod("coroutineSuspended\$default", *old, Int::class.javaPrimitiveType, Any::class.java),
+        )
     }
 }

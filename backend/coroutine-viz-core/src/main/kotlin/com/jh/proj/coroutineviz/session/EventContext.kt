@@ -165,6 +165,14 @@ fun EventContext.coroutineSuspended(
         provenance = provenance,
     )
 
+/** Kept so code compiled against 0.2.x still links (its JVM signature has no `provenance`). */
+@Deprecated("binary compatibility with 0.2.x", level = DeprecationLevel.HIDDEN)
+fun EventContext.coroutineSuspended(
+    reason: String,
+    durationMillis: Long? = null,
+    suspensionPoint: SuspensionPoint? = null,
+): CoroutineSuspended = coroutineSuspended(reason, durationMillis, suspensionPoint, provenance = null)
+
 fun EventContext.coroutineResumed(): CoroutineResumed =
     CoroutineResumed(
         sessionId = sessionId,
