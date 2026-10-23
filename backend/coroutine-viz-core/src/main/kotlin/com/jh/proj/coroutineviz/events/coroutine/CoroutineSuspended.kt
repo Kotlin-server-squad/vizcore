@@ -36,5 +36,27 @@ data class CoroutineSuspended(
     /** Where [suspensionPoint] came from; `null` when the producer did not say. */
     val provenance: SuspensionProvenance? = null,
 ) : CoroutineEvent {
+    /**
+     * The 0.2.1 JVM constructor, kept for binary compatibility (prebuilt jars, Java callers). Hidden from
+     * source resolution so it never competes with the primary one. `copy` is source-compatible only.
+     */
+    @Deprecated("binary compatibility with 0.2.x", level = DeprecationLevel.HIDDEN)
+    constructor(
+        sessionId: String,
+        seq: Long,
+        tsNanos: Long,
+        coroutineId: String,
+        jobId: String,
+        parentCoroutineId: String?,
+        scopeId: String,
+        label: String?,
+        reason: String,
+        durationMillis: Long? = null,
+        suspensionPoint: SuspensionPoint? = null,
+    ) : this(
+        sessionId, seq, tsNanos, coroutineId, jobId, parentCoroutineId, scopeId, label,
+        reason, durationMillis, suspensionPoint, null,
+    )
+
     override val kind: String get() = "CoroutineSuspended"
 }

@@ -1,11 +1,14 @@
 package com.jh.proj.coroutineviz.compat
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /** Pins the JVM signatures of the published 0.2.x API, which Java callers and prebuilt jars link against. */
 class BinaryCompatibilityTest {
@@ -65,5 +68,44 @@ class BinaryCompatibilityTest {
                 Any::class.java,
             ),
         )
+    }
+
+    private val marker = Class.forName("kotlin.jvm.internal.DefaultConstructorMarker")
+
+    @Test
+    fun `CoroutineCreated keeps its 0_2_1 constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val str = String::class.java
+        val old = arrayOf<Class<*>?>(str, long, long, str, str, str, str, str, long, SuspensionPoint::class.java)
+        val ctor = CoroutineCreated::class.java.getDeclaredConstructor(*old)
+        CoroutineCreated::class.java.getDeclaredConstructor(
+            *old,
+            Int::class.javaPrimitiveType,
+            marker,
+        )
+        val event = ctor.newInstance("s", 1L, 2L, "c", "j", null, "sc", "l", 9L, null)
+        assertEquals("c", event.coroutineId)
+        assertEquals(9L, event.createdAtEpochMs)
+        assertNull(event.origin)
+    }
+
+    @Test
+    fun `CoroutineSuspended keeps its 0_2_1 constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val str = String::class.java
+        val old =
+            arrayOf<Class<*>?>(
+                str, long, long, str, str, str, str, str, str, java.lang.Long::class.java, SuspensionPoint::class.java,
+            )
+        val ctor = CoroutineSuspended::class.java.getDeclaredConstructor(*old)
+        CoroutineSuspended::class.java.getDeclaredConstructor(
+            *old,
+            Int::class.javaPrimitiveType,
+            marker,
+        )
+        val event = ctor.newInstance("s", 1L, 2L, "c", "j", null, "sc", "l", "delay", 5L, null)
+        assertEquals("delay", event.reason)
+        assertEquals(5L, event.durationMillis)
+        assertNull(event.provenance)
     }
 }
