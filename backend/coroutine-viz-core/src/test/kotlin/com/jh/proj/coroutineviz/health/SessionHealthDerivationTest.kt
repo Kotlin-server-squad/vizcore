@@ -196,6 +196,29 @@ class SessionHealthDerivationTest {
     }
 
     @Test
+    fun `a stated origin with only an unknown-origin coroutine is partial, not green and not no app coroutines`() {
+        val script = EventScript()
+        script.created("a", at = sec(1), origin = null)
+        script.started("a", at = sec(1))
+        script.suspended("a", at = sec(2))
+        val health =
+            SessionHealthDerivation.derive(
+                HealthInput(
+                    summaries = script.table(),
+                    kind = SessionKind.ATTACHED,
+                    watermark = watermark,
+                    reportedOrigin = SessionOrigin.REPORTED,
+                    transitionsFor = { id -> Transitions.forCoroutine(script.events, id) },
+                ),
+            )
+
+        assertEquals(SessionOrigin.REPORTED, health.sessionOrigin)
+        assertEquals(0, health.counts.app)
+        assertEquals(0, health.problemCount)
+        assertEquals(HealthState.NO_FAILURES_PARTIAL, health.state)
+    }
+
+    @Test
     fun `untracked coroutines are never claimed as no app coroutines`() {
         val script = EventScript()
         script.created("cio-reader", at = sec(1), origin = CoroutineOrigin.VIZCORE)

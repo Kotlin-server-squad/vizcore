@@ -75,14 +75,15 @@ enum class HealthState {
     PROBLEMS,
 
     /**
-     * No incidents, the session origin is reported (application coroutines are known), something evaluated,
-     * possibly blocked evaluated, and counts complete (no overflow, no lost events). Never with origin UNKNOWN.
+     * No incidents, the session origin is reported, at least one evaluated coroutine has the effective origin APP
+     * (unknown-origin coroutines alone never count), possibly blocked evaluated, and counts complete (no overflow,
+     * no lost events). Never with origin UNKNOWN.
      */
     NO_PROBLEMS,
 
     /**
      * No incidents, but not provably clean: the session origin is UNKNOWN, possibly blocked is NOT_EVALUATED,
-     * failures are "at least", or nothing was evaluated.
+     * failures are "at least", or no app coroutine was evaluated (only unknown-origin ones, or nothing).
      */
     NO_FAILURES_PARTIAL,
 
