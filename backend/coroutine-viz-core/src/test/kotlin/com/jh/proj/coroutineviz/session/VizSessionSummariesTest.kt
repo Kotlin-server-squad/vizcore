@@ -1,9 +1,11 @@
 package com.jh.proj.coroutineviz.session
 
 import com.jh.proj.coroutineviz.health.EventScript
+import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.sec
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
@@ -110,6 +112,44 @@ class VizSessionSummariesTest {
 
         assertEquals(5L, session.readSummaries { it.lastEventSeq })
         assertEquals(true, session.readSummaries { it.get("c")?.failed })
+        session.close()
+    }
+
+    @Test
+    fun `a summary failure never breaks ingestion`() {
+        val session = VizSession("summaries-failure", keepSummaries = true)
+        var applied = 0
+        session.summaryFailureForTest = { if (++applied == 2) error("boom") }
+        val script =
+            EventScript(session.sessionId).apply {
+                created("a", at = sec(1))
+                created("b", at = sec(2))
+                created("c", at = sec(3))
+                created("d", at = sec(4))
+            }
+
+        script.events.forEach(session::send)
+
+        assertEquals(4, session.store.all().size)
+        assertEquals(setOf("a", "b", "c", "d"), session.snapshot.coroutines.keys)
+        assertFailsWith<SummariesUnavailableException> { session.readSummaries { it.lastEventSeq } }
+        session.close()
+    }
+
+    @Test
+    fun `reads during concurrent ingestion see a consistent, advancing table`() {
+        val session = VizSession("summaries-concurrent", keepSummaries = true)
+        val total = 2_000
+        val script = EventScript(session.sessionId).apply { repeat(total) { created("c$it", at = sec(1)) } }
+        val observed = mutableListOf<Long>()
+        val producer = thread { script.events.forEach(session::send) }
+
+        while (producer.isAlive) observed += session.readSummaries { it.lastEventSeq }
+        producer.join()
+
+        assertEquals(observed.sorted(), observed, "lastEventSeq never goes backwards")
+        assertEquals(session.store.all().last().seq, session.readSummaries { it.lastEventSeq })
+        assertEquals(total.toLong(), session.readSummaries { it.lastEventSeq })
         session.close()
     }
 }

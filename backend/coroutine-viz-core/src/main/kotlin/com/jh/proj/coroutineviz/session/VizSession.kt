@@ -152,6 +152,10 @@ class VizSession(
     // Durable per-coroutine summaries (spec 2026-10-21, C-2); guarded by [sendLock] like the snapshot.
     private val summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
 
+    /** Test hook: runs before each event is applied to the summary table, to inject a failure. */
+    @Volatile
+    internal var summaryFailureForTest: ((VizEvent) -> Unit)? = null
+
     // Set once when applying an event to [summaryTable] fails; read by [readSummaries].
     @Volatile
     private var summariesDegraded = false
@@ -228,6 +232,7 @@ class VizSession(
         val table = summaryTable ?: return
         if (summariesDegraded) return
         try {
+            summaryFailureForTest?.invoke(event)
             table.apply(event)
         } catch (e: RuntimeException) {
             summariesDegraded = true
