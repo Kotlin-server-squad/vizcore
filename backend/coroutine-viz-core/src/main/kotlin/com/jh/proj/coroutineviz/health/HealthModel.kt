@@ -160,7 +160,7 @@ data class PossiblyBlockedIncident(
     val lastRunStart: Transition,
     val runningForNanos: Long,
     val transitions: List<Transition>,
-    /** The retained transitions do not reach back to the first observation. */
+    /** The retained transitions do not start with the creation transition (trimmed, capped or empty). */
     val transitionsGap: Boolean,
     /** No suspension was ever observed for this coroutine. */
     val firstObservedRunning: Boolean,

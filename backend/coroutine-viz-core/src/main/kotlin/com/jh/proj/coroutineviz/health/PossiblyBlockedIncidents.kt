@@ -61,7 +61,7 @@ internal object PossiblyBlockedIncidents {
             lastRunStart = run,
             runningForNanos = runningFor,
             transitions = kept,
-            transitionsGap = kept.firstOrNull()?.seq != s.firstObserved.seq,
+            transitionsGap = kept.firstOrNull().let { it?.kind != TransitionKind.CREATED || it.seq != s.firstObserved.seq },
             firstObservedRunning = !s.everSuspended,
             eventLoopClue = clue,
             sortSeq = run.seq,

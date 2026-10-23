@@ -155,6 +155,22 @@ class PossiblyBlockedTest {
     }
 
     @Test
+    fun `a retained transition sharing the first observed seq is a gap unless it is the creation`() {
+        val script = EventScript()
+        script.created("busy", at = 0)
+        script.started("busy", at = 1)
+
+        val table = script.table()
+        val firstSeq = table.all.single().firstObserved.seq
+        val incident =
+            PossiblyBlockedIncidents
+                .build(table.all.toList(), RoundAnchoring.of(table), sec(30)) {
+                    listOf(Transition(TransitionKind.STARTED, appNanos = 1, seq = firstSeq))
+                }.single()
+        assertTrue(incident.transitionsGap)
+    }
+
+    @Test
     fun `an orphan with an untracked parent has no round`() {
         val script = EventScript()
         script.created("orphan", at = sec(1), parent = "ghost")
