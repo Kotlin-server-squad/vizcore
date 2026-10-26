@@ -14,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -40,6 +41,10 @@ private const val TRANSPORT_PARALLELISM = 4
  * without one and leaves the create to the background loop (#254). Long enough for
  * [createSession]'s own short retry against a refusing port; short enough that a backend that
  * accepts connections and never answers cannot hold up the app's startup for the HTTP timeouts.
+ *
+ * A create the client gives up on may still have succeeded on a backend that answers this slowly;
+ * that session then stays empty on the backend, and the client streams into the one it creates
+ * next. The create endpoint has no idempotency key to prevent that.
  */
 private const val START_SESSION_TIMEOUT_MS = 3_000L
 
@@ -250,8 +255,8 @@ class VizcoreClient internal constructor(
     private suspend fun reconnectLoop() {
         var attempt = 0
         while (currentCoroutineContext().isActive && running) {
-            // A session just created proves the backend is reachable, so the socket backoff starts over.
-            val sessionId = sessionIdRef.get() ?: createFirstSession()?.also { attempt = 0 }
+            // Creating the session does not reset the backoff: only a socket that stays open does (#129).
+            val sessionId = sessionIdRef.get() ?: createFirstSession()
             if (sessionId != null && streamOnce(sessionId)) attempt = 0
             if (!currentCoroutineContext().isActive || !running) break
             delay(backoff.delayMillis(attempt))
@@ -292,31 +297,46 @@ class VizcoreClient internal constructor(
     /**
      * Create the first server session, when [start] could not reach the backend (#254). Returns
      * its id, or `null` after logging the failure, so the loop backs off and tries again.
+     *
+     * An app runtime the SDK cannot run on ([LinkageError], e.g. a class first needed to read
+     * the backend's answer) can never succeed, so it is reported once and ends the loop.
      */
     @Suppress("TooGenericExceptionCaught") // an unreachable backend must not kill the loop
     private suspend fun createFirstSession(): String? {
-        val failure =
+        var created: String? = null
+        val failure: String? =
             try {
                 // withTimeoutOrNull, not withTimeout: its TimeoutCancellationException would read as
                 // "client stopping" below.
-                val created = withTimeoutOrNull(sessionCreateTimeoutMillis) { createInitialSession() }
-                if (created != null) {
-                    sessionIdRef.set(created)
-                    logger.info("Connected to the vizcore backend at {}: streaming into session {}", backendUrl, created)
-                    return created
-                }
-                "no answer within $sessionCreateTimeoutMillis ms"
+                created = withTimeoutOrNull(sessionCreateTimeoutMillis) { createInitialSession() }
+                if (created == null) "no answer within $sessionCreateTimeoutMillis ms" else null
             } catch (ce: CancellationException) {
-                throw ce
+                // Only the client's own cancellation (stop()) ends the loop. An HTTP client can fail a
+                // request with a CancellationException of its own, which is a failed attempt.
+                currentCoroutineContext().ensureActive()
+                ce.message ?: ce.toString()
+            } catch (linkage: LinkageError) {
+                logger.error(
+                    "vizcore stops trying to create a session at {}",
+                    backendUrl,
+                    RuntimeRequirements.linkageFailure(linkage),
+                )
+                currentCoroutineContext().cancel()
+                null
             } catch (t: Throwable) {
                 t.message ?: t.toString()
             }
-        logger.warn(
-            "vizcore backend at {} is still unreachable; retrying the session create after backoff: {}",
-            backendUrl,
-            failure,
-        )
-        return null
+        if (created != null) {
+            sessionIdRef.set(created)
+            logger.info("Connected to the vizcore backend at {}: streaming into session {}", backendUrl, created)
+        } else if (failure != null) {
+            logger.warn(
+                "vizcore backend at {} is still unreachable; retrying the session create after backoff: {}",
+                backendUrl,
+                failure,
+            )
+        }
+        return created
     }
 
     /**
