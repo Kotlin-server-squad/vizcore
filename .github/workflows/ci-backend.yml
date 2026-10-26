@@ -22,6 +22,19 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # A real PostgreSQL for PostgresMigrationTest (H2 accepts SQL that PostgreSQL rejects).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: vizcore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +55,10 @@ jobs:
         run: ./gradlew detekt
 
       - name: Test
+        env:
+          VIZCORE_PG_URL: jdbc:postgresql://localhost:5432/postgres
+          VIZCORE_PG_USER: postgres
+          VIZCORE_PG_PASSWORD: vizcore
         run: ./gradlew test
 
       - name: Bytecode guard (JVM-17 floor)

@@ -71,13 +71,32 @@ object DatabaseFactory {
         return HikariDataSource(hikari)
     }
 
+    /**
+     * Portable migrations live in `db/migration/common`; one that cannot be portable has a copy per vendor in
+     * `db/migration/h2` and `db/migration/postgresql` (see the README in `common/`). V1 is such a migration:
+     * PostgreSQL has no `clob`.
+     */
     private fun migrate(dataSource: DataSource) {
         Flyway
             .configure()
             .dataSource(dataSource)
-            .locations("classpath:db/migration/common")
+            .locations("classpath:db/migration/common", "classpath:db/migration/${vendorFolder(dataSource)}")
             .baselineOnMigrate(true)
             .load()
             .migrate()
+    }
+
+    /**
+     * The vendor migration folder for the connected database. Plain Flyway has no `{vendor}` location placeholder (that
+     * is Spring Boot's), so the JDBC metadata decides. Any other database fails here, with its name, rather than
+     * half-way through a migration it cannot run.
+     */
+    internal fun vendorFolder(dataSource: DataSource): String {
+        val product = dataSource.connection.use { it.metaData.databaseProductName }
+        return when (product) {
+            "H2" -> "h2"
+            "PostgreSQL" -> "postgresql"
+            else -> error("Unsupported database for storage.type=database: $product (supported: H2, PostgreSQL)")
+        }
     }
 }
