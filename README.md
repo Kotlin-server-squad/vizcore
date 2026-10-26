@@ -84,7 +84,7 @@ fun main() {
             backendUrl = System.getenv("VIZCORE_BACKEND_URL") ?: "http://localhost:8080",
             token = System.getenv("VIZCORE_TOKEN") ?: "dev-token",
         )
-    println("streaming into session ${client.currentSessionId}")
+    println("vizcore session: ${client.sessionIdOrNull ?: "not created yet, the backend is not reachable"}")
     try {
         runBlocking {
             launch(CoroutineName("worker")) { delay(250) }
@@ -97,6 +97,13 @@ fun main() {
 
 `start()` returns an already-running client, so there is no second `start` call to make.
 `stop()` is safe to call from a shutdown hook.
+
+`start()` does not fail when the backend is down or the URL is wrong, so you can call it during
+your app's startup. It tries to create the session for up to a few seconds; if it cannot, it logs a
+WARN with the cause and returns anyway. The client then keeps trying in the background, with the
+same capped backoff it uses to reconnect, and streams the app's coroutines once the backend
+answers. Until then `sessionIdOrNull` is `null` (and `currentSessionId` is empty). Events from that
+window are kept up to the client's buffer limit of 10,000.
 
 **What gets captured.** The SDK samples the JVM's coroutines about every 150 ms, so treat
 the view as a sampled picture, not a complete trace:
@@ -177,7 +184,7 @@ extra["kotlin-coroutines.version"] = "1.10.2"
 With an older Kotlin compiler, the build fails because it cannot read the SDK's classes. If the
 compiler is new enough but the app runs an older kotlin-stdlib or kotlinx-coroutines (the versions
 Spring Boot pins win), `VizcoreClient.start` throws an `IllegalStateException` that names what to
-change.
+change. That, and a `pollIntervalMillis` below 10, are the only cases in which `start` throws.
 
 Each `v*` release publishes the SDK to this repository's GitHub Packages
 (`https://maven.pkg.github.com/Kotlin-server-squad/vizcore`), which needs a GitHub token with

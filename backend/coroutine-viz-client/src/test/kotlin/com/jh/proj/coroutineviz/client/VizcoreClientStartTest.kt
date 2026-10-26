@@ -1,5 +1,9 @@
 package com.jh.proj.coroutineviz.client
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesInstall
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.http.ContentType
@@ -9,11 +13,15 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The real [VizcoreClient.start] factory, driven in-process. DebugProbes only track
@@ -55,6 +63,45 @@ class VizcoreClientStartTest {
 
             client.stop()
             assertEquals(before, DebugProbesInstall.count(), "stop() must release the probe reference")
+        }
+
+    @Test
+    fun `start returns without a session when the backend never answers the session create`() =
+        testApplication {
+            // A forwarder or proxy in front of a backend that is down: the request is accepted and
+            // never answered (#254).
+            routing {
+                post("/api/sessions") { awaitCancellation() }
+            }
+            val httpClient = createClient { install(WebSockets) }
+            val warnings = ListAppender<ILoggingEvent>().apply { start() }
+            val clientLogger = LoggerFactory.getLogger(VizcoreClient::class.java) as Logger
+            clientLogger.addAppender(warnings)
+            try {
+                val startedAt = System.nanoTime()
+                val client =
+                    withContext(Dispatchers.IO) {
+                        VizcoreClient.start(
+                            appName = "silent",
+                            backendUrl = "",
+                            token = "t",
+                            correlation = null,
+                            httpClient = httpClient,
+                            sessionTimeout = 300.milliseconds,
+                        )
+                    }
+                val tookMillis = (System.nanoTime() - startedAt) / 1_000_000
+                try {
+                    assertNull(client.sessionIdOrNull)
+                    assertTrue(tookMillis < 5_000, "start(...) must give up on a silent backend, took $tookMillis ms")
+                    val warning = warnings.list.single { it.level == Level.WARN }
+                    assertTrue("no answer within 300 ms" in warning.formattedMessage, warning.formattedMessage)
+                } finally {
+                    client.stop()
+                }
+            } finally {
+                clientLogger.detachAppender(warnings)
+            }
         }
 
     @Test

@@ -40,24 +40,46 @@ object AgentBootstrap {
      * @param agentArgs the raw `=`-suffixed arg string from `-javaagent:jar=<here>` (nullable)
      */
     @JvmStatic
-    @Suppress("TooGenericExceptionCaught")
     fun run(agentArgs: String?) {
+        start(agentArgs)
+    }
+
+    /**
+     * [run], returning the started client (or `null` when the agent disabled itself) so a test
+     * can stop it.
+     *
+     * A backend that is down does not disable the agent (#254): [VizcoreClient.start] returns a
+     * client that creates the session once the backend answers. The agent says so on stderr,
+     * because the client's own WARN goes through the agent's shaded SLF4J, which has no logger
+     * to write to. What still disables it is an app runtime the SDK cannot run on.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    internal fun start(agentArgs: String?): VizcoreClient? {
         val args = parseArgs(agentArgs)
         val backendUrl = args["backend"] ?: "http://localhost:8080"
-        try {
-            VizcoreClient.start(
-                appName = args["app"] ?: "app",
-                backendUrl = backendUrl,
-                token = args["token"] ?: "",
-                pollIntervalMillis = pollIntervalMillis(args["poll"]),
-                correlation = args["corr"],
-            )
+        return try {
+            VizcoreClient
+                .start(
+                    appName = args["app"] ?: "app",
+                    backendUrl = backendUrl,
+                    token = args["token"] ?: "",
+                    pollIntervalMillis = pollIntervalMillis(args["poll"]),
+                    correlation = args["corr"],
+                ).also { client ->
+                    if (client.sessionIdOrNull == null) {
+                        System.err.println(
+                            "[coroutine-viz-agent] backend at $backendUrl is not reachable yet; the app runs " +
+                                "normally and the agent creates its session once the backend answers",
+                        )
+                    }
+                }
         } catch (failure: Throwable) {
             // FAIL SOFT — the agent must NEVER take the host application down. Log once and let
             // the app run uninstrumented; the visualizer simply shows no session (8c7d67c).
             System.err.println(
                 "[coroutine-viz-agent] DISABLED — bootstrap against $backendUrl failed: ${failure.message}",
             )
+            null
         }
     }
 

@@ -2,28 +2,50 @@ package com.jh.proj.coroutineviz.agent
 
 import com.jh.proj.coroutineviz.client.VizcoreClient
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
  * Unit proofs for [AgentBootstrap.parseArgs] (IDE-01 agent-args; T-13-01 tamper mitigation)
  * plus the bootstrap fail-soft guarantee.
  *
- * `parseArgs` is tested as pure logic. [AgentBootstrap.run] is exercised ONLY for the
- * fail-soft path against a guaranteed-closed port (no live backend involved) — a propagated
- * bootstrap exception would surface (via the premain shim) as a host-JVM abort, so "returns
- * normally on failure" is the contract under test. Uses `@org.junit.jupiter.api.Test` because
+ * `parseArgs` is tested as pure logic. [AgentBootstrap.start] is exercised ONLY against a
+ * guaranteed-closed port (no live backend involved) — a propagated bootstrap exception would
+ * surface (via the premain shim) as a host-JVM abort, so "returns normally on failure" is the
+ * contract under test. Uses `@org.junit.jupiter.api.Test` because
  * `kotlin-test-junit` alone is undiscovered under `useJUnitPlatform()` (STATE.md 11-02 / 09-02
  * precedent).
  */
 class VizcoreAgentArgsTest {
     @Test
-    fun `run fails soft - an unreachable backend must never abort the host JVM`() {
-        // Port 1 -> connection refused on every bootstrap attempt. run() must swallow the
-        // failure (log + run uninstrumented), never propagate: a propagated bootstrap error
-        // would reach the host as 'processing of -javaagent failed' (Phase 15 UAT blocker).
-        AgentBootstrap.run("app=t,backend=http://127.0.0.1:1,token=")
+    fun `an unreachable backend never aborts the host JVM and leaves the agent retrying`() {
+        // Port 1 -> connection refused on every bootstrap attempt. A propagated bootstrap error
+        // would reach the host as 'processing of -javaagent failed' (Phase 15 UAT blocker). Since
+        // #254 the agent is not disabled either: the client keeps creating the session in the
+        // background, and the agent says so on stderr.
+        val stderr = ByteArrayOutputStream()
+        val original = System.err
+        System.setErr(PrintStream(stderr, true))
+        val client =
+            try {
+                AgentBootstrap.start("app=t,backend=http://127.0.0.1:1,token=")
+            } finally {
+                System.setErr(original)
+            }
+        try {
+            val output = stderr.toString()
+            assertNotNull(client, "an unreachable backend must not disable the agent: $output")
+            assertNull(client.sessionIdOrNull)
+            assertTrue("backend at http://127.0.0.1:1 is not reachable yet" in output, output)
+            assertFalse("DISABLED" in output, output)
+        } finally {
+            client?.stop()
+        }
     }
 
     @Test
