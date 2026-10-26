@@ -163,7 +163,7 @@ export function ConnectWizard({ isOpen, onClose }: { isOpen: boolean; onClose: (
             <p className="text-xs text-default-500">
               The SDK samples your app&apos;s coroutines about every 150 ms. A coroutine that
               starts and finishes between two samples, such as a fast request handler, doesn&apos;t
-              appear. SDK releases after 0.2.1 take{' '}
+              appear. From SDK 0.3.0 on, pass{' '}
               <code className="font-mono">pollIntervalMillis</code> to sample more often.
             </p>
           </Step>

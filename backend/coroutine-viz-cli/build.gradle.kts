@@ -14,7 +14,7 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.2.1"
+version = "0.3.0"
 
 application {
     mainClass.set("com.jh.proj.coroutineviz.cli.MainKt")
@@ -45,6 +45,6 @@ tasks.named<Test>("test") {
 // the `checkBytecode` guard does NOT scan this module.
 //
 // Shadow configuration is intentionally minimal: keep the default `all` classifier
-// (yields coroutine-viz-cli-0.2.1-all.jar) and do NOT relocate kotlin.* / kotlinx.* —
+// (yields coroutine-viz-cli-0.3.0-all.jar) and do NOT relocate kotlin.* / kotlinx.* —
 // relocating them breaks the polymorphic-reflection decode at runtime (Pitfall 6). A
 // standalone `java -jar` has no host classpath to clash with, so relocation buys nothing.
