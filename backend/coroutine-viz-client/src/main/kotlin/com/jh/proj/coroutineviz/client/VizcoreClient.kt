@@ -60,8 +60,9 @@ private const val BACKGROUND_SESSION_TIMEOUT_MS = 10_000L
  *
  * [start] authenticates with a JWT, creates a server session via
  * `POST /api/sessions`, builds a LOCAL [VizSession] carrying the SERVER-assigned
- * `sessionId` (Pitfall 1 / T-07-03 — so ingested events carry the correct
- * immutable id), starts a [DebugProbesSource] against it, and forwards every
+ * `sessionId` (Pitfall 1 / T-07-03), or an empty id when the backend could not be
+ * reached yet (#254; the backend stamps its own id on every ingested event either
+ * way), starts a [DebugProbesSource] against it, and forwards every
  * synthesized event over a Ktor client WebSocket to the backend ingest route —
  * with capped exponential backoff on a dropped connection (T-07-08) and a clean
  * idempotent [stop].
@@ -299,7 +300,7 @@ class VizcoreClient internal constructor(
      * its id, or `null` after logging the failure, so the loop backs off and tries again.
      *
      * An app runtime the SDK cannot run on ([LinkageError], e.g. a class first needed to read
-     * the backend's answer) can never succeed, so it is reported once and ends the loop.
+     * the backend's answer) can never succeed, so it is reported once and the client stops.
      */
     @Suppress("TooGenericExceptionCaught") // an unreachable backend must not kill the loop
     private suspend fun createFirstSession(): String? {
@@ -317,11 +318,12 @@ class VizcoreClient internal constructor(
                 ce.message ?: ce.toString()
             } catch (linkage: LinkageError) {
                 logger.error(
-                    "vizcore stops trying to create a session at {}",
+                    "vizcore stops: it cannot create a session at {} on this app's runtime",
                     backendUrl,
                     RuntimeRequirements.linkageFailure(linkage),
                 )
-                currentCoroutineContext().cancel()
+                // Releases the probes, the feed and the HTTP client too, and ends this loop.
+                stop()
                 null
             } catch (t: Throwable) {
                 t.message ?: t.toString()
@@ -378,7 +380,8 @@ class VizcoreClient internal constructor(
         /**
          * Build and [start] an embeddable client bound to [backendUrl] for [appName],
          * authenticating with [token]. Creates the server session, constructs the
-         * local [VizSession] with the SERVER id, drives a real [DebugProbesSource],
+         * local [VizSession] with the SERVER id (empty when the backend could not be
+         * reached; see below), drives a real [DebugProbesSource],
          * and begins forwarding. This is the ONLY entry point that installs/connects.
          *
          * An OPTIONAL [correlation] token (defaulted to `null`, the established
@@ -386,7 +389,7 @@ class VizcoreClient internal constructor(
          * call so the backend records it against the session it actually creates
          * (CORR-01) — letting a watcher/IDE that supplied the same token resolve THIS
          * real session id. Existing 3-arg `start(appName, backendUrl, token)` call
-         * sites compile and behave identically. The client forwards an OPAQUE string
+         * sites compile and link unchanged. The client forwards an OPAQUE string
          * and imports no `TenantContext`/server-auth type, so this module stays
          * pure-Kotlin JVM-17 (D-12); correlation is create-path metadata only and does
          * NOT touch `VizSession.send()` (D-13).

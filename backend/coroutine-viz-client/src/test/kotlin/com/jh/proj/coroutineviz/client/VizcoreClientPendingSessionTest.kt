@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * #254: a client that [VizcoreClient.start] could not get a session for, because the backend was
@@ -131,18 +132,33 @@ class VizcoreClientPendingSessionTest {
             testScheduler.advanceUntilIdle()
         }
 
+    /** Records whether the client stopped it. */
+    private class RecordingSource : InstrumentationSource {
+        override val sourceId = "recording"
+        override val isRunning = false
+
+        @Volatile var stopped = false
+
+        override fun start() = Unit
+
+        override fun stop() {
+            stopped = true
+        }
+    }
+
     private fun pendingClient(
         scope: CoroutineScope,
         clock: () -> Long,
         transport: suspend (String, SocketLifetime) -> Unit,
         createInitialSession: suspend () -> String,
+        source: InstrumentationSource = NoopSource(),
     ) = VizcoreClient(
         httpClient = HttpClient(),
         backendUrl = "",
         sessionId = null,
         token = "t",
         session = VizSession(""),
-        source = NoopSource(),
+        source = source,
         scope = scope,
         backoff = Backoff(baseMillis = 500L, capMillis = 30_000L, random = FixedZeroRandom),
         appName = "pending-app",
@@ -218,6 +234,7 @@ class VizcoreClientPendingSessionTest {
             // A class the create needs is missing (first loaded only now, after the backend came up).
             // Retrying cannot help, so the loop stops instead of warning forever.
             val creates = AtomicInteger(0)
+            val source = RecordingSource()
             val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
             val client =
                 pendingClient(
@@ -228,6 +245,7 @@ class VizcoreClientPendingSessionTest {
                         creates.incrementAndGet()
                         throw NoSuchMethodError("kotlinx.serialization.json.Json.parseToJsonElement")
                     },
+                    source = source,
                 )
             client.start()
             testScheduler.advanceTimeBy(120_000L)
@@ -235,8 +253,9 @@ class VizcoreClientPendingSessionTest {
 
             assertEquals(1, creates.get(), "no retries on an app runtime the SDK cannot run on")
             assertNull(client.sessionIdOrNull)
-            client.stop()
-            testScheduler.advanceUntilIdle()
+            assertTrue(source.stopped, "the client stops its source (and with it the probes)")
+            // stop() cancels the scope last, after closing the buffer and the HTTP client.
+            assertTrue(!scope.coroutineContext.job.isActive, "the client's scope is cancelled")
         }
 
     @Test
