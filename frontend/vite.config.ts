@@ -30,6 +30,9 @@ export default defineConfig({
       '/api': {
         target: proxyTarget,
         changeOrigin: true,
+        // Also proxy the SDK's ingest WebSocket (/api/sessions/{id}/ingest), so an app
+        // pointed at the dev server can stream events, as it can through the UI image (#252).
+        ws: true,
       },
     },
   },

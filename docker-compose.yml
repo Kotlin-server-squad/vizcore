@@ -35,3 +35,6 @@ services:
       # vite.config.ts reads VITE_PROXY_TARGET for its /api proxy. VITE_API_URL was never
       # read by anything.
       - VITE_PROXY_TARGET=http://backend:8080
+      # The Connect wizard would otherwise show the proxy target, a name only this compose
+      # network can resolve; an app on the host reaches the backend on its published port (#252).
+      - VITE_VIZCORE_BACKEND_URL=http://localhost:${BACKEND_PORT:-8080}
