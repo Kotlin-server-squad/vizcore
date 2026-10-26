@@ -50,8 +50,9 @@ object AgentBootstrap {
      *
      * A backend that is down does not disable the agent (#254): [VizcoreClient.start] returns a
      * client that creates the session once the backend answers. The agent says so on stderr,
-     * because the client's own WARN goes through the agent's shaded SLF4J, which has no logger
-     * to write to. What still disables it is an app runtime the SDK cannot run on.
+     * because the client's own WARN, which carries the cause, goes through the agent's shaded
+     * SLF4J, which has no logger to write to. What still disables it is an app runtime the SDK
+     * cannot run on.
      */
     @Suppress("TooGenericExceptionCaught")
     internal fun start(agentArgs: String?): VizcoreClient? {
@@ -67,9 +68,12 @@ object AgentBootstrap {
                     correlation = args["corr"],
                 ).also { client ->
                     if (client.sessionIdOrNull == null) {
+                        // Says only what is known: the cause is in the client's WARN, which the agent's
+                        // shaded SLF4J has nowhere to write.
                         System.err.println(
-                            "[coroutine-viz-agent] backend at $backendUrl is not reachable yet; the app runs " +
-                                "normally and the agent creates its session once the backend answers",
+                            "[coroutine-viz-agent] could not create a session at $backendUrl yet (is the backend " +
+                                "up, the URL right and the token accepted?); the app runs normally and the agent " +
+                                "keeps trying in the background",
                         )
                     }
                 }

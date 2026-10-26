@@ -41,7 +41,7 @@ class VizcoreAgentArgsTest {
             val output = stderr.toString()
             assertNotNull(client, "an unreachable backend must not disable the agent: $output")
             assertNull(client.sessionIdOrNull)
-            assertTrue("backend at http://127.0.0.1:1 is not reachable yet" in output, output)
+            assertTrue("could not create a session at http://127.0.0.1:1 yet" in output, output)
             assertFalse("DISABLED" in output, output)
         } finally {
             client?.stop()

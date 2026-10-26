@@ -470,6 +470,7 @@ class VizcoreClient internal constructor(
         const val MIN_POLL_INTERVAL_MILLIS: Long = 10
 
         /** [start] with an injected [httpClient], so tests can drive the real factory in-process. */
+        @Suppress("TooGenericExceptionCaught") // cleans up whatever the failure, then rethrows it
         internal fun start(
             appName: String,
             backendUrl: String,
@@ -480,38 +481,46 @@ class VizcoreClient internal constructor(
             pollInterval: Duration = DEFAULT_POLL_INTERVAL_MILLIS.milliseconds,
             sessionTimeout: Duration = START_SESSION_TIMEOUT_MS.milliseconds,
         ): VizcoreClient {
-            // Created here when the backend answers, so the id is known when start() returns, as
-            // before; otherwise null, and the reconnect loop creates it once the backend is up.
-            val serverSessionId =
-                sessionAtStart(backendUrl, sessionTimeout) {
-                    createSession(httpClient, backendUrl, appName, token, correlation)
-                }
-            val session = VizSession(sessionId = serverSessionId.orEmpty())
-            // The client's own loops (feed, transport, reconnect) stay out of the app's session.
-            val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal)
-            val source =
-                DebugProbesSource(
+            var source: DebugProbesSource? = null
+            return try {
+                // Created here when the backend answers, so the id is known when start() returns, as
+                // before; otherwise null, and the reconnect loop creates it once the backend is up.
+                val serverSessionId =
+                    sessionAtStart(backendUrl, sessionTimeout) {
+                        createSession(httpClient, backendUrl, appName, token, correlation)
+                    }
+                val session = VizSession(sessionId = serverSessionId.orEmpty())
+                // The client's own loops (feed, transport, reconnect) stay out of the app's session.
+                val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal)
+                val probes =
+                    DebugProbesSource(
+                        session = session,
+                        pollInterval = pollInterval,
+                        internalDispatchers = internalDispatchers,
+                    ).also { source = it }
+                // Install the probes before returning: start() below begins polling
+                // asynchronously, and DebugProbes miss every coroutine created before
+                // installation, so work the app launches right after start(...) was lost.
+                probes.install()
+                VizcoreClient(
+                    httpClient = httpClient,
+                    backendUrl = backendUrl,
+                    sessionId = serverSessionId,
+                    token = token,
                     session = session,
-                    pollInterval = pollInterval,
-                    internalDispatchers = internalDispatchers,
-                )
-            // Install the probes before returning: start() below begins polling
-            // asynchronously, and DebugProbes miss every coroutine created before
-            // installation, so work the app launches right after start(...) was lost.
-            source.install()
-            return VizcoreClient(
-                httpClient = httpClient,
-                backendUrl = backendUrl,
-                sessionId = serverSessionId,
-                token = token,
-                session = session,
-                source = source,
-                scope = scope,
-                // Carried so a replacement session (after the backend loses this one)
-                // is created under the SAME app name, not under a session id.
-                appName = appName,
-                correlation = correlation,
-            ).also { it.start() }
+                    source = probes,
+                    scope = scope,
+                    // Carried so a replacement session (after the backend loses this one)
+                    // is created under the SAME app name, not under a session id.
+                    appName = appName,
+                    correlation = correlation,
+                ).also { it.start() }
+            } catch (failure: Throwable) {
+                // No client reaches the caller, so nothing else could ever close what this opened.
+                source?.stop()
+                httpClient.close()
+                throw failure
+            }
         }
 
         /**

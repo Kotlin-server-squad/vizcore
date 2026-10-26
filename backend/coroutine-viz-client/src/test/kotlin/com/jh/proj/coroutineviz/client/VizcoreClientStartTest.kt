@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesInstall
+import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -14,11 +15,15 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -103,6 +108,36 @@ class VizcoreClientStartTest {
                 clientLogger.detachAppender(warnings)
             }
         }
+
+    @Test
+    fun `start closes the HTTP client and releases the probes when it fails`() {
+        // A start(...) that throws hands no client to the caller, so nothing could ever close what it
+        // opened. An interrupted calling thread is one way it still throws after the HTTP client exists.
+        val httpClient = HttpClient()
+        val before = DebugProbesInstall.count()
+        val failure = AtomicReference<Throwable?>()
+        val caller =
+            thread {
+                Thread.currentThread().interrupt()
+                val result =
+                    runCatching {
+                        VizcoreClient.start(
+                            appName = "interrupted",
+                            backendUrl = "http://127.0.0.1:1",
+                            token = "t",
+                            correlation = null,
+                            httpClient = httpClient,
+                        )
+                    }
+                failure.set(result.exceptionOrNull())
+                result.getOrNull()?.stop()
+            }
+        caller.join(10_000)
+
+        assertTrue(failure.get() is InterruptedException, "expected an InterruptedException, got ${failure.get()}")
+        assertFalse(httpClient.coroutineContext.job.isActive, "the HTTP client must be closed")
+        assertEquals(before, DebugProbesInstall.count(), "no probe reference may be left behind")
+    }
 
     @Test
     fun `start rejects a poll interval below the minimum before touching the network`() {

@@ -5,6 +5,10 @@ import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.jh.proj.coroutineviz.client.VizcoreClient
+import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,8 +54,15 @@ class BackendDownAtStartTest {
             assertTrue(backendUrl in warning.formattedMessage, "the WARN names the backend: ${warning.formattedMessage}")
             assertTrue("Connection refused" in warning.formattedMessage, "the WARN gives the cause: ${warning.formattedMessage}")
 
-            // The app's own work, started while vizcore is still down.
+            // The app's own work, started AND finished while vizcore is still down: it can only reach
+            // the backend through the events the client buffered during the outage.
             CoroutineScope(Dispatchers.Default + app).launch(CoroutineName("app-work")) { awaitCancellation() }
+            val work = awaitLocal(started) { it is CoroutineCreated && it.label == "app-work" } as CoroutineCreated
+            app.cancel()
+            awaitLocal(started) {
+                (it is CoroutineCompleted && it.coroutineId == work.coroutineId) ||
+                    (it is CoroutineCancelled && it.coroutineId == work.coroutineId)
+            }
 
             val up = FakeBackend(port = port, sessionId = "down-at-start-1").also { backend = it }
             up.awaitLabel("app-work")
@@ -65,6 +76,23 @@ class BackendDownAtStartTest {
             client?.stop()
             backend?.close()
             clientLogger.detachAppender(warnings)
+        }
+    }
+
+    /** Waits until the client's local session has recorded an event matching [match], and returns it. */
+    private fun awaitLocal(
+        client: VizcoreClient,
+        match: (VizEvent) -> Boolean,
+    ): VizEvent {
+        val deadline = System.currentTimeMillis() + 15_000
+        while (true) {
+            val found =
+                client.session.store
+                    .all()
+                    .firstOrNull(match)
+            if (found != null) return found
+            check(System.currentTimeMillis() < deadline) { "no such event in the local session" }
+            Thread.sleep(50)
         }
     }
 }

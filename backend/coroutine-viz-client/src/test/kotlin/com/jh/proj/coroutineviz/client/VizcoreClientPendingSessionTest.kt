@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -263,9 +264,10 @@ class VizcoreClientPendingSessionTest {
         runTest {
             val creates = AtomicInteger(0)
             val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
+            val httpClient = HttpClient()
             val client =
                 VizcoreClient(
-                    httpClient = HttpClient(),
+                    httpClient = httpClient,
                     backendUrl = "",
                     sessionId = null,
                     token = "t",
@@ -292,5 +294,6 @@ class VizcoreClientPendingSessionTest {
             assertEquals(3, afterStop, "creates at 0, 500 and 1500 before stop")
             assertEquals(afterStop, creates.get(), "no session create after stop()")
             assertNull(client.sessionIdOrNull)
+            assertFalse(httpClient.coroutineContext.job.isActive, "stop() closes the HTTP client while still retrying")
         }
 }
