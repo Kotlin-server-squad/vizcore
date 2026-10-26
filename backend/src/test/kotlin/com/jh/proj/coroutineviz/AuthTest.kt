@@ -2,9 +2,11 @@
 
 package com.jh.proj.coroutineviz
 
+import com.jh.proj.coroutineviz.auth.ApiKeyPrincipal
 import com.jh.proj.coroutineviz.auth.ApiKeyStore
 import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.Role
+import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.password4j.Password
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -103,6 +105,11 @@ class AuthTest {
                 authenticatedApi {
                     get("/api/sessions") {
                         call.respond(HttpStatusCode.OK, SessionManager.listSessions())
+                    }
+                    // Reports the principal the request authenticated as, so a test can check that a
+                    // key sent as a Bearer credential resolves exactly like the same key in X-API-Key.
+                    get("/api/whoami") {
+                        call.respondText(call.currentPrincipal().toString())
                     }
                     post("/api/sessions") {
                         val session = SessionManager.createSession(call.request.queryParameters["name"])
@@ -254,6 +261,132 @@ class AuthTest {
             assertEquals(
                 HttpStatusCode.Unauthorized,
                 client.get("/api/sessions/some-id/stream?token=garbage").status,
+            )
+        }
+
+    // -- API key sent as `Authorization: Bearer <key>` (#260) --------------------------
+
+    @Test
+    fun `keys only - a configured key sent as Bearer reaches a protected route`() =
+        testApplication {
+            installRealAuthApp(rawApiKey = "secret-key")
+            val client = jsonClient()
+            assertEquals(
+                HttpStatusCode.OK,
+                client.get("/api/sessions") { header("Authorization", "Bearer secret-key") }.status,
+            )
+            assertEquals(
+                HttpStatusCode.Created,
+                client.post("/api/sessions?name=test") { header("Authorization", "Bearer secret-key") }.status,
+            )
+        }
+
+    @Test
+    fun `keys only - a key sent as Bearer resolves to the same principal as X-API-Key`() =
+        testApplication {
+            installRealAuthApp(rawApiKey = "secret-key")
+            val client = jsonClient()
+            val viaHeader = client.get("/api/whoami") { header("X-API-Key", "secret-key") }.bodyAsText()
+            val viaBearer = client.get("/api/whoami") { header("Authorization", "Bearer secret-key") }.bodyAsText()
+            assertEquals(ApiKeyPrincipal("frontend", Role.RUNNER).toString(), viaHeader)
+            assertEquals(viaHeader, viaBearer)
+        }
+
+    @Test
+    fun `keys only - the Bearer scheme name is case-insensitive`() =
+        testApplication {
+            installRealAuthApp(rawApiKey = "secret-key")
+            val client = jsonClient()
+            assertEquals(
+                HttpStatusCode.OK,
+                client.get("/api/sessions") { header("Authorization", "bearer secret-key") }.status,
+            )
+        }
+
+    @Test
+    fun `keys only - a wrong key sent as Bearer gets 401`() =
+        testApplication {
+            installRealAuthApp(rawApiKey = "secret-key")
+            val client = jsonClient()
+            assertEquals(
+                HttpStatusCode.Unauthorized,
+                client.get("/api/sessions") { header("Authorization", "Bearer wrong-key") }.status,
+            )
+            assertEquals(
+                HttpStatusCode.Unauthorized,
+                client.post("/api/sessions?name=test") { header("Authorization", "Bearer wrong-key") }.status,
+            )
+        }
+
+    @Test
+    fun `keys only - the key is not accepted outside the Bearer scheme`() =
+        testApplication {
+            installRealAuthApp(rawApiKey = "secret-key")
+            val client = jsonClient()
+            for (value in listOf("secret-key", "Basic secret-key", "ApiKey secret-key", "Bearer", "Bearer ", "Bearersecret-key")) {
+                assertEquals(
+                    HttpStatusCode.Unauthorized,
+                    client.get("/api/sessions") { header("Authorization", value) }.status,
+                    "Authorization: '$value' must not authenticate",
+                )
+            }
+        }
+
+    @Test
+    fun `keys only - the key is not accepted as a ?token= query parameter`() =
+        testApplication {
+            installRealAuthApp(rawApiKey = "secret-key")
+            val client = jsonClient()
+            assertEquals(HttpStatusCode.Unauthorized, client.get("/api/sessions?token=secret-key").status)
+            assertEquals(HttpStatusCode.Unauthorized, client.get("/api/sessions/some-id/stream?token=secret-key").status)
+        }
+
+    @Test
+    fun `keys only - an X-API-Key header is checked on its own, a Bearer key does not rescue a wrong one`() =
+        testApplication {
+            installRealAuthApp(rawApiKey = "secret-key")
+            val client = jsonClient()
+            val response =
+                client.get("/api/sessions") {
+                    header("X-API-Key", "wrong-key")
+                    header("Authorization", "Bearer secret-key")
+                }
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+        }
+
+    @Test
+    fun `keys and JWT - a JWT in Bearer still authenticates as the user, a key in Bearer as the key`() =
+        testApplication {
+            val passwordHash = Password.hash("pw").withArgon2().result
+            installRealAuthApp(rawApiKey = "secret-key", userPasswordHash = passwordHash)
+            val client = jsonClient()
+            assertEquals(
+                UserPrincipal("alice", Role.RUNNER).toString(),
+                client.get("/api/whoami") { header("Authorization", "Bearer ${mintToken()}") }.bodyAsText(),
+            )
+            assertEquals(
+                ApiKeyPrincipal("frontend", Role.RUNNER).toString(),
+                client.get("/api/whoami") { header("Authorization", "Bearer secret-key") }.bodyAsText(),
+            )
+            assertEquals(
+                HttpStatusCode.Unauthorized,
+                client.get("/api/sessions") { header("Authorization", "Bearer not-a-key-or-jwt") }.status,
+            )
+        }
+
+    @Test
+    fun `JWT only - a JWT in Bearer authenticates and any other Bearer value gets 401`() =
+        testApplication {
+            val passwordHash = Password.hash("pw").withArgon2().result
+            installRealAuthApp(rawApiKey = null, userPasswordHash = passwordHash)
+            val client = jsonClient()
+            assertEquals(
+                HttpStatusCode.OK,
+                client.get("/api/sessions") { header("Authorization", "Bearer ${mintToken()}") }.status,
+            )
+            assertEquals(
+                HttpStatusCode.Unauthorized,
+                client.get("/api/sessions") { header("Authorization", "Bearer secret-key") }.status,
             )
         }
 }

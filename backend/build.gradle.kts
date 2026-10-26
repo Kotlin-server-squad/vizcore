@@ -83,6 +83,9 @@ dependencies {
     testRuntimeOnly("com.h2database:h2:2.4.240")
 
     testImplementation("io.ktor:ktor-server-test-host")
+    // The SDK itself, so a test can run VizcoreClient.start against the real backend module (#260).
+    testImplementation(project(":coroutine-viz-client"))
+    testImplementation("io.ktor:ktor-client-cio")
     testImplementation("io.ktor:ktor-client-content-negotiation")
     // Client WebSockets plugin for the ingest-route tests (RCO-05) — Ktor BOM.
     testImplementation("io.ktor:ktor-client-websockets")
@@ -100,6 +103,9 @@ dependencies {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+    // SdkBackendAuthTest runs VizcoreClient.start, which installs DebugProbes; they attach a
+    // byte-buddy agent at runtime. Allow it explicitly, as coroutine-viz-core's test task does.
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
 }
 
 // ── PERF-05 dev-only load harness (D-09/D-10/D-11) ───────────────────────────

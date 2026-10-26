@@ -5,7 +5,7 @@
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | Backend server port |
-| `API_KEY` | _(empty)_ | API key for authentication (empty = auth disabled) |
+| `API_KEY` | _(empty)_ | API key for authentication. Empty adds no key; auth is off only when no API keys (`API_KEY` or `auth.keys`) and no users with a JWT secret are configured. Clients send it as `X-API-Key: <key>` or `Authorization: Bearer <key>`; the SDK and the Java agent use the latter (their `token`) |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
 | `CORS_ALLOWED_METHODS` | `GET,POST,DELETE,OPTIONS` | Comma-separated allowed HTTP methods |
 | `SESSION_MAX_AGE_MS` | `3600000` | Max session age before cleanup (ms) |
