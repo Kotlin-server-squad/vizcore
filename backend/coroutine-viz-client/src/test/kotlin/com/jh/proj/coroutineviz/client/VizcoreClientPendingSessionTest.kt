@@ -260,6 +260,31 @@ class VizcoreClientPendingSessionTest {
         }
 
     @Test
+    fun `a session created as the client stops is not published or streamed into`() =
+        runTest {
+            val streamed = AtomicInteger(0)
+            val scope = CoroutineScope(coroutineContext + Job(coroutineContext.job))
+            var client: VizcoreClient? = null
+            client =
+                pendingClient(
+                    scope = scope,
+                    clock = { testScheduler.currentTime },
+                    transport = { _, _ -> streamed.incrementAndGet() },
+                    createInitialSession = {
+                        // The answer arrives while stop() runs.
+                        client!!.stop()
+                        "late-1"
+                    },
+                )
+            client.start()
+            testScheduler.advanceTimeBy(5_000L)
+            testScheduler.runCurrent()
+
+            assertNull(client.sessionIdOrNull, "a stopped client publishes no session")
+            assertEquals(0, streamed.get(), "a stopped client opens no socket")
+        }
+
+    @Test
     fun `stop ends the background session create while the backend is still down`() =
         runTest {
             val creates = AtomicInteger(0)

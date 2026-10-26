@@ -184,9 +184,9 @@ extra["kotlin-coroutines.version"] = "1.10.2"
 With an older Kotlin compiler, the build fails because it cannot read the SDK's classes. If the
 compiler is new enough but the app runs an older kotlin-stdlib or kotlinx-coroutines (the versions
 Spring Boot pins win), `VizcoreClient.start` throws an `IllegalStateException` that names what to
-change. Apart from that, `start` throws only for a `pollIntervalMillis` below 10 (and, like any
-blocking call, an `InterruptedException` if the calling thread is interrupted); a backend it cannot
-reach is never a reason to throw.
+change. `start` also throws for a `pollIntervalMillis` below 10, when the JVM cannot load the
+DebugProbes agent, and (like any blocking call) when the calling thread is interrupted. A backend
+it cannot reach is never a reason to throw.
 
 Each `v*` release publishes the SDK to this repository's GitHub Packages
 (`https://maven.pkg.github.com/Kotlin-server-squad/vizcore`), which needs a GitHub token with

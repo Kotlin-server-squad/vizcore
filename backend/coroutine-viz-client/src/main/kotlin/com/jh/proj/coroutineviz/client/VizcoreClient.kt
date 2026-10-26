@@ -328,8 +328,9 @@ class VizcoreClient internal constructor(
             } catch (t: Throwable) {
                 t.message ?: t.toString()
             }
+        // Published only while running, so a create that lands as stop() runs leaves no session behind.
+        if (created != null && !publishIfRunning(created)) created = null
         if (created != null) {
-            sessionIdRef.set(created)
             logger.info("Connected to the vizcore backend at {}: streaming into session {}", backendUrl, created)
         } else if (failure != null) {
             logger.warn(
@@ -340,6 +341,12 @@ class VizcoreClient internal constructor(
         }
         return created
     }
+
+    private fun publishIfRunning(sessionId: String): Boolean =
+        synchronized(lifecycleLock) {
+            if (running) sessionIdRef.set(sessionId)
+            running
+        }
 
     /**
      * Bootstrap a replacement server session and point the transport at it. A failure
@@ -481,6 +488,8 @@ class VizcoreClient internal constructor(
             pollInterval: Duration = DEFAULT_POLL_INTERVAL_MILLIS.milliseconds,
             sessionTimeout: Duration = START_SESSION_TIMEOUT_MS.milliseconds,
         ): VizcoreClient {
+            var session: VizSession? = null
+            var scope: CoroutineScope? = null
             var source: DebugProbesSource? = null
             return try {
                 // Created here when the backend answers, so the id is known when start() returns, as
@@ -489,12 +498,13 @@ class VizcoreClient internal constructor(
                     sessionAtStart(backendUrl, sessionTimeout) {
                         createSession(httpClient, backendUrl, appName, token, correlation)
                     }
-                val session = VizSession(sessionId = serverSessionId.orEmpty())
+                val local = VizSession(sessionId = serverSessionId.orEmpty()).also { session = it }
                 // The client's own loops (feed, transport, reconnect) stay out of the app's session.
-                val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal)
+                val clientScope =
+                    CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal).also { scope = it }
                 val probes =
                     DebugProbesSource(
-                        session = session,
+                        session = local,
                         pollInterval = pollInterval,
                         internalDispatchers = internalDispatchers,
                     ).also { source = it }
@@ -507,9 +517,9 @@ class VizcoreClient internal constructor(
                     backendUrl = backendUrl,
                     sessionId = serverSessionId,
                     token = token,
-                    session = session,
+                    session = local,
                     source = probes,
-                    scope = scope,
+                    scope = clientScope,
                     // Carried so a replacement session (after the backend loses this one)
                     // is created under the SAME app name, not under a session id.
                     appName = appName,
@@ -518,6 +528,8 @@ class VizcoreClient internal constructor(
             } catch (failure: Throwable) {
                 // No client reaches the caller, so nothing else could ever close what this opened.
                 source?.stop()
+                scope?.cancel()
+                session?.close()
                 httpClient.close()
                 throw failure
             }
