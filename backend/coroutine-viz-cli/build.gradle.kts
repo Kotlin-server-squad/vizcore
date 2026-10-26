@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.3.21"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
     application
     // Shadow fat-JAR plugin (SDK-02). Pinned to exactly 9.4.3 — the johnrengelman/shadow
     // lineage's maintained successor (GradleUp org). Legitimacy verified on the Gradle
@@ -27,13 +27,13 @@ dependencies {
     // core exposes appJson but pulls kotlinx-serialization-json / coroutines-core as
     // `implementation` (off consumers' compile classpath), so the CLI declares them
     // directly to use the shared PolymorphicSerializer + the kotlinx Job graph.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.12.0")
 
     // Test
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.2.20")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.21")
 }
 
 tasks.named<Test>("test") {
