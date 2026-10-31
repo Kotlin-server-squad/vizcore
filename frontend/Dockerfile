@@ -4,7 +4,10 @@
 # RELATIVE path to a sibling directory (`../shared/api-types` in vite.config.ts, and the same
 # path in tsconfig.json's `paths` + `include`). So the image has to reproduce the repository
 # layout: /app/frontend next to /app/shared/api-types.
-FROM node:24-slim AS base
+# Node stages run on the BUILDER's platform: `dist/` is static files, the same for every
+# architecture, so a multi-arch build (deploy.yml, #269) runs `pnpm build` once, natively, and
+# only the nginx stage is produced per platform. It has no RUN step, so nothing runs emulated.
+FROM --platform=$BUILDPLATFORM node:24-slim AS base
 # Pin pnpm 9 — the version .github/workflows/ci-frontend.yml installs, and the one
 # frontend/pnpm-lock.yaml was written by (lockfileVersion 9.0). `corepack enable pnpm` without
 # a version activates the newest release instead, and pnpm 10+ aborts
