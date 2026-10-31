@@ -10,9 +10,12 @@
 # "Cannot find a Java installation ... matching {languageVersion=17}", so ship a JDK 17
 # alongside the 21 and hand Gradle its path. core/client/cli only set jvmTarget /
 # sourceCompatibility, which JDK 21 satisfies on its own.
-FROM eclipse-temurin:17-jdk AS jdk17
+# The build stages run on the BUILDER's platform: the fat jar is the same bytecode for every
+# architecture, so a multi-arch build (deploy.yml, #269) compiles it once, natively, and only the
+# runtime stage below is produced per platform. It has no RUN step, so nothing runs emulated.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:17-jdk AS jdk17
 
-FROM eclipse-temurin:21-jdk AS build
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY --from=jdk17 /opt/java/openjdk /opt/java/openjdk-17
 

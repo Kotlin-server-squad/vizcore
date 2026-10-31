@@ -93,14 +93,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Multi-platform builds need Buildx (#269). No QEMU: the Dockerfile builds the jar on the
+      # runner's own platform, and the per-platform runtime stage only copies files.
+      - uses: docker/setup-buildx-action@v3
+
       # Root context: backend/Dockerfile copies backend/ plus every SDK module the default
       # build includes, so the build cannot be scoped to ./backend.
       - uses: docker/build-push-action@v5
         with:
           context: .
           file: backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image.outputs.tags }}
+
+      # Apple Silicon pulls the arm64 variant; without it the image runs emulated (#269).
+      - name: The pushed image is multi-arch
+        run: |
+          manifest=$(docker buildx imagetools inspect "${{ steps.image.outputs.name }}:${GITHUB_SHA}")
+          for platform in linux/amd64 linux/arm64; do
+            grep -q "Platform: *${platform}" <<<"$manifest" || { echo "no ${platform} image"; echo "$manifest"; exit 1; }
+          done
 
   build-frontend:
     needs: [verify-backend, verify-frontend]
@@ -137,6 +150,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Multi-platform builds need Buildx (#269). No QEMU: the Dockerfile runs `pnpm build` on the
+      # runner's own platform, and the per-platform nginx stage only copies files.
+      - uses: docker/setup-buildx-action@v3
+
       # Root context: frontend/Dockerfile needs shared/api-types next to frontend/ for
       # `pnpm build` (tsc + vite) to resolve @vizcor/api-types.
       - uses: docker/build-push-action@v5
@@ -144,5 +161,14 @@ jobs:
           context: .
           file: frontend/Dockerfile
           target: production
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image.outputs.tags }}
+
+      # Apple Silicon pulls the arm64 variant; without it the image runs emulated (#269).
+      - name: The pushed image is multi-arch
+        run: |
+          manifest=$(docker buildx imagetools inspect "${{ steps.image.outputs.name }}:${GITHUB_SHA}")
+          for platform in linux/amd64 linux/arm64; do
+            grep -q "Platform: *${platform}" <<<"$manifest" || { echo "no ${platform} image"; echo "$manifest"; exit 1; }
+          done
