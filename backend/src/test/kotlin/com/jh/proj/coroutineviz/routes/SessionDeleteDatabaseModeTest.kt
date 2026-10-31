@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.dbRetentionPolicy
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.module
@@ -226,19 +227,17 @@ class SessionDeleteDatabaseModeTest {
     @Test
     fun `retention keeps a database session while an app streams into it, and deletes it once the app is gone`() =
         testApplication {
-            application { module() }
+            // Every session is past a zero-day age limit, so only the open socket can keep it (#261).
+            environment { config = MapApplicationConfig("storage.retention.maxAgeDays" to "0") }
+            lateinit var retention: DbRetentionPolicy
+            application {
+                module()
+                // The policy exactly as the application builds it, so the test covers the wiring.
+                retention = dbRetentionPolicy(db)
+            }
+            startApplication()
             val client = createClient { install(WebSockets) }
             val sessionId = createSession(client)
-            // Past a zero-day age limit, so only the open socket can keep it (#261). Wired the
-            // way Application.configureDbRetention wires it.
-            val retention =
-                DbRetentionPolicy(
-                    db = db,
-                    maxAgeDays = 0,
-                    clock = { System.currentTimeMillis() + 1_000 },
-                    onSessionDeleted = SessionManager::notifySessionDeleted,
-                    isStreaming = IngestConnections::isConnected,
-                )
             val event: VizEvent =
                 CoroutineCreated(
                     sessionId = sessionId,

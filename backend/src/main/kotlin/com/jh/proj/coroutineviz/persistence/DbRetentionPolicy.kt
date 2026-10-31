@@ -53,11 +53,10 @@ import kotlin.time.Instant
  * @property onSessionDeleted called with each deleted session's id after the delete commits, so
  *   open streams and ingest sockets of those sessions are closed (the application passes
  *   [com.jh.proj.coroutineviz.session.SessionManager.notifySessionDeleted]).
- * @property isStreaming whether an app is streaming into the session right now, i.e. it has an open
- *   ingest socket. Such a session is never deleted by age (#261); the application passes
- *   [com.jh.proj.coroutineviz.routes.IngestConnections.isConnected]. The sockets are tracked per
- *   process, so with several backend instances a session streamed into through another one is not
- *   protected.
+ * @property streaming the sessions an app is streaming into, which are never deleted by age (#261);
+ *   the application passes [com.jh.proj.coroutineviz.routes.IngestConnections]. The check and the
+ *   delete run as one decision no new socket can register into. Sockets are tracked per process, so
+ *   with several backend instances a session streamed into through another one is not protected.
  */
 @OptIn(ExperimentalTime::class)
 class DbRetentionPolicy(
@@ -67,7 +66,7 @@ class DbRetentionPolicy(
     private val cleanupIntervalMinutes: Long = 60,
     private val clock: () -> Long = System::currentTimeMillis,
     private val onSessionDeleted: (String) -> Unit = {},
-    private val isStreaming: (String) -> Boolean = { false },
+    private val streaming: StreamingSessions = StreamingSessions.None,
 ) {
     private val logger = LoggerFactory.getLogger(DbRetentionPolicy::class.java)
     private var job: Job? = null
@@ -99,6 +98,9 @@ class DbRetentionPolicy(
             }
     }
 
+    override fun toString(): String =
+        "maxAgeDays=$maxAgeDays, maxEventsPerSession=$maxEventsPerSession, intervalMin=$cleanupIntervalMinutes"
+
     /** Stop the background cleanup. Safe to call multiple times. */
     fun stop() {
         job?.cancel()
@@ -114,42 +116,47 @@ class DbRetentionPolicy(
         val now = Instant.fromEpochMilliseconds(clock())
         val cutoff = Instant.fromEpochMilliseconds(clock() - maxAgeMs)
 
+        // The streaming check and the delete are one decision (#261): a socket that opens after the
+        // check waits until the delete has committed, then finds its session gone and is closed with
+        // "Session not found", as it would be for any session deleted before it connected.
         val deletedSessions =
-            transaction(db) {
-                // NOT EXISTS (active share) guard: a share is active when it never
-                // expires (expires_at IS NULL) OR expires in the future.
-                val activeShareSubquery =
-                    SharesTable
-                        .selectAll()
-                        .where {
-                            (SharesTable.sessionId eq SessionsTable.id) and
-                                (SharesTable.expiresAt.isNull() or (SharesTable.expiresAt greater now))
-                        }
+            streaming.whileNoSocketRegisters {
+                transaction(db) {
+                    // NOT EXISTS (active share) guard: a share is active when it never
+                    // expires (expires_at IS NULL) OR expires in the future.
+                    val activeShareSubquery =
+                        SharesTable
+                            .selectAll()
+                            .where {
+                                (SharesTable.sessionId eq SessionsTable.id) and
+                                    (SharesTable.expiresAt.isNull() or (SharesTable.expiresAt greater now))
+                            }
 
-                // The ids are read first so their streams can be closed afterwards. The delete
-                // repeats the full guard, so a share created in between still protects its
-                // session, and only the rows that are really gone are reported.
-                // A session an app is still streaming into is kept whatever its age (#261), as memory
-                // mode keeps it (#129); the age limit applies again once its last socket closes.
-                val candidates =
-                    SessionsTable
-                        .select(SessionsTable.id)
-                        .where { (SessionsTable.createdAt less cutoff) and NotExists(activeShareSubquery) }
-                        .map { it[SessionsTable.id] }
-                        .filterNot(isStreaming)
-                if (candidates.isEmpty()) return@transaction emptyList()
-                SessionsTable.deleteWhere {
-                    (SessionsTable.id inList candidates) and
-                        (SessionsTable.createdAt less cutoff) and
-                        NotExists(activeShareSubquery)
+                    // The ids are read first so their streams can be closed afterwards. The delete
+                    // repeats the full guard, so a share created in between still protects its
+                    // session, and only the rows that are really gone are reported.
+                    // A session an app is still streaming into is kept whatever its age (#261), as memory
+                    // mode keeps it (#129); the age limit applies again once its last socket closes.
+                    val candidates =
+                        SessionsTable
+                            .select(SessionsTable.id)
+                            .where { (SessionsTable.createdAt less cutoff) and NotExists(activeShareSubquery) }
+                            .map { it[SessionsTable.id] }
+                            .filterNot(streaming::isStreaming)
+                    if (candidates.isEmpty()) return@transaction emptyList()
+                    SessionsTable.deleteWhere {
+                        (SessionsTable.id inList candidates) and
+                            (SessionsTable.createdAt less cutoff) and
+                            NotExists(activeShareSubquery)
+                    }
+                    val kept =
+                        SessionsTable
+                            .select(SessionsTable.id)
+                            .where { SessionsTable.id inList candidates }
+                            .map { it[SessionsTable.id] }
+                            .toSet()
+                    candidates.filterNot { it in kept }
                 }
-                val kept =
-                    SessionsTable
-                        .select(SessionsTable.id)
-                        .where { SessionsTable.id inList candidates }
-                        .map { it[SessionsTable.id] }
-                        .toSet()
-                candidates.filterNot { it in kept }
             }
         // One failing listener must not stop the others, the event trim or the retention loop.
         deletedSessions.forEach { sessionId ->
