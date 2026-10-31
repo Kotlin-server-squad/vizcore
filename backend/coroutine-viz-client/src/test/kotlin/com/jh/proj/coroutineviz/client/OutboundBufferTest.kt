@@ -21,6 +21,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
@@ -341,16 +343,25 @@ class OutboundBufferTest {
                 OutboundBuffer(capacity = 8, reportIntervalMillis = 30_000, clock = {
                     if (!drainedInTheGap) {
                         drainedInTheGap = true
-                        thread {
-                            runBlocking {
-                                var taken = 0
-                                launch {
-                                    buffer.drain {
-                                        if (++taken == 8) currentCoroutineContext().job.cancel()
+                        val taken = AtomicInteger()
+                        val failure = AtomicReference<Throwable>()
+                        val transport =
+                            thread {
+                                runCatching {
+                                    runBlocking {
+                                        launch {
+                                            buffer.drain {
+                                                if (taken.incrementAndGet() == 8) currentCoroutineContext().job.cancel()
+                                            }
+                                        }.join()
                                     }
-                                }.join()
+                                }.onFailure(failure::set)
                             }
-                        }.join(5_000)
+                        transport.join(10_000)
+                        // Only a drain that finished inside the window proves the race was exercised.
+                        check(!transport.isAlive) { "the transport did not finish draining inside the window" }
+                        failure.get()?.let { throw it }
+                        check(taken.get() == 8) { "drained ${taken.get()} of 8 events" }
                     }
                     0L
                 })
