@@ -177,7 +177,14 @@ class OutboundBuffer internal constructor(
         }
     }
 
-    private fun reportDrop(total: Long) = synchronized(reportLock) { reportDropLocked(total) }
+    private fun reportDrop(total: Long) =
+        synchronized(reportLock) {
+            reportDropLocked(total)
+            // The transport may have drained the buffer between the failed send and the overflow
+            // being marked; it saw no overflow then, so the recovery is checked here as well. Each
+            // side writes its own counter or flag before reading the other's, so one of them sees it.
+            reportRecoveryIfDrained()
+        }
 
     private fun reportDropLocked(total: Long) {
         val now = clock()

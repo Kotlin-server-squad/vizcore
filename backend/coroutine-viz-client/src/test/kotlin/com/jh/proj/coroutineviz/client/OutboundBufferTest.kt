@@ -14,10 +14,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.slf4j.LoggerFactory
+import kotlin.concurrent.thread
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -318,6 +322,46 @@ class OutboundBufferTest {
             val info = lines[1]
             assertTrue(info.startsWith("INFO"), info)
             assertTrue("3 dropped since the last report, 4 in total" in info, info)
+
+            feedScope.cancel()
+            session.close()
+        }
+
+    @Test
+    @Timeout(30)
+    fun `a buffer that drains while its first drop is being reported still reports the recovery`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val session = VizSession(sessionId = "s")
+            val feedScope = childScope(coroutineContext)
+            lateinit var buffer: OutboundBuffer
+            var drainedInTheGap = false
+            // The clock is read after the failed send and before the overflow is marked: a transport
+            // thread drains the whole buffer right there (#255).
+            buffer =
+                OutboundBuffer(capacity = 8, reportIntervalMillis = 30_000, clock = {
+                    if (!drainedInTheGap) {
+                        drainedInTheGap = true
+                        thread {
+                            runBlocking {
+                                var taken = 0
+                                launch {
+                                    buffer.drain {
+                                        if (++taken == 8) currentCoroutineContext().job.cancel()
+                                    }
+                                }.join()
+                            }
+                        }.join(5_000)
+                    }
+                    0L
+                })
+            buffer.feed(session, feedScope)
+
+            // Eight fill the buffer, the ninth is dropped, and the app goes quiet.
+            val lines = capturingLog { repeat(9) { session.send(event(it)) } }
+
+            assertTrue(drainedInTheGap)
+            assertEquals(1, lines.count { it.startsWith("WARN") }, "got: $lines")
+            assertEquals(1, lines.count { it.startsWith("INFO") }, "the drained buffer must be reported, got: $lines")
 
             feedScope.cancel()
             session.close()
