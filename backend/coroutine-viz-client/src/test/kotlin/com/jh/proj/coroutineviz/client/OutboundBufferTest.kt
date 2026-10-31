@@ -1,11 +1,15 @@
 package com.jh.proj.coroutineviz.client
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
@@ -13,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -192,6 +197,103 @@ class OutboundBufferTest {
             )
 
             buffer.close()
+            feedScope.cancel()
+            session.close()
+        }
+
+    /** Runs [block] with the buffer's log lines captured; returns them as "LEVEL message". */
+    private inline fun capturingLog(block: () -> Unit): List<String> {
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        val logger = LoggerFactory.getLogger(OutboundBuffer::class.java) as Logger
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+        }
+        return appender.list.map { "${it.level} ${it.formattedMessage}" }
+    }
+
+    @Test
+    fun `a full buffer logs one warning, not one per dropped event`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val session = VizSession(sessionId = "s")
+            val feedScope = childScope(coroutineContext)
+            val buffer = OutboundBuffer(capacity = 8, reportIntervalMillis = 30_000, clock = { 0L })
+            buffer.feed(session, feedScope)
+
+            // A backend outage: nothing drains, and the app keeps producing (#255).
+            val lines = capturingLog { repeat(5_000) { session.send(event(it)) } }
+
+            assertEquals(5_000L - 8, buffer.dropped, "the drop policy itself is unchanged")
+            assertEquals(1, lines.size, "one line for the whole burst, got ${lines.size}: ${lines.take(3)}")
+            assertTrue(lines.single().startsWith("WARN"), lines.single())
+
+            feedScope.cancel()
+            session.close()
+        }
+
+    @Test
+    fun `while drops continue, a summary is logged at most once per interval`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val session = VizSession(sessionId = "s")
+            val feedScope = childScope(coroutineContext)
+            var now = 0L
+            val buffer = OutboundBuffer(capacity = 8, reportIntervalMillis = 30_000, clock = { now })
+            buffer.feed(session, feedScope)
+
+            val lines =
+                capturingLog {
+                    repeat(20) { session.send(event(it)) } // fills the buffer, 12 dropped
+                    now = 29_999
+                    repeat(100) { session.send(event(100 + it)) } // still inside the interval
+                    now = 30_000
+                    session.send(event(1_000)) // the interval is over: one summary
+                    repeat(100) { session.send(event(2_000 + it)) } // a new interval starts
+                }
+
+            assertEquals(2, lines.size, "first drop plus one summary, got: $lines")
+            val summary = lines[1]
+            assertTrue(summary.startsWith("WARN"), summary)
+            // Every drop since the first report: 11 + 100 + the one that closed the interval.
+            assertTrue("dropped 112 events" in summary, summary)
+            assertTrue("113 in total" in summary, summary)
+
+            feedScope.cancel()
+            session.close()
+        }
+
+    @Test
+    fun `one info line once the buffer has drained to half, none while it hovers at full`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val session = VizSession(sessionId = "s")
+            val feedScope = childScope(coroutineContext)
+            val buffer = OutboundBuffer(capacity = 8, reportIntervalMillis = 30_000, clock = { 0L })
+            buffer.feed(session, feedScope)
+            repeat(12) { session.send(event(it)) } // full, 4 dropped
+
+            // A slow backend: one event leaves and its send stalls, then one more is accepted and
+            // the next ones are dropped again. The buffer never gets back to half: still one outage.
+            val whileSlow =
+                capturingLog {
+                    val slow = feedScope.launch { buffer.drain { awaitCancellation() } }
+                    repeat(3) { session.send(event(100 + it)) }
+                    slow.cancelAndJoin()
+                }
+            assertTrue(whileSlow.none { it.startsWith("INFO") }, "no recovery while the buffer is still full: $whileSlow")
+
+            // The backend is back: everything drains, and the next event is accepted.
+            val lines =
+                capturingLog {
+                    val fast = feedScope.launch { buffer.drain { } }
+                    session.send(event(200))
+                    fast.cancelAndJoin()
+                }
+
+            assertEquals(1, lines.count { it.startsWith("INFO") }, "exactly one recovery line, got: $lines")
+            val info = lines.single { it.startsWith("INFO") }
+            assertTrue("${buffer.dropped} in total" in info, info)
+
             feedScope.cancel()
             session.close()
         }
