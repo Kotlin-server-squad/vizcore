@@ -78,6 +78,14 @@ export const LIVE_REFRESH_MIN_INTERVAL_MS = 5000
 export const LIVE_EVENTS_MAX = 10_000
 
 /**
+ * Accepted events are added to the list at most once per this many ms (#268). Opening a session
+ * replays its stored history (up to [LIVE_EVENTS_MAX] events) one SSE frame per event, and every
+ * frame is its own browser task: an update per frame meant a list copy and a render per event,
+ * which froze the tab on a slow CPU. 50 ms is well under the SDK's 150 ms sampling interval.
+ */
+export const APPEND_FLUSH_MS = 50
+
+/**
  * Re-read the live view's server-side read models for one session.
  *
  * `exact: true` matters (#137): the snapshot key ['sessions', id] is a PREFIX
@@ -253,13 +261,24 @@ export function useEventStream(
       refreshTimerRef.current = setTimeout(flushRefresh, delay)
     }
 
-    // Append accepted events in ONE state update (#137): a batch frame of N
-    // events used to cost N array copies and N updates.
+    // Accepted events wait here for the next flush, so a burst of frames, such as the replay of
+    // a full session, costs one array copy and one update per APPEND_FLUSH_MS instead of one per
+    // frame (#137, #268). Dropped on teardown with the rest of this connection's state.
+    let pending: VizEvent[] = []
+    let appendTimer: ReturnType<typeof setTimeout> | null = null
+    const flushAppend = () => {
+      appendTimer = null
+      const batch = pending
+      pending = []
+      if (batch.length === 0) return
+      setEvents(prev => capLiveEvents(prev.concat(batch)))
+      setReceivedCount(n => n + batch.length)
+      scheduleRefresh()
+    }
     const append = (accepted: VizEvent[]) => {
       if (accepted.length === 0) return
-      setEvents(prev => capLiveEvents(prev.concat(accepted)))
-      setReceivedCount(n => n + accepted.length)
-      scheduleRefresh()
+      for (const event of accepted) pending.push(event)
+      if (appendTimer === null) appendTimer = setTimeout(flushAppend, APPEND_FLUSH_MS)
     }
 
     // Shared per-element ingest body (D-04). Both the single-event per-kind
@@ -509,6 +528,11 @@ export function useEventStream(
     }, HEARTBEAT_CHECK_MS)
 
     return () => {
+      if (appendTimer !== null) {
+        clearTimeout(appendTimer)
+        appendTimer = null
+      }
+      pending = []
       if (watchdogTimerRef.current !== null) {
         clearInterval(watchdogTimerRef.current)
         watchdogTimerRef.current = null

@@ -14,7 +14,7 @@ import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
-import { useEventStream } from './use-event-stream'
+import { useEventStream, APPEND_FLUSH_MS } from './use-event-stream'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
@@ -27,6 +27,12 @@ vi.mock('@/lib/utils', () => ({
 }))
 
 import { apiClient } from '@/lib/api-client'
+
+/** Lets the hook's append timer fire, so accepted events reach `events` (#268). */
+const flushAppends = () =>
+  act(() => {
+    vi.advanceTimersByTime(APPEND_FLUSH_MS)
+  })
 
 const mockedApiClient = vi.mocked(apiClient)
 
@@ -339,6 +345,7 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
       latest().simulateEvent('CoroutineCreated', eventPayload(1))
       latest().simulateEvent('CoroutineCreated', eventPayload(2))
     })
+    flushAppends()
     expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([1, 2])
 
     act(() => {
@@ -356,6 +363,7 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
       latest().simulateEvent('CoroutineCreated', eventPayload(2))
       latest().simulateEvent('CoroutineCreated', eventPayload(3))
     })
+    flushAppends()
     expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([1, 2, 3])
   })
 
@@ -372,6 +380,7 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
       latest().simulateEvent('CoroutineCreated', eventPayload(2))
       latest().simulateEvent('CoroutineCreated', eventPayload(1))
     })
+    flushAppends()
     expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([2, 1])
 
     // True duplicates are still dropped...
@@ -379,12 +388,14 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
       latest().simulateEvent('CoroutineCreated', eventPayload(2))
       latest().simulateEvent('CoroutineCreated', eventPayload(1))
     })
+    flushAppends()
     expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([2, 1])
 
     // ...and the stream continues normally afterwards.
     act(() => {
       latest().simulateEvent('CoroutineCreated', eventPayload(3))
     })
+    flushAppends()
     expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([2, 1, 3])
   })
 
@@ -412,6 +423,7 @@ describe('useEventStream - fatal-error retry with backoff and replay dedup', () 
       latest().simulateEvent('CoroutineCreated', eventPayload(2))
       latest().simulateEvent('CoroutineCreated', eventPayload(3))
     })
+    flushAppends()
     expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([3, 1, 2])
   })
 

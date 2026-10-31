@@ -8,7 +8,7 @@ import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
-import { useEventStream, LIVE_EVENTS_MAX, LIVE_REFRESH_MIN_INTERVAL_MS } from './use-event-stream'
+import { useEventStream, LIVE_EVENTS_MAX, LIVE_REFRESH_MIN_INTERVAL_MS, APPEND_FLUSH_MS } from './use-event-stream'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
@@ -21,6 +21,12 @@ vi.mock('@/lib/utils', () => ({
 }))
 
 import { apiClient } from '@/lib/api-client'
+
+/** Lets the hook's append timer fire, so accepted events reach `events` (#268). */
+const flushAppends = () =>
+  act(() => {
+    vi.advanceTimersByTime(APPEND_FLUSH_MS)
+  })
 
 const mockedApiClient = vi.mocked(apiClient)
 
@@ -248,6 +254,7 @@ describe('useEventStream - bounded, batched event buffer (#137)', () => {
     act(() => {
       mockEventSource.simulateEvent('batch', JSON.stringify(batch))
     })
+    flushAppends()
 
     expect(result.current.events).toHaveLength(50)
     expect(renders - before).toBe(1)
@@ -263,6 +270,7 @@ describe('useEventStream - bounded, batched event buffer (#137)', () => {
     act(() => {
       mockEventSource.simulateEvent('batch', JSON.stringify(batch))
     })
+    flushAppends()
 
     expect(result.current.events).toHaveLength(LIVE_EVENTS_MAX)
     const last = result.current.events[result.current.events.length - 1] as unknown as {
