@@ -54,6 +54,15 @@ jobs:
       - name: Build frontend image
         run: docker build -f frontend/Dockerfile --target production -t vizcore-frontend:smoke .
 
+      # tailwind.config.ts finds HeroUI's classes under node_modules/@heroui/theme, which exists only
+      # with frontend/.npmrc's hoisting. Without it the build still succeeds, but the image's CSS has
+      # none of HeroUI's styles: labels overlap values, buttons overflow (#266, #267).
+      - name: The UI image's CSS includes HeroUI's styles
+        run: |
+          docker run --rm --entrypoint sh vizcore-frontend:smoke -c \
+            'grep -q "filled-within" /usr/share/nginx/html/assets/*.css' \
+            || { echo "the UI image's CSS has no HeroUI styles"; exit 1; }
+
       # The UI image proxies /api to the backend. A gzip-compressed response (anything over 1 KB)
       # must end, and the SSE stream must still reach the browser through the proxy.
       - name: API through the frontend proxy
