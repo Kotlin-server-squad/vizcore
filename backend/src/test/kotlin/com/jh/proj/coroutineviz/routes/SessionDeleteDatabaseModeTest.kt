@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.dbRetentionPolicy
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.module
@@ -41,8 +42,11 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import javax.sql.DataSource
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -221,5 +225,96 @@ class SessionDeleteDatabaseModeTest {
                 assertEquals(CloseReason.Codes.VIOLATED_POLICY, reason?.knownReason)
                 assertEquals("Session not found", reason?.message)
             }
+        }
+
+    @Test
+    fun `a socket whose session is deleted while it waits to register closes as session not found`() =
+        testApplication {
+            application { module() }
+            val client = createClient { install(WebSockets) }
+            val sessionId = createSession(client)
+            val store = SessionManager.backingStore() as ExposedSessionStore
+            val decisionStarted = CountDownLatch(1)
+            // A retention decision holds registration while it deletes the session (#261).
+            val decision =
+                thread {
+                    IngestConnections.whileNoSocketRegisters {
+                        decisionStarted.countDown()
+                        val deadline = System.nanoTime() + 5_000_000_000L
+                        while (!IngestConnections.registrationsWaiting && System.nanoTime() < deadline) Thread.sleep(1)
+                        store.deleteSession(sessionId)
+                    }
+                }
+            decisionStarted.await()
+            try {
+                client.webSocket("/api/sessions/$sessionId/ingest") {
+                    // Queued while the handler waits to register; it must not be stored into a deleted session.
+                    send(Frame.Text(appJson.encodeToString(PolymorphicSerializer(VizEvent::class), createdEvent(sessionId))))
+                    val reason = withTimeout(10.seconds) { closeReason.await() }
+                    assertEquals(CloseReason.Codes.VIOLATED_POLICY, reason?.knownReason)
+                    assertEquals("Session not found", reason?.message)
+                }
+            } finally {
+                decision.join(10_000)
+            }
+            assertFalse(IngestConnections.isConnected(sessionId))
+        }
+
+    private fun createdEvent(sessionId: String): VizEvent =
+        CoroutineCreated(
+            sessionId = sessionId,
+            seq = 1L,
+            tsNanos = 0L,
+            coroutineId = "c-1",
+            jobId = "j-1",
+            parentCoroutineId = null,
+            scopeId = "scope-1",
+            label = "queued",
+        )
+
+    @Test
+    fun `retention keeps a database session while an app streams into it, and deletes it once the app is gone`() =
+        testApplication {
+            // Every session is past a zero-day age limit, so only the open socket can keep it (#261).
+            environment { config = MapApplicationConfig("storage.retention.maxAgeDays" to "0") }
+            lateinit var retention: DbRetentionPolicy
+            application {
+                module()
+                // The policy exactly as the application builds it, so the test covers the wiring.
+                retention = dbRetentionPolicy(db)
+            }
+            startApplication()
+            val client = createClient { install(WebSockets) }
+            val sessionId = createSession(client)
+            val event: VizEvent =
+                CoroutineCreated(
+                    sessionId = sessionId,
+                    seq = 1L,
+                    tsNanos = 0L,
+                    coroutineId = "c-1",
+                    jobId = "j-1",
+                    parentCoroutineId = null,
+                    scopeId = "scope-1",
+                    label = "still-streaming",
+                )
+
+            client.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)))
+                withTimeout(5.seconds) {
+                    while (Json.parseToJsonElement(client.get("/api/sessions/$sessionId/events").bodyAsText()).jsonArray.isEmpty()) {
+                        delay(20)
+                    }
+                }
+
+                assertEquals(0, retention.cleanup(), "a session an app is streaming into must not be deleted")
+                assertEquals(HttpStatusCode.OK, client.get("/api/sessions/$sessionId").status)
+            }
+
+            // The socket is closed now; the next pass applies the age limit again.
+            withTimeout(5.seconds) {
+                while (IngestConnections.isConnected(sessionId)) delay(20)
+            }
+            assertEquals(1, retention.cleanup())
+            assertEquals(HttpStatusCode.NotFound, client.get("/api/sessions/$sessionId").status)
         }
 }

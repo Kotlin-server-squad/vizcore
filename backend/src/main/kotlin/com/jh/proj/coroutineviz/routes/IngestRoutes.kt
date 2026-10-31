@@ -3,6 +3,8 @@ package com.jh.proj.coroutineviz.routes
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.withSessionId
+import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.server.routing.Route
 import io.ktor.server.websocket.webSocket
@@ -85,8 +87,15 @@ fun Route.registerIngestRoutes() {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
             }
         // Registered right before the try and released first in the finally, so nothing between
-        // the two can leave the session marked connected (which would hide Checks failures).
-        IngestConnections.opened(sessionId)
+        // the two can leave the session marked connected (which would hide Checks failures). A
+        // retention decision may have deleted the session while this socket waited to register;
+        // then no frame may be stored into it, and the client must learn to recreate it (#261).
+        if (!IngestConnections.openedIfPresent(sessionId) { sessionStillExists(sessionId) }) {
+            sessionRemoved.cancel()
+            session.ingestSocketClosed()
+            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
+            return@webSocket
+        }
         try {
             for (frame in incoming) {
                 // Frames already queued when the session was deleted must not land in it;
@@ -103,6 +112,14 @@ fun Route.registerIngestRoutes() {
         }
     }
 }
+
+/**
+ * Whether [sessionId] still exists, without rebuilding the session: a row lookup in database mode,
+ * the in-memory map otherwise.
+ */
+private fun sessionStillExists(sessionId: String): Boolean =
+    (SessionManager.backingStore() as? ExposedSessionStore)?.sessionExists(sessionId)
+        ?: (SessionManager.getSession(sessionId) != null)
 
 /**
  * Deserialize one text frame and publish it into the SERVER-resolved [session].

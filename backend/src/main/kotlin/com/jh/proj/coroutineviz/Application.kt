@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.observability.configureObservability
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.routes.IngestConnections
 import com.jh.proj.coroutineviz.session.RetentionPolicy
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.http.HttpMethod
@@ -315,33 +316,32 @@ private fun Application.configureStorage(maxEvents: Int) {
 }
 
 /**
- * Construct and start the [DbRetentionPolicy] using the ADR-015 retention config
- * keys (`storage.retention.*`, with ADR-015 defaults), launching in the
- * application coroutine scope and stopping it on `ApplicationStopping`.
+ * The [DbRetentionPolicy] built from the ADR-015 retention config keys (`storage.retention.*`, with
+ * ADR-015 defaults). It closes the streams of the sessions it deletes, and never deletes a session an
+ * app is streaming into (#261). Separate from [startDbRetention] so tests run the policy exactly as
+ * the application wires it.
+ */
+internal fun Application.dbRetentionPolicy(db: org.jetbrains.exposed.v1.jdbc.Database): DbRetentionPolicy {
+    val cfg = environment.config
+    return DbRetentionPolicy(
+        db = db,
+        maxAgeDays = cfg.propertyOrNull("storage.retention.maxAgeDays")?.getString()?.toIntOrNull() ?: 30,
+        maxEventsPerSession =
+            cfg.propertyOrNull("storage.retention.maxEventsPerSession")?.getString()?.toIntOrNull() ?: 100_000,
+        cleanupIntervalMinutes =
+            cfg.propertyOrNull("storage.retention.cleanupIntervalMinutes")?.getString()?.toLongOrNull() ?: 60,
+        onSessionDeleted = SessionManager::notifySessionDeleted,
+        streaming = IngestConnections,
+    )
+}
+
+/**
+ * Start the [dbRetentionPolicy] in the application coroutine scope and stop it on
+ * `ApplicationStopping`.
  */
 private fun Application.startDbRetention(db: org.jetbrains.exposed.v1.jdbc.Database) {
-    val cfg = environment.config
-    val maxAgeDays =
-        cfg.propertyOrNull("storage.retention.maxAgeDays")?.getString()?.toIntOrNull() ?: 30
-    val maxEventsPerSession =
-        cfg.propertyOrNull("storage.retention.maxEventsPerSession")?.getString()?.toIntOrNull() ?: 100_000
-    val cleanupIntervalMinutes =
-        cfg.propertyOrNull("storage.retention.cleanupIntervalMinutes")?.getString()?.toLongOrNull() ?: 60
-
-    val policy =
-        DbRetentionPolicy(
-            db = db,
-            maxAgeDays = maxAgeDays,
-            maxEventsPerSession = maxEventsPerSession,
-            cleanupIntervalMinutes = cleanupIntervalMinutes,
-            onSessionDeleted = SessionManager::notifySessionDeleted,
-        )
+    val policy = dbRetentionPolicy(db)
     policy.start(this)
     monitor.subscribe(ApplicationStopping) { policy.stop() }
-    moduleLogger.info(
-        "DB retention wired (maxAgeDays={}, maxEventsPerSession={}, intervalMin={})",
-        maxAgeDays,
-        maxEventsPerSession,
-        cleanupIntervalMinutes,
-    )
+    moduleLogger.info("DB retention wired ({})", policy)
 }

@@ -194,7 +194,7 @@ class TimelineRouteAssembledTest {
             // No app connected: nothing vouches that the coroutine is still suspended.
             assertNull(openPhase())
 
-            IngestConnections.opened(session.sessionId)
+            IngestConnections.openedIfPresent(session.sessionId) { true }
             try {
                 assertEquals("SUSPENDED", openPhase())
             } finally {

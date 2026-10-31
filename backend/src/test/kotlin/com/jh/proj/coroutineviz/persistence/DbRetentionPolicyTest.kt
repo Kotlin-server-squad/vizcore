@@ -217,6 +217,80 @@ class DbRetentionPolicyTest {
         assertFalse(sessionExists("was-shared-old"), "expired-share old session should be deleted")
     }
 
+    @Test
+    fun `an old session an app is still streaming into is neither deleted nor reported`() {
+        insertSession("streaming-old", createdAtMs = nowMs - 40 * dayMs)
+        insertSession("idle-old", createdAtMs = nowMs - 40 * dayMs)
+
+        val reported = mutableListOf<String>()
+        val removed =
+            DbRetentionPolicy(
+                db = db,
+                maxAgeDays = 30,
+                clock = { nowMs },
+                onSessionDeleted = { reported += it },
+                streaming = FakeStreaming(setOf("streaming-old")),
+            ).cleanup()
+
+        assertTrue(sessionExists("streaming-old"), "a session with an open ingest socket must survive (#261)")
+        assertFalse(sessionExists("idle-old"), "an old session nobody streams into is still deleted")
+        assertEquals(1, removed)
+        assertEquals(listOf("idle-old"), reported)
+    }
+
+    @Test
+    fun `once the app stops streaming the next cleanup deletes the old session`() {
+        insertSession("was-streaming-old", createdAtMs = nowMs - 40 * dayMs)
+        val streaming = FakeStreaming(setOf("was-streaming-old"))
+        val retention = DbRetentionPolicy(db = db, maxAgeDays = 30, clock = { nowMs }, streaming = streaming)
+
+        retention.cleanup()
+        assertTrue(sessionExists("was-streaming-old"))
+
+        streaming.ids = emptySet()
+        retention.cleanup()
+        assertFalse(sessionExists("was-streaming-old"), "the age limit applies again once the socket is closed")
+    }
+
+    @Test
+    fun `the streaming check and the delete are one decision no socket can register into`() {
+        insertSession("idle-old", createdAtMs = nowMs - 40 * dayMs)
+        val streaming = FakeStreaming(emptySet()) { assertFalse(sessionExists("idle-old"), "deleted inside the decision") }
+
+        DbRetentionPolicy(db = db, maxAgeDays = 30, clock = { nowMs }, streaming = streaming).cleanup()
+
+        assertEquals(1, streaming.decisions)
+        assertEquals(emptyList(), streaming.checkedOutsideDecision, "a check outside the decision leaves a gap a socket can open in")
+    }
+
+    /**
+     * Sessions in [ids] are being streamed into. Records whether each check ran inside
+     * [whileNoSocketRegisters], and runs [atDecisionEnd] as the last step of each decision.
+     */
+    private class FakeStreaming(
+        var ids: Set<String>,
+        private val atDecisionEnd: () -> Unit = {},
+    ) : StreamingSessions {
+        private var inDecision = false
+        var decisions = 0
+        val checkedOutsideDecision = mutableListOf<String>()
+
+        override fun isStreaming(sessionId: String): Boolean {
+            if (!inDecision) checkedOutsideDecision += sessionId
+            return sessionId in ids
+        }
+
+        override fun <T> whileNoSocketRegisters(block: () -> T): T {
+            inDecision = true
+            decisions++
+            try {
+                return block().also { atDecisionEnd() }
+            } finally {
+                inDecision = false
+            }
+        }
+    }
+
     private fun h2DataSource(url: String): HikariDataSource {
         val config =
             HikariConfig().apply {
