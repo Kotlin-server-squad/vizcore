@@ -46,22 +46,39 @@ import java.util.concurrent.atomic.AtomicLong
  * `onBufferOverflow` policy, so [Channel.trySend] returns a FAILURE when the buffer
  * is full. We deliberately trade the EventBus's silent `DROP_OLDEST` for a SURFACED,
  * counted drop-newest-when-full: the overflow path increments [dropped] (an
- * [AtomicLong]) and logs at warn, so any backpressure loss is OBSERVABLE, never
- * silent. [capacity] defaults to 10,000 to mirror the EventBus buffer so the bridge
+ * [AtomicLong]) and reports it at warn, rate-limited (see [offer]), so any backpressure
+ * loss is OBSERVABLE, never silent, and never floods the host app's log. [capacity] defaults to 10,000 to mirror the EventBus buffer so the bridge
  * is not the narrower bottleneck.
  *
  * Ktor-free: this class depends only on kotlinx-coroutines ([Channel]/[Flow]) and
  * core's [VizSession]; the wire/socket concerns live in [IngestTransport].
  */
-class OutboundBuffer(
-    private val capacity: Int = DEFAULT_CAPACITY,
+class OutboundBuffer internal constructor(
+    private val capacity: Int,
+    private val reportIntervalMillis: Long,
+    private val clock: () -> Long,
 ) {
+    // @JvmOverloads keeps both JVM constructors the 0.3.0 primary constructor had: () and (int).
+    @JvmOverloads
+    constructor(capacity: Int = DEFAULT_CAPACITY) : this(capacity, DEFAULT_REPORT_INTERVAL_MS, ::monotonicMillis)
+
     private val logger = LoggerFactory.getLogger(OutboundBuffer::class.java)
 
     private val channel = Channel<VizEvent>(capacity = capacity)
     private val droppedCount = AtomicLong(0)
     private val offeredCount = AtomicLong(0)
+    private val dequeuedCount = AtomicLong(0)
     private val sentCount = AtomicLong(0)
+
+    // Drop reporting (#255). [offer] runs on the single feed collector and [drain] on the transport,
+    // so the state is guarded by [reportLock]; [overflowing] is volatile so a drain outside an
+    // overflow, the normal case, takes no lock.
+    private val reportLock = Any()
+
+    @Volatile
+    private var overflowing = false
+    private var dropsSinceReport = 0L
+    private var lastReportAt = 0L
 
     /** Number of events dropped on overflow — surfaced so loss is never silent. */
     val dropped: Long get() = droppedCount.get()
@@ -116,29 +133,84 @@ class OutboundBuffer(
      */
     suspend fun drain(send: suspend (VizEvent) -> Unit) {
         for (event in channel) {
+            dequeuedCount.incrementAndGet()
+            // Drops that stopped with the app going quiet are still reported once the buffer drains.
+            if (overflowing) reportRecoveryIfDrained()
             send(event)
             sentCount.incrementAndGet()
         }
     }
 
-    /** Offer an event to the buffer; count + log a drop on overflow, never silent. */
+    /**
+     * Offer an event to the buffer; a drop on overflow is counted and reported, never silent.
+     *
+     * The report is rate-limited (#255): during a backend outage every new event is dropped, and a
+     * line per drop buried the host app's own log. One WARN when the buffer fills, then at most one
+     * summary per [reportIntervalMillis] while drops continue, and one INFO once the buffer has
+     * drained to half. Half, not merely "an event got in": a slow backend keeps the buffer at the
+     * edge, and each single free slot would otherwise start a new outage with a new warning.
+     */
     private fun offer(event: VizEvent) {
         val result = channel.trySend(event)
         when {
-            result.isSuccess -> offeredCount.incrementAndGet()
+            result.isSuccess -> {
+                offeredCount.incrementAndGet()
+                if (overflowing) reportRecoveryIfDrained()
+            }
             // Channel closed → the client is stopping; not a backpressure loss.
             result.isClosed -> Unit
             // Buffer full → surfaced, counted drop-newest-when-full.
-            else -> {
-                val total = droppedCount.incrementAndGet()
-                logger.warn(
-                    "OutboundBuffer full (capacity={}); dropped event {} (seq={}), total dropped={}",
-                    capacity,
-                    event.kind,
-                    event.seq,
-                    total,
-                )
-            }
+            else -> reportDrop(droppedCount.incrementAndGet())
+        }
+    }
+
+    private fun reportRecoveryIfDrained() {
+        synchronized(reportLock) {
+            if (!overflowing || offeredCount.get() - dequeuedCount.get() > capacity / 2) return
+            overflowing = false
+            logger.info(
+                "OutboundBuffer accepts events again; {} dropped since the last report, {} in total",
+                dropsSinceReport,
+                dropped,
+            )
+            dropsSinceReport = 0
+        }
+    }
+
+    private fun reportDrop(total: Long) =
+        synchronized(reportLock) {
+            reportDropLocked(total)
+            // The transport may have drained the buffer between the failed send and the overflow
+            // being marked; it saw no overflow then, so the recovery is checked here as well. Each
+            // side writes its own counter or flag before reading the other's, so one of them sees it.
+            reportRecoveryIfDrained()
+        }
+
+    private fun reportDropLocked(total: Long) {
+        val now = clock()
+        if (!overflowing) {
+            overflowing = true
+            lastReportAt = now
+            dropsSinceReport = 0
+            logger.warn(
+                "OutboundBuffer full (capacity={}); new events are dropped until the backend takes them " +
+                    "again, reported at most every {} s; {} in total",
+                capacity,
+                reportIntervalMillis / 1_000,
+                total,
+            )
+            return
+        }
+        dropsSinceReport++
+        if (now - lastReportAt >= reportIntervalMillis) {
+            logger.warn(
+                "OutboundBuffer still full; dropped {} events in the last {} s, {} in total",
+                dropsSinceReport,
+                (now - lastReportAt) / 1_000,
+                total,
+            )
+            lastReportAt = now
+            dropsSinceReport = 0
         }
     }
 
@@ -157,5 +229,10 @@ class OutboundBuffer(
     private companion object {
         /** Mirrors the EventBus 10k buffer so the bridge is not the narrower bottleneck. */
         const val DEFAULT_CAPACITY = 10_000
+
+        /** At most one drop report per 30 s, so an outage never floods the host app's log (#255). */
+        const val DEFAULT_REPORT_INTERVAL_MS = 30_000L
+
+        fun monotonicMillis(): Long = System.nanoTime() / 1_000_000
     }
 }

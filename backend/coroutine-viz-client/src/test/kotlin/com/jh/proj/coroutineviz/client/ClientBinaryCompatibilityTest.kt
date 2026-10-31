@@ -45,6 +45,13 @@ class ClientBinaryCompatibilityTest {
     }
 
     @Test
+    fun `OutboundBuffer keeps its public constructors`() {
+        // The 0.3.0 class had a primary constructor with a default, so Kotlin emitted both (#255).
+        OutboundBuffer::class.java.getConstructor()
+        OutboundBuffer::class.java.getConstructor(int)
+    }
+
+    @Test
     fun `the not-yet-connected state is readable from Java`() {
         assertEquals(string, VizcoreClient::class.java.getMethod("getSessionIdOrNull").returnType)
     }
