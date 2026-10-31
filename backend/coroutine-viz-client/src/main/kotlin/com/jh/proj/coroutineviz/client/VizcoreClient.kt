@@ -260,6 +260,10 @@ class VizcoreClient internal constructor(
          * local [VizSession] with the SERVER id, drives a real [DebugProbesSource],
          * and begins forwarding. This is the ONLY entry point that installs/connects.
          *
+         * [token] is sent as `Authorization: Bearer <token>`. It is one of the backend's API
+         * keys or a JWT, whichever way the backend is secured; with the backend's auth off it
+         * is not checked.
+         *
          * An OPTIONAL [correlation] token (defaulted to `null`, the established
          * Phase 07/08 additive-param convention) is forwarded into the session-create
          * call so the backend records it against the session it actually creates

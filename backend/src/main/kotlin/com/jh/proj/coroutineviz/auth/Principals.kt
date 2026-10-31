@@ -24,7 +24,8 @@ enum class Role {
 }
 
 /**
- * Principal minted when a request authenticates with a valid `X-API-Key` (AUTH-02).
+ * Principal minted when a request authenticates with a valid API key, sent as `X-API-Key` or as
+ * `Authorization: Bearer` (AUTH-02).
  * [name] identifies the key entry (used as the tenant id when api-key auth is on).
  */
 data class ApiKeyPrincipal(

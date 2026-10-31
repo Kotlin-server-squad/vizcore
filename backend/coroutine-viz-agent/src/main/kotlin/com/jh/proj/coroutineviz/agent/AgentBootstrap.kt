@@ -21,7 +21,7 @@ import com.jh.proj.coroutineviz.client.VizcoreClient
  * Recognised args (all optional, defaulted):
  *  - `app`     — application name shown in vizcore (default `"app"`)
  *  - `backend` — backend base URL (default `"http://localhost:8080"`)
- *  - `token`   — dev JWT for session create (default `""`)
+ *  - `token`   — the backend credential, an API key or a JWT (default `""`, enough when auth is off)
  *  - `corr`    — optional correlation token so a watching IDE can resolve this session
  *  - `poll`    — sampling interval in milliseconds (default 150); shorter catches shorter coroutines
  *

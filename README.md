@@ -98,6 +98,11 @@ fun main() {
 `start()` returns an already-running client, so there is no second `start` call to make.
 `stop()` is safe to call from a shutdown hook.
 
+**Which token.** The SDK sends `token` as `Authorization: Bearer <token>` on every request. Pass
+one of the backend's API keys (`API_KEY` or `auth.keys`) or a JWT from `POST /api/auth/token`,
+whichever way the backend is secured. With auth off (the default) the token is not checked. The
+Java agent takes the same value as `token=…`.
+
 **What gets captured.** The SDK samples the JVM's coroutines about every 150 ms, so treat
 the view as a sampled picture, not a complete trace:
 

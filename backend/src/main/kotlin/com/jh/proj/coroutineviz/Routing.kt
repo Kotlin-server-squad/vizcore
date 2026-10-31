@@ -65,7 +65,7 @@ fun Application.configureRouting() {
         // is on (ADR-019 requires the shares table).
         shareService?.let { registerSharedRoute(it, rateLimitShared) }
 
-        // Protected routes — wrapped so EITHER X-API-Key OR JWT satisfies (D-08); pass-through
+        // Protected routes — wrapped so EITHER an API key (X-API-Key or Bearer) OR a JWT satisfies (D-08); pass-through
         // when auth is fully unconfigured (D-04a). /openapi.json is served by the OpenAPI plugin
         // (configureHTTP), outside this wrapper, so it stays public. Nested inside the tiered
         // "api" rate-limit scope (separate read / write / stream buckets per client, see
