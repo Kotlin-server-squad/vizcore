@@ -89,11 +89,16 @@ cd examples/spring-vizcore-demo && ./gradlew classes    # (or bootJar for the fa
 
 ## 4. Troubleshooting
 
+- **`[coroutine-viz-agent] could not create a session at ... yet ...`** — the backend in the
+  `backend=` arg did not create a session when the app started: it is down, the port is wrong
+  (8090, not 8080?), or it refused the `token=`. The app runs normally and the agent keeps trying;
+  the session appears once the backend creates it. Since #254 an unreachable backend no longer
+  disables the agent.
 - **`[coroutine-viz-agent] DISABLED — bootstrap failed: ...`** — the agent bootstrap threw and
   was absorbed by the fail-soft shim (the host runs uninstrumented; it never aborts). As of
-  15-13 this is NO LONGER the expected exploded-classpath outcome. **Check backend reachability
-  first** (is the backend up on the port in the `backend=` arg? is the port right — 8090, not
-  8080?). The message text after `failed:` names the underlying cause.
+  15-13 this is NO LONGER the expected exploded-classpath outcome, and since #254 an unreachable
+  backend no longer causes it. The message text after `failed:` names the underlying cause, for
+  example a kotlin-stdlib or kotlinx-coroutines older than the SDK needs.
 - **No session appears** — confirm `--vizcore.embedded-client=false` is set (otherwise the demo
   self-instruments under a DIFFERENT session name) and that the `backend=` URL matches the
   running backend.
