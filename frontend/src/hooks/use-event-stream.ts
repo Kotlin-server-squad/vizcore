@@ -209,7 +209,23 @@ export function useEventStream(
   // The heartbeat watchdog interval, cleared on teardown.
   const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Accepted events waiting for the next flush, and how many were received with them (#268).
+  // Refs, not effect locals, so clearEvents can discard them; at most LIVE_EVENTS_MAX are held.
+  const pendingRef = useRef<VizEvent[]>([])
+  const pendingReceivedRef = useRef(0)
+  const appendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const clearEvents = useCallback(() => {
+    // Events still waiting for the flush would otherwise come back after the clear. They were
+    // received, so they still count.
+    if (appendTimerRef.current !== null) {
+      clearTimeout(appendTimerRef.current)
+      appendTimerRef.current = null
+    }
+    const received = pendingReceivedRef.current
+    pendingRef.current = []
+    pendingReceivedRef.current = 0
+    if (received > 0) setReceivedCount(n => n + received)
     setEvents([])
   }, [])
 
@@ -261,24 +277,36 @@ export function useEventStream(
       refreshTimerRef.current = setTimeout(flushRefresh, delay)
     }
 
-    // Accepted events wait here for the next flush, so a burst of frames, such as the replay of
-    // a full session, costs one array copy and one update per APPEND_FLUSH_MS instead of one per
-    // frame (#137, #268). Dropped on teardown with the rest of this connection's state.
-    let pending: VizEvent[] = []
-    let appendTimer: ReturnType<typeof setTimeout> | null = null
+    // Accepted events wait in pendingRef for the next flush, so a burst of frames, such as the
+    // replay of a full session, costs one array copy and one update per APPEND_FLUSH_MS instead
+    // of one per frame (#137, #268). A full buffer is applied at once: a background tab's timers
+    // are throttled, and the buffer must not grow past the cap meanwhile.
     const flushAppend = () => {
-      appendTimer = null
-      const batch = pending
-      pending = []
-      if (batch.length === 0) return
+      if (appendTimerRef.current !== null) {
+        clearTimeout(appendTimerRef.current)
+        appendTimerRef.current = null
+      }
+      const batch = pendingRef.current
+      const received = pendingReceivedRef.current
+      pendingRef.current = []
+      pendingReceivedRef.current = 0
+      if (received === 0) return
       setEvents(prev => capLiveEvents(prev.concat(batch)))
-      setReceivedCount(n => n + batch.length)
+      setReceivedCount(n => n + received)
       scheduleRefresh()
     }
     const append = (accepted: VizEvent[]) => {
       if (accepted.length === 0) return
+      const pending = pendingRef.current
       for (const event of accepted) pending.push(event)
-      if (appendTimer === null) appendTimer = setTimeout(flushAppend, APPEND_FLUSH_MS)
+      // A batch frame can bring more than the cap at once; only the newest are ever shown.
+      if (pending.length > LIVE_EVENTS_MAX) pendingRef.current = pending.slice(pending.length - LIVE_EVENTS_MAX)
+      pendingReceivedRef.current += accepted.length
+      if (pendingRef.current.length >= LIVE_EVENTS_MAX) {
+        flushAppend()
+      } else if (appendTimerRef.current === null) {
+        appendTimerRef.current = setTimeout(flushAppend, APPEND_FLUSH_MS)
+      }
     }
 
     // Shared per-element ingest body (D-04). Both the single-event per-kind
@@ -528,11 +556,12 @@ export function useEventStream(
     }, HEARTBEAT_CHECK_MS)
 
     return () => {
-      if (appendTimer !== null) {
-        clearTimeout(appendTimer)
-        appendTimer = null
+      if (appendTimerRef.current !== null) {
+        clearTimeout(appendTimerRef.current)
+        appendTimerRef.current = null
       }
-      pending = []
+      pendingRef.current = []
+      pendingReceivedRef.current = 0
       if (watchdogTimerRef.current !== null) {
         clearInterval(watchdogTimerRef.current)
         watchdogTimerRef.current = null

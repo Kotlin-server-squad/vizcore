@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
-import { LIVE_EVENTS_MAX, useEventStream } from './use-event-stream'
+import { APPEND_FLUSH_MS, LIVE_EVENTS_MAX, useEventStream } from './use-event-stream'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
@@ -76,7 +76,7 @@ describe('useEventStream - replay of a full session (#268)', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders a bounded number of times for a 10,000-event replay, not once per event', () => {
+  it('renders about once per flush window during a replay, not once per frame', () => {
     let renders = 0
     const { result } = renderHook(
       () => {
@@ -88,17 +88,72 @@ describe('useEventStream - replay of a full session (#268)', () => {
     act(() => source.onopen?.())
     const rendersBeforeReplay = renders
 
-    // One act per frame: each SSE frame is a separate browser task.
+    // One act per frame, as each SSE frame is its own browser task, with time moving between
+    // frames: an update per frame (even a deferred one) would render ~10,000 times here.
     for (let seq = 1; seq <= LIVE_EVENTS_MAX; seq++) {
-      act(() => source.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(seq))))
+      act(() => {
+        source.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(seq)))
+        vi.advanceTimersByTime(1)
+      })
     }
     act(() => {
-      vi.advanceTimersByTime(1_000)
+      vi.advanceTimersByTime(APPEND_FLUSH_MS)
     })
 
     expect(result.current.events).toHaveLength(LIVE_EVENTS_MAX)
     expect(result.current.isConnected).toBe(true)
-    expect(renders - rendersBeforeReplay).toBeLessThan(50)
+    // 10,000 ms of frames in 50 ms windows: ~200 flushes.
+    expect(renders - rendersBeforeReplay).toBeLessThanOrEqual(LIVE_EVENTS_MAX / APPEND_FLUSH_MS + 10)
+  })
+
+  it('applies an event when its flush window ends, not before', () => {
+    const { result } = renderHook(() => useEventStream('session-1'), { wrapper: createWrapper() })
+    act(() => source.onopen?.())
+
+    act(() => source.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(1))))
+    act(() => {
+      vi.advanceTimersByTime(APPEND_FLUSH_MS - 1)
+    })
+    expect(result.current.events).toHaveLength(0)
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(result.current.events.map((e) => (e as { seq?: number }).seq)).toEqual([1])
+  })
+
+  it('does not bring back events received before clearEvents', () => {
+    const { result } = renderHook(() => useEventStream('session-1'), { wrapper: createWrapper() })
+    act(() => source.onopen?.())
+
+    act(() => source.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(1))))
+    act(() => result.current.clearEvents())
+    act(() => {
+      vi.advanceTimersByTime(APPEND_FLUSH_MS)
+    })
+
+    expect(result.current.events).toHaveLength(0)
+    // It was received, so it still counts.
+    expect(result.current.receivedCount).toBe(1)
+  })
+
+  it('applies a full buffer at once instead of letting it grow while timers are throttled', () => {
+    const { result } = renderHook(() => useEventStream('session-1'), { wrapper: createWrapper() })
+    act(() => source.onopen?.())
+    const total = LIVE_EVENTS_MAX + 500
+
+    // A background tab: frames keep arriving, the flush timer does not fire.
+    for (let seq = 1; seq <= total; seq++) {
+      act(() => source.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(seq))))
+    }
+    expect(result.current.events).toHaveLength(LIVE_EVENTS_MAX)
+
+    act(() => {
+      vi.advanceTimersByTime(APPEND_FLUSH_MS)
+    })
+    expect(result.current.events).toHaveLength(LIVE_EVENTS_MAX)
+    expect((result.current.events.at(-1) as { seq?: number }).seq).toBe(total)
+    expect(result.current.receivedCount).toBe(total)
   })
 
   it('still shows a single live event shortly after it arrives', () => {
