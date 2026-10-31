@@ -45,9 +45,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    implementation("io.ktor:ktor-client-core:3.3.2")
-    implementation("io.ktor:ktor-client-cio:3.3.2")
-    implementation("io.ktor:ktor-client-websockets:3.3.2")
+    implementation("io.ktor:ktor-client-core:3.6.0")
+    implementation("io.ktor:ktor-client-cio:3.6.0")
+    implementation("io.ktor:ktor-client-websockets:3.6.0")
     implementation("org.slf4j:slf4j-api:2.0.9")
     // kotlin-reflect (spike finding, 13-07 Task 1): a Spring Boot executable jar loads the
     // -javaagent jar on the SYSTEM (parent-first) classloader, so the agent's bundled
