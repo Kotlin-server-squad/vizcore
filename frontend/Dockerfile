@@ -14,7 +14,9 @@ RUN npm install -g pnpm@9
 
 FROM base AS deps
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+# .npmrc too: its shamefully-hoist puts @heroui/theme at node_modules/@heroui/theme, the path
+# tailwind.config.ts scans for HeroUI's classes. Without it the image's CSS has none of them (#266).
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
 RUN pnpm install --frozen-lockfile
 
 FROM base AS build
