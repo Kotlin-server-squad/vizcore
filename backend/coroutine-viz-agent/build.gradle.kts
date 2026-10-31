@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.3.21"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
     // Shadow fat-JAR plugin (IDE-01). Pinned to exactly 9.4.3 — the johnrengelman/shadow
     // lineage's maintained successor (GradleUp org). Legitimacy verified on the Gradle
     // Plugin Portal via the Phase 11 Plan 02 Task 0 blocking-human supply-chain gate.
@@ -42,9 +42,9 @@ dependencies {
     // fat-jar must BUNDLE the full client transitive runtime, declare the verified
     // transitive set explicitly (copied from examples/spring-vizcore-demo, the proven
     // runtime-complete set). kotlinx-coroutines-debug is what DebugProbes installs.
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("io.ktor:ktor-client-core:3.3.2")
     implementation("io.ktor:ktor-client-cio:3.3.2")
     implementation("io.ktor:ktor-client-websockets:3.3.2")
@@ -58,12 +58,12 @@ dependencies {
     // Kotlin runtime a self-consistent stdlib+reflect pair. Pinned to 2.4.0 to match the
     // serialization-plugin-forced kotlin-stdlib (DebugProbes already requires the agent to
     // supply the coroutines runtime; this completes the bundled Kotlin runtime, un-relocated).
-    implementation("org.jetbrains.kotlin:kotlin-reflect:2.4.0")
+    implementation("org.jetbrains.kotlin:kotlin-reflect:2.4.21")
 
     // Test
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.2.20")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.21")
 }
 
 tasks.named<Test>("test") {
