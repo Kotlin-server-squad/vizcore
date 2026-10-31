@@ -21,7 +21,7 @@ import com.jh.proj.coroutineviz.client.VizcoreClient
  * Recognised args (all optional, defaulted):
  *  - `app`     — application name shown in vizcore (default `"app"`)
  *  - `backend` — backend base URL (default `"http://localhost:8080"`)
- *  - `token`   — dev JWT for session create (default `""`)
+ *  - `token`   — the backend credential, an API key or a JWT (default `""`, enough when auth is off)
  *  - `corr`    — optional correlation token so a watching IDE can resolve this session
  *  - `poll`    — sampling interval in milliseconds (default 150); shorter catches shorter coroutines
  *
@@ -40,24 +40,50 @@ object AgentBootstrap {
      * @param agentArgs the raw `=`-suffixed arg string from `-javaagent:jar=<here>` (nullable)
      */
     @JvmStatic
-    @Suppress("TooGenericExceptionCaught")
     fun run(agentArgs: String?) {
+        start(agentArgs)
+    }
+
+    /**
+     * [run], returning the started client (or `null` when the agent disabled itself) so a test
+     * can stop it.
+     *
+     * A backend that is down does not disable the agent (#254): [VizcoreClient.start] returns a
+     * client that creates the session once the backend answers. The agent says so on stderr,
+     * because the client's own WARN, which carries the cause, goes through the agent's shaded
+     * SLF4J, which has no logger to write to. What still disables it is an app runtime the SDK
+     * cannot run on.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    internal fun start(agentArgs: String?): VizcoreClient? {
         val args = parseArgs(agentArgs)
         val backendUrl = args["backend"] ?: "http://localhost:8080"
-        try {
-            VizcoreClient.start(
-                appName = args["app"] ?: "app",
-                backendUrl = backendUrl,
-                token = args["token"] ?: "",
-                pollIntervalMillis = pollIntervalMillis(args["poll"]),
-                correlation = args["corr"],
-            )
+        return try {
+            VizcoreClient
+                .start(
+                    appName = args["app"] ?: "app",
+                    backendUrl = backendUrl,
+                    token = args["token"] ?: "",
+                    pollIntervalMillis = pollIntervalMillis(args["poll"]),
+                    correlation = args["corr"],
+                ).also { client ->
+                    if (client.sessionIdOrNull == null) {
+                        // Says only what is known: the cause is in the client's WARN, which the agent's
+                        // shaded SLF4J has nowhere to write.
+                        System.err.println(
+                            "[coroutine-viz-agent] could not create a session at $backendUrl yet (is the backend " +
+                                "up, the URL right and the token accepted?); the app runs normally and the agent " +
+                                "keeps trying in the background",
+                        )
+                    }
+                }
         } catch (failure: Throwable) {
             // FAIL SOFT — the agent must NEVER take the host application down. Log once and let
             // the app run uninstrumented; the visualizer simply shows no session (8c7d67c).
             System.err.println(
                 "[coroutine-viz-agent] DISABLED — bootstrap against $backendUrl failed: ${failure.message}",
             )
+            null
         }
     }
 

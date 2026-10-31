@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.Role
 import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.auth.UserStore
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.auth.HttpAuthHeader
 import io.ktor.server.application.Application
@@ -43,8 +44,9 @@ private val AuthDisabledKey = AttributeKey<Boolean>("AuthDisabled")
 /**
  * Install the dual-provider authentication layer (AUTH-01/02/03, D-04/D-08).
  *
- * - Always `install(Authentication)` with an `api-key` provider (X-API-Key → ApiKeyPrincipal)
- *   and a `jwt` provider (Bearer OR `?token=` query param → UserPrincipal).
+ * - Always `install(Authentication)` with an `api-key` provider (X-API-Key, or a key sent as
+ *   `Authorization: Bearer` — see [apiKeyCandidate] → ApiKeyPrincipal) and a `jwt` provider
+ *   (Bearer OR `?token=` query param → UserPrincipal).
  * - `authDisabled` is computed ONCE: true when there are no keys AND no users/jwt configured.
  *   When disabled, [authenticatedApi] is a pure pass-through (no challenge, no 401) — preserving
  *   the `git clone → run` default-public invariant (D-04a, Pitfall 1).
@@ -68,7 +70,7 @@ fun Application.configureAuth() {
         logger.info("Authentication disabled (no API keys and no users/JWT configured) — all routes public (D-04a)")
     } else {
         logger.info(
-            "Authentication enabled (apiKeys={}, jwt={}) — non-public routes require X-API-Key OR Bearer/?token=",
+            "Authentication enabled (apiKeys={}, jwt={}) — non-public routes require an API key or a JWT",
             !apiKeyStore.isEmpty,
             jwtUsable,
         )
@@ -77,7 +79,7 @@ fun Application.configureAuth() {
     install(Authentication) {
         provider("api-key") {
             authenticate { context ->
-                val requestKey = context.call.request.headers["X-API-Key"]
+                val requestKey = apiKeyCandidate(context.call)
                 val entry = requestKey?.let { apiKeyStore.validate(it) }
                 if (entry != null) {
                     context.principal(ApiKeyPrincipal(entry.name, entry.role))
@@ -101,6 +103,36 @@ fun Application.configureAuth() {
         }
     }
 }
+
+/**
+ * The value the `api-key` provider checks against the key store: the `X-API-Key` header when the
+ * request has one, otherwise the credential of an `Authorization: Bearer <key>` header (#260).
+ *
+ * The SDK and the javaagent send their token only as `Authorization: Bearer`, so without the
+ * second source they could not reach a backend configured with API keys only. The value is checked
+ * by the same [ApiKeyStore.validate] as `X-API-Key` and yields the same [ApiKeyPrincipal]; a value
+ * that matches no key (for example a JWT) leaves the request to the `jwt` provider, as before.
+ *
+ * - An `X-API-Key` header, when present, is the only value this provider checks: a key sent as
+ *   Bearer never stands in for a wrong `X-API-Key`. (The `jwt` provider still reads the Bearer
+ *   header on its own, as before.)
+ * - Only the `Bearer` scheme (case-insensitive, RFC 9110) followed by a space and a non-empty
+ *   credential is read; any other scheme or shape yields no candidate.
+ * - The `?token=` query parameter is never read here, so an API key is never accepted from a URL.
+ */
+internal fun apiKeyCandidate(call: ApplicationCall): String? =
+    call.request.headers[API_KEY_HEADER]
+        ?: call.request.headers[HttpHeaders.Authorization]?.let(::bearerCredential)
+
+/** The credential of a `Bearer <credential>` header value, or null for any other scheme or shape. */
+private fun bearerCredential(authorization: String): String? {
+    val scheme = authorization.substringBefore(' ', missingDelimiterValue = "")
+    val credential = authorization.substringAfter(' ', missingDelimiterValue = "").trimStart(' ')
+    return credential.takeIf { scheme.equals(BEARER_SCHEME, ignoreCase = true) && it.isNotEmpty() }
+}
+
+private const val API_KEY_HEADER = "X-API-Key"
+private const val BEARER_SCHEME = "Bearer"
 
 /** Build an [HttpAuthHeader] from the Bearer header if present, else from the `?token=` query param. */
 private fun resolveJwtAuthHeader(call: ApplicationCall): HttpAuthHeader? {
@@ -130,7 +162,7 @@ private fun io.ktor.server.auth.AuthenticationContext.challengeUnauthorized(sche
 }
 
 /**
- * Wrap non-public routes so EITHER a valid X-API-Key OR a valid JWT satisfies the request (D-08).
+ * Wrap non-public routes so EITHER a valid API key (X-API-Key or Bearer) OR a valid JWT satisfies the request (D-08).
  * When auth is disabled it is a pure pass-through — no auth plugin in the path (Pitfall 1, D-04a).
  */
 fun Route.authenticatedApi(build: Route.() -> Unit) {

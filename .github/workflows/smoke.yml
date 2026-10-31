@@ -90,6 +90,57 @@ jobs:
           expect "$(post localhost:3080 http://foreign.example)" 403 "a foreign Origin"
           expect "$(post rebind.example:3080 http://rebind.example:3080)" 403 "a non-loopback Host"
 
+      # The SDK streams events over a WebSocket to /api/sessions/{id}/ingest, and the Connect
+      # wizard gives apps the UI's own address when the page comes from this image (#252). The
+      # upgrade must reach the backend through the proxy (101, not 404), events sent on it must
+      # land in the session, and the backend's Origin check must still refuse a foreign page.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install smoke dependencies
+        run: pip install -r scripts/smoke/requirements.txt
+
+      - name: WebSocket ingest through the frontend proxy
+        run: |
+          # A 101 leaves the socket open, so curl always stops at --max-time; only the status counts.
+          upgrade() { curl -s --http1.1 --max-time 3 -o /dev/null -w '%{http_code}' \
+            -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+            -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' "$@" || true; }
+          expect() { [ "$1" = "$2" ] || { echo "$3: got $1, expected $2"; exit 1; }; }
+          id=$(curl -sf --max-time 5 -X POST 'http://localhost:3000/api/sessions?name=ws' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["sessionId"])')
+          url="http://localhost:3080/api/sessions/$id/ingest"
+          expect "$(upgrade "http://localhost:3000/api/sessions/$id/ingest")" 101 "the SDK's upgrade"
+          expect "$(upgrade -H 'Origin: http://localhost:3080' "$url")" 101 "an upgrade from the UI's own page"
+          expect "$(upgrade -H 'Origin: http://foreign.example' "$url")" 403 "an upgrade from a foreign Origin"
+          expect "$(upgrade -H 'Host: rebind.example:3080' -H 'Origin: http://rebind.example:3080' "$url")" 403 \
+            "an upgrade with a non-loopback Host"
+          python3 - "$id" <<'EOF'
+          import asyncio, json, sys, time, urllib.request
+          import websockets
+
+          sid = sys.argv[1]
+
+          async def send():
+              async with websockets.connect(f"ws://localhost:3000/api/sessions/{sid}/ingest") as ws:
+                  await ws.send(json.dumps({
+                      "type": "CoroutineCreated", "sessionId": sid, "seq": 1,
+                      "tsNanos": time.monotonic_ns(), "coroutineId": "smoke-ws", "jobId": "job-smoke-ws",
+                      "parentCoroutineId": None, "scopeId": "scope-smoke-ws", "label": "smoke-ws",
+                      "createdAtEpochMs": int(time.time() * 1000), "creationPoint": None,
+                  }))
+
+          asyncio.run(send())
+          for _ in range(20):
+              with urllib.request.urlopen(f"http://localhost:3000/api/sessions/{sid}/events", timeout=5) as r:
+                  if any(e.get("coroutineId") == "smoke-ws" for e in json.load(r)):
+                      print("event sent through the proxied socket reached the session")
+                      sys.exit(0)
+              time.sleep(0.5)
+          sys.exit("the event sent through the proxied socket never reached the session")
+          EOF
+
       - name: Container logs
         if: failure()
         run: docker logs backend; docker logs frontend

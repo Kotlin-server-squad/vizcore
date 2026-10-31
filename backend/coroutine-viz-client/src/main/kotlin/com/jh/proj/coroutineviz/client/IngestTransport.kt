@@ -36,7 +36,7 @@ private val logger = LoggerFactory.getLogger("com.jh.proj.coroutineviz.client.In
  * Open one authenticated client WebSocket to the backend ingest route and forward
  * every event held by the lifetime-scoped [buffer].
  *
- * Connects to `{backendUrl}/api/sessions/{sessionId}/ingest` with the JWT in the
+ * Connects to `{backendUrl}/api/sessions/{sessionId}/ingest` with the token (API key or JWT) in the
  * `Authorization: Bearer` HEADER (never the URL — T-07-02). Inside the socket it
  * DRAINS the [OutboundBuffer] (NOT `session.bus` directly — that per-socket subscribe
  * is exactly the CR-01 bug that lost events outside the open window) and sends each
