@@ -116,8 +116,8 @@ the view as a sampled picture, not a complete trace:
 - A coroutine that starts and finishes between two samples does not appear. Fast request
   handlers (a few milliseconds each) usually fall into this gap; slower work, such as
   outbound HTTP calls, long-running loops and waiting on I/O, shows up well
-  ([#206](https://github.com/Kotlin-server-squad/vizcore/issues/206)). From the SDK release
-  after 0.2.1, you can sample more often by passing an interval in milliseconds:
+  ([#206](https://github.com/Kotlin-server-squad/vizcore/issues/206)). From SDK 0.3.0 on,
+  you can sample more often by passing an interval in milliseconds:
   `VizcoreClient.start(appName, backendUrl, token, pollIntervalMillis = 50)`, or `poll=50`
   with the Java agent. Each sample dumps every coroutine in the JVM, so keep it at 10 ms or
   more and expect more CPU use on apps with many coroutines.
@@ -159,7 +159,7 @@ tasks.bootRun {
 The library coordinate is:
 
 ```kotlin
-implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.2.1")
+implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.3.0")
 // the SDK uses kotlinx-coroutines at runtime only; your app (and the example above)
 // needs it on the compile classpath too
 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
@@ -213,8 +213,8 @@ cd backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar
 dependencies {
     implementation(
         files(
-            "<vizcore>/backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.2.1.jar",
-            "<vizcore>/backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.2.1.jar",
+            "<vizcore>/backend/coroutine-viz-client/build/libs/coroutine-viz-client-0.3.0.jar",
+            "<vizcore>/backend/coroutine-viz-core/build/libs/coroutine-viz-core-0.3.0.jar",
         ),
     )
     // flat-file jars carry no transitive metadata, so declare their runtime deps

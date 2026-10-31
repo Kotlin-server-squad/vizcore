@@ -5,7 +5,7 @@ client library (`coroutine-viz-client`), the validation engine (`coroutine-viz-c
 and the standalone CLI validator (`coroutine-viz-cli`).
 
 All three share ONE locked Maven coordinate group: `com.jh.coroutine-visualizer`,
-version `0.2.1`. The client coordinate is the single source of truth in
+version `0.3.0`. The client coordinate is the single source of truth in
 [`frontend/src/lib/connect-snippets.ts`](../../frontend/src/lib/connect-snippets.ts), which
 the connect wizard shows; its guard test fails when that and the build scripts disagree.
 
@@ -19,7 +19,7 @@ the locked coordinate:
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.2.1")
+    implementation("com.jh.coroutine-visualizer:coroutine-viz-client:0.3.0")
 }
 ```
 
@@ -69,10 +69,10 @@ GITHUB_TOKEN=<a-write:packages-PAT> \
 ./gradlew :coroutine-viz-core:publish :coroutine-viz-client:publish
 ```
 
-Expect `BUILD SUCCESSFUL`; both `0.2.1` artifacts appear under the repository's
+Expect `BUILD SUCCESSFUL`; both `0.3.0` artifacts appear under the repository's
 **Packages**.
 
-> **GitHub Packages `0.2.1` is IMMUTABLE.** Once published, you cannot
+> **GitHub Packages `0.3.0` is IMMUTABLE.** Once published, you cannot
 > re-publish the same version over a wrong POM/jar — you must delete the version
 > in the Packages UI first (a 409 on re-publish; see RESEARCH Pitfall 5). To
 > avoid this, the POM and coordinate are asserted **locally first** via
@@ -91,13 +91,13 @@ The CLI is a self-contained Shadow fat JAR. Build it:
 ```bash
 cd backend
 ./gradlew :coroutine-viz-cli:shadowJar
-# produces: backend/coroutine-viz-cli/build/libs/coroutine-viz-cli-0.2.1-all.jar
+# produces: backend/coroutine-viz-cli/build/libs/coroutine-viz-cli-0.3.0-all.jar
 ```
 
 Run it against a recorded events export:
 
 ```bash
-java -jar coroutine-viz-cli-0.2.1-all.jar <path/to/events.json>
+java -jar coroutine-viz-cli-0.3.0-all.jar <path/to/events.json>
 ```
 
 - **Exit 0** — clean (no validation failures, no ERROR/WARNING anti-patterns).
@@ -129,7 +129,7 @@ tasks.register<JavaExec>("coroutineVizCheck") {
     group = "verification"
     description = "Validate a recorded coroutine events export against the visualizer rules."
     // Point at the published CLI fat JAR (download it, or copy it into libs/).
-    classpath = files("libs/coroutine-viz-cli-0.2.1-all.jar")
+    classpath = files("libs/coroutine-viz-cli-0.3.0-all.jar")
     mainClass.set("com.jh.proj.coroutineviz.cli.MainKt")
     // The events.json export to validate (body of GET /api/sessions/{id}/events).
     args(layout.projectDirectory.file("events.json").asFile.absolutePath)

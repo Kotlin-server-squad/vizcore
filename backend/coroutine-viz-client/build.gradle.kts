@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.2.1"
+version = "0.3.0"
 
 dependencies {
     // The embeddable client reuses core for VizEvent types + the shared appJson
@@ -72,8 +72,8 @@ java {
 }
 
 // Maven publishing configuration — mirrors coroutine-viz-core's already-working
-// block (D-02). The locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.2.1
-// MUST match frontend/src/lib/dep-snippet.ts verbatim (the ConnectWizard snippet).
+// block (D-02). The locked coordinate com.jh.coroutine-visualizer:coroutine-viz-client:0.3.0
+// MUST match frontend/src/lib/connect-snippets.ts verbatim (the ConnectWizard snippet).
 publishing {
     publications {
         create<MavenPublication>("maven") {

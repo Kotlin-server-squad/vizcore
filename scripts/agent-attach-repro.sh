@@ -25,7 +25,7 @@ DEMO_DIR="$REPO_ROOT/examples/spring-vizcore-demo"
 export JAVA_HOME="${JAVA_HOME:-/Users/jirihermann/Library/Java/JavaVirtualMachines/azul-21/Contents/Home}"
 BACKEND_PORT="${BACKEND_PORT:-8090}"
 
-AGENT_JAR="$BACKEND_DIR/coroutine-viz-agent/build/libs/coroutine-viz-agent-0.2.1-all.jar"
+AGENT_JAR="$BACKEND_DIR/coroutine-viz-agent/build/libs/coroutine-viz-agent-0.3.0-all.jar"
 BACKEND_JAR="$BACKEND_DIR/build/libs/backend-all.jar"
 DEMO_MAIN="com.jh.vizcore.demo.SpringVizcoreDemoApplicationKt"
 SESSIONS_URL="http://localhost:$BACKEND_PORT/api/sessions"

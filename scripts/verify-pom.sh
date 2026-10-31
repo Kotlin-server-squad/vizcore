@@ -2,7 +2,7 @@
 # Assert the publishToMavenLocal POM for the SDK artifacts BEFORE the immutable
 # one-shot remote publish to GitHub Packages.
 #
-# GitHub Packages 0.2.1 is immutable, so we prove the POM/coordinate locally
+# GitHub Packages 0.3.0 is immutable, so we prove the POM/coordinate locally
 # first: run publishToMavenLocal for core + client, then grep each resulting
 # ~/.m2 POM for the Apache-2.0 license (backend/LICENSE), the locked groupId, and the artifactId.
 #
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 GROUP_ID="com.jh.coroutine-visualizer"
-VERSION="0.2.1"
+VERSION="0.3.0"
 # What consumers get on their classpath: apps on Kotlin 2.2 and Spring Boot's pinned
 # kotlinx-coroutines must be able to use the SDK (see RuntimeRequirements.kt).
 STDLIB_VERSION="2.2.21"
