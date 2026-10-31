@@ -25,9 +25,23 @@ object IngestConnections : StreamingSessions {
     // keeps its session until the next one.
     private val registration = ReentrantReadWriteLock()
 
-    fun opened(sessionId: String) {
-        registration.read { open.merge(sessionId, 1, Int::plus) }
-    }
+    /**
+     * Registers a socket for [sessionId] if the session still [exists], and says whether it did.
+     * Checked under the read lock: a retention decision that deleted the session has committed by
+     * then, and one that has not started yet sees this socket and keeps the session (#261).
+     */
+    fun openedIfPresent(
+        sessionId: String,
+        exists: () -> Boolean,
+    ): Boolean =
+        registration.read {
+            if (!exists()) return@read false
+            open.merge(sessionId, 1, Int::plus)
+            true
+        }
+
+    /** Whether a socket is waiting for a retention decision to end; tests synchronise on it. */
+    internal val registrationsWaiting: Boolean get() = registration.hasQueuedThreads()
 
     fun closed(sessionId: String) {
         // Remove the entry when the last socket closes; never go below zero.
