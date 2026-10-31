@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.events.coroutine
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -41,6 +42,29 @@ data class CoroutineCreated(
     override val label: String?,
     val createdAtEpochMs: Long = 0L,
     val creationPoint: SuspensionPoint? = null,
+    /** Who launched it; `null` from an SDK without origin support (spec 2026-10-21). */
+    val origin: CoroutineOrigin? = null,
 ) : CoroutineEvent {
+    /**
+     * The 0.2.1 JVM constructor, kept for binary compatibility (prebuilt jars, Java callers). Hidden from
+     * source resolution so it never competes with the primary one. `copy` is source-compatible only.
+     */
+    @Deprecated("binary compatibility with 0.2.x", level = DeprecationLevel.HIDDEN)
+    constructor(
+        sessionId: String,
+        seq: Long,
+        tsNanos: Long,
+        coroutineId: String,
+        jobId: String,
+        parentCoroutineId: String?,
+        scopeId: String,
+        label: String?,
+        createdAtEpochMs: Long = 0L,
+        creationPoint: SuspensionPoint? = null,
+    ) : this(
+        sessionId, seq, tsNanos, coroutineId, jobId, parentCoroutineId, scopeId, label,
+        createdAtEpochMs, creationPoint, null,
+    )
+
     override val kind: String get() = "CoroutineCreated"
 }

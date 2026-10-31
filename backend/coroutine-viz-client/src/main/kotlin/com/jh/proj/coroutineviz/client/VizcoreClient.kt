@@ -502,7 +502,7 @@ class VizcoreClient internal constructor(
                     sessionAtStart(backendUrl, sessionTimeout) {
                         createSession(httpClient, backendUrl, appName, token, correlation)
                     }
-                val local = VizSession(sessionId = serverSessionId.orEmpty()).also { session = it }
+                val local = VizSession(sessionId = serverSessionId.orEmpty(), keepSummaries = false).also { session = it }
                 // The client's own loops (feed, transport, reconnect) stay out of the app's session.
                 val clientScope =
                     CoroutineScope(Dispatchers.Default + SupervisorJob() + VizcoreInternal).also { scope = it }

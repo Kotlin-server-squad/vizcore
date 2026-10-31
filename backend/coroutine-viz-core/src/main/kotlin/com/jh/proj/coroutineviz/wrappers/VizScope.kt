@@ -490,11 +490,16 @@ class VizScope(
                 )
 
             // Capture suspension point with stack trace
-            val suspensionPoint = SuspensionPoint.capture("delay", skipFrames = 3)
+            val (suspensionPoint, provenance) = SuspensionPoint.captureWithProvenance("delay")
 
             // Emit suspension with detailed info
             session.sent(
-                ctx.coroutineSuspended(reason = "delay", durationMillis = timeMillis, suspensionPoint = suspensionPoint),
+                ctx.coroutineSuspended(
+                    reason = "delay",
+                    durationMillis = timeMillis,
+                    suspensionPoint = suspensionPoint,
+                    provenance = provenance,
+                ),
             )
 
             // Actual suspension

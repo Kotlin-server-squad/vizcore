@@ -81,7 +81,7 @@ class InstrumentedDeferred<T>(
 
         // Emit suspension point (only if awaiter exists)
         if (awaiterId != null) {
-            val suspensionPoint = SuspensionPoint.capture("await")
+            val (suspensionPoint, provenance) = SuspensionPoint.captureWithProvenance("await")
             session.sent(
                 CoroutineSuspended(
                     sessionId = session.sessionId,
@@ -95,6 +95,7 @@ class InstrumentedDeferred<T>(
                     reason = "await",
                     durationMillis = null,
                     suspensionPoint = suspensionPoint,
+                    provenance = provenance,
                 ),
             )
         }
