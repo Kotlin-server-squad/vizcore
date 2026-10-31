@@ -222,4 +222,52 @@ class SessionDeleteDatabaseModeTest {
                 assertEquals("Session not found", reason?.message)
             }
         }
+
+    @Test
+    fun `retention keeps a database session while an app streams into it, and deletes it once the app is gone`() =
+        testApplication {
+            application { module() }
+            val client = createClient { install(WebSockets) }
+            val sessionId = createSession(client)
+            // Past a zero-day age limit, so only the open socket can keep it (#261). Wired the
+            // way Application.configureDbRetention wires it.
+            val retention =
+                DbRetentionPolicy(
+                    db = db,
+                    maxAgeDays = 0,
+                    clock = { System.currentTimeMillis() + 1_000 },
+                    onSessionDeleted = SessionManager::notifySessionDeleted,
+                    isStreaming = IngestConnections::isConnected,
+                )
+            val event: VizEvent =
+                CoroutineCreated(
+                    sessionId = sessionId,
+                    seq = 1L,
+                    tsNanos = 0L,
+                    coroutineId = "c-1",
+                    jobId = "j-1",
+                    parentCoroutineId = null,
+                    scopeId = "scope-1",
+                    label = "still-streaming",
+                )
+
+            client.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)))
+                withTimeout(5.seconds) {
+                    while (Json.parseToJsonElement(client.get("/api/sessions/$sessionId/events").bodyAsText()).jsonArray.isEmpty()) {
+                        delay(20)
+                    }
+                }
+
+                assertEquals(0, retention.cleanup(), "a session an app is streaming into must not be deleted")
+                assertEquals(HttpStatusCode.OK, client.get("/api/sessions/$sessionId").status)
+            }
+
+            // The socket is closed now; the next pass applies the age limit again.
+            withTimeout(5.seconds) {
+                while (IngestConnections.isConnected(sessionId)) delay(20)
+            }
+            assertEquals(1, retention.cleanup())
+            assertEquals(HttpStatusCode.NotFound, client.get("/api/sessions/$sessionId").status)
+        }
 }

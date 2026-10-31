@@ -217,6 +217,42 @@ class DbRetentionPolicyTest {
         assertFalse(sessionExists("was-shared-old"), "expired-share old session should be deleted")
     }
 
+    @Test
+    fun `an old session an app is still streaming into is neither deleted nor reported`() {
+        insertSession("streaming-old", createdAtMs = nowMs - 40 * dayMs)
+        insertSession("idle-old", createdAtMs = nowMs - 40 * dayMs)
+
+        val reported = mutableListOf<String>()
+        val removed =
+            DbRetentionPolicy(
+                db = db,
+                maxAgeDays = 30,
+                clock = { nowMs },
+                onSessionDeleted = { reported += it },
+                isStreaming = { it == "streaming-old" },
+            ).cleanup()
+
+        assertTrue(sessionExists("streaming-old"), "a session with an open ingest socket must survive (#261)")
+        assertFalse(sessionExists("idle-old"), "an old session nobody streams into is still deleted")
+        assertEquals(1, removed)
+        assertEquals(listOf("idle-old"), reported)
+    }
+
+    @Test
+    fun `once the app stops streaming the next cleanup deletes the old session`() {
+        insertSession("was-streaming-old", createdAtMs = nowMs - 40 * dayMs)
+        var streaming = true
+        val retention =
+            DbRetentionPolicy(db = db, maxAgeDays = 30, clock = { nowMs }, isStreaming = { streaming })
+
+        retention.cleanup()
+        assertTrue(sessionExists("was-streaming-old"))
+
+        streaming = false
+        retention.cleanup()
+        assertFalse(sessionExists("was-streaming-old"), "the age limit applies again once the socket is closed")
+    }
+
     private fun h2DataSource(url: String): HikariDataSource {
         val config =
             HikariConfig().apply {

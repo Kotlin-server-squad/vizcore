@@ -53,6 +53,11 @@ import kotlin.time.Instant
  * @property onSessionDeleted called with each deleted session's id after the delete commits, so
  *   open streams and ingest sockets of those sessions are closed (the application passes
  *   [com.jh.proj.coroutineviz.session.SessionManager.notifySessionDeleted]).
+ * @property isStreaming whether an app is streaming into the session right now, i.e. it has an open
+ *   ingest socket. Such a session is never deleted by age (#261); the application passes
+ *   [com.jh.proj.coroutineviz.routes.IngestConnections.isConnected]. The sockets are tracked per
+ *   process, so with several backend instances a session streamed into through another one is not
+ *   protected.
  */
 @OptIn(ExperimentalTime::class)
 class DbRetentionPolicy(
@@ -62,6 +67,7 @@ class DbRetentionPolicy(
     private val cleanupIntervalMinutes: Long = 60,
     private val clock: () -> Long = System::currentTimeMillis,
     private val onSessionDeleted: (String) -> Unit = {},
+    private val isStreaming: (String) -> Boolean = { false },
 ) {
     private val logger = LoggerFactory.getLogger(DbRetentionPolicy::class.java)
     private var job: Job? = null
@@ -123,11 +129,14 @@ class DbRetentionPolicy(
                 // The ids are read first so their streams can be closed afterwards. The delete
                 // repeats the full guard, so a share created in between still protects its
                 // session, and only the rows that are really gone are reported.
+                // A session an app is still streaming into is kept whatever its age (#261), as memory
+                // mode keeps it (#129); the age limit applies again once its last socket closes.
                 val candidates =
                     SessionsTable
                         .select(SessionsTable.id)
                         .where { (SessionsTable.createdAt less cutoff) and NotExists(activeShareSubquery) }
                         .map { it[SessionsTable.id] }
+                        .filterNot(isStreaming)
                 if (candidates.isEmpty()) return@transaction emptyList()
                 SessionsTable.deleteWhere {
                     (SessionsTable.id inList candidates) and

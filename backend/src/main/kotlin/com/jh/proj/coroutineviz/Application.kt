@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.observability.configureObservability
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.routes.IngestConnections
 import com.jh.proj.coroutineviz.session.RetentionPolicy
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.http.HttpMethod
@@ -335,6 +336,7 @@ private fun Application.startDbRetention(db: org.jetbrains.exposed.v1.jdbc.Datab
             maxEventsPerSession = maxEventsPerSession,
             cleanupIntervalMinutes = cleanupIntervalMinutes,
             onSessionDeleted = SessionManager::notifySessionDeleted,
+            isStreaming = IngestConnections::isConnected,
         )
     policy.start(this)
     monitor.subscribe(ApplicationStopping) { policy.stop() }
