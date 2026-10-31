@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.jh.coroutine-visualizer"
-version = "0.3.0"
+version = "0.3.1"
 
 dependencies {
     // Core dependencies only — no Ktor, no web framework

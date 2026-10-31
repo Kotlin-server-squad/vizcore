@@ -30,7 +30,7 @@ known-good baseline that does not depend on classloader isolation.
      (so the demo does NOT self-instrument — the agent is the sole instrumenter, avoiding the
      double-client hazard).
    - **VM option:**
-     `-javaagent:<abs path>/backend/coroutine-viz-agent/build/libs/coroutine-viz-agent-0.3.0-all.jar=app=<name>,backend=http://localhost:8090`
+     `-javaagent:<abs path>/backend/coroutine-viz-agent/build/libs/coroutine-viz-agent-0.3.1-all.jar=app=<name>,backend=http://localhost:8090`
 5. Run it. Within a few seconds a session named `<name>-<timestamp>` appears at
    `http://localhost:8090/api/sessions` with `eventCount > 0`.
 

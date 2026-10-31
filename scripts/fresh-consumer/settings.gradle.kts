@@ -5,9 +5,9 @@
 //
 // Resolution proof:
 //   - The staging proof opts IN to mavenLocal() via -PuseLocal, after
-//     scripts/verify-pom.sh has run publishToMavenLocal for 0.3.0
+//     scripts/verify-pom.sh has run publishToMavenLocal for 0.3.1
 //     (agent-runnable staging proof).
-//   - The REMOTE proof (GitHub Packages) is the DEFAULT. Because 0.3.0 is an
+//   - The REMOTE proof (GitHub Packages) is the DEFAULT. Because 0.3.1 is an
 //     immutable coordinate, leaving mavenLocal() always-on would let a stale
 //     ~/.m2 copy permanently mask a remote that was never published (or was
 //     published with a broken POM) — silently degrading SC#1 into a local-cache
@@ -25,7 +25,7 @@ rootProject.name = "fresh-consumer"
 
 dependencyResolutionManagement {
     repositories {
-        // Agent-runnable staging proof: resolves the 0.3.0 published locally by
+        // Agent-runnable staging proof: resolves the 0.3.1 published locally by
         // scripts/verify-pom.sh (publishToMavenLocal). Gated behind -PuseLocal so
         // the remote path is the default and a stale local artifact cannot mask a
         // broken remote publish.

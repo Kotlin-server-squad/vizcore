@@ -10,7 +10,7 @@
  */
 
 /** Released SDK version. The ONE place the wizard's version string comes from. */
-export const SDK_VERSION = '0.3.0'
+export const SDK_VERSION = '0.3.1'
 
 /** Maven coordinates (mirror `coroutine-viz-client/build.gradle.kts` publishing). */
 export const SDK_GROUP = 'com.jh.coroutine-visualizer'
