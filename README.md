@@ -105,6 +105,11 @@ same capped backoff it uses to reconnect, and streams the app's coroutines once 
 answers. Until then `sessionIdOrNull` is `null` (and `currentSessionId` is empty). Events from that
 window are kept up to the client's buffer limit of 10,000.
 
+**Which token.** The SDK sends `token` as `Authorization: Bearer <token>` on every request. Pass
+one of the backend's API keys (`API_KEY` or `auth.keys`) or a JWT from `POST /api/auth/token`,
+whichever way the backend is secured. With auth off (the default) the token is not checked. The
+Java agent takes the same value as `token=…`.
+
 **What gets captured.** The SDK samples the JVM's coroutines about every 150 ms, so treat
 the view as a sampled picture, not a complete trace:
 

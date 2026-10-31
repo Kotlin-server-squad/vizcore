@@ -25,7 +25,7 @@ private val bootstrapJson = Json { ignoreUnknownKeys = true }
  * Create a server session over the authenticated REST API and return the
  * server-assigned `sessionId`.
  *
- * Calls `POST {backendUrl}/api/sessions?name={appName}` with the JWT in the
+ * Calls `POST {backendUrl}/api/sessions?name={appName}` with the token (API key or JWT) in the
  * `Authorization: Bearer` HEADER (never the URL — T-07-02). The backend responds
  * `201 Created` with `{"sessionId": "...", "message": "..."}`; we extract
  * `sessionId` so the caller can build a LOCAL `VizSession` carrying the SERVER id
@@ -38,7 +38,7 @@ private val bootstrapJson = Json { ignoreUnknownKeys = true }
  * string — the client does NOT know about `TenantContext` and adds no server/auth
  * dependency, keeping this module pure-Kotlin JVM-17 (D-12). Old callers that pass
  * nothing emit NO `correlation` param (wire-level back-compat). The non-secret token
- * rides the query string (T-09-05 accept); the JWT credential stays in the header.
+ * rides the query string (T-09-05 accept); the credential (API key or JWT) stays in the header.
  */
 @Suppress("TooGenericExceptionCaught") // bounded retry: any transport/parse failure is retried, then reported
 suspend fun createSession(
