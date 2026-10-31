@@ -293,7 +293,6 @@ export function useEventStream(
       if (received === 0) return
       setEvents(prev => capLiveEvents(prev.concat(batch)))
       setReceivedCount(n => n + received)
-      scheduleRefresh()
     }
     const append = (accepted: VizEvent[]) => {
       if (accepted.length === 0) return
@@ -302,6 +301,9 @@ export function useEventStream(
       // A batch frame can bring more than the cap at once; only the newest are ever shown.
       if (pending.length > LIVE_EVENTS_MAX) pendingRef.current = pending.slice(pending.length - LIVE_EVENTS_MAX)
       pendingReceivedRef.current += accepted.length
+      // The refresh follows the events' arrival, not their flush, so clearing the list before the
+      // flush does not cancel the threads and metrics refresh they call for.
+      scheduleRefresh()
       if (pendingRef.current.length >= LIVE_EVENTS_MAX) {
         flushAppend()
       } else if (appendTimerRef.current === null) {

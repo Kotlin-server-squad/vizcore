@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
-import { APPEND_FLUSH_MS, LIVE_EVENTS_MAX, useEventStream } from './use-event-stream'
+import { APPEND_FLUSH_MS, LIVE_EVENTS_MAX, LIVE_REFRESH_MIN_INTERVAL_MS, useEventStream } from './use-event-stream'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
@@ -135,6 +135,25 @@ describe('useEventStream - replay of a full session (#268)', () => {
     expect(result.current.events).toHaveLength(0)
     // It was received, so it still counts.
     expect(result.current.receivedCount).toBe(1)
+  })
+
+  it('still refreshes threads and metrics when the events are cleared before their flush', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children)
+    const { result } = renderHook(() => useEventStream('session-1'), { wrapper })
+    act(() => source.onopen?.())
+
+    act(() => source.simulateEvent('CoroutineCreated', JSON.stringify(eventFor(1))))
+    act(() => result.current.clearEvents())
+    act(() => {
+      vi.advanceTimersByTime(LIVE_REFRESH_MIN_INTERVAL_MS)
+    })
+
+    const refreshed = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey))
+    expect(refreshed).toContain(JSON.stringify(['thread-activity', 'session-1']))
+    expect(refreshed).toContain(JSON.stringify(['session-metrics', 'session-1']))
   })
 
   it('applies a full buffer at once instead of letting it grow while timers are throttled', () => {
