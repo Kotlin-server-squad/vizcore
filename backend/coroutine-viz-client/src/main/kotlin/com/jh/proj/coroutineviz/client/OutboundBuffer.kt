@@ -58,6 +58,8 @@ class OutboundBuffer internal constructor(
     private val reportIntervalMillis: Long,
     private val clock: () -> Long,
 ) {
+    // @JvmOverloads keeps both JVM constructors the 0.3.0 primary constructor had: () and (int).
+    @JvmOverloads
     constructor(capacity: Int = DEFAULT_CAPACITY) : this(capacity, DEFAULT_REPORT_INTERVAL_MS, ::monotonicMillis)
 
     private val logger = LoggerFactory.getLogger(OutboundBuffer::class.java)
@@ -68,7 +70,12 @@ class OutboundBuffer internal constructor(
     private val dequeuedCount = AtomicLong(0)
     private val sentCount = AtomicLong(0)
 
-    // Drop reporting (#255). Only [offer] touches these, and it runs on the single feed collector.
+    // Drop reporting (#255). [offer] runs on the single feed collector and [drain] on the transport,
+    // so the state is guarded by [reportLock]; [overflowing] is volatile so a drain outside an
+    // overflow, the normal case, takes no lock.
+    private val reportLock = Any()
+
+    @Volatile
     private var overflowing = false
     private var dropsSinceReport = 0L
     private var lastReportAt = 0L
@@ -127,6 +134,8 @@ class OutboundBuffer internal constructor(
     suspend fun drain(send: suspend (VizEvent) -> Unit) {
         for (event in channel) {
             dequeuedCount.incrementAndGet()
+            // Drops that stopped with the app going quiet are still reported once the buffer drains.
+            if (overflowing) reportRecoveryIfDrained()
             send(event)
             sentCount.incrementAndGet()
         }
@@ -146,15 +155,7 @@ class OutboundBuffer internal constructor(
         when {
             result.isSuccess -> {
                 offeredCount.incrementAndGet()
-                if (overflowing && offeredCount.get() - dequeuedCount.get() <= capacity / 2) {
-                    overflowing = false
-                    logger.info(
-                        "OutboundBuffer accepts events again; {} dropped since the last report, {} in total",
-                        dropsSinceReport,
-                        dropped,
-                    )
-                    dropsSinceReport = 0
-                }
+                if (overflowing) reportRecoveryIfDrained()
             }
             // Channel closed → the client is stopping; not a backpressure loss.
             result.isClosed -> Unit
@@ -163,7 +164,22 @@ class OutboundBuffer internal constructor(
         }
     }
 
-    private fun reportDrop(total: Long) {
+    private fun reportRecoveryIfDrained() {
+        synchronized(reportLock) {
+            if (!overflowing || offeredCount.get() - dequeuedCount.get() > capacity / 2) return
+            overflowing = false
+            logger.info(
+                "OutboundBuffer accepts events again; {} dropped since the last report, {} in total",
+                dropsSinceReport,
+                dropped,
+            )
+            dropsSinceReport = 0
+        }
+    }
+
+    private fun reportDrop(total: Long) = synchronized(reportLock) { reportDropLocked(total) }
+
+    private fun reportDropLocked(total: Long) {
         val now = clock()
         if (!overflowing) {
             overflowing = true

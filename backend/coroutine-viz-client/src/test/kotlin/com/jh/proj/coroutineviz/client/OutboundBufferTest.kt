@@ -299,6 +299,31 @@ class OutboundBufferTest {
         }
 
     @Test
+    fun `drops that end before the buffer drains are reported when it drains, with no new event`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val session = VizSession(sessionId = "s")
+            val feedScope = childScope(coroutineContext)
+            val buffer = OutboundBuffer(capacity = 8, reportIntervalMillis = 30_000, clock = { 0L })
+            buffer.feed(session, feedScope)
+
+            val lines =
+                capturingLog {
+                    repeat(12) { session.send(event(it)) } // full, 4 dropped, then the app goes quiet
+                    // The backend is back and takes everything; nothing new is produced.
+                    val drain = feedScope.launch { buffer.drain { } }
+                    drain.cancelAndJoin()
+                }
+
+            assertEquals(2, lines.size, "the first drop and the recovery, got: $lines")
+            val info = lines[1]
+            assertTrue(info.startsWith("INFO"), info)
+            assertTrue("3 dropped since the last report, 4 in total" in info, info)
+
+            feedScope.cancel()
+            session.close()
+        }
+
+    @Test
     fun `close ends draining cleanly and is idempotent`() =
         runTest(UnconfinedTestDispatcher()) {
             val session = VizSession(sessionId = "s")
