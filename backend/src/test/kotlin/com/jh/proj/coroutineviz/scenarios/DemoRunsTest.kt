@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.scenarios
 
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -206,4 +207,28 @@ class DemoRunsTest {
             assertTrue(late.isCancelled, "the slot is free, so the demo must not run on")
             session.close()
         }
+
+    @Test
+    fun `a demo step paused with pause takes its scripted time times the run's time scale`() =
+        runBlocking {
+            val session = VizSession("demo-runs-pace")
+            val run = assertNotNull(DemoRuns(maxConcurrent = 0, timeScale = 0.1).tryStart())
+
+            val job = withContext(run) { session.demoScope().vizLaunch("step") { pause(2_000) } }
+            withTimeout(5.seconds) { job.join() }
+
+            val suspended =
+                session.store
+                    .all()
+                    .filterIsInstance<CoroutineSuspended>()
+                    .single()
+            assertEquals(200L, suspended.durationMillis, "2 s of scripted time at a time scale of 0.1")
+            session.close()
+        }
+
+    @Test
+    fun `a time scale below zero or not a number is refused`() {
+        assertFailsWith<IllegalArgumentException> { DemoRuns(maxConcurrent = 0, timeScale = -1.0) }
+        assertFailsWith<IllegalArgumentException> { DemoRuns(maxConcurrent = 0, timeScale = Double.NaN) }
+    }
 }

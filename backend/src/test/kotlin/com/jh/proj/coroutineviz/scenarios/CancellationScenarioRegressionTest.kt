@@ -10,8 +10,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Regression tests for FIX-04: ScenarioRunner.runCancellationScenario must cancel
- * only "child-to-be-cancelled" via targeted child1.cancel(), NOT cancel the whole job.
+ * Regression tests for FIX-04: BasicScenarios.runCancellationScenario must cancel
+ * only the "profile-screen" coroutine (the screen the user closes), NOT the whole job.
  *
  * Previously, child1.cancel() was commented out and instead the whole job was cancelled
  * externally via `delay(1000); job.cancel()`. This meant:
@@ -19,37 +19,40 @@ import kotlin.time.Duration.Companion.seconds
  * - "normal-child" (3s delay) was cancelled before it could complete
  * - The demo did not illustrate targeted cancellation at all
  *
- * After FIX-04:
- * - child1.cancel() is called with a brief delay first
- * - "child-to-be-cancelled" receives CoroutineCancelled
- * - "normal-child" continues running and eventually receives CoroutineCompleted
- * - The parent job completes normally (no whole-job cancel)
+ * After FIX-04 (the demo now tells it as a user closing a screen):
+ * - only the screen is cancelled, after a brief delay
+ * - "profile-screen" receives CoroutineCancelled
+ * - "sync-settings" continues running and eventually receives CoroutineCompleted
+ * - The parent job ("app-session") completes normally (no whole-job cancel)
  */
 class CancellationScenarioRegressionTest {
+    // The demo takes about 12 s as scripted; run it 50 times faster.
+    private fun demoRun() = DemoRuns(maxConcurrent = 0, timeScale = 0.02).tryStart()!!
+
     @Test
-    fun `cancellation scenario cancels only child-to-be-cancelled leaving normal-child to complete (FIX-04)`() =
+    fun `cancellation scenario cancels only the closed screen, leaving settings sync to complete (FIX-04)`() =
         runTest(timeout = 30.seconds) {
             val session = VizSession("test-fix-04")
 
             // A demo runs only while it holds a slot; no limit here.
-            val job = withContext(DemoRuns(maxConcurrent = 0).tryStart()!!) { ScenarioRunner.runCancellationScenario(session) }
+            val job = withContext(demoRun()) { BasicScenarios.runCancellationScenario(session) }
             job.join()
 
             val events = session.store.all()
             val cancelledEvents = events.filterIsInstance<CoroutineCancelled>()
             val completedEvents = events.filterIsInstance<CoroutineCompleted>()
 
-            // "child-to-be-cancelled" must be explicitly cancelled (CoroutineCancelled)
+            // The screen the user closes must be cancelled (CoroutineCancelled)
             assertTrue(
-                cancelledEvents.any { it.label == "child-to-be-cancelled" },
-                "'child-to-be-cancelled' should be CoroutineCancelled, " +
+                cancelledEvents.any { it.label == "profile-screen" },
+                "'profile-screen' should be CoroutineCancelled, " +
                     "got: cancelled=${cancelledEvents.map { it.label }}",
             )
 
-            // "normal-child" must complete successfully (CoroutineCompleted)
+            // Settings sync, outside the screen, must complete successfully (CoroutineCompleted)
             assertTrue(
-                completedEvents.any { it.label == "normal-child" },
-                "'normal-child' should be CoroutineCompleted (not cancelled), " +
+                completedEvents.any { it.label == "sync-settings" },
+                "'sync-settings' should be CoroutineCompleted (not cancelled), " +
                     "got: completed=${completedEvents.map { it.label }}, " +
                     "cancelled=${cancelledEvents.map { it.label }}",
             )
@@ -61,16 +64,16 @@ class CancellationScenarioRegressionTest {
             val session = VizSession("test-fix-04-parent")
 
             // A demo runs only while it holds a slot; no limit here.
-            val job = withContext(DemoRuns(maxConcurrent = 0).tryStart()!!) { ScenarioRunner.runCancellationScenario(session) }
+            val job = withContext(demoRun()) { BasicScenarios.runCancellationScenario(session) }
             job.join()
 
             val events = session.store.all()
             val completedEvents = events.filterIsInstance<CoroutineCompleted>()
             val cancelledEvents = events.filterIsInstance<CoroutineCancelled>()
 
-            // The parent coroutine should complete normally after child1 is individually cancelled
+            // The app session should complete normally after the screen is individually cancelled
             assertTrue(
-                completedEvents.any { it.label == "parent" },
+                completedEvents.any { it.label == "app-session" },
                 "Parent coroutine should be CoroutineCompleted (targeted cancel does not cancel parent), " +
                     "got: completed=${completedEvents.map { it.label }}, " +
                     "cancelled=${cancelledEvents.map { it.label }}",

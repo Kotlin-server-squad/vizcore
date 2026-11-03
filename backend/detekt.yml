@@ -42,6 +42,8 @@ style:
   MagicNumber:
     excludes:
       - '**/test/**'
+      # The Basics demos' scripts: each number is the length of one step, in milliseconds.
+      - '**/scenarios/BasicScenarios.kt'
     ignorePropertyDeclaration: true
     ignoreCompanionObjectPropertyDeclaration: true
     ignoreAnnotation: true

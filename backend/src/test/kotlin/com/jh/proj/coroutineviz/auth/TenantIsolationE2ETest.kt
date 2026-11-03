@@ -293,8 +293,9 @@ class TenantIsolationE2ETest {
             var drainAttempts = 0
             while (drainAttempts < 100) {
                 val body = client.get("/api/sessions/$returnedId/events") { header("Authorization", "Bearer $bob") }.bodyAsText()
+                val created = Regex("CoroutineCreated").findAll(body).count()
                 val completed = Regex("CoroutineCompleted").findAll(body).count()
-                if (completed >= 4) break // nested = parent + 3 children, all terminal
+                if (created > 0 && completed == created) break // every coroutine of the demo is terminal
                 delay(100)
                 drainAttempts++
             }

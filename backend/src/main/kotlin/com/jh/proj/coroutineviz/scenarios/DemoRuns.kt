@@ -37,13 +37,21 @@ import kotlin.coroutines.EmptyCoroutineContext
  * client disconnect does not stop them either. The slot is freed when they complete, fail or
  * are cancelled; a demo still running at its time limit is cancelled, so one that would never
  * end (a deadlock, a huge custom delay) cannot hold a slot for ever.
+ *
+ * [timeScale] (`scenarios.timeScale`, env `DEMO_TIME_SCALE`) sets how fast demo steps paused with
+ * [pause] run; see [DemoPace].
  */
 class DemoRuns(
     private val maxConcurrent: Int,
     private val maxRunMillis: Long = 0,
     // Suspends until a session is deleted; null where nothing deletes sessions (tests).
     private val awaitSessionRemoved: (suspend (VizSession) -> Unit)? = null,
+    val timeScale: Double = 1.0,
 ) {
+    init {
+        require(timeScale.isFinite() && timeScale >= 0) { "The demo time scale must be zero or more, got $timeScale" }
+    }
+
     private val running = AtomicInteger(0)
 
     // Waits for the coroutines of runs whose request has already been answered, and runs the
@@ -97,6 +105,9 @@ class DemoRun internal constructor(
     companion object Key : CoroutineContext.Key<DemoRun>
 
     private val scopes = CopyOnWriteArrayList<VizScope>()
+
+    /** How fast this demo's steps run, for the scopes it makes. */
+    internal val pace = DemoPace(runs.timeScale)
 
     // Guards [ended], [timedOut] and [request]: a scope or request is never added while the run ends.
     private val lock = Any()
@@ -274,5 +285,5 @@ suspend fun VizSession.demoScope(context: CoroutineContext = EmptyCoroutineConte
         checkNotNull(currentCoroutineContext()[DemoRun]) {
             "A demo can only run while it holds a slot (MAX_CONCURRENT_DEMOS); start it through demoPost or demoGet"
         }
-    return run.newScope(this) { VizScope(this, demoFailureHandler + context) }
+    return run.newScope(this) { VizScope(this, demoFailureHandler + run.pace + context) }
 }

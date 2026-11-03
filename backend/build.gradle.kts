@@ -106,6 +106,9 @@ tasks.named<Test>("test") {
     // SdkBackendAuthTest runs VizcoreClient.start, which installs DebugProbes; they attach a
     // byte-buddy agent at runtime. Allow it explicitly, as coroutine-viz-core's test task does.
     jvmArgs("-XX:+EnableDynamicAgentLoading")
+    // The paced demos take 10-30 s each as scripted; tests whose configuration does not set
+    // scenarios.timeScale run them 50 times faster. Tests that time a demo set their own scale.
+    environment("DEMO_TIME_SCALE", "0.02")
     // DemoCatalogTest compares the SPA's copy of the demo catalog with the served one; a change
     // to that copy alone must re-run it. files(), not file(): a checkout without the frontend
     // must still run the other tests (DemoCatalogTest itself fails on the missing copy).
