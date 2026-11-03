@@ -59,6 +59,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CODEOWNERS file
 
 ### Changed
+- License: the whole repository is Apache License 2.0, with `LICENSE` and `NOTICE` at the root; the frontend was MIT before
 - Backend Dockerfile `ENTRYPOINT` now supports `$JAVA_OPTS` environment variable
 - Docker prod health check uses `/health` instead of `/`
 - Nginx config: added security headers, static asset caching, disabled `server_tokens`

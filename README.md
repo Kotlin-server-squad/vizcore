@@ -271,8 +271,5 @@ cd frontend && pnpm test                          # TypeScript: Vitest
 
 ## Licensing
 
-This repository is dual-licensed by component; there is no single root license file.
-
-- **Backend and SDK** (`backend/`, including `coroutine-viz-client`) — Apache License 2.0,
-  see [backend/LICENSE](backend/LICENSE).
-- **Frontend** (`frontend/`) — MIT License, see [frontend/LICENSE](frontend/LICENSE).
+Licensed under the [Apache License, Version 2.0](LICENSE): the backend, the SDK and the
+frontend alike. Copyright 2026 Jiri Hermann; see [NOTICE](NOTICE).
