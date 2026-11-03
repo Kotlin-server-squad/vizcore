@@ -72,6 +72,10 @@ scenarios:
   # its slot until its coroutines end (several answer at once and keep running). A demo started
   # while every slot is taken is refused with 503 + Retry-After. 0 or less = no limit.
   maxConcurrent: ${MAX_CONCURRENT_DEMOS:3}
+  # A demo still running after this many seconds has its coroutines cancelled and frees its slot,
+  # so one that would never end (a deadlock, a huge custom delay) cannot hold a slot. 0 or less =
+  # no limit. The longest built-in demos take about 35 s.
+  maxRunSeconds: ${MAX_DEMO_RUN_SECONDS:60}
 
 share:
   rateLimit:

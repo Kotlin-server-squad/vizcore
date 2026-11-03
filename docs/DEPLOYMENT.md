@@ -12,6 +12,7 @@
 | `SESSION_MAX_COUNT` | `100` | Max concurrent sessions |
 | `SESSION_CHECK_INTERVAL_MS` | `60000` | Retention policy check interval (ms) |
 | `MAX_CONCURRENT_DEMOS` | `3` | Demos that may run on the server at the same time, across all clients. A demo holds its slot until its coroutines end, not only while its request is handled. One started while every slot is taken is refused at once with `503` and `Retry-After: 5`. `0` or less means no limit. Lists of demos, sessions, the live stream and ingest are never limited |
+| `MAX_DEMO_RUN_SECONDS` | `60` | A demo still running after this many seconds has its coroutines cancelled and frees its `MAX_CONCURRENT_DEMOS` slot, so one that would never end (a deadlock, a custom scenario with a huge delay) cannot hold a slot. The longest built-in demos take about 35 s. `0` or less means no limit |
 | `JAVA_OPTS` | `-Xmx512m -Xms256m` | JVM options for backend container |
 | `TAG` | `latest` | Docker image tag for prod compose |
 | `BACKEND_PORT` | `8080` | Host port published for the backend (container port stays 8080) |

@@ -17,19 +17,31 @@ import kotlinx.coroutines.withContext
 /** At most this many demos run at once when `scenarios.maxConcurrent` is not configured. */
 const val DEFAULT_MAX_CONCURRENT_DEMOS = 3
 
+/** A demo still running after this many seconds is stopped, when `scenarios.maxRunSeconds` is not configured. */
+const val DEFAULT_MAX_DEMO_RUN_SECONDS = 60
+
 /** Seconds a refused client is asked to wait; most demos end within a few seconds. */
 private const val DEMO_BUSY_RETRY_AFTER_SECONDS = 5
 
 internal val DemoRunsKey = AttributeKey<DemoRuns>("DemoRuns")
 
-/** Reads `scenarios.maxConcurrent` (env `MAX_CONCURRENT_DEMOS`); call before configureRouting. */
+/**
+ * Reads `scenarios.maxConcurrent` (env `MAX_CONCURRENT_DEMOS`) and `scenarios.maxRunSeconds`
+ * (env `MAX_DEMO_RUN_SECONDS`); call before configureRouting.
+ */
 fun Application.configureDemoRuns() {
-    val maxConcurrent =
-        environment.config
-            .propertyOrNull("scenarios.maxConcurrent")
-            ?.getString()
-            ?.toIntOrNull() ?: DEFAULT_MAX_CONCURRENT_DEMOS
-    val runs = DemoRuns(maxConcurrent)
+    fun setting(
+        key: String,
+        default: Int,
+    ) = environment.config
+        .propertyOrNull(key)
+        ?.getString()
+        ?.toIntOrNull() ?: default
+    val runs =
+        DemoRuns(
+            maxConcurrent = setting("scenarios.maxConcurrent", DEFAULT_MAX_CONCURRENT_DEMOS),
+            maxRunMillis = setting("scenarios.maxRunSeconds", DEFAULT_MAX_DEMO_RUN_SECONDS) * 1_000L,
+        )
     attributes.put(DemoRunsKey, runs)
     monitor.subscribe(ApplicationStopped) { runs.close() }
 }

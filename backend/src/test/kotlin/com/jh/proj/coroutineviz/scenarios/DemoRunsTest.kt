@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -101,6 +102,60 @@ class DemoRunsTest {
             val session = VizSession("demo-runs-outside")
             val failure = assertFailsWith<IllegalStateException> { session.demoScope() }
             assert(failure.message.orEmpty().contains("MAX_CONCURRENT_DEMOS")) { "got ${failure.message}" }
+            session.close()
+        }
+
+    @Test
+    fun `a run past its time limit has its coroutines cancelled and frees its slot`() =
+        runBlocking {
+            val runs = DemoRuns(maxConcurrent = 1, maxRunMillis = 200)
+            val session = VizSession("demo-runs-deadline")
+            val run = assertNotNull(runs.tryStart())
+
+            // A demo that would never end on its own, like a deadlock or a huge custom delay.
+            val job =
+                withContext(run) {
+                    session.demoScope().vizLaunch("stuck") { CompletableDeferred<Unit>().await() }
+                }
+            run.handlerEnded()
+            assertEquals(1, runs.active)
+
+            runs.awaitActive(0)
+            assertTrue(job.isCancelled, "the time limit must stop the demo's coroutines, not only free the slot")
+            session.close()
+        }
+
+    @Test
+    fun `the time limit also stops a demo whose request is still waiting for it`() =
+        runBlocking {
+            val runs = DemoRuns(maxConcurrent = 1, maxRunMillis = 200)
+            val session = VizSession("demo-runs-deadline-in-request")
+            val run = assertNotNull(runs.tryStart())
+
+            withTimeout(5.seconds) {
+                withContext(run) {
+                    // Several demos join their coroutines before they answer.
+                    session.demoScope().vizLaunch("stuck") { CompletableDeferred<Unit>().await() }.join()
+                }
+            }
+            run.handlerEnded()
+
+            runs.awaitActive(0)
+            session.close()
+        }
+
+    @Test
+    fun `a run whose request has ended cannot start more work`() =
+        runBlocking {
+            val runs = DemoRuns(maxConcurrent = 1)
+            val session = VizSession("demo-runs-late")
+            val run = assertNotNull(runs.tryStart())
+            run.handlerEnded()
+
+            assertFailsWith<IllegalStateException> {
+                withContext(run) { session.demoScope().vizLaunch("late") { delay(10_000) } }
+            }
+            assertEquals(0, runs.active)
             session.close()
         }
 }

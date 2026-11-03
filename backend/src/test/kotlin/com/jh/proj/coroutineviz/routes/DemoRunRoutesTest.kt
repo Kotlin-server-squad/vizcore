@@ -7,11 +7,14 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.request
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.server.application.Application
 import io.ktor.server.application.plugin
 import io.ktor.server.config.MapApplicationConfig
@@ -44,8 +47,19 @@ class DemoRunRoutesTest {
 
     private lateinit var app: Application
 
-    private fun ApplicationTestBuilder.demoApp(maxConcurrent: Int) {
-        environment { config = MapApplicationConfig("scenarios.maxConcurrent" to "$maxConcurrent") }
+    private fun ApplicationTestBuilder.demoApp(
+        maxConcurrent: Int,
+        maxRunSeconds: Int? = null,
+    ) {
+        environment {
+            config =
+                MapApplicationConfig(
+                    *listOfNotNull(
+                        "scenarios.maxConcurrent" to "$maxConcurrent",
+                        maxRunSeconds?.let { "scenarios.maxRunSeconds" to "$it" },
+                    ).toTypedArray(),
+                )
+        }
         application {
             module()
             app = this
@@ -100,8 +114,43 @@ class DemoRunRoutesTest {
             assertEquals(HttpStatusCode.OK, client.post("/api/scenarios/flow/simple").status)
         }
 
+    private suspend fun awaitNoDemoRunning() =
+        withTimeout(10.seconds) {
+            while (demoRuns.active != 0) delay(20)
+        }
+
     @Test
-    fun `lists, sessions, health and the live stream are never limited`() =
+    fun `the deadlock demo frees its slot once it has shown the deadlock`() =
+        testApplication {
+            demoApp(maxConcurrent = 1)
+
+            assertEquals(HttpStatusCode.OK, client.get("/api/sync/mutex/deadlock-demo").status)
+
+            // Its two workers wait on each other forever unless the demo stops them.
+            awaitNoDemoRunning()
+        }
+
+    @Test
+    fun `a custom demo that would run for ever is stopped at the time limit`() =
+        testApplication {
+            demoApp(maxConcurrent = 1, maxRunSeconds = 1)
+            val forever =
+                """{"name":"forever","root":{"id":"root","label":"root",""" +
+                    """"actions":[{"type":"delay","params":{"durationMs":"${Long.MAX_VALUE}"}}]}}"""
+
+            val response =
+                client.post("/api/scenarios/custom") {
+                    contentType(ContentType.Application.Json)
+                    setBody(forever)
+                }
+            assertEquals(HttpStatusCode.OK, response.status, response.bodyAsText())
+
+            awaitNoDemoRunning()
+            assertEquals(HttpStatusCode.OK, client.post("/api/scenarios/flow/simple").status)
+        }
+
+    @Test
+    fun `lists of demos, sessions and health are never limited`() =
         testApplication {
             demoApp(maxConcurrent = 1)
             startApplication()
