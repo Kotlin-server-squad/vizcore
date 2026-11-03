@@ -62,7 +62,7 @@ export function NewDemoSessionModal({
 
   // No per-row group chip — the section heading already says it, and
   // repeating it on every row in the group is noise.
-  const Row = ({ scenario }: { scenario: Scenario }) => (
+  const Row = ({ scenario, group }: { scenario: Scenario; group: string }) => (
     <div
       data-demo-row
       className="flex items-center gap-3 rounded-medium border border-default-200 p-3"
@@ -86,6 +86,9 @@ export function NewDemoSessionModal({
         startContent={<FiPlay />}
         isLoading={preparing === scenario.id}
         onPress={() => void start(scenario)}
+        // Names can repeat across groups (two Producer-Consumers), and 32 bare
+        // "Start" buttons are indistinguishable to a screen reader.
+        aria-label={`Start ${scenario.name} (${group})`}
       >
         Start
       </Button>
@@ -128,7 +131,7 @@ export function NewDemoSessionModal({
                   </h3>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {group.demos.map((s) => (
-                      <Row key={s.id} scenario={s} />
+                      <Row key={s.id} scenario={s} group={group.label} />
                     ))}
                   </div>
                 </section>

@@ -72,7 +72,13 @@ function noteRateLimited(cls: RateLimitClass, response: Response): RateLimitedEr
  * many statuses) is shown as-is; an HTML page or empty body falls back to the
  * status line — never the old catch-all "Unknown error".
  */
-async function errorMessageOf(response: Response): Promise<string> {
+async function errorOf(response: Response): Promise<ApiError> {
+  const { message, code } = await errorDetailsOf(response)
+  return new ApiError(response.status, message, code)
+}
+
+/** The message (see above) and, when the body has one, its machine-readable `code`. */
+async function errorDetailsOf(response: Response): Promise<{ message: string; code?: string }> {
   const statusLine = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
   let text: string
   try {
@@ -83,22 +89,23 @@ async function errorMessageOf(response: Response): Promise<string> {
       text = JSON.stringify(await response.json())
     }
   } catch {
-    return statusLine
+    return { message: statusLine }
   }
   const trimmed = text.trim()
-  if (!trimmed) return statusLine
+  if (!trimmed) return { message: statusLine }
   try {
     const parsed: unknown = JSON.parse(trimmed)
     if (parsed && typeof parsed === 'object') {
-      const { error, message } = parsed as { error?: unknown; message?: unknown }
-      if (typeof error === 'string' && error) return error
-      if (typeof message === 'string' && message) return message
+      const { error, message, code } = parsed as { error?: unknown; message?: unknown; code?: unknown }
+      const reason = typeof code === 'string' && code ? code : undefined
+      if (typeof error === 'string' && error) return { message: error, code: reason }
+      if (typeof message === 'string' && message) return { message, code: reason }
     }
-    return statusLine
+    return { message: statusLine }
   } catch {
     // Not JSON: use short plain text, never an HTML error page.
-    if (trimmed.startsWith('<') || trimmed.length > 300) return statusLine
-    return trimmed
+    if (trimmed.startsWith('<') || trimmed.length > 300) return { message: statusLine }
+    return { message: trimmed }
   }
 }
 
@@ -167,7 +174,7 @@ class ApiClient {
         clearToken()
         navigateToLogin()
       }
-      throw new ApiError(response.status, await errorMessageOf(response))
+      throw await errorOf(response)
     }
 
     // 204 No Content has no body — calling response.json() on it throws

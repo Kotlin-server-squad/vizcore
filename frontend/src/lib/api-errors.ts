@@ -8,11 +8,14 @@
  */
 export class ApiError extends Error {
   readonly status: number
+  /** The body's machine-readable `code`, e.g. `demo-limit`; absent on most errors. */
+  readonly code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    if (code) this.code = code
   }
 }
 
@@ -143,11 +146,13 @@ export function describeApiError(error: unknown, subject = 'This resource'): Des
         retryable: false,
       }
     }
-    // A 503 that explains itself comes from the demo limit (MAX_CONCURRENT_DEMOS, or a demo
-    // stopped at MAX_DEMO_RUN_SECONDS): the server is fine, just full for now. A bare 503
-    // (a proxy in front of a stopped backend) stays a server error below.
-    if (error.status === 503 && !isBareStatusLine(error.message)) {
+    // The demo limit's 503s say why in `code`; any other 503 (a proxy in front of a stopped
+    // backend, say) stays a server error below.
+    if (error.code === 'demo-limit') {
       return { kind: 'server', title: 'Server busy', message: error.message, retryable: true }
+    }
+    if (error.code === 'demo-time-limit') {
+      return { kind: 'server', title: 'Demo stopped', message: error.message, retryable: true }
     }
     if (error.status >= 500) {
       return {
@@ -167,11 +172,6 @@ export function describeApiError(error: unknown, subject = 'This resource'): Des
     message: error instanceof Error ? error.message : String(error),
     retryable: true,
   }
-}
-
-/** A message that only restates the HTTP status, e.g. "HTTP 503" or "Service Unavailable". */
-function isBareStatusLine(message: string): boolean {
-  return message.startsWith('HTTP ') || /^service unavailable$/i.test(message.trim())
 }
 
 /** True for client errors that retrying the same request cannot fix. */

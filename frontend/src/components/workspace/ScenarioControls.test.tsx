@@ -45,7 +45,7 @@ describe('ScenarioControls', () => {
 
   it('tells the visitor the server is busy when the demo limit is reached', async () => {
     runScenario.mockRejectedValue(
-      new ApiError(503, 'Server busy: too many demos running, try again in a few seconds'),
+      new ApiError(503, 'Server busy: too many demos running, try again in a few seconds', 'demo-limit'),
     )
     renderControls('flow/simple')
     await userEvent.click(screen.getByRole('button', { name: /run scenario/i }))

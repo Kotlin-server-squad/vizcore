@@ -173,54 +173,85 @@ class DemoCatalogTest {
             assertEquals(emptyList(), unreachable, "sync demos the dialog cannot start")
         }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("demoIds")
-    fun `each demo in the catalog starts in the session the dialog opened and records its coroutines`(id: String) =
-        testApplication {
-            catalogApp()
-            val entry = catalog().single { it.text("id") == id }
-            val sessionId =
-                Json
-                    .parseToJsonElement(client.post("/api/sessions?name=scenario-$id").bodyAsText())
-                    .jsonObject["sessionId"]!!
-                    .jsonPrimitive.content
-            val endpoint = entry.text("endpoint")
-            val separator = if ('?' in endpoint) '&' else '?'
+    private suspend fun ApplicationTestBuilder.newSession(id: String): String =
+        Json
+            .parseToJsonElement(client.post("/api/sessions?name=scenario-$id").bodyAsText())
+            .jsonObject["sessionId"]!!
+            .jsonPrimitive.content
 
-            // The realistic demos answer only when they end, after up to 35 s: start the run, wait
-            // for its first coroutine in the session, then end it by deleting the session.
-            coroutineScope {
-                val run = async { client.post("$endpoint${separator}sessionId=$sessionId") }
-                withTimeout(15.seconds) {
-                    while (eventCount(sessionId) == 0 && !run.isCompleted) delay(20)
-                }
-                if (run.isCompleted) {
-                    assertEquals(HttpStatusCode.OK, run.await().status, run.await().bodyAsText())
-                }
-                assertTrue(eventCount(sessionId) > 0, "$id recorded nothing in session $sessionId")
+    private suspend fun ApplicationTestBuilder.startUrl(
+        id: String,
+        sessionId: String,
+    ): String {
+        val endpoint = catalog().single { it.text("id") == id }.text("endpoint")
+        return endpoint + (if ('?' in endpoint) '&' else '?') + "sessionId=$sessionId"
+    }
 
-                client.delete("/api/sessions/$sessionId")
-                val status = withTimeout(15.seconds) { run.await().status }
-                assertTrue(
-                    status !in setOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed, HttpStatusCode.ServiceUnavailable),
-                    "$id answered $status",
-                )
-                withTimeout(15.seconds) {
-                    while (demoRuns.active != 0) delay(20)
-                }
-            }
+    private suspend fun awaitNoDemoRunning() =
+        withTimeout(15.seconds) {
+            while (demoRuns.active != 0) delay(20)
         }
 
-    private suspend fun ApplicationTestBuilder.eventCount(sessionId: String): Int {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("shortDemoIds")
+    fun `each demo runs to its end in the session the dialog opened`(id: String) =
+        testApplication {
+            catalogApp()
+            val sessionId = newSession(id)
+
+            val response = client.post(startUrl(id, sessionId))
+
+            assertEquals(HttpStatusCode.OK, response.status, response.bodyAsText())
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("true", body.text("success"), body.toString())
+            assertEquals(sessionId, body.text("sessionId"), "$id must run in the session it was given")
+            // Some demos answer at once and keep running; the slot is free once they end.
+            awaitNoDemoRunning()
+            assertTrue(coroutinesCreated(sessionId) > 0, "$id started no coroutine in session $sessionId")
+            assertEquals(listOf(sessionId), SessionManager.listSessions().map { it.sessionId }, "$id must not open a session of its own")
+        }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("longDemoIds")
+    fun `each real-life demo starts in the session the dialog opened, and deleting the session stops it`(id: String) =
+        testApplication {
+            catalogApp()
+            val sessionId = newSession(id)
+            // These run for 15-35 s and answer only when they end: wait for the first coroutine,
+            // then delete the session, which cancels the demo and ends the request.
+            coroutineScope {
+                val run = async { client.post(startUrl(id, sessionId)) }
+                try {
+                    withTimeout(15.seconds) {
+                        while (coroutinesCreated(sessionId) == 0) delay(20)
+                    }
+                    assertEquals(listOf(sessionId), SessionManager.listSessions().map { it.sessionId })
+                } finally {
+                    client.delete("/api/sessions/$sessionId")
+                }
+                val response = withTimeout(15.seconds) { run.await() }
+                assertEquals(HttpStatusCode.OK, response.status, response.bodyAsText())
+                assertEquals(sessionId, Json.parseToJsonElement(response.bodyAsText()).jsonObject.text("sessionId"))
+            }
+            awaitNoDemoRunning()
+        }
+
+    private suspend fun ApplicationTestBuilder.coroutinesCreated(sessionId: String): Int {
         val response = client.get("/api/sessions/$sessionId/events")
         if (response.status != HttpStatusCode.OK) return 0
-        return Json.parseToJsonElement(response.bodyAsText()).jsonArray.size
+        return Json
+            .parseToJsonElement(response.bodyAsText())
+            .jsonArray
+            .count { it.jsonObject["type"]?.jsonPrimitive?.content == "CoroutineCreated" }
     }
 
     companion object {
         private val prettyJson = Json { prettyPrint = true }
 
         @JvmStatic
-        fun demoIds(): List<String> = demoCatalog.map { it.id }
+        fun shortDemoIds(): List<String> = demoCatalog.filter { it.category != "realistic" }.map { it.id }
+
+        @JvmStatic
+        fun longDemoIds(): List<String> = demoCatalog.filter { it.category == "realistic" }.map { it.id }
     }
 }

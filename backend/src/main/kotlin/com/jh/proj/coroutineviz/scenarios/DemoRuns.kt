@@ -3,6 +3,8 @@ package com.jh.proj.coroutineviz.scenarios
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,6 +16,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -215,15 +218,27 @@ class DemoRun internal constructor(
 
 private const val TIME_LIMIT_MESSAGE = "The demo ran past its time limit (MAX_DEMO_RUN_SECONDS)"
 
+private val demoLogger = LoggerFactory.getLogger("DemoRuns")
+
+/**
+ * Several demos fail on purpose (Exception Handling, Retry, Supervisor, Circuit Breaker) and the
+ * session shows that failure. Without a handler the exception also reached the JVM's default
+ * handler, which printed a stack trace for every run of a working demo.
+ */
+private val demoFailureHandler =
+    CoroutineExceptionHandler { context, e ->
+        demoLogger.info("A demo coroutine failed ({}): {}", context[CoroutineName]?.name, e.toString())
+    }
+
 /**
  * The scope a demo runs its coroutines in. It counts against the demo's slot in [DemoRuns], so
  * it can only be made while the demo holds one: a demo that does not, fails instead of running
- * outside the limit.
+ * outside the limit. A [context] with its own exception handler replaces [demoFailureHandler].
  */
 suspend fun VizSession.demoScope(context: CoroutineContext = EmptyCoroutineContext): VizScope {
     val run =
         checkNotNull(currentCoroutineContext()[DemoRun]) {
             "A demo can only run while it holds a slot (MAX_CONCURRENT_DEMOS); start it through demoPost or demoGet"
         }
-    return run.newScope(this) { VizScope(this, context) }
+    return run.newScope(this) { VizScope(this, demoFailureHandler + context) }
 }
