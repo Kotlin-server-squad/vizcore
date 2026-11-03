@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.scenarios.PatternScenarios
+import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import io.ktor.http.HttpStatusCode
@@ -8,7 +9,6 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
-import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
 
@@ -35,7 +35,7 @@ fun Route.registerPatternRoutes() {
     // PATTERN SCENARIOS
     // ========================================================================
 
-    post("/api/scenarios/patterns/retry") {
+    demoPost("/api/scenarios/patterns/retry") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId, "pattern")
 
@@ -46,7 +46,7 @@ fun Route.registerPatternRoutes() {
         }
     }
 
-    post("/api/scenarios/patterns/producer-consumer") {
+    demoPost("/api/scenarios/patterns/producer-consumer") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId, "pattern")
 
@@ -57,7 +57,7 @@ fun Route.registerPatternRoutes() {
         }
     }
 
-    post("/api/scenarios/patterns/fan-out-fan-in") {
+    demoPost("/api/scenarios/patterns/fan-out-fan-in") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId, "pattern")
 
@@ -68,7 +68,7 @@ fun Route.registerPatternRoutes() {
         }
     }
 
-    post("/api/scenarios/patterns/supervisor") {
+    demoPost("/api/scenarios/patterns/supervisor") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId, "pattern")
 
@@ -79,7 +79,7 @@ fun Route.registerPatternRoutes() {
         }
     }
 
-    post("/api/scenarios/patterns/circuit-breaker") {
+    demoPost("/api/scenarios/patterns/circuit-breaker") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId, "pattern")
 
@@ -161,7 +161,7 @@ private suspend fun ApplicationCall.runPatternScenario(
     scenario: suspend (VizScope) -> Unit,
 ) {
     try {
-        val scope = VizScope(session)
+        val scope = session.demoScope()
         scenario(scope)
         respond(HttpStatusCode.OK, session.toCompletionResponse("$scenarioName completed"))
     } catch (e: Exception) {

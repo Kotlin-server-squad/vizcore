@@ -8,6 +8,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `MAX_CONCURRENT_DEMOS` (default 3): at most this many demos run on the server at once, across all clients. A demo holds its slot until its coroutines end; one started while every slot is taken gets `503` with `Retry-After`
+
 #### Production Hardening
 - Session TTL with automatic cleanup via `RetentionPolicy` (configurable via `SESSION_MAX_AGE_MS`, `SESSION_MAX_COUNT`)
 - Graceful shutdown hook that stops retention policy and clears sessions

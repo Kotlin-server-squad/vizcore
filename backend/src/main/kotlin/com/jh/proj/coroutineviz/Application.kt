@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.routes.IngestConnections
+import com.jh.proj.coroutineviz.routes.configureDemoRuns
 import com.jh.proj.coroutineviz.session.RetentionPolicy
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.http.HttpMethod
@@ -92,6 +93,7 @@ fun Application.module() {
     configureRateLimit()
 
     configureErrorHandling()
+    configureDemoRuns()
     configureRouting()
     configureSessionLifecycle()
 }

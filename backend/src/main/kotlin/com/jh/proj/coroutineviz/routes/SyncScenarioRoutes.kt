@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarios.SyncScenarios
+import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import io.ktor.http.*
@@ -36,7 +37,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Thread-safe counter using Mutex
      */
-    get("/api/sync/mutex/counter") {
+    demoGet("/api/sync/mutex/counter") {
         call.runSyncScenario("Thread-Safe Counter") { scope ->
             SyncScenarios.threadSafeCounter(scope)
         }
@@ -45,7 +46,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Bank account transfer with consistent lock ordering
      */
-    get("/api/sync/mutex/bank-transfer") {
+    demoGet("/api/sync/mutex/bank-transfer") {
         call.runSyncScenario("Bank Account Transfer") { scope ->
             SyncScenarios.bankAccountTransfer(scope)
         }
@@ -54,7 +55,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Cache with thread-safe read-through pattern
      */
-    get("/api/sync/mutex/cache") {
+    demoGet("/api/sync/mutex/cache") {
         call.runSyncScenario("Cache Read-Through") { scope ->
             SyncScenarios.cacheWithReadThrough(scope)
         }
@@ -63,7 +64,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Deadlock demonstration (intentional)
      */
-    get("/api/sync/mutex/deadlock-demo") {
+    demoGet("/api/sync/mutex/deadlock-demo") {
         call.runSyncScenario("Deadlock Demonstration") { scope ->
             SyncScenarios.deadlockDemonstration(scope)
         }
@@ -76,7 +77,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Database connection pool limiting
      */
-    get("/api/sync/semaphore/connection-pool") {
+    demoGet("/api/sync/semaphore/connection-pool") {
         call.runSyncScenario("Database Connection Pool") { scope ->
             SyncScenarios.databaseConnectionPool(scope)
         }
@@ -85,7 +86,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * API rate limiter
      */
-    get("/api/sync/semaphore/rate-limiter") {
+    demoGet("/api/sync/semaphore/rate-limiter") {
         call.runSyncScenario("API Rate Limiter") { scope ->
             SyncScenarios.apiRateLimiter(scope)
         }
@@ -94,7 +95,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Parallel file processor with I/O throttling
      */
-    get("/api/sync/semaphore/file-processor") {
+    demoGet("/api/sync/semaphore/file-processor") {
         call.runSyncScenario("Parallel File Processor") { scope ->
             SyncScenarios.parallelFileProcessor(scope)
         }
@@ -103,7 +104,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Resource pool with timeout handling
      */
-    get("/api/sync/semaphore/resource-timeout") {
+    demoGet("/api/sync/semaphore/resource-timeout") {
         call.runSyncScenario("Resource Pool with Timeout") { scope ->
             SyncScenarios.resourcePoolWithTimeout(scope)
         }
@@ -112,7 +113,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * Producer-Consumer with bounded buffer
      */
-    get("/api/sync/semaphore/producer-consumer") {
+    demoGet("/api/sync/semaphore/producer-consumer") {
         call.runSyncScenario("Producer-Consumer Buffer") { scope ->
             SyncScenarios.producerConsumerBuffer(scope)
         }
@@ -125,7 +126,7 @@ fun Route.registerSyncScenarioRoutes() {
     /**
      * E-commerce order processing (Mutex + Semaphore)
      */
-    get("/api/sync/combined/ecommerce") {
+    demoGet("/api/sync/combined/ecommerce") {
         call.runSyncScenario("E-commerce Order Processing") { scope ->
             SyncScenarios.ecommerceOrderProcessing(scope)
         }
@@ -162,34 +163,34 @@ fun Route.registerSyncScenarioRoutes() {
     // existing session. These POST aliases provide that for sync scenarios so the
     // Gallery's Sync cards work like every other card.
     // ========================================================================
-    post("/api/scenarios/sync/mutex/counter") {
+    demoPost("/api/scenarios/sync/mutex/counter") {
         call.runSyncScenarioInSession("Thread-Safe Counter") { SyncScenarios.threadSafeCounter(it) }
     }
-    post("/api/scenarios/sync/mutex/bank-transfer") {
+    demoPost("/api/scenarios/sync/mutex/bank-transfer") {
         call.runSyncScenarioInSession("Bank Account Transfer") { SyncScenarios.bankAccountTransfer(it) }
     }
-    post("/api/scenarios/sync/mutex/cache") {
+    demoPost("/api/scenarios/sync/mutex/cache") {
         call.runSyncScenarioInSession("Cache Read-Through") { SyncScenarios.cacheWithReadThrough(it) }
     }
-    post("/api/scenarios/sync/mutex/deadlock-demo") {
+    demoPost("/api/scenarios/sync/mutex/deadlock-demo") {
         call.runSyncScenarioInSession("Deadlock Demo") { SyncScenarios.deadlockDemonstration(it) }
     }
-    post("/api/scenarios/sync/semaphore/connection-pool") {
+    demoPost("/api/scenarios/sync/semaphore/connection-pool") {
         call.runSyncScenarioInSession("Connection Pool") { SyncScenarios.databaseConnectionPool(it) }
     }
-    post("/api/scenarios/sync/semaphore/rate-limiter") {
+    demoPost("/api/scenarios/sync/semaphore/rate-limiter") {
         call.runSyncScenarioInSession("API Rate Limiter") { SyncScenarios.apiRateLimiter(it) }
     }
-    post("/api/scenarios/sync/semaphore/file-processor") {
+    demoPost("/api/scenarios/sync/semaphore/file-processor") {
         call.runSyncScenarioInSession("File Processor") { SyncScenarios.parallelFileProcessor(it) }
     }
-    post("/api/scenarios/sync/semaphore/resource-timeout") {
+    demoPost("/api/scenarios/sync/semaphore/resource-timeout") {
         call.runSyncScenarioInSession("Resource Timeout") { SyncScenarios.resourcePoolWithTimeout(it) }
     }
-    post("/api/scenarios/sync/semaphore/producer-consumer") {
+    demoPost("/api/scenarios/sync/semaphore/producer-consumer") {
         call.runSyncScenarioInSession("Producer-Consumer") { SyncScenarios.producerConsumerBuffer(it) }
     }
-    post("/api/scenarios/sync/combined/ecommerce") {
+    demoPost("/api/scenarios/sync/combined/ecommerce") {
         call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.ecommerceOrderProcessing(it) }
     }
 }
@@ -230,7 +231,7 @@ private suspend fun ApplicationCall.runSyncScenario(
             }
 
         // Create VizScope
-        val scope = VizScope(session)
+        val scope = session.demoScope()
 
         // Run the scenario
         scenario(scope)
@@ -280,7 +281,7 @@ private suspend fun ApplicationCall.runSyncScenarioInSession(
     try {
         val sessionId = request.queryParameters["sessionId"]
         val session = getOrCreateSession(sessionId)
-        val scope = VizScope(session)
+        val scope = session.demoScope()
         scenario(scope)
         kotlinx.coroutines.delay(100)
         val eventCount = session.store.all().size

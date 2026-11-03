@@ -2,9 +2,9 @@ package com.jh.proj.coroutineviz.examples
 
 import com.jh.proj.coroutineviz.events.dispatcher.DispatcherSelected
 import com.jh.proj.coroutineviz.events.dispatcher.ThreadAssigned
+import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.wrappers.VizDispatchers
-import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.coroutineScope
 
 /**
@@ -38,7 +38,7 @@ suspend fun dispatcherExampleScenario() =
         // ========================================
         println("\n🟢 Example 1: Default Dispatcher")
 
-        val scope1 = VizScope(session, context = dispatchers.default)
+        val scope1 = session.demoScope(dispatchers.default)
         scope1
             .vizLaunch(label = "cpu-work") {
                 println("   [cpu-work] Running on: ${Thread.currentThread().name}")
@@ -51,7 +51,7 @@ suspend fun dispatcherExampleScenario() =
         // ========================================
         println("\n🔵 Example 2: IO Dispatcher")
 
-        val scope2 = VizScope(session, context = dispatchers.io)
+        val scope2 = session.demoScope(dispatchers.io)
         scope2
             .vizLaunch(label = "file-reader") {
                 println("   [file-reader] Running on: ${Thread.currentThread().name}")
@@ -66,7 +66,7 @@ suspend fun dispatcherExampleScenario() =
         // ========================================
         println("\n🟡 Example 3: Mixed Dispatchers")
 
-        val scope3 = VizScope(session, context = dispatchers.default)
+        val scope3 = session.demoScope(dispatchers.default)
         scope3
             .vizLaunch(label = "parent") {
                 println("   [parent] Running on: ${Thread.currentThread().name}")

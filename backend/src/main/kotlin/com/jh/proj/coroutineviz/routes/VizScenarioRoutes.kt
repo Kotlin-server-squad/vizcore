@@ -12,7 +12,7 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.delay
 
 fun Route.registerVizScenarioRoutes() {
-    get("/api/viz/run-scenario-with-data") {
+    demoGet("/api/viz/run-scenario-with-data") {
         val session = VizSession("api-session-${System.currentTimeMillis()}")
         val cid = "coro-1"
         val jid = "job-1"
@@ -27,7 +27,7 @@ fun Route.registerVizScenarioRoutes() {
             }
         call.respond(HttpStatusCode.OK, ScenarioResultData(true, session.sessionId, session.store.all(), nodes, session.store.all().size))
     }
-    get("/api/examples/dispatcher-scenario") {
+    demoGet("/api/examples/dispatcher-scenario") {
         dispatcherExampleScenario()
         call.respond(HttpStatusCode.OK, ScenarioResponse(success = true, message = "Done"))
     }

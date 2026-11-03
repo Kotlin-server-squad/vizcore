@@ -20,7 +20,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting nested coroutines scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("parent") {
@@ -59,7 +59,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting parallel execution scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("coordinator") {
@@ -95,7 +95,7 @@ object ScenarioRunner {
             logger.info("Starting dispatcher scenario in session: ${session.sessionId}")
 
             val dispatchers = VizDispatchers(session, scopeId = "dispatcher")
-            val viz = VizScope(session, context = dispatchers.default)
+            val viz = session.demoScope(dispatchers.default)
 
             val job =
                 viz.vizLaunch("coordinator") {
@@ -132,7 +132,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting cancellation scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("parent") {
@@ -183,7 +183,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting deep nesting scenario (depth=$depth) in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             suspend fun VizScope.createNested(level: Int): Job =
                 if (level >= depth) {
@@ -213,7 +213,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting mixed scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("orchestrator") {
@@ -253,7 +253,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting exception scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("parent") {
@@ -301,7 +301,7 @@ object ScenarioRunner {
                 logger.info("Description: ${config.description}")
             }
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             // Execute the root coroutine configuration recursively
             val job = viz.executeCoroutineConfig(config.root)
@@ -325,7 +325,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting channel rendezvous scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
             val channel = viz.vizChannel<Int>(Channel.RENDEZVOUS, "rendezvous-channel")
 
             val job =
@@ -378,7 +378,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting channel buffered scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
             val channel = viz.vizChannel<String>(3, "buffered-channel")
 
             val job =
@@ -430,7 +430,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting channel fan-out scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
             val channel = viz.vizChannel<Int>(Channel.BUFFERED, "task-channel")
 
             val job =
@@ -496,7 +496,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting Order Processing scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("OrderService.processOrder") {
@@ -592,7 +592,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting User Registration scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("UserService.register") {
@@ -708,7 +708,7 @@ object ScenarioRunner {
         coroutineScope {
             logger.info("Starting Report Generation scenario in session: ${session.sessionId}")
 
-            val viz = VizScope(session)
+            val viz = session.demoScope()
 
             val job =
                 viz.vizLaunch("ReportService.generateMonthlyReport") {
