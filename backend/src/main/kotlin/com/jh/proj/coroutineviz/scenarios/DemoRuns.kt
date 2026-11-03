@@ -221,13 +221,33 @@ private const val TIME_LIMIT_MESSAGE = "The demo ran past its time limit (MAX_DE
 private val demoLogger = LoggerFactory.getLogger("DemoRuns")
 
 /**
- * Several demos fail on purpose (Exception Handling, Retry, Supervisor, Circuit Breaker) and the
- * session shows that failure. Without a handler the exception also reached the JVM's default
- * handler, which printed a stack trace for every run of a working demo.
+ * Marks this exception as thrown on purpose by a demo, to show a failure in the session. Its type
+ * and message are unchanged, so the session shows the same failure.
+ */
+internal fun <T : Throwable> T.intendedByDemo(): T = apply { addSuppressed(IntendedByDemo) }
+
+/** The failure a demo shows on purpose; see [intendedByDemo]. */
+internal fun demoFailure(message: String): IllegalStateException = IllegalStateException(message).intendedByDemo()
+
+private object IntendedByDemo : Throwable("thrown on purpose by a demo", null, false, false)
+
+private fun Throwable.isIntendedByDemo(): Boolean =
+    generateSequence(this) { it.cause }.any { e -> e.suppressed.any { it === IntendedByDemo } }
+
+/**
+ * Several demos fail on purpose (Exception Handling, Retry, Supervisor, Circuit Breaker, the
+ * real-life demos' failure options, a custom "throw" action). Without a handler the exception
+ * reached the JVM's default handler, which printed a stack trace on every run of a working demo.
+ * Those are logged in one line; any other failure is a bug and keeps its stack trace.
  */
 private val demoFailureHandler =
     CoroutineExceptionHandler { context, e ->
-        demoLogger.info("A demo coroutine failed ({}): {}", context[CoroutineName]?.name, e.toString())
+        val name = context[CoroutineName]?.name
+        if (e.isIntendedByDemo()) {
+            demoLogger.info("A demo coroutine failed on purpose ({}): {}", name, e.toString())
+        } else {
+            demoLogger.error("A demo coroutine failed ({})", name, e)
+        }
     }
 
 /**

@@ -1,7 +1,7 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.appJson
-import kotlin.test.Test
+import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 class ErrorResponseTest {

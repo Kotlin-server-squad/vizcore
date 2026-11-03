@@ -106,6 +106,12 @@ tasks.named<Test>("test") {
     // SdkBackendAuthTest runs VizcoreClient.start, which installs DebugProbes; they attach a
     // byte-buddy agent at runtime. Allow it explicitly, as coroutine-viz-core's test task does.
     jvmArgs("-XX:+EnableDynamicAgentLoading")
+    // DemoCatalogTest compares the SPA's copy of the demo catalog with the served one; a change
+    // to that copy alone must re-run it.
+    inputs
+        .file(rootProject.file("../frontend/src/test/demo-catalog.json"))
+        .withPropertyName("spaDemoCatalog")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // ── PERF-05 dev-only load harness (D-09/D-10/D-11) ───────────────────────────

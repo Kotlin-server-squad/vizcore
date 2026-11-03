@@ -201,10 +201,14 @@ class DemoRunRoutesTest {
                 "/api/scenarios/patterns",
                 "/api/sync/scenarios",
                 "/api/sessions",
-                "/health",
             ).forEach { path ->
                 assertEquals(HttpStatusCode.OK, client.get(path).status, "$path must not count as a demo")
             }
+            // /health answers 503 on its own when the heap is nearly full (a busy test JVM), so
+            // only require that the demo limit did not refuse it.
+            val health = client.get("/health")
+            assertTrue(health.status == HttpStatusCode.OK || health.code() != "demo-limit", "/health must not count as a demo")
+            assertTrue(Json.parseToJsonElement(health.bodyAsText()).jsonObject.containsKey("status"), health.bodyAsText())
             assertEquals(HttpStatusCode.Created, client.post("/api/sessions?name=not-a-demo").status)
         }
 
