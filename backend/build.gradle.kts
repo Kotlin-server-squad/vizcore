@@ -116,6 +116,11 @@ tasks.named<Test>("test") {
         .files(rootProject.file("../frontend/src/test/demo-catalog.json"))
         .withPropertyName("spaDemoCatalog")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // ComposeDemoSettingsTest reads the Compose files at the repository root.
+    inputs
+        .files(rootProject.file("../docker-compose.yml"), rootProject.file("../docker-compose.prod.yml"))
+        .withPropertyName("composeFiles")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // ── PERF-05 dev-only load harness (D-09/D-10/D-11) ───────────────────────────

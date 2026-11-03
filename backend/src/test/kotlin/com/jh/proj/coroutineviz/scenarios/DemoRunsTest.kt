@@ -226,9 +226,16 @@ class DemoRunsTest {
             session.close()
         }
 
+    /**
+     * At a scale near zero every step rounds to no wait at all, and the steps run in whatever
+     * order the threads get to them: the screen could be closed before its requests start, or a
+     * failure come after its siblings finished. Such a scale would change what the demo shows.
+     */
     @Test
-    fun `a time scale below zero or not a number is refused`() {
-        assertFailsWith<IllegalArgumentException> { DemoRuns(maxConcurrent = 0, timeScale = -1.0) }
-        assertFailsWith<IllegalArgumentException> { DemoRuns(maxConcurrent = 0, timeScale = Double.NaN) }
+    fun `a time scale too small to keep the steps apart, or not a number, is refused`() {
+        listOf(-1.0, 0.0, 0.005, Double.NaN, Double.POSITIVE_INFINITY).forEach { scale ->
+            assertFailsWith<IllegalArgumentException>("time scale $scale") { DemoRuns(maxConcurrent = 0, timeScale = scale) }
+        }
+        assertEquals(0.01, DemoRuns(maxConcurrent = 0, timeScale = 0.01).timeScale)
     }
 }

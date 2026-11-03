@@ -78,8 +78,8 @@ scenarios:
   maxRunSeconds: ${MAX_DEMO_RUN_SECONDS:60}
   # How fast the paced demos run (the Basics so far): each scripted step takes its time times
   # this. 1 = as scripted, at a pace a person can follow (10-30 s a demo); 0.1 runs them ten times
-  # faster, 0 at once. The tests and the smoke test use a small scale. A value that is not a
-  # number of zero or more runs them as scripted.
+  # faster. At least 0.01, so the steps stay apart and in order. The tests and the smoke test use a
+  # small scale. Anything else runs them as scripted.
   timeScale: ${DEMO_TIME_SCALE:1.0}
 
 share:

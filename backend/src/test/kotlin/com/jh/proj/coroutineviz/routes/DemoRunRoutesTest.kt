@@ -271,10 +271,12 @@ class DemoRunRoutesTest {
         }
 
     @Test
-    fun `the demos' time scale comes from scenarios timeScale, and a value that is not one runs them as scripted`() {
+    fun `the demos' time scale comes from scenarios timeScale, and one that is too small or not a number runs them as scripted`() {
         // Not configured, the scale comes from DEMO_TIME_SCALE, which the build sets for the tests.
         val unconfigured = System.getenv("DEMO_TIME_SCALE")?.toDouble() ?: 1.0
-        listOf("0.25" to 0.25, "0" to 0.0, null to unconfigured, "-2" to 1.0, "fast" to 1.0).forEach { (configured, expected) ->
+        val cases =
+            listOf("0.25" to 0.25, "0.01" to 0.01, null to unconfigured, "0" to 1.0, "0.001" to 1.0, "-2" to 1.0, "fast" to 1.0)
+        cases.forEach { (configured, expected) ->
             testApplication {
                 demoApp(maxConcurrent = 1, timeScale = configured)
                 startApplication()

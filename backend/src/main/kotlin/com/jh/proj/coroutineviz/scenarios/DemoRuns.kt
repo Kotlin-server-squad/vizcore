@@ -49,7 +49,7 @@ class DemoRuns(
     val timeScale: Double = 1.0,
 ) {
     init {
-        require(timeScale.isFinite() && timeScale >= 0) { "The demo time scale must be zero or more, got $timeScale" }
+        require(DemoPace.isValid(timeScale)) { "The demo time scale must be a number of at least ${DemoPace.MIN_SCALE}, got $timeScale" }
     }
 
     private val running = AtomicInteger(0)

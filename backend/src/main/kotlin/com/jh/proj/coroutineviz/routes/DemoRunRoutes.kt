@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.scenarios.DemoPace
 import com.jh.proj.coroutineviz.scenarios.DemoRuns
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -31,16 +32,18 @@ internal val DemoRunsKey = AttributeKey<DemoRuns>("DemoRuns")
 /**
  * How fast demos run, from `scenarios.timeScale`: 1 = as scripted. application.yaml maps it to env
  * `DEMO_TIME_SCALE`; a configuration that does not name it (the tests' own, which the build runs
- * with a small `DEMO_TIME_SCALE`) reads that variable directly. A value that is not a number of
- * zero or more runs them as scripted.
+ * with a small `DEMO_TIME_SCALE`) reads that variable directly. A value that is not a number of at
+ * least [DemoPace.MIN_SCALE] runs them as scripted.
  */
 internal fun Application.demoTimeScale(): Double {
     val configured =
         environment.config.propertyOrNull("scenarios.timeScale")?.getString()
             ?: System.getenv("DEMO_TIME_SCALE")
             ?: return 1.0
-    val scale = configured.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }
-    if (scale == null) log.warn("scenarios.timeScale (DEMO_TIME_SCALE) must be a number of zero or more, got '{}'; using 1", configured)
+    val scale = configured.toDoubleOrNull()?.takeIf(DemoPace::isValid)
+    if (scale == null) {
+        log.warn("scenarios.timeScale (DEMO_TIME_SCALE) must be a number of at least {}, got '{}'; using 1", DemoPace.MIN_SCALE, configured)
+    }
     return scale ?: 1.0
 }
 

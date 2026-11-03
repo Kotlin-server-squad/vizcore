@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.events.dispatcher.DispatcherSelected
@@ -231,10 +232,18 @@ class BasicsDemoPacingTest {
         listOf("fetch-orders", "fetch-invoices").forEach { assertTrue(run.cancelled(it), "$it must be cancelled") }
         listOf("fetch-delivery-status", "fetch-profile").forEach { assertTrue(run.completed(it), "$it must complete") }
         assertTrue(!run.completed("load-account-page"), "the page must not complete")
-        // Cancelled at the moment of the failure (its own event may come just before or after),
-        // not at the end of its own steps, 15 s in.
+        // Cancelled by the failure: after the loyalty call's last step resumed (where it throws),
+        // and long before their own steps would have ended, 15 s in. Events are in the order the
+        // session received them, so this holds however the threads were scheduled.
+        val thrownAt =
+            run.events
+                .filterIsInstance<CoroutineResumed>()
+                .last { it.label == "fetch-loyalty-points" }
+                .seq
         listOf("fetch-orders", "fetch-invoices").forEach {
-            assertTrue(kotlin.math.abs(run.endedAt(it) - run.at(failure)) < 200, "$it is cancelled by the failure")
+            val cancelled = assertNotNull(run.of<CoroutineCancelled>(it))
+            assertTrue(cancelled.seq > thrownAt, "$it is cancelled after the loyalty call fails")
+            assertTrue(run.at(cancelled) < 14_000, "$it is cancelled at ${run.at(cancelled)} ms, before its own steps end")
         }
     }
 
