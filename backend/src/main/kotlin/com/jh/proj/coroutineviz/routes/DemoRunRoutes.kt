@@ -71,7 +71,7 @@ private suspend fun RoutingContext.runDemo(body: suspend RoutingContext.() -> Un
         call.response.header(HttpHeaders.RetryAfter, DEMO_BUSY_RETRY_AFTER_SECONDS)
         call.respond(
             HttpStatusCode.ServiceUnavailable,
-            ErrorResponse(error = "Server busy: too many demos running, try again in a few seconds"),
+            ErrorResponse(error = "Server busy: too many demos running, try again in a few seconds", code = "demo-limit"),
         )
         return
     }
@@ -83,7 +83,7 @@ private suspend fun RoutingContext.runDemo(body: suspend RoutingContext.() -> Un
         if (!call.response.isCommitted) {
             call.respond(
                 HttpStatusCode.ServiceUnavailable,
-                ErrorResponse(error = "The demo ran past its time limit and was stopped"),
+                ErrorResponse(error = "The demo ran past its time limit and was stopped", code = "demo-time-limit"),
             )
         }
     }

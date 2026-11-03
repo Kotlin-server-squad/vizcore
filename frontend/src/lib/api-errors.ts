@@ -8,11 +8,14 @@
  */
 export class ApiError extends Error {
   readonly status: number
+  /** The body's machine-readable `code`, e.g. `demo-limit`; absent on most errors. */
+  readonly code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    if (code) this.code = code
   }
 }
 
@@ -142,6 +145,14 @@ export function describeApiError(error: unknown, subject = 'This resource'): Des
           'The vizcore server refused this request (HTTP 403). Your account may not have access, or the server does not accept requests from this page\'s address (cors.allowedOrigins).',
         retryable: false,
       }
+    }
+    // The demo limit's 503s say why in `code`; any other 503 (a proxy in front of a stopped
+    // backend, say) stays a server error below.
+    if (error.code === 'demo-limit') {
+      return { kind: 'server', title: 'Server busy', message: error.message, retryable: true }
+    }
+    if (error.code === 'demo-time-limit') {
+      return { kind: 'server', title: 'Demo stopped', message: error.message, retryable: true }
     }
     if (error.status >= 500) {
       return {

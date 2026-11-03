@@ -564,10 +564,12 @@ paths:
       tags: [Scenarios - Catalog]
       summary: List all general scenarios
       description: >
-        Returns the catalog of built-in scenarios across all categories
-        (realistic, channel, basic). Each entry includes the scenario ID,
-        display name, description, HTTP endpoint, category, and estimated
-        duration.
+        Returns every demo the "New demo session" dialog can start (32), listed
+        group by group in display order: real life, basics, channels, Flow,
+        patterns, Mutex, Semaphore and combined. Each entry includes the scenario
+        ID (its path under /api/scenarios/), display name, description, HTTP
+        method and endpoint, category, group and estimated duration. Start one
+        with `POST /api/scenarios/{id}?sessionId=...`.
       operationId: listScenarios
       responses:
         "200":
@@ -1611,6 +1613,13 @@ components:
         error:
           type: string
           description: Human-readable error message
+        code:
+          type: string
+          enum: [demo-limit, demo-time-limit]
+          description: >
+            Machine-readable reason, present only on the demo limit's 503s:
+            demo-limit (every MAX_CONCURRENT_DEMOS slot is taken) and
+            demo-time-limit (the demo ran past MAX_DEMO_RUN_SECONDS)
 
     # -----------------------------------------------------------------------
     # Health
@@ -2410,7 +2419,18 @@ components:
           description: HTTP endpoint to trigger the scenario
         category:
           type: string
-          description: Scenario category (basic, channel, realistic, flow, pattern)
+          description: Scenario category (realistic, basic, channel, flow, pattern, sync)
+        group:
+          type: string
+          description: >
+            Stable key of the dialog group (real-life, basics, channels, flow,
+            patterns, sync-mutex, sync-semaphore, combined)
+        groupLabel:
+          type: string
+          description: 'Heading of the dialog group, for example "Sync: Mutex"'
+        method:
+          type: string
+          description: HTTP method that starts the demo (always POST)
         duration:
           type: string
           description: Estimated execution duration (e.g. "~2-3 seconds")

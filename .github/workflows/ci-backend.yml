@@ -3,10 +3,11 @@ name: CI Backend
 on:
   push:
     branches: [main]
-    paths: ['backend/**']
+    # The demo catalog's SPA copy is checked by a backend test (DemoCatalogTest).
+    paths: ['backend/**', 'frontend/src/test/demo-catalog.json']
   pull_request:
     branches: [main]
-    paths: ['backend/**']
+    paths: ['backend/**', 'frontend/src/test/demo-catalog.json']
 
 # The IntelliJ plugin is postponed (#130) and is no longer configured or built by this
 # workflow: backend/settings.gradle.kts leaves :intellij-plugin out of the build unless

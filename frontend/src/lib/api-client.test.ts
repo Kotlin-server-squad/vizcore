@@ -26,6 +26,47 @@ function mockJsonResponse(data: unknown, status = 200) {
 }
 
 describe('ApiClient', () => {
+  describe('runScenario', () => {
+    it('keeps the code of a refusal by the demo limit, so it reads as busy', async () => {
+      mockFetch.mockResolvedValue(
+        mockJsonResponse(
+          { error: 'Server busy: too many demos running, try again in a few seconds', code: 'demo-limit' },
+          503,
+        ),
+      )
+
+      const error = await apiClient.runScenario('flow/simple', 's-1').catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ApiError)
+      expect(error).toMatchObject({
+        status: 503,
+        code: 'demo-limit',
+        message: 'Server busy: too many demos running, try again in a few seconds',
+      })
+    })
+
+    // The ids are the demos' paths under /api/scenarios, one per family the dialog offers.
+    it.each([
+      'order-processing',
+      'nested',
+      'channel-rendezvous',
+      'flow/simple',
+      'patterns/retry',
+      'sync/mutex/counter',
+      'sync/semaphore/connection-pool',
+      'sync/combined/ecommerce',
+    ])('POSTs %s into the given session', async (id) => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ success: true, sessionId: 's-1' }))
+
+      await apiClient.runScenario(id, 's-1')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `/api/scenarios/${id}?sessionId=s-1`,
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+  })
+
   describe('listSessions', () => {
     it('makes GET request to /api/sessions', async () => {
       const sessions = [

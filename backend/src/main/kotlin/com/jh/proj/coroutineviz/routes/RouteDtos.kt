@@ -1,6 +1,8 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.events.VizEvent
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -9,9 +11,16 @@ import kotlinx.serialization.Serializable
  * the frontend 404 detection (`ComparisonView.isSessionNotFound`) parses this
  * exact shape, and the compiler now enforces the documented contract.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ErrorResponse(
     val error: String,
+    /**
+     * A machine-readable reason, only where a client acts on it: `demo-limit` (every demo slot
+     * is taken) and `demo-time-limit` (the demo was stopped at MAX_DEMO_RUN_SECONDS). Omitted
+     * otherwise, so every other error keeps the `{"error":"..."}` shape.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val code: String? = null,
 )
 
 @Serializable

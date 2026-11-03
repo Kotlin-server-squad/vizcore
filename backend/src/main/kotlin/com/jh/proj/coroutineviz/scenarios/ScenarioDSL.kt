@@ -149,7 +149,8 @@ suspend fun VizScope.executeCoroutineConfig(config: CoroutineConfig): Job =
                     vizDelay(action.durationMs)
                 }
                 is CoroutineAction.ThrowException -> {
-                    throw createException(action.exceptionType, action.message)
+                    // The visitor asked for this failure.
+                    throw createException(action.exceptionType, action.message).intendedByDemo()
                 }
                 is CoroutineAction.Log -> {
                     // Log action - events are already tracked by VizScope

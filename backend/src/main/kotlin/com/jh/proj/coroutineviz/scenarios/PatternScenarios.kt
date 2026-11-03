@@ -48,7 +48,7 @@ object PatternScenarios {
 
                             val count = attemptCounter.incrementAndGet()
                             if (count < maxRetries) {
-                                error("Service unavailable (attempt $currentAttempt)")
+                                throw demoFailure("Service unavailable (attempt $currentAttempt)")
                             }
                             logger.debug("Attempt $currentAttempt: service responded successfully")
                         }
@@ -56,13 +56,13 @@ object PatternScenarios {
                     try {
                         job.join()
                         if (job.isCancelled) {
-                            throw lastException ?: error("Attempt $currentAttempt failed")
+                            throw lastException ?: demoFailure("Attempt $currentAttempt failed")
                         }
                         logger.debug("Operation succeeded on attempt $currentAttempt")
                         return@vizLaunch
                     } catch (e: Exception) {
                         if (e is CancellationException) {
-                            lastException = IllegalStateException("Attempt $currentAttempt failed")
+                            lastException = demoFailure("Attempt $currentAttempt failed")
                         } else {
                             lastException = e
                         }
@@ -233,7 +233,7 @@ object PatternScenarios {
                         logger.debug("Service B: starting")
                         vizDelay(150)
                         logger.debug("Service B: about to fail!")
-                        error("Service B encountered a fatal error")
+                        throw demoFailure("Service B encountered a fatal error")
                     }
 
                 val stableChild2 =
@@ -305,7 +305,7 @@ object PatternScenarios {
                         vizLaunch("downstream-call-$requestId") {
                             vizDelay(80)
                             if (requestId <= 4) {
-                                error("Downstream service error")
+                                throw demoFailure("Downstream service error")
                             }
                             logger.debug("Request $requestId: downstream call succeeded")
                         }.also { job ->

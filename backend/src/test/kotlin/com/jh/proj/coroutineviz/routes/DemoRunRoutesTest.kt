@@ -78,6 +78,14 @@ class DemoRunRoutesTest {
             .jsonObject["error"]!!
             .jsonPrimitive.content
 
+    /** The machine-readable reason, which lets the SPA tell the demo limit from other 503s. */
+    private suspend fun HttpResponse.code(): String? =
+        Json
+            .parseToJsonElement(bodyAsText())
+            .jsonObject["code"]
+            ?.jsonPrimitive
+            ?.content
+
     private suspend fun HttpResponse.sessionId(): String =
         Json
             .parseToJsonElement(bodyAsText())
@@ -97,6 +105,7 @@ class DemoRunRoutesTest {
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
             assertNotNull(response.headers[HttpHeaders.RetryAfter]?.toIntOrNull(), "Retry-After must be a number of seconds")
             assertTrue(response.error().contains("too many demos running"), "got ${response.error()}")
+            assertEquals("demo-limit", response.code())
             assertEquals(sessionsBefore, SessionManager.listSessions().size, "a refused demo must not create a session")
         }
 
@@ -175,6 +184,7 @@ class DemoRunRoutesTest {
 
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
             assertTrue(response.error().contains("time limit"), "got ${response.bodyAsText()}")
+            assertEquals("demo-time-limit", response.code())
             awaitNoDemoRunning()
         }
 
@@ -191,10 +201,14 @@ class DemoRunRoutesTest {
                 "/api/scenarios/patterns",
                 "/api/sync/scenarios",
                 "/api/sessions",
-                "/health",
             ).forEach { path ->
                 assertEquals(HttpStatusCode.OK, client.get(path).status, "$path must not count as a demo")
             }
+            // /health answers 503 on its own when the heap is nearly full (a busy test JVM), so
+            // only require that the demo limit did not refuse it.
+            val health = client.get("/health")
+            assertTrue(health.status == HttpStatusCode.OK || health.code() != "demo-limit", "/health must not count as a demo")
+            assertTrue(Json.parseToJsonElement(health.bodyAsText()).jsonObject.containsKey("status"), health.bodyAsText())
             assertEquals(HttpStatusCode.Created, client.post("/api/sessions?name=not-a-demo").status)
         }
 

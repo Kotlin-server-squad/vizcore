@@ -261,7 +261,7 @@ object ScenarioRunner {
                         vizLaunch("failing-child") {
                             logger.debug("Child about to fail...")
                             vizDelay(100)
-                            throw IllegalStateException("Intentional failure for demo")
+                            throw demoFailure("Intentional failure for demo")
                         }
 
                     val child2 =
@@ -523,13 +523,17 @@ object ScenarioRunner {
                             vizDelay((3000..4000).random().toLong())
 
                             if (shouldFail) {
-                                throw IllegalStateException("Payment declined: Insufficient funds")
+                                throw demoFailure("Payment declined: Insufficient funds")
                             }
                             logger.debug("✅ Payment processed successfully")
                         }
 
                     try {
                         paymentJob.join()
+                    } catch (e: CancellationException) {
+                        // A failed payment cancels this coroutine's join: the demo's failure, not
+                        // an error. Rethrow to keep cooperative cancellation intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.error("❌ Payment failed: ${e.message}")
                         // Cancel remaining operations
@@ -653,7 +657,7 @@ object ScenarioRunner {
                                     vizLaunch("EmailService.retry-1") {
                                         logger.debug("First attempt failed, retrying...")
                                         vizDelay(1500)
-                                        throw IllegalStateException("SMTP server timeout")
+                                        throw demoFailure("SMTP server timeout")
                                     }.join()
                                 }
 
@@ -734,7 +738,7 @@ object ScenarioRunner {
                                 if (shouldTimeout) {
                                     // Simulate timeout
                                     vizDelay(8000)
-                                    throw IllegalStateException("Analytics API timeout after 8s")
+                                    throw demoFailure("Analytics API timeout after 8s")
                                 }
 
                                 vizDelay((2500..3500).random().toLong())
@@ -750,6 +754,10 @@ object ScenarioRunner {
                     try {
                         dataFetchJobs.forEach { it.join() }
                         logger.debug("✅ All data sources fetched successfully")
+                    } catch (e: CancellationException) {
+                        // A timed-out fetch cancels this coroutine's join: the demo's failure, not
+                        // an error. Rethrow to keep cooperative cancellation intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.error("❌ Data fetch failed: ${e.message}")
                         throw e

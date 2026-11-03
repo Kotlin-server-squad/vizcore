@@ -3,6 +3,8 @@ package com.jh.proj.coroutineviz.scenarios
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,6 +16,9 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -215,15 +220,59 @@ class DemoRun internal constructor(
 
 private const val TIME_LIMIT_MESSAGE = "The demo ran past its time limit (MAX_DEMO_RUN_SECONDS)"
 
+private val demoLogger = LoggerFactory.getLogger("DemoRuns")
+
+/**
+ * Marks this exception as thrown on purpose by a demo, to show a failure in the session. Its type
+ * and message are unchanged, so the session shows the same failure.
+ */
+internal fun <T : Throwable> T.intendedByDemo(): T = apply { addSuppressed(IntendedByDemo) }
+
+/** The failure a demo shows on purpose; see [intendedByDemo]. */
+internal fun demoFailure(message: String): IllegalStateException = IllegalStateException(message).intendedByDemo()
+
+private object IntendedByDemo : Throwable("thrown on purpose by a demo", null, false, false)
+
+/**
+ * True if this failure was thrown on purpose by the demo and carries no other failure. Kotlin adds
+ * further child and cleanup failures as suppressed exceptions, and causes wrap others; any of
+ * those that is not itself intended makes the whole failure unexpected.
+ */
+private fun Throwable.isIntendedByDemo(): Boolean = IntendedByDemo in suppressed && allFailures().all { it.isMarkedIntended() }
+
+private fun Throwable.isMarkedIntended() = IntendedByDemo in suppressed || this is CancellationException
+
+/** This failure and every failure it carries (causes and suppressed), without the marker. */
+private fun Throwable.allFailures(seen: MutableSet<Throwable> = Collections.newSetFromMap(IdentityHashMap())): List<Throwable> {
+    if (this === IntendedByDemo || !seen.add(this)) return emptyList()
+    return listOf(this) + (listOfNotNull(cause) + suppressed).flatMap { it.allFailures(seen) }
+}
+
+/**
+ * Several demos fail on purpose (Exception Handling, Retry, Supervisor, Circuit Breaker, the
+ * real-life demos' failure options, a custom "throw" action). Without a handler the exception
+ * reached the JVM's default handler, which printed a stack trace on every run of a working demo.
+ * Those are logged in one line; any other failure is a bug and keeps its stack trace.
+ */
+private val demoFailureHandler =
+    CoroutineExceptionHandler { context, e ->
+        val name = context[CoroutineName]?.name
+        if (e.isIntendedByDemo()) {
+            demoLogger.info("A demo coroutine failed on purpose ({}): {}", name, e.toString())
+        } else {
+            demoLogger.error("A demo coroutine failed ({})", name, e)
+        }
+    }
+
 /**
  * The scope a demo runs its coroutines in. It counts against the demo's slot in [DemoRuns], so
  * it can only be made while the demo holds one: a demo that does not, fails instead of running
- * outside the limit.
+ * outside the limit. A [context] with its own exception handler replaces [demoFailureHandler].
  */
 suspend fun VizSession.demoScope(context: CoroutineContext = EmptyCoroutineContext): VizScope {
     val run =
         checkNotNull(currentCoroutineContext()[DemoRun]) {
             "A demo can only run while it holds a slot (MAX_CONCURRENT_DEMOS); start it through demoPost or demoGet"
         }
-    return run.newScope(this) { VizScope(this, context) }
+    return run.newScope(this) { VizScope(this, demoFailureHandler + context) }
 }

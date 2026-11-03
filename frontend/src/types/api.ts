@@ -192,12 +192,18 @@ export interface ScenarioCompletion {
   eventCount: number
 }
 
+/** One demo in `GET /api/scenarios`; start it with `POST /api/scenarios/{id}?sessionId=...`. */
 export interface Scenario {
   id: string
   name: string
   description: string
   endpoint: string
-  category?: 'realistic' | 'basic'
+  category?: 'realistic' | 'basic' | 'channel' | 'flow' | 'pattern' | 'sync' | (string & {})
+  /** Stable key of the "New demo session" group; absent from servers before the full catalog. */
+  group?: string
+  /** Heading of that group, e.g. "Sync: Mutex". */
+  groupLabel?: string
+  method?: string
   duration?: string
 }
 
