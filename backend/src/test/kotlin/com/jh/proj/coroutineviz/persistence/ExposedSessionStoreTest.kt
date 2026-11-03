@@ -54,6 +54,31 @@ class ExposedSessionStoreTest {
     }
 
     @Test
+    fun `an event sent into a deleted session is dropped instead of failing`() {
+        // A demo still running when its session is deleted ends its coroutines, and each one
+        // reports its end; the session's row is gone, so there is nothing to record it into.
+        val store = ExposedSessionStore(db)
+        val session = runBlocking { store.createSession("deleted-while-running") }
+        assertTrue(store.deleteSession(session.sessionId))
+
+        session.send(
+            CoroutineCreated(
+                sessionId = session.sessionId,
+                seq = session.nextSeq(),
+                tsNanos = 0L,
+                coroutineId = "c-1",
+                jobId = "j-1",
+                parentCoroutineId = null,
+                scopeId = "scope-1",
+                label = "late",
+            ),
+        )
+
+        val rows = transaction(db) { EventsTable.selectAll().where { EventsTable.sessionId eq session.sessionId }.count() }
+        assertEquals(0L, rows)
+    }
+
+    @Test
     fun `createSession persists a row that getSession reads back`() {
         val store = ExposedSessionStore(db)
         val session = runBlocking { store.createSession("alpha") }

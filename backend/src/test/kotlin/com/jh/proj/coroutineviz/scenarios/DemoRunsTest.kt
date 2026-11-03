@@ -6,6 +6,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -156,6 +157,53 @@ class DemoRunsTest {
                 withContext(run) { session.demoScope().vizLaunch("late") { delay(10_000) } }
             }
             assertEquals(0, runs.active)
+            session.close()
+        }
+
+    @Test
+    fun `a request still running at the time limit is stopped, even before it started a coroutine`() =
+        runBlocking {
+            val runs = DemoRuns(maxConcurrent = 1, maxRunMillis = 200)
+            val run = assertNotNull(runs.tryStart())
+
+            // For example a client that sends its request body very slowly.
+            val outcome = withTimeoutOrNull(5.seconds) { runCatching { run.handle { CompletableDeferred<Unit>().await() } } }
+
+            val failure = assertNotNull(outcome, "the time limit must stop the request").exceptionOrNull()
+            assertTrue(failure?.message.orEmpty().contains("MAX_DEMO_RUN_SECONDS"), "got $failure")
+            assertEquals(0, runs.active)
+        }
+
+    @Test
+    fun `a demo scope used after the time limit runs no more work`() =
+        runBlocking {
+            val runs = DemoRuns(maxConcurrent = 1, maxRunMillis = 200)
+            val session = VizSession("demo-runs-launch-after-limit")
+            val run = assertNotNull(runs.tryStart())
+            val scope = withContext(run) { session.demoScope() }
+
+            delay(400)
+            val late = scope.vizLaunch("late") { delay(10_000) }
+
+            withTimeout(5.seconds) { late.join() }
+            assertTrue(late.isCancelled)
+            session.close()
+        }
+
+    @Test
+    fun `a demo scope kept after its demo ended runs no more work`() =
+        runBlocking {
+            val runs = DemoRuns(maxConcurrent = 1)
+            val session = VizSession("demo-runs-kept-scope")
+            val run = assertNotNull(runs.tryStart())
+            val scope = withContext(run) { session.demoScope() }
+            run.handlerEnded()
+            assertEquals(0, runs.active)
+
+            val late = scope.vizLaunch("late") { delay(10_000) }
+
+            withTimeout(5.seconds) { late.join() }
+            assertTrue(late.isCancelled, "the slot is free, so the demo must not run on")
             session.close()
         }
 }

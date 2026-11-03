@@ -4,17 +4,20 @@ import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.persistence.tables.EventsTable
+import com.jh.proj.coroutineviz.persistence.tables.SessionsTable
 import com.jh.proj.coroutineviz.session.EventStoreInterface
 import kotlinx.serialization.PolymorphicSerializer
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
+import org.jetbrains.exposed.v1.exceptions.ExposedSQLException
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -51,6 +54,26 @@ class ExposedEventStore(
      * after this call in VizSession.send) and the persisted payload agree.
      */
     override fun record(event: VizEvent) {
+        try {
+            insert(event)
+        } catch (e: ExposedSQLException) {
+            // The session's row is gone (deleted while something still ran in it, e.g. a demo
+            // whose coroutines report their end): there is nothing left to record the event into.
+            if (e.sqlState?.startsWith(INTEGRITY_CONSTRAINT_VIOLATION) != true || sessionExists()) throw e
+            logger.debug("Dropped {} for deleted session {}", event.kind, sessionId)
+        }
+    }
+
+    private fun sessionExists(): Boolean =
+        transaction(db) {
+            SessionsTable
+                .selectAll()
+                .where { SessionsTable.id eq sessionId }
+                .limit(1)
+                .any()
+        }
+
+    private fun insert(event: VizEvent) {
         lockFor(sessionId).withLock {
             transaction(db) {
                 val maxSeq =
@@ -111,6 +134,11 @@ class ExposedEventStore(
     private fun decode(json: String): VizEvent = appJson.decodeFromString(serializer, json)
 
     private companion object {
+        private val logger = LoggerFactory.getLogger(ExposedEventStore::class.java)
+
+        /** SQLSTATE class 23: integrity constraint violation (a foreign key here). */
+        private const val INTEGRITY_CONSTRAINT_VIOLATION = "23"
+
         /**
          * Per-session-id append lock, shared across the (per-request) store
          * instances for a session so the MAX(seq)+1 read and the insert are

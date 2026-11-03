@@ -67,6 +67,35 @@ class SyncPrimitivesTest {
         }
 
     @Test
+    @DisplayName("VizMutex - a waiter cancelled while queued leaves the queue")
+    fun `mutex waiter cancelled while queued leaves the queue`() =
+        runBlocking {
+            // The deadlock demo cancels its waiting workers; the queue shown must then be empty,
+            // not keep a coroutine that no longer waits.
+            val mutex = VizMutex(session, "cancel-mutex")
+            mutex.lock()
+            val waiter = launch { mutex.lock() }
+            while (session.store
+                    .all()
+                    .filterIsInstance<MutexQueueChanged>()
+                    .isEmpty()
+            ) {
+                delay(5)
+            }
+
+            waiter.cancel()
+            waiter.join()
+
+            val lastQueue =
+                session.store
+                    .all()
+                    .filterIsInstance<MutexQueueChanged>()
+                    .last()
+            assertEquals(emptyList<String>(), lastQueue.waitingCoroutineIds)
+            mutex.unlock()
+        }
+
+    @Test
     @DisplayName("VizMutex - withLock ensures proper lock/unlock pairing")
     fun `mutex withLock pattern`() =
         runTest {

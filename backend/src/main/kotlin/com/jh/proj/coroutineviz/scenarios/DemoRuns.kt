@@ -8,12 +8,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -36,6 +36,8 @@ import kotlin.coroutines.EmptyCoroutineContext
 class DemoRuns(
     private val maxConcurrent: Int,
     private val maxRunMillis: Long = 0,
+    // Suspends until a session is deleted; null where nothing deletes sessions (tests).
+    private val awaitSessionRemoved: (suspend (VizSession) -> Unit)? = null,
 ) {
     private val running = AtomicInteger(0)
 
@@ -61,6 +63,21 @@ class DemoRuns(
 
     internal fun watch(block: suspend () -> Unit): Job = watchers.launch { block() }
 
+    internal fun watchRemoval(
+        run: DemoRun,
+        scope: VizScope,
+        session: VizSession,
+    ) {
+        val awaitRemoved = awaitSessionRemoved ?: return
+        val watcher =
+            watch {
+                awaitRemoved(session)
+                run.sessionRemoved(scope)
+            }
+        // Stop listening once the scope ends, whether the session was deleted or not.
+        scope.coroutineContext.job.invokeOnCompletion { watcher.cancel() }
+    }
+
     /** Stops waiting for running demos; called when the application stops. */
     fun close() = watchers.cancel()
 }
@@ -81,7 +98,28 @@ class DemoRun internal constructor(
     private var ended = false
     private var timedOut = false
     private val released = AtomicBoolean(false)
+
+    @Volatile
     private var timeLimit: Job? = null
+
+    @Volatile
+    private var request: Job? = null
+
+    /**
+     * Runs the demo's request [block] in this slot, and frees the slot when the request and the
+     * demo's coroutines are done. At the time limit the request is stopped too, so a request that
+     * never gets to start a coroutine (a client sending its body very slowly) cannot keep the slot.
+     */
+    suspend fun <T> handle(block: suspend () -> T): T =
+        try {
+            withContext(this) {
+                request = coroutineContext.job
+                if (timedOut) throw CancellationException(TIME_LIMIT_MESSAGE)
+                block()
+            }
+        } finally {
+            handlerEnded()
+        }
 
     internal fun startTimeLimit(maxRunMillis: Long) {
         if (maxRunMillis <= 0) return
@@ -92,11 +130,17 @@ class DemoRun internal constructor(
             }
     }
 
-    internal fun newScope(create: () -> VizScope): VizScope =
+    internal fun newScope(
+        session: VizSession,
+        create: () -> VizScope,
+    ): VizScope =
         synchronized(lock) {
             check(!ended) { "This demo's request has ended, so it cannot start more work (MAX_CONCURRENT_DEMOS)" }
-            check(!timedOut) { "This demo ran past its time limit (MAX_DEMO_RUN_SECONDS)" }
-            create().also { scopes += it }
+            check(!timedOut) { TIME_LIMIT_MESSAGE }
+            create().also { scope ->
+                scopes += scope
+                runs.watchRemoval(this, scope, session)
+            }
         }
 
     /**
@@ -124,14 +168,24 @@ class DemoRun internal constructor(
     private fun release() {
         if (!released.compareAndSet(false, true)) return
         timeLimit?.cancel()
+        // The demo is over: a scope it handed out must not run more work outside the slot.
+        endScopes(CancellationException("The demo has ended"))
         runs.release()
     }
 
     private fun stop() {
         synchronized(lock) { timedOut = true }
-        val cause = CancellationException("The demo ran past its time limit (MAX_DEMO_RUN_SECONDS)")
-        scopes.forEach { it.coroutineContext.job.cancelChildren(cause) }
+        val cause = CancellationException(TIME_LIMIT_MESSAGE)
+        // Cancelling the scopes themselves, not only their coroutines, also stops anything
+        // launched into them afterwards.
+        endScopes(cause)
+        request?.cancel(cause)
     }
+
+    private fun endScopes(cause: CancellationException) = scopes.forEach { it.coroutineContext.job.cancel(cause) }
+
+    /** The session a demo scope runs in was deleted: its coroutines stop, which frees the slot. */
+    internal fun sessionRemoved(scope: VizScope) = scope.coroutineContext.job.cancel(CancellationException("The session was deleted"))
 
     // A scope's own Job never completes; its children are the demo's coroutines. One may launch
     // into another of the demo's scopes before it ends, so wait until no scope has any left.
@@ -148,6 +202,8 @@ class DemoRun internal constructor(
     private fun VizScope.hasCoroutines() = coroutineContext.job.children.any()
 }
 
+private const val TIME_LIMIT_MESSAGE = "The demo ran past its time limit (MAX_DEMO_RUN_SECONDS)"
+
 /**
  * The scope a demo runs its coroutines in. It counts against the demo's slot in [DemoRuns], so
  * it can only be made while the demo holds one: a demo that does not, fails instead of running
@@ -158,5 +214,5 @@ suspend fun VizSession.demoScope(context: CoroutineContext = EmptyCoroutineConte
         checkNotNull(currentCoroutineContext()[DemoRun]) {
             "A demo can only run while it holds a slot (MAX_CONCURRENT_DEMOS); start it through demoPost or demoGet"
         }
-    return run.newScope { VizScope(this, context) }
+    return run.newScope(this) { VizScope(this, context) }
 }

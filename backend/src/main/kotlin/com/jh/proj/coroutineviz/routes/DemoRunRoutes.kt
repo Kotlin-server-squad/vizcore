@@ -12,7 +12,9 @@ import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.util.AttributeKey
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 
 /** At most this many demos run at once when `scenarios.maxConcurrent` is not configured. */
 const val DEFAULT_MAX_CONCURRENT_DEMOS = 3
@@ -41,6 +43,7 @@ fun Application.configureDemoRuns() {
         DemoRuns(
             maxConcurrent = setting("scenarios.maxConcurrent", DEFAULT_MAX_CONCURRENT_DEMOS),
             maxRunMillis = setting("scenarios.maxRunSeconds", DEFAULT_MAX_DEMO_RUN_SECONDS) * 1_000L,
+            awaitSessionRemoved = ::awaitSessionRemoved,
         )
     attributes.put(DemoRunsKey, runs)
     monitor.subscribe(ApplicationStopped) { runs.close() }
@@ -73,8 +76,16 @@ private suspend fun RoutingContext.runDemo(body: suspend RoutingContext.() -> Un
         return
     }
     try {
-        withContext(run) { body() }
-    } finally {
-        run.handlerEnded()
+        run.handle { body() }
+    } catch (e: CancellationException) {
+        // The client went away: nothing to answer.
+        if (!currentCoroutineContext().isActive) throw e
+        // The time limit stopped the demo while its request was still running.
+        if (!call.response.isCommitted) {
+            call.respond(
+                HttpStatusCode.ServiceUnavailable,
+                ErrorResponse(error = "The demo ran past its time limit and was stopped"),
+            )
+        }
     }
 }
