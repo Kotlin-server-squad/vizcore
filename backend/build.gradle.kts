@@ -107,9 +107,10 @@ tasks.named<Test>("test") {
     // byte-buddy agent at runtime. Allow it explicitly, as coroutine-viz-core's test task does.
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     // DemoCatalogTest compares the SPA's copy of the demo catalog with the served one; a change
-    // to that copy alone must re-run it.
+    // to that copy alone must re-run it. files(), not file(): a checkout without the frontend
+    // must still run the other tests (DemoCatalogTest itself fails on the missing copy).
     inputs
-        .file(rootProject.file("../frontend/src/test/demo-catalog.json"))
+        .files(rootProject.file("../frontend/src/test/demo-catalog.json"))
         .withPropertyName("spaDemoCatalog")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }

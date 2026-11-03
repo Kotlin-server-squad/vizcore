@@ -17,6 +17,8 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -231,8 +233,20 @@ internal fun demoFailure(message: String): IllegalStateException = IllegalStateE
 
 private object IntendedByDemo : Throwable("thrown on purpose by a demo", null, false, false)
 
-private fun Throwable.isIntendedByDemo(): Boolean =
-    generateSequence(this) { it.cause }.any { e -> e.suppressed.any { it === IntendedByDemo } }
+/**
+ * True if this failure was thrown on purpose by the demo and carries no other failure. Kotlin adds
+ * further child and cleanup failures as suppressed exceptions, and causes wrap others; any of
+ * those that is not itself intended makes the whole failure unexpected.
+ */
+private fun Throwable.isIntendedByDemo(): Boolean = IntendedByDemo in suppressed && allFailures().all { it.isMarkedIntended() }
+
+private fun Throwable.isMarkedIntended() = IntendedByDemo in suppressed || this is CancellationException
+
+/** This failure and every failure it carries (causes and suppressed), without the marker. */
+private fun Throwable.allFailures(seen: MutableSet<Throwable> = Collections.newSetFromMap(IdentityHashMap())): List<Throwable> {
+    if (this === IntendedByDemo || !seen.add(this)) return emptyList()
+    return listOf(this) + (listOfNotNull(cause) + suppressed).flatMap { it.allFailures(seen) }
+}
 
 /**
  * Several demos fail on purpose (Exception Handling, Retry, Supervisor, Circuit Breaker, the

@@ -530,6 +530,10 @@ object ScenarioRunner {
 
                     try {
                         paymentJob.join()
+                    } catch (e: CancellationException) {
+                        // A failed payment cancels this coroutine's join: the demo's failure, not
+                        // an error. Rethrow to keep cooperative cancellation intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.error("❌ Payment failed: ${e.message}")
                         // Cancel remaining operations
@@ -750,6 +754,10 @@ object ScenarioRunner {
                     try {
                         dataFetchJobs.forEach { it.join() }
                         logger.debug("✅ All data sources fetched successfully")
+                    } catch (e: CancellationException) {
+                        // A timed-out fetch cancels this coroutine's join: the demo's failure, not
+                        // an error. Rethrow to keep cooperative cancellation intact.
+                        throw e
                     } catch (e: Exception) {
                         logger.error("❌ Data fetch failed: ${e.message}")
                         throw e

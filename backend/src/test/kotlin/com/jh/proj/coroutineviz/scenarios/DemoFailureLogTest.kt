@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -52,10 +53,54 @@ class DemoFailureLogTest {
     }
 
     @Test
+    fun `an intended failure that also carries an unexpected one is logged as an error`() {
+        // Kotlin adds further child and cleanup failures to the first as suppressed exceptions.
+        val event =
+            failureLogged {
+                throw demoFailure("Payment declined").apply { addSuppressed(NullPointerException("a real bug")) }
+            }
+
+        assertEquals(Level.ERROR, event.level)
+        assertNotNull(event.throwableProxy)
+    }
+
+    @Test
     fun `any other failure in a demo is logged as an error with its stack trace`() {
         val event = failureLogged { throw IllegalArgumentException("a real bug") }
 
         assertEquals(Level.ERROR, event.level)
         assertEquals("a real bug", assertNotNull(event.throwableProxy).message)
     }
+
+    /**
+     * The real-life demos' failure options (`?fail=true`, `?timeout=true`) end the demo with a
+     * failure on purpose; the failing child cancels its parent's join, which is no error either.
+     */
+    @org.junit.jupiter.params.ParameterizedTest(name = "{0}")
+    @org.junit.jupiter.params.provider.ValueSource(strings = ["order-processing", "report-generation"])
+    fun `a real-life demo's designed failure logs no error`(demo: String) =
+        runBlocking {
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            val root = LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME) as Logger
+            root.addAppender(appender)
+            val session = VizSession("demo-designed-failure")
+            try {
+                val run = assertNotNull(DemoRuns(maxConcurrent = 1).tryStart())
+                withContext(run) {
+                    val job =
+                        when (demo) {
+                            "order-processing" -> ScenarioRunner.runOrderProcessingScenario(session, shouldFail = true)
+                            else -> ScenarioRunner.runReportGenerationScenario(session, shouldTimeout = true)
+                        }
+                    withTimeout(60.seconds) { listOf(job).joinAll() }
+                }
+                withTimeout(5.seconds) {
+                    while (appender.list.none { it.formattedMessage.contains("failed on purpose") }) delay(10)
+                }
+                assertEquals(emptyList(), appender.list.filter { it.level == Level.ERROR }.map { it.formattedMessage })
+            } finally {
+                root.detachAppender(appender)
+                session.close()
+            }
+        }
 }
