@@ -93,7 +93,7 @@ class DemoRun internal constructor(
 
     private val scopes = CopyOnWriteArrayList<VizScope>()
 
-    // Guards [ended] and [timedOut] against a scope being added while the run ends.
+    // Guards [ended], [timedOut] and [request]: a scope or request is never added while the run ends.
     private val lock = Any()
     private var ended = false
     private var timedOut = false
@@ -102,7 +102,7 @@ class DemoRun internal constructor(
     @Volatile
     private var timeLimit: Job? = null
 
-    @Volatile
+    // Guarded by [lock].
     private var request: Job? = null
 
     /**
@@ -113,8 +113,12 @@ class DemoRun internal constructor(
     suspend fun <T> handle(block: suspend () -> T): T =
         try {
             withContext(this) {
-                request = coroutineContext.job
-                if (timedOut) throw CancellationException(TIME_LIMIT_MESSAGE)
+                // Under the lock, so the time limit either sees this request or this request sees
+                // that the time limit has passed.
+                synchronized(lock) {
+                    if (timedOut) throw CancellationException(TIME_LIMIT_MESSAGE)
+                    request = coroutineContext.job
+                }
                 block()
             }
         } finally {
@@ -173,13 +177,20 @@ class DemoRun internal constructor(
         runs.release()
     }
 
+    /** True once the time limit has stopped this demo. */
+    internal val stoppedByTimeLimit: Boolean get() = synchronized(lock) { timedOut }
+
     private fun stop() {
-        synchronized(lock) { timedOut = true }
+        val running =
+            synchronized(lock) {
+                timedOut = true
+                request
+            }
         val cause = CancellationException(TIME_LIMIT_MESSAGE)
         // Cancelling the scopes themselves, not only their coroutines, also stops anything
         // launched into them afterwards.
         endScopes(cause)
-        request?.cancel(cause)
+        running?.cancel(cause)
     }
 
     private fun endScopes(cause: CancellationException) = scopes.forEach { it.coroutineContext.job.cancel(cause) }

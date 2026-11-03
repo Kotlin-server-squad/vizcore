@@ -14,6 +14,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.contentType
 import io.ktor.server.application.Application
 import io.ktor.server.application.plugin
@@ -25,6 +26,9 @@ import io.ktor.server.routing.RoutingRoot
 import io.ktor.server.routing.getAllRoutes
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeStringUtf8
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -147,6 +151,31 @@ class DemoRunRoutesTest {
 
             awaitNoDemoRunning()
             assertEquals(HttpStatusCode.OK, client.post("/api/scenarios/flow/simple").status)
+        }
+
+    @Test
+    fun `a demo whose client never finishes sending its request is stopped at the time limit`() =
+        testApplication {
+            demoApp(maxConcurrent = 1, maxRunSeconds = 1)
+
+            val response =
+                client.post("/api/scenarios/custom") {
+                    setBody(
+                        object : OutgoingContent.WriteChannelContent() {
+                            override val contentType = ContentType.Application.Json
+
+                            override suspend fun writeTo(channel: ByteWriteChannel) {
+                                channel.writeStringUtf8("""{"name":"slow",""")
+                                channel.flush()
+                                awaitCancellation()
+                            }
+                        },
+                    )
+                }
+
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+            assertTrue(response.error().contains("time limit"), "got ${response.bodyAsText()}")
+            awaitNoDemoRunning()
         }
 
     @Test

@@ -78,9 +78,8 @@ private suspend fun RoutingContext.runDemo(body: suspend RoutingContext.() -> Un
     try {
         run.handle { body() }
     } catch (e: CancellationException) {
-        // The client went away: nothing to answer.
-        if (!currentCoroutineContext().isActive) throw e
-        // The time limit stopped the demo while its request was still running.
+        // Only the time limit is answered here; a client that went away needs no answer.
+        if (!run.stoppedByTimeLimit || !currentCoroutineContext().isActive) throw e
         if (!call.response.isCommitted) {
             call.respond(
                 HttpStatusCode.ServiceUnavailable,

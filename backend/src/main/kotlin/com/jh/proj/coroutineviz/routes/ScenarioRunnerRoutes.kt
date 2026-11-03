@@ -16,7 +16,9 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
@@ -301,6 +303,9 @@ fun Route.registerScenarioRunnerRoutes() {
 
             call.respond(HttpStatusCode.OK, response)
         } catch (e: BadRequestException) {
+            // Reading the body was cancelled (the demo's time limit stopped a slow upload), and
+            // Ktor reports that as a bad request too: let the cancellation through instead.
+            currentCoroutineContext().ensureActive()
             // F12: a missing/malformed request body fails deserialization in call.receive(),
             // which Ktor surfaces as BadRequestException. That is client error → 400, not 500.
             logger.warn("Malformed custom scenario request body: ${e.message}")
