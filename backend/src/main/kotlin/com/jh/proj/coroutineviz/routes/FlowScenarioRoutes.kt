@@ -2,41 +2,40 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarios.FlowScenarios
+import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
-import com.jh.proj.coroutineviz.wrappers.VizScope
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
-import io.ktor.server.routing.post
 
 fun Route.registerFlowScenarioRoutes() {
-    post("/api/scenarios/flow/simple") {
+    demoPost("/api/scenarios/flow/simple") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-simple")
-        val scope = VizScope(session)
+        val scope = session.demoScope()
         FlowScenarios.simpleFlow(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("Simple Flow completed"))
     }
 
-    post("/api/scenarios/flow/operators") {
+    demoPost("/api/scenarios/flow/operators") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-operators")
-        val scope = VizScope(session)
+        val scope = session.demoScope()
         FlowScenarios.flowOperators(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("Flow Operators completed"))
     }
 
-    post("/api/scenarios/flow/stateflow") {
+    demoPost("/api/scenarios/flow/stateflow") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-stateflow")
-        val scope = VizScope(session)
+        val scope = session.demoScope()
         FlowScenarios.stateFlowDemo(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("StateFlow demo completed"))
     }
 
-    post("/api/scenarios/flow/sharedflow") {
+    demoPost("/api/scenarios/flow/sharedflow") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-sharedflow")
-        val scope = VizScope(session)
+        val scope = session.demoScope()
         FlowScenarios.sharedFlowDemo(scope)
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("SharedFlow demo completed"))
     }

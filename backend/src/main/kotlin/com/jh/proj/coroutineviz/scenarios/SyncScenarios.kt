@@ -191,7 +191,14 @@ object SyncScenarios {
         withTimeoutOrNull(2000) {
             job1.join()
             job2.join()
-        } ?: println("Deadlock detected - timeout!")
+        } ?: run {
+            println("Deadlock detected - timeout!")
+            // Stop the workers too: left alone they would wait on each other for ever.
+            job1.cancel()
+            job2.cancel()
+            job1.join()
+            job2.join()
+        }
     }
 
     // ========================================================================

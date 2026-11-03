@@ -69,7 +69,9 @@ if curl -sS -o /dev/null --max-time 5 "${base}/api/ready" 2>/dev/null; then
 fi
 
 echo "--- booting $jar on port $port (memory mode), log: $log"
-PORT="$port" STORAGE_TYPE=memory java -jar "$jar" >"$log" 2>&1 &
+# MAX_CONCURRENT_DEMOS=0: the smoke test starts several demos at once on purpose (#135, #138) to
+# check event ordering under concurrency; the demo limit has its own tests.
+PORT="$port" STORAGE_TYPE=memory MAX_CONCURRENT_DEMOS=0 java -jar "$jar" >"$log" 2>&1 &
 pid=$!
 
 echo "--- waiting up to ${ready_timeout_s}s for ${base}/api/ready"

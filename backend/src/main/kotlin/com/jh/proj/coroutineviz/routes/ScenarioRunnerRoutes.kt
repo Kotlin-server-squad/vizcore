@@ -16,13 +16,15 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
 
 fun Route.registerScenarioRunnerRoutes() {
-    post("/api/scenarios/nested") {
+    demoPost("/api/scenarios/nested") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -40,7 +42,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/parallel") {
+    demoPost("/api/scenarios/parallel") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -58,7 +60,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/cancellation") {
+    demoPost("/api/scenarios/cancellation") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -76,7 +78,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/deep-nesting") {
+    demoPost("/api/scenarios/deep-nesting") {
         val sessionId = call.request.queryParameters["sessionId"]
         val depth = call.request.queryParameters["depth"]?.toIntOrNull() ?: 5
         val session = call.getOrCreateSession(sessionId)
@@ -95,7 +97,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/mixed") {
+    demoPost("/api/scenarios/mixed") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -113,7 +115,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/exception") {
+    demoPost("/api/scenarios/exception") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -131,7 +133,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/dispatcher") {
+    demoPost("/api/scenarios/dispatcher") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -153,7 +155,7 @@ fun Route.registerScenarioRunnerRoutes() {
     // CHANNEL SCENARIOS - Channel communication patterns
     // ============================================================================
 
-    post("/api/scenarios/channel-rendezvous") {
+    demoPost("/api/scenarios/channel-rendezvous") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -171,7 +173,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/channel-buffered") {
+    demoPost("/api/scenarios/channel-buffered") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -189,7 +191,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/channel-fan-out") {
+    demoPost("/api/scenarios/channel-fan-out") {
         val sessionId = call.request.queryParameters["sessionId"]
         val session = call.getOrCreateSession(sessionId)
 
@@ -211,7 +213,7 @@ fun Route.registerScenarioRunnerRoutes() {
     // REALISTIC SCENARIOS - Real-world service simulations
     // ============================================================================
 
-    post("/api/scenarios/order-processing") {
+    demoPost("/api/scenarios/order-processing") {
         val sessionId = call.request.queryParameters["sessionId"]
         val shouldFail = call.request.queryParameters["fail"]?.toBoolean() ?: false
         val session = call.getOrCreateSession(sessionId)
@@ -230,7 +232,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/user-registration") {
+    demoPost("/api/scenarios/user-registration") {
         val sessionId = call.request.queryParameters["sessionId"]
         val shouldFailEmail = call.request.queryParameters["failEmail"]?.toBoolean() ?: false
         val session = call.getOrCreateSession(sessionId)
@@ -249,7 +251,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/report-generation") {
+    demoPost("/api/scenarios/report-generation") {
         val sessionId = call.request.queryParameters["sessionId"]
         val shouldTimeout = call.request.queryParameters["timeout"]?.toBoolean() ?: false
         val session = call.getOrCreateSession(sessionId)
@@ -268,7 +270,7 @@ fun Route.registerScenarioRunnerRoutes() {
         }
     }
 
-    post("/api/scenarios/custom") {
+    demoPost("/api/scenarios/custom") {
         logger.info("Received custom scenario configuration request")
 
         try {
@@ -301,6 +303,9 @@ fun Route.registerScenarioRunnerRoutes() {
 
             call.respond(HttpStatusCode.OK, response)
         } catch (e: BadRequestException) {
+            // Reading the body was cancelled (the demo's time limit stopped a slow upload), and
+            // Ktor reports that as a bad request too: let the cancellation through instead.
+            currentCoroutineContext().ensureActive()
             // F12: a missing/malformed request body fails deserialization in call.receive(),
             // which Ktor surfaces as BadRequestException. That is client error → 400, not 500.
             logger.warn("Malformed custom scenario request body: ${e.message}")

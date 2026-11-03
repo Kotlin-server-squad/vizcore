@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.events.MutexQueueChanged
 import com.jh.proj.coroutineviz.events.MutexTryLockFailed
 import com.jh.proj.coroutineviz.events.MutexUnlocked
 import com.jh.proj.coroutineviz.session.VizSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.ConcurrentHashMap
@@ -117,7 +118,14 @@ class VizMutex(
 
         // Actually acquire the lock (may suspend)
         val startWait = System.nanoTime()
-        delegate.lock(owner)
+        try {
+            delegate.lock(owner)
+        } catch (e: CancellationException) {
+            // A waiter cancelled in the queue (e.g. a deadlocked worker being stopped) no longer
+            // waits; leaving it in the queue would show it waiting for ever.
+            if (waitQueue.remove(waiterInfo)) emitQueueChanged()
+            throw e
+        }
         val waitDuration = System.nanoTime() - startWait
 
         // Remove from wait queue and update owner

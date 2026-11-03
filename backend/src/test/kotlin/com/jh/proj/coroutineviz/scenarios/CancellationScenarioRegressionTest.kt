@@ -31,7 +31,8 @@ class CancellationScenarioRegressionTest {
         runTest(timeout = 30.seconds) {
             val session = VizSession("test-fix-04")
 
-            val job = ScenarioRunner.runCancellationScenario(session)
+            // A demo runs only while it holds a slot; no limit here.
+            val job = withContext(DemoRuns(maxConcurrent = 0).tryStart()!!) { ScenarioRunner.runCancellationScenario(session) }
             job.join()
 
             val events = session.store.all()
@@ -59,7 +60,8 @@ class CancellationScenarioRegressionTest {
         runTest(timeout = 30.seconds) {
             val session = VizSession("test-fix-04-parent")
 
-            val job = ScenarioRunner.runCancellationScenario(session)
+            // A demo runs only while it holds a slot; no limit here.
+            val job = withContext(DemoRuns(maxConcurrent = 0).tryStart()!!) { ScenarioRunner.runCancellationScenario(session) }
             job.join()
 
             val events = session.store.all()
