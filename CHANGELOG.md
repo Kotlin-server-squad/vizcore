@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- "New demo session" offers all 32 demos, grouped: real life, basics, channels, Flow, patterns, Mutex, Semaphore and combined. Flow, patterns and the Mutex and Semaphore demos were unreachable since the gallery was retired. `GET /api/scenarios` lists every one with its `group`, `groupLabel` and `method`; a demo refused by the demo limit reads "Server busy" instead of a server failure
 - `MAX_CONCURRENT_DEMOS` (default 3): at most this many demos run on the server at once, across all clients. A demo holds its slot until its coroutines end; one started while every slot is taken gets `503` with `Retry-After`
 - `MAX_DEMO_RUN_SECONDS` (default 60): a demo still running after this many seconds is cancelled and frees its slot
 - The mutex deadlock demo stops its two deadlocked workers after showing the deadlock, instead of leaving them waiting for ever
