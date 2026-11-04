@@ -233,17 +233,15 @@ class BasicsDemoPacingTest {
         listOf("fetch-delivery-status", "fetch-profile").forEach { assertTrue(run.completed(it), "$it must complete") }
         assertTrue(!run.completed("load-account-page"), "the page must not complete")
         // Cancelled by the failure: after the loyalty call's last step resumed (where it throws),
-        // and long before their own steps would have ended, 15 s in. Events are in the order the
-        // session received them, so this holds however the threads were scheduled.
-        val thrownAt =
-            run.events
-                .filterIsInstance<CoroutineResumed>()
-                .last { it.label == "fetch-loyalty-points" }
-                .seq
-        listOf("fetch-orders", "fetch-invoices").forEach {
-            val cancelled = assertNotNull(run.of<CoroutineCancelled>(it))
-            assertTrue(cancelled.seq > thrownAt, "$it is cancelled after the loyalty call fails")
-            assertTrue(run.at(cancelled) < 14_000, "$it is cancelled at ${run.at(cancelled)} ms, before its own steps end")
+        // and with steps of their own still to go. Both are read from the order the session
+        // received the events in, so they hold however the threads were scheduled.
+        val resumed = run.events.filterIsInstance<CoroutineResumed>()
+        val thrownAt = resumed.last { it.label == "fetch-loyalty-points" }.seq
+        mapOf("fetch-orders" to 5, "fetch-invoices" to 6).forEach { (call, steps) ->
+            val cancelled = assertNotNull(run.of<CoroutineCancelled>(call))
+            assertTrue(cancelled.seq > thrownAt, "$call is cancelled after the loyalty call fails")
+            val done = resumed.count { it.label == call }
+            assertTrue(done < steps, "$call is cancelled with work left, after $done of its $steps steps")
         }
     }
 

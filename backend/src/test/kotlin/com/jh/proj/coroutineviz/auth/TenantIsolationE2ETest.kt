@@ -115,6 +115,14 @@ class TenantIsolationE2ETest {
     private fun ApplicationTestBuilder.jsonClient() = createClient { install(ContentNegotiation) { json() } }
 
     /**
+     * The nested demo takes about 16 s as scripted; run it 50 times faster, whatever the
+     * environment says, so the scenario test can wait for it to end.
+     */
+    private fun ApplicationTestBuilder.fastDemos() {
+        environment { config = MapApplicationConfig("scenarios.timeScale" to "0.02") }
+    }
+
+    /**
      * Wire the real routes behind a real jwt provider whose validate produces a
      * [UserPrincipal] (matching production Auth.kt) so `currentPrincipal()` /
      * `resolveTenant()` resolve the tenant from the JWT `sub`.
@@ -264,6 +272,7 @@ class TenantIsolationE2ETest {
     @Test
     fun `tenant B running a scenario with tenant A's sessionId does NOT write into A's session`() =
         testApplication {
+            fastDemos()
             installAuthedApp()
             val client = jsonClient()
             val (aId, _) = seedOwnedSessionWithEvent("alice")
@@ -291,14 +300,16 @@ class TenantIsolationE2ETest {
             // closes the datasource. Otherwise a late background write races into a
             // subsequent test as an uncaught completion exception (flaky contamination).
             var drainAttempts = 0
-            while (drainAttempts < 100) {
+            var drained = false
+            while (!drained && drainAttempts < 100) {
                 val body = client.get("/api/sessions/$returnedId/events") { header("Authorization", "Bearer $bob") }.bodyAsText()
                 val created = Regex("CoroutineCreated").findAll(body).count()
                 val completed = Regex("CoroutineCompleted").findAll(body).count()
-                if (created > 0 && completed == created) break // every coroutine of the demo is terminal
-                delay(100)
+                drained = created > 0 && completed == created // every coroutine of the demo is terminal
+                if (!drained) delay(100)
                 drainAttempts++
             }
+            assertTrue(drained, "bob's scenario must end before the datasource is closed")
             delay(300) // grace for any completion handlers to flush their final write
 
             // alice's session is untouched: still exactly the one seeded event (c1), no
