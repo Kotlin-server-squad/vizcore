@@ -42,7 +42,9 @@ import kotlin.time.Duration.Companion.seconds
  * steady: at test speed a long chain of steps drifts a few tenths of a second behind its script.
  */
 class GuideLabelsTest {
+    /** One coroutine as the tree shows it: under which parent (null for the root), how deep, in which state. */
     private data class Row(
+        val parent: String?,
         val depth: Int,
         val state: String,
     )
@@ -121,7 +123,9 @@ class GuideLabelsTest {
             }
         val coroutine = (event as? CoroutineEvent)?.let { created[it.coroutineId] }
         val label = coroutine?.label
-        if (state != null && label != null) tree[label] = Row(depth(coroutine), state)
+        if (state != null && label != null) {
+            tree[label] = Row(coroutine.parentCoroutineId?.let(created::get)?.label, depth(coroutine), state)
+        }
     }
 
     private fun run(demoId: String): List<VizEvent> =
@@ -178,11 +182,22 @@ class GuideLabelsTest {
 
         private fun atSeconds(demoId: String): Double = pictures[demoId]!!.jsonObject["atSeconds"]!!.jsonPrimitive.double
 
-        private fun pictured(demoId: String): Map<String, Row> =
-            pictures[demoId]!!.jsonObject["coroutines"]!!.jsonArray.associate {
+        /**
+         * The picture as the page draws it: rows in tree order, so a row's parent is the nearest
+         * row above it that is one level shallower.
+         */
+        private fun pictured(demoId: String): Map<String, Row> {
+            val path = mutableListOf<String>()
+            return pictures[demoId]!!.jsonObject["coroutines"]!!.jsonArray.associate {
                 val row = it.jsonObject
-                row["label"]!!.jsonPrimitive.content to Row(row["depth"]!!.jsonPrimitive.int, row["state"]!!.jsonPrimitive.content)
+                val label = row["label"]!!.jsonPrimitive.content
+                val depth = row["depth"]!!.jsonPrimitive.int
+                while (path.size > depth) path.removeLast()
+                val parent = path.lastOrNull()
+                path += label
+                label to Row(parent, depth, row["state"]!!.jsonPrimitive.content)
             }
+        }
 
         @JvmStatic
         fun picturedDemos(): List<String> = pictures.keys.toList()
