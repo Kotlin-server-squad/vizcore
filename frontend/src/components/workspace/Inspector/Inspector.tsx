@@ -29,8 +29,14 @@ interface InspectorProps {
   threadActivity?: ThreadActivity
   /** What to say while nothing is selected (e.g. why selection is unavailable). */
   placeholder?: string
-  /** What to show while nothing is selected; overrides `placeholder` (T-3's session summary). */
+  /**
+   * What to show while nothing is selected; overrides `placeholder` (T-3's
+   * session summary). Kept mounted, hidden, under a selection, so its queries
+   * stay subscribed and coming back to it refetches nothing (#124).
+   */
   emptyState?: ReactNode
+  /** Clears the selection, back to the empty state; offered under the heading. */
+  onClearSelection?: () => void
 }
 
 /**
@@ -52,6 +58,7 @@ export function Inspector({
   threadActivity,
   placeholder = 'Select a coroutine to inspect it',
   emptyState,
+  onClearSelection,
 }: InspectorProps) {
   const showTimeline = !!coroutine && !readOnly
   const { data: timeline, dataUpdatedAt, refetch: refetchTimeline } = useCoroutineTimeline(
@@ -84,39 +91,56 @@ export function Inspector({
     [threadActivity, coroutine],
   )
 
-  if (!coroutine) {
-    return emptyState ?? (
+  const empty =
+    emptyState !== undefined ? (
+      <div hidden={!!coroutine}>{emptyState}</div>
+    ) : !coroutine ? (
       <div className="text-sm text-default-400">
         {placeholder}
       </div>
-    )
-  }
+    ) : null
+
+  if (!coroutine) return empty
 
   return (
-    <div data-testid="inspector" className="space-y-3">
-      <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
-        <span className="font-mono [overflow-wrap:anywhere]">{coroutine.label ?? coroutine.id}</span>
-        <span className="text-sm font-normal text-default-500">{stateLabel(coroutine.state)}</span>
-      </h2>
-      {/* Two columns on a wide dock, one below 1,024 px (S-14). D-7's order
-          reads down the first column, then the events. */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="min-w-0 space-y-3">
-          {showTimeline && (
-            <>
-              <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
-              <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
-              <RunsOnCard runsOn={runsOn} />
-            </>
+    <>
+      {empty}
+      <div data-testid="inspector" className="space-y-3">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
+            <span className="font-mono [overflow-wrap:anywhere]">{coroutine.label ?? coroutine.id}</span>
+            <span className="text-sm font-normal text-default-500">{stateLabel(coroutine.state)}</span>
+          </h2>
+          {onClearSelection && (
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="ml-auto text-xs text-primary hover:underline"
+            >
+              Session summary
+            </button>
           )}
-          <IdentityCard coroutine={coroutine} />
         </div>
-        {showTimeline && (
-          <div className="min-w-0">
-            <EventsCard timeline={timeline} />
+        {/* Two columns on a wide dock, one below 1,024 px (S-14). D-7's order
+            reads down the first column, then the events. */}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="min-w-0 space-y-3">
+            {showTimeline && (
+              <>
+                <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
+                <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
+                <RunsOnCard runsOn={runsOn} />
+              </>
+            )}
+            <IdentityCard coroutine={coroutine} />
           </div>
-        )}
+          {showTimeline && (
+            <div className="min-w-0">
+              <EventsCard timeline={timeline} />
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }

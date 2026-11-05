@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import {
@@ -136,6 +137,24 @@ describe('Inspector', () => {
     })
     expect(screen.getByText('summary')).toBeInTheDocument()
     expect(screen.queryByText(/Select a coroutine to inspect it/)).toBeNull()
+  })
+
+  it('keeps the session summary mounted under a selection, and offers to return to it', async () => {
+    const onClearSelection = vi.fn()
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine()}
+        readOnly={false}
+        emptyState={<p>summary</p>}
+        onClearSelection={onClearSelection}
+      />,
+      { wrapper: createWrapper() },
+    )
+    // Hidden, not unmounted: its metrics query stays subscribed (#124).
+    expect(screen.getByText('summary')).not.toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Session summary' }))
+    expect(onClearSelection).toHaveBeenCalledTimes(1)
   })
 
   it('marks durations as poll-bounded with a ~ prefix', async () => {

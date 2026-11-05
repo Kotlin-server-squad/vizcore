@@ -88,7 +88,11 @@ export function SessionWorkspace({
   readOnly = false,
   startLive = false,
 }: SessionWorkspaceProps) {
-  const { data: storedEvents } = useSessionEvents(sessionId)
+  const {
+    data: storedEvents,
+    isPending: historyPending,
+    isError: historyFailed,
+  } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
   // Selected coroutine for the source drawer (RCO-06, D-02/D-06). Lifted here so
@@ -535,6 +539,8 @@ export function SessionWorkspace({
                     : undefined
               }
               threadActivity={panelThreadActivity}
+              // Back to the session summary (T-3) from a selection.
+              onClearSelection={isLiveView ? () => setSelectedCoroutineId(null) : undefined}
             />
           </DockTabPanel>
           <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
@@ -549,6 +555,7 @@ export function SessionWorkspace({
               readOnly={readOnly}
               threadActivity={panelThreadActivity}
               captureStartNanos={captureStartNanos}
+              history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
             />
           </DockTabPanel>
           <DockTabPanel id="events" selected={dockTab === 'events'}>
