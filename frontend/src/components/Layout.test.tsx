@@ -28,6 +28,11 @@ describe('Layout nav', () => {
     expect(screen.getByRole('link', { name: /coroutine visualizer/i })).toHaveAttribute('href', '/')
   })
 
+  it('has the theme switch', () => {
+    renderLayout()
+    expect(screen.getByRole('button', { name: /switch to (light|dark) theme/i })).toBeInTheDocument()
+  })
+
   it('still renders its children', () => {
     renderLayout()
     expect(screen.getByText('content')).toBeInTheDocument()

@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { Navbar, NavbarBrand } from '@heroui/react'
+import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/react'
 import { FiActivity } from 'react-icons/fi'
+import { ThemeSwitch } from './ThemeSwitch'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -25,6 +26,11 @@ export function Layout({ children }: LayoutProps) {
             <span>Coroutine Visualizer</span>
           </Link>
         </NavbarBrand>
+        <NavbarContent justify="end">
+          <NavbarItem>
+            <ThemeSwitch />
+          </NavbarItem>
+        </NavbarContent>
       </Navbar>
       <main>{children}</main>
     </div>
