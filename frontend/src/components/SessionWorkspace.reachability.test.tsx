@@ -241,6 +241,19 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     expect(mockedApiClient.getCoroutineTimeline).toHaveBeenCalledWith('session-1', 'c-live')
   })
 
+  it('switches the dock to the Inspector when a coroutine is selected', async () => {
+    localStorage.clear()
+    // Started with its scenario and still running: the dock opens on Learn (S-5).
+    render(<SessionWorkspace sessionId="session-1" scenarioId="basics/launch" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('tab', { name: 'Learn' })).toHaveAttribute('aria-selected', 'true')
+
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Open source for LiveWorker' }))
+
+    expect(screen.getByRole('tab', { name: 'Inspector' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { level: 2, name: /LiveWorker/ })).toBeVisible()
+  })
+
   it('highlights the selected node with ring-2 ring-primary while its inline source is shown', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 

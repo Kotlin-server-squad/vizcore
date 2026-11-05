@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { formatNanoTime } from '@/lib/utils'
+import { formatDuration } from '@/lib/format-duration'
 import { InspectorCard, InspectorRow, NotReported } from './InspectorCard'
 import type { CoroutineTimeline } from '@/types/api'
 
@@ -112,10 +112,10 @@ export function TimingCard({
         label="Total"
         value={
           live ? (
-            <span title="Still running: time since it was created">~{formatNanoTime(live.total)} so far</span>
+            <span title="Still running: time since it was created">~{formatDuration(live.total, { soFar: true })}</span>
           ) : soFar !== null ? (
             <span title="Still running: time from its first to its latest recorded event">
-              ~{formatNanoTime(soFar)} so far
+              ~{formatDuration(soFar, { soFar: true })}
             </span>
           ) : (
             <Approx nanos={timeline?.totalDuration} />
@@ -134,7 +134,7 @@ export function TimingCard({
       />
       {possiblyBlocked && live && (
         <p data-testid="possibly-blocked" className="mt-2 text-xs text-warning">
-          Running for ~{formatNanoTime(live.openFor)} without suspending since it last resumed. It may be
+          Running for ~{formatDuration(live.openFor)} without suspending since it last resumed. It may be
           blocked in a call on its thread.
         </p>
       )}
@@ -147,5 +147,5 @@ export function TimingCard({
 
 function Approx({ nanos, soFar = false }: { nanos: number | null | undefined; soFar?: boolean }) {
   if (nanos === null || nanos === undefined) return <NotReported />
-  return <>~{formatNanoTime(nanos)}{soFar ? ' so far' : ''}</>
+  return <>~{formatDuration(nanos, { soFar })}</>
 }

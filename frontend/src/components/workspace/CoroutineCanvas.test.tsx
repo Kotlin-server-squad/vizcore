@@ -70,4 +70,9 @@ describe('CoroutineCanvas — the main view', () => {
     renderCanvas({ coroutines: [], isDemo: true })
     expect(screen.getByRole('region', { name: 'Main view' })).toHaveTextContent('Run the scenario to see its coroutines here.')
   })
+
+  it('explains sampling in an attached app\'s empty state (H-4)', () => {
+    renderCanvas({ coroutines: [], isDemo: false })
+    expect(screen.getByRole('region', { name: 'Main view' })).toHaveTextContent('on a poll')
+  })
 })

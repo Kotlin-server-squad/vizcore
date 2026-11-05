@@ -21,17 +21,17 @@ import { deriveStateCounts, selectCoroutines, type StateFilter } from '@/lib/sta
 import { deriveRung } from '@/lib/fidelity-rung'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
-import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { SessionHeader } from './workspace/SessionHeader'
 import { CoroutineCanvas } from './workspace/CoroutineCanvas'
 import { SessionDock } from './workspace/SessionDock'
 import { Inspector } from './workspace/Inspector/Inspector'
-import { EventsDrawer } from './workspace/EventsDrawer'
+import { EventsPanel } from './workspace/EventsPanel'
+import { DockTabs, DockTabPanel, type DockTabId } from './workspace/DockTabs'
+import { LearnPanel } from './workspace/LearnPanel'
+import { SessionSummary } from './workspace/SessionSummary'
 import { EvidencePanels } from './workspace/EvidencePanels'
 import { ChecksModal, countFailedChecks } from './workspace/ChecksModal'
 import { useScenarioActions } from './workspace/use-scenario-actions'
-import { SessionMetrics } from './SessionMetrics'
-import { LeakList } from './LeakList'
 import { StateBar } from './StateBar'
 import { ReplayController } from './replay/ReplayController'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
@@ -44,6 +44,8 @@ import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
 import { useDockLayout } from '@/hooks/use-dock-layout'
 import { deriveRunOutcome } from '@/lib/run-outcome'
 import { useRecordedSpan } from '@/hooks/use-recorded-span'
+import { countEvidence, evidenceTabLabel } from '@/lib/evidence-summary'
+import { openingDockTab, rememberDockTab, rememberedDockTab } from '@/lib/dock-tab-memory'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -86,7 +88,11 @@ export function SessionWorkspace({
   readOnly = false,
   startLive = false,
 }: SessionWorkspaceProps) {
-  const { data: storedEvents } = useSessionEvents(sessionId)
+  const {
+    data: storedEvents,
+    isPending: historyPending,
+    isError: historyFailed,
+  } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
   // Selected coroutine for the source drawer (RCO-06, D-02/D-06). Lifted here so
@@ -254,6 +260,34 @@ export function SessionWorkspace({
     const visible = replay.visibleEvents
     return replayActive && visible.length > 0 ? visible[visible.length - 1]!.tsNanos - visible[0]!.tsNanos : null
   }, [replayActive, replay.visibleEvents])
+
+  // Which dock tab is showing (S-5). The opening tab is decided once, when the
+  // session has loaded: a demo that finishes while you watch stays where you
+  // are. A tab the user picks wins, and is remembered for this session.
+  const [pickedTab, setPickedTab] = useState<DockTabId | null>(null)
+  const [openingTab, setOpeningTab] = useState<DockTabId | null>(null)
+  if (openingTab === null && session) {
+    setOpeningTab(
+      rememberedDockTab(sessionId) ??
+        openingDockTab({ startedAsDemo: hasScenario, outcome: outcome?.outcome ?? null }),
+    )
+  }
+  const dockTab: DockTabId = pickedTab ?? openingTab ?? 'inspector'
+  const selectDockTab = (tab: DockTabId) => {
+    setPickedTab(tab)
+    rememberDockTab(sessionId, tab)
+    // A tab chosen on a folded dock is a tab you want to read.
+    if (dock.folded) dock.toggleFold()
+  }
+
+  // What the Evidence tab holds, named on its label (S-4).
+  const evidenceCounts = useMemo(() => countEvidence(panelEvents), [panelEvents])
+  // "Time into the capture" for the thread table: the first retained event.
+  const captureStartNanos = useMemo(() => {
+    let first: number | null = null
+    for (const e of panelEvents) if (first === null || e.tsNanos < first) first = e.tsNanos
+    return first
+  }, [panelEvents])
 
   // Close the source drawer if its coroutine leaves the session entirely (e.g. a
   // replay cursor moving before its creation, or a session reset). A terminal or
@@ -437,14 +471,23 @@ export function SessionWorkspace({
           selectedCoroutineId={selectedCoroutineId}
           // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
           // view stay presentational, with no added interactivity.
-          onSelect={isLiveView ? setSelectedCoroutineId : undefined}
+          onSelect={
+            isLiveView
+              ? (id: string) => {
+                  setSelectedCoroutineId(id)
+                  // A selection is read in the Inspector: show it (S-4).
+                  selectDockTab('inspector')
+                }
+              : undefined
+          }
           panelRef={panelRef}
           maximised={dock.maximised}
           onToggleMaximise={dock.toggleMaximise}
         />
 
-        {/* The dock (S-1). In this PR it holds today's panels in one scrolling
-            body; Part 3b gives them tabs. Maximise hides it, never unmounts it. */}
+        {/* The dock (S-1): one tab per question (S-4). Maximise hides it,
+            never unmounts it, and so do folding and switching tabs: a panel
+            that re-subscribed later would refetch a stale query (#124). */}
         <SessionDock
           height={dock.height}
           maxHeight={dock.maxHeight}
@@ -452,67 +495,89 @@ export function SessionWorkspace({
           hidden={dock.maximised}
           onResize={dock.resize}
           onToggleFold={dock.toggleFold}
-          bar={<h2 className="px-2 text-sm font-semibold">Details</h2>}
+          bar={
+            <DockTabs
+              // Problems ("what is wrong?") is the fifth question of S-4. It
+              // stays hidden, not empty, until the health API (Part 5) and its
+              // tab (Part 7) land.
+              tabs={[
+                { id: 'inspector', label: 'Inspector' },
+                { id: 'evidence', label: evidenceTabLabel(evidenceCounts) },
+                { id: 'events', label: 'Events' },
+                { id: 'learn', label: 'Learn' },
+              ]}
+              selected={dockTab}
+              onSelect={selectDockTab}
+            />
+          }
         >
-          <div className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <div data-testid="inspector-slot" className="min-w-0">
-                <Inspector
-                  sessionId={sessionId}
-                  coroutine={isLiveView ? selectedCoroutine : null}
-                  readOnly={readOnly}
-                  // Selection is live-only, so outside the live view the
-                  // inspector must not invite a click that cannot work (#145).
-                  placeholder={
-                    replayActive
-                      ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
-                      : readOnly
-                        ? 'Coroutine details are not included in a shared link.'
-                        : undefined
-                  }
-                  threadActivity={panelThreadActivity}
-                />
-              </div>
-              {/* Events, scoped to the current selection. */}
-              <div className="min-w-0">
-                <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
-              </div>
-            </div>
-
-            {/* The metric strip and the leak list are live-only: in replay they
-                would report current numbers over a frozen view, and the shared
-                shell has no Bearer for /metrics (M-4). Leaks render once (PD-02). */}
-            {isLiveView && (
-              <div className="space-y-4">
-                <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
-                {metrics && metrics.leaks.length > 0 && (
-                  <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
-                )}
-              </div>
-            )}
-
-            {/* How to read the tree (spec Part 1). */}
-            {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
-
-            {/* Scenario Pipeline View - shown for realistic scenarios */}
-            {scenarioId === 'order-processing' && allEvents.length > 0 && (
-              <OrderProcessingView events={allEvents} />
-            )}
-            {scenarioId === 'user-registration' && allEvents.length > 0 && (
-              <RegistrationFlowView events={allEvents} />
-            )}
-
-            {/* The evidence section (M-1/M-2): what this session can show beyond the
-                tree, and — where the rung is the reason it cannot — what unlocks it. */}
+          <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>
+            <Inspector
+              sessionId={sessionId}
+              coroutine={isLiveView ? selectedCoroutine : null}
+              readOnly={readOnly}
+              // T-3's session summary, live view only: in replay the metrics
+              // would report now over a frozen view, and the shared shell has
+              // no Bearer for /metrics (M-4).
+              emptyState={
+                isLiveView ? (
+                  <SessionSummary
+                    sessionId={sessionId}
+                    enabled={!readOnly}
+                    coroutineCount={session.coroutineCount}
+                    eventCount={session.eventCount}
+                  />
+                ) : undefined
+              }
+              // Selection is live-only, so outside the live view the inspector
+              // must not invite a click that cannot work (#145).
+              placeholder={
+                replayActive
+                  ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
+                  : readOnly
+                    ? 'Coroutine details are not included in a shared link.'
+                    : undefined
+              }
+              threadActivity={panelThreadActivity}
+              // Back to the session summary (T-3) from a selection.
+              onClearSelection={isLiveView ? () => setSelectedCoroutineId(null) : undefined}
+            />
+          </DockTabPanel>
+          <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
+            {/* What the resources did (M-1/M-2), and — where the rung is the
+                reason nothing was captured — what unlocks it (D-5). */}
             <EvidencePanels
               sessionId={sessionId}
               rung={rung}
               categories={eventCategories}
+              counts={evidenceCounts}
               replayActive={replayActive}
               readOnly={readOnly}
               threadActivity={panelThreadActivity}
+              captureStartNanos={captureStartNanos}
+              history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
             />
-          </div>
+          </DockTabPanel>
+          <DockTabPanel id="events" selected={dockTab === 'events'}>
+            {/* Mounted only while shown: a long event list is the heaviest
+                render on the page, and a hidden one would re-render on every
+                live flush. It fetches nothing, so mounting later costs no
+                request. Every other panel stays mounted and is hidden. */}
+            {dockTab === 'events' && (
+              <EventsPanel events={panelEvents} selectedCoroutine={selectedCoroutine} />
+            )}
+          </DockTabPanel>
+          <DockTabPanel id="learn" selected={dockTab === 'learn'}>
+            <LearnPanel>
+              {/* Scenario Pipeline View - shown for realistic scenarios */}
+              {scenarioId === 'order-processing' && allEvents.length > 0 && (
+                <OrderProcessingView events={allEvents} />
+              )}
+              {scenarioId === 'user-registration' && allEvents.length > 0 && (
+                <RegistrationFlowView events={allEvents} />
+              )}
+            </LearnPanel>
+          </DockTabPanel>
         </SessionDock>
       </div>
     </div>
