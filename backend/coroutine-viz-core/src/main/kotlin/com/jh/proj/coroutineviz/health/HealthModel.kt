@@ -298,9 +298,9 @@ data class HealthInput(
     /** Retained transitions of one coroutine, oldest first; used for possibly blocked coroutines only. */
     val transitionsFor: (String) -> List<Transition> = { emptyList() },
     /**
-     * The summaries cannot see every event the session had: they were folded from retained events after a trim (a
-     * database session until its summaries are persisted), or a replay seed could not account for coroutines beyond
-     * capacity. Failures then read "at least" and possibly blocked is not evaluated (HISTORY_TRIMMED).
+     * The summaries may miss failures the session had, though every incident they show is real: a replay seed cannot
+     * tell which coroutines beyond capacity existed at the cursor. Failures then read "at least" and possibly blocked is
+     * not evaluated (HISTORY_TRIMMED). Never set it when incidents could be overcounted (a lost ancestry splits a round).
      */
     val historyIncomplete: Boolean = false,
     /** The backend's retention facts, echoed in [SessionHealth.retention]. */

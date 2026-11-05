@@ -162,6 +162,6 @@ private fun publishFrame(
         return
     }
     // Recorded before the append: "last data" is never earlier than an event a health read includes.
-    IngestStates.eventReceived(connection.sessionId, receivedEpochMs)
+    IngestStates.eventReceived(connection, receivedEpochMs)
     session.ingest(event)
 }

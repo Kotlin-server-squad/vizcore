@@ -3,11 +3,14 @@ package com.jh.proj.coroutineviz.routes
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.PollWatermark
+import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -51,6 +54,25 @@ internal object HealthEvents {
         parent: String? = null,
     ) = CoroutineStarted(sessionId, 0, at, id, "job-$id", parent, "scope", id)
 
+    fun suspended(
+        sessionId: String,
+        id: String,
+        at: Long,
+        provenance: SuspensionProvenance? = SuspensionProvenance.REAL_FRAME,
+    ) = CoroutineSuspended(
+        sessionId = sessionId,
+        seq = 0,
+        tsNanos = at,
+        coroutineId = id,
+        jobId = "job-$id",
+        parentCoroutineId = null,
+        scopeId = "scope",
+        label = id,
+        reason = "delay",
+        suspensionPoint = SuspensionPoint(function = "work", fileName = "App.kt", lineNumber = 10, reason = "delay"),
+        provenance = provenance,
+    )
+
     fun completed(
         sessionId: String,
         id: String,
@@ -87,6 +109,12 @@ internal object HealthEvents {
 }
 
 internal fun VizEvent.frameText(): String = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), this)
+
+/** The frame an SDK from before triage sends: the same event without the fields it did not know. */
+internal fun VizEvent.olderSdkFrameText(vararg newFields: String): String {
+    val full = appJson.parseToJsonElement(frameText()).jsonObject
+    return JsonObject(full.filterKeys { it !in newFields }).toString()
+}
 
 internal suspend fun HttpClient.createSessionNamed(name: String): String {
     val response = post("/api/sessions?name=$name")

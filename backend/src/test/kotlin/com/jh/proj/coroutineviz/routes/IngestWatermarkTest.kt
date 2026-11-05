@@ -146,10 +146,13 @@ class IngestWatermarkTest {
 
             client.webSocket("/api/sessions/$sessionId/ingest") {
                 send(Frame.Text(HealthEvents.created(sessionId, "c1", at = sec(1)).frameText()))
-                eventually { eventCount(client, sessionId) == 1 }
+                send(Frame.Text(HealthEvents.started(sessionId, "c1", at = sec(1)).frameText()))
+                send(Frame.Text(HealthEvents.suspended(sessionId, "c1", at = sec(2)).frameText()))
+                eventually { eventCount(client, sessionId) == 3 }
             }
 
-            val origin = SessionManager.getSession(sessionId)!!.readSummaries { it.get("c1")?.origin }
-            assertEquals(com.jh.proj.coroutineviz.events.CoroutineOrigin.APP, origin)
+            val summary = SessionManager.getSession(sessionId)!!.readSummaries { it.get("c1") }!!
+            assertEquals(com.jh.proj.coroutineviz.events.CoroutineOrigin.APP, summary.origin)
+            assertEquals(com.jh.proj.coroutineviz.events.SuspensionProvenance.REAL_FRAME, summary.lastSuspensionProvenance)
         }
 }

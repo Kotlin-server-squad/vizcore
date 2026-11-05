@@ -14,6 +14,7 @@ import com.jh.proj.coroutineviz.health.SummaryFold
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.health.Transition
 import com.jh.proj.coroutineviz.health.Transitions
+import com.jh.proj.coroutineviz.health.TransportStatus
 import com.jh.proj.coroutineviz.health.WatermarkObservation
 import com.jh.proj.coroutineviz.health.snapshot
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
@@ -40,32 +41,62 @@ internal fun retentionOf(
 }
 
 /**
+ * A database session whose stored events were trimmed (until Part 5b persists its summaries): its summaries are folded
+ * from what is left, and a coroutine whose parent's creation was trimmed loses its round, so one failed round can read
+ * as several ungrouped failures. "At least" would then overstate, so the health is unavailable instead (H-1, H-3).
+ */
+internal class HistoryTrimmedException(
+    message: String,
+) : IllegalStateException(message)
+
+/**
+ * The transport a read reports (spec C-3 `transport`). A database session outlives this process: events that arrived
+ * before the first connection this process saw came through a connection nobody here watched end (a crash runs no close
+ * handler), so nothing vouches that all of them arrived (H-3). Until Part 5b persists the transport and the "ingest
+ * open" marker, such a session reads delivery-uncertain from its first seq.
+ */
+internal fun transportOf(
+    ingest: IngestSnapshot,
+    kind: SessionKind,
+    lastSeq: Long,
+): TransportStatus {
+    val unwatched =
+        !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && lastSeq > 0 &&
+            (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
+    return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
+}
+
+/**
  * The session's health (spec C-3): live when [atSeq] is null, else the replay fold at the cursor, clamped to the last
- * event. Throws [com.jh.proj.coroutineviz.health.SummariesUnavailableException] when the session keeps no usable summaries.
+ * event. [ingest] must be read before [session] was resolved: in database mode resolving rebuilds the session from the
+ * stored events, and a watermark is recorded only after its poll's events were stored, so every event the watermark
+ * vouches for is in the rebuilt summaries (spec C-7). The other order could compare a newer watermark with an older run
+ * start and report a coroutine that has since suspended.
+ *
+ * @throws com.jh.proj.coroutineviz.health.SummariesUnavailableException when the session keeps no usable summaries.
+ * @throws HistoryTrimmedException for a trimmed database session.
  */
 internal fun readSessionHealth(
     session: VizSession,
+    ingest: IngestSnapshot,
     atSeq: Long?,
     leakThresholdMs: Long,
 ): SessionHealth {
-    // The ingest state first: a watermark is recorded only after its poll's events were applied, so the summaries copied
-    // next include every event it vouches for (spec C-7). The other order could compare a newer watermark with an older
-    // run start and report a coroutine that has since suspended.
-    val ingest = IngestStates.snapshot(session.sessionId)
     val durable = session.readSummaries { it.snapshot() }
     // Read after the copy: the store holds at least every event the copy saw, possibly newer ones.
     val events = session.store.all()
     val everyEvent = summariesSeeEveryEvent()
     val retention = retentionOf(events, firstSeqEver = durable.firstSeqEver(everyEvent))
+    if (retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
+    val kind = sessionKindOf(session.sessionId)
     val input =
         HealthInput(
             summaries = durable,
-            kind = sessionKindOf(session.sessionId),
+            kind = kind,
             watermark = ingest.watermark,
             lastIngestEpochMs = ingest.lastIngestEpochMs,
-            transport = ingest.transport,
+            transport = transportOf(ingest, kind, durable.lastEventSeq),
             leakThresholdMs = leakThresholdMs,
-            historyIncomplete = retention.trimmed && !everyEvent,
             retention = retention,
         )
     if (atSeq == null) {
@@ -77,8 +108,8 @@ internal fun readSessionHealth(
         input.copy(
             summaries = SummaryFold.foldTo(events, cursor, durable),
             mode = HealthMode.Replay(cursor),
-            // The seed cannot tell which coroutines beyond capacity existed at the cursor (D-9).
-            historyIncomplete = input.historyIncomplete || (retention.trimmed && durable.untrackedCount > 0),
+            // The seed cannot tell which coroutines beyond capacity existed at the cursor: their failures may be missing.
+            historyIncomplete = retention.trimmed && durable.untrackedCount > 0,
         ),
     )
 }

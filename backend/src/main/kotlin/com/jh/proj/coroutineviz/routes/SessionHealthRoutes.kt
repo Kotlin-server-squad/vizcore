@@ -24,19 +24,27 @@ fun Route.registerSessionHealthRoutes() {
             call.respond(HttpStatusCode.BadRequest, ErrorResponse("atSeq must be a non-negative integer"))
             return@get
         }
+        // Before the session is resolved: see readSessionHealth.
+        val ingest = IngestStates.snapshot(sessionId)
         val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, ErrorResponse("Session not found"))
             return@get
         }
+        // H-3: unknown is shown as unknown, never as healthy.
         val health =
             try {
-                readSessionHealth(session, atSeq, call.leakThresholdMs())
+                readSessionHealth(session, ingest, atSeq, call.leakThresholdMs())
             } catch (_: SummariesUnavailableException) {
-                // H-3: unknown is shown as unknown, never as healthy.
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
                     ErrorResponse("Health is unavailable for this session", code = "summaries-unavailable"),
+                )
+                return@get
+            } catch (_: HistoryTrimmedException) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse("Health is unavailable: this session's early events were trimmed", code = "history-trimmed"),
                 )
                 return@get
             }

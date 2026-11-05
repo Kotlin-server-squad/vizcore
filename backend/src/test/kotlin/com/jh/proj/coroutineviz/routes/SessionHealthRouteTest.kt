@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.health.HealthState
 import com.jh.proj.coroutineviz.health.NotEvaluatedReason
 import com.jh.proj.coroutineviz.health.PossiblyBlockedIncident
 import com.jh.proj.coroutineviz.health.SessionHealth
+import com.jh.proj.coroutineviz.health.SessionOrigin
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -231,6 +232,59 @@ class SessionHealthRouteTest {
                 assertEquals(1, replay.failedRoundCount, "the seed keeps the trimmed creations")
                 assertEquals(0, early.problemCount)
                 assertEquals(1L, early.asOfSeq)
+            } finally {
+                SessionManager.configure()
+            }
+        }
+
+    @Test
+    fun `an app on an SDK from before triage is evaluated with what it sends`() =
+        testApplication {
+            application { module() }
+            val ws = createClient { install(WebSockets) }
+            val sessionId = ws.createSessionNamed("app-old-sdk")
+
+            ws.webSocket("/api/sessions/$sessionId/ingest") {
+                // No origin, no provenance, no watermark.
+                send(Frame.Text(HealthEvents.created(sessionId, "c1", at = sec(1)).olderSdkFrameText("origin")))
+                send(Frame.Text(HealthEvents.started(sessionId, "c1", at = sec(1)).frameText()))
+                send(Frame.Text(HealthEvents.suspended(sessionId, "c1", at = sec(2)).olderSdkFrameText("provenance")))
+                eventually { SessionManager.getSession(sessionId)!!.lastSeq == 3L }
+
+                val health = ws.health("/api/sessions/$sessionId/health")
+
+                assertEquals(SessionOrigin.UNKNOWN, health.sessionOrigin)
+                assertEquals(NotEvaluatedReason.NO_WATERMARK, health.possiblyBlocked.reason)
+                assertEquals(HealthState.NO_FAILURES_PARTIAL, health.state, "never green without origins")
+                assertEquals(1, health.counts.unknown)
+            }
+        }
+
+    @Test
+    fun `a blocked coroutine whose events were trimmed from memory is still detected`() =
+        testApplication {
+            application { module() }
+            val ws = createClient { install(WebSockets) }
+            ws.get("/api/sessions")
+            SessionManager.configure(maxEventsPerSession = 3)
+            try {
+                val sessionId = ws.createSessionNamed("app-trimmed")
+                ws.webSocket("/api/sessions/$sessionId/ingest") {
+                    send(Frame.Text(HealthEvents.created(sessionId, "worker", at = sec(1)).frameText()))
+                    send(Frame.Text(HealthEvents.started(sessionId, "worker", at = sec(1)).frameText()))
+                    send(Frame.Text(HealthEvents.created(sessionId, "f1", at = sec(2)).frameText()))
+                    send(Frame.Text(HealthEvents.completed(sessionId, "f1", at = sec(2)).frameText()))
+                    send(Frame.Text(HealthEvents.created(sessionId, "f2", at = sec(3)).frameText()))
+                    send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(12)).frameText()))
+                    eventually { IngestStates.snapshot(sessionId).watermark != null }
+
+                    val health = ws.health("/api/sessions/$sessionId/health")
+
+                    assertEquals(true, health.retention?.trimmed)
+                    val blocked = assertIs<PossiblyBlockedIncident>(health.incidents.items.single())
+                    assertEquals("worker", blocked.coroutineId)
+                    assertTrue(blocked.transitionsGap, "its transitions were trimmed")
+                }
             } finally {
                 SessionManager.configure()
             }

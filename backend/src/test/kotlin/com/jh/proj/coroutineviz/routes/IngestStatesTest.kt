@@ -12,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IngestStatesTest {
@@ -37,14 +36,28 @@ class IngestStatesTest {
     @Test
     fun `the latest watermark and the latest event receipt are kept`() {
         val connection = IngestStates.connectionOpened("s", firstSeq = 1)
-        IngestStates.eventReceived("s", receivedEpochMs = 100)
-        IngestStates.eventReceived("s", receivedEpochMs = 90)
+        IngestStates.eventReceived(connection, receivedEpochMs = 100)
+        IngestStates.eventReceived(connection, receivedEpochMs = 90)
         IngestStates.watermarkReceived(connection, watermark(appNanos = 5_000_000_000), receivedEpochMs = 120)
 
         val snapshot = IngestStates.snapshot("s")
         assertEquals(100L, snapshot.lastIngestEpochMs, "receipt time never moves back")
         assertEquals(WatermarkObservation(5_000_000_000, 1_792_000_005_000, 120), snapshot.watermark)
         assertEquals(TransportStatus(), snapshot.transport)
+        assertEquals(1L, snapshot.firstConnectionSeq)
+    }
+
+    @Test
+    fun `a delayed watermark from an overlapping socket does not move the watermark back, but its losses count`() {
+        val newer = IngestStates.connectionOpened("s", firstSeq = 1)
+        val older = IngestStates.connectionOpened("s", firstSeq = 5)
+        IngestStates.watermarkReceived(newer, watermark(appNanos = 20_000_000_000), receivedEpochMs = 1)
+        IngestStates.watermarkReceived(older, watermark(appNanos = 5_000_000_000, lost = 1), receivedEpochMs = 2)
+
+        val snapshot = IngestStates.snapshot("s")
+        assertEquals(20_000_000_000, snapshot.watermark?.appNanos)
+        assertEquals(TransportStatus(lostEvents = 1, sinceSeq = 5), snapshot.transport)
+        assertEquals(1L, snapshot.firstConnectionSeq, "the first connection this process saw")
     }
 
     @Test
@@ -87,13 +100,15 @@ class IngestStatesTest {
     }
 
     @Test
-    fun `a forgotten session gets no state back from a late close`() {
+    fun `a forgotten session gets no state back from late frames or a late close`() {
         val connection = IngestStates.connectionOpened("s", firstSeq = 1)
         IngestStates.forget("s")
+        IngestStates.eventReceived(connection, receivedEpochMs = 1)
+        IngestStates.watermarkReceived(connection, watermark(appNanos = 1), receivedEpochMs = 1)
+        IngestStates.frameSkipped(connection)
         IngestStates.connectionClosed(connection)
 
-        assertNull(IngestStates.snapshot("s").watermark)
-        assertFalse(IngestStates.snapshot("s").transport.deliveryUncertain)
+        assertEquals(IngestSnapshot(), IngestStates.snapshot("s"))
     }
 
     @Test

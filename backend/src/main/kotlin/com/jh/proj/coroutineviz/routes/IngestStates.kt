@@ -8,11 +8,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import java.util.concurrent.ConcurrentHashMap
 
-/** What [IngestStates] knows about one session; the defaults are "nothing ingested". */
+/**
+ * What [IngestStates] knows about one session; the defaults are "nothing ingested". [firstConnectionSeq] is the first
+ * seq of the first connection this process saw for the session: events before it arrived through a connection nobody
+ * here watched.
+ */
 data class IngestSnapshot(
     val watermark: WatermarkObservation? = null,
     val lastIngestEpochMs: Long? = null,
     val transport: TransportStatus = TransportStatus(),
+    val firstConnectionSeq: Long? = null,
 )
 
 /**
@@ -23,17 +28,20 @@ data class IngestSnapshot(
  * A watermark is transport state, not a session event: it is neither stored nor numbered, so one per second does not
  * evict real events from the bounded store. Keyed by session id for the same reason as [IngestConnections] (the
  * database store builds a fresh `VizSession` on every read), and process-local like it. Nothing here is persisted yet:
- * after a restart a database session has no ingest state until its app connects again (Part 5b, spec C-4).
+ * after a restart a database session has no ingest state until its app connects again (Part 5b, spec C-4); the health
+ * reads treat what this process did not watch as uncertain.
  */
 object IngestStates {
     private const val WATERMARK_BUFFER = 16
 
     private val states = ConcurrentHashMap<String, State>()
 
-    private class State {
+    /** Guarded by itself. */
+    internal class State {
         var watermark: WatermarkObservation? = null
         var lastIngestEpochMs: Long? = null
         var transport = TransportStatus()
+        var firstConnectionSeq: Long? = null
 
         // Only the newest watermark matters to a stream that fell behind.
         val watermarks =
@@ -43,10 +51,15 @@ object IngestStates {
             )
     }
 
-    /** One ingest socket. Its events get seqs from [firstSeq] on; it closed cleanly only once a final watermark arrived. */
+    /**
+     * One ingest socket. Its events get seqs from [firstSeq] on; it closed cleanly only once a final watermark arrived.
+     * It writes to the state it was opened with, so a frame that arrives after the session was deleted (and forgotten)
+     * cannot bring the session's state back.
+     */
     class Connection internal constructor(
         val sessionId: String,
         val firstSeq: Long,
+        internal val state: State,
     ) {
         @Volatile
         internal var finalWatermarkReceived = false
@@ -56,32 +69,35 @@ object IngestStates {
         sessionId: String,
         firstSeq: Long,
     ): Connection {
-        stateOf(sessionId)
-        return Connection(sessionId, firstSeq)
+        val state = stateOf(sessionId)
+        synchronized(state) { if (state.firstConnectionSeq == null) state.firstConnectionSeq = firstSeq }
+        return Connection(sessionId, firstSeq, state)
     }
 
     /** An event frame arrived; with several sockets a frame received earlier can finish later, so the time never moves back. */
     fun eventReceived(
-        sessionId: String,
+        connection: Connection,
         receivedEpochMs: Long,
     ) {
-        val state = stateOf(sessionId)
+        val state = connection.state
         synchronized(state) { state.lastIngestEpochMs = maxOf(state.lastIngestEpochMs ?: Long.MIN_VALUE, receivedEpochMs) }
     }
 
     /**
-     * A poll watermark arrived (spec C-7). Its loss count is cumulative per client, so the largest one is kept; a loss or
-     * an uncertain delivery dates from this connection's first seq at the latest.
+     * A poll watermark arrived (spec C-7). The newest poll (by app clock) is kept, so a delayed frame from an overlapping
+     * socket cannot move it back; every frame's loss facts count. The loss count is cumulative per client, so the largest
+     * one is kept; a loss or an uncertain delivery dates from this connection's first seq at the latest.
      */
     fun watermarkReceived(
         connection: Connection,
         watermark: PollWatermark,
         receivedEpochMs: Long,
     ) {
-        val state = stateOf(connection.sessionId)
+        val state = connection.state
         val observation = WatermarkObservation(watermark.tsNanos, watermark.pollEpochMs, receivedEpochMs)
         synchronized(state) {
-            state.watermark = observation
+            val current = state.watermark
+            if (current == null || observation.appNanos >= current.appNanos) state.watermark = observation
             val doubt = watermark.lostEvents > 0 || watermark.deliveryUncertain
             val t = state.transport
             state.transport =
@@ -105,13 +121,15 @@ object IngestStates {
 
     fun snapshot(sessionId: String): IngestSnapshot {
         val state = states[sessionId] ?: return IngestSnapshot()
-        return synchronized(state) { IngestSnapshot(state.watermark, state.lastIngestEpochMs, state.transport) }
+        return synchronized(state) {
+            IngestSnapshot(state.watermark, state.lastIngestEpochMs, state.transport, state.firstConnectionSeq)
+        }
     }
 
     /** The session's watermarks as they arrive, for its SSE streams; earlier ones are not replayed. */
     fun watermarks(sessionId: String): Flow<WatermarkObservation> = stateOf(sessionId).watermarks
 
-    /** Drops a deleted session's state. */
+    /** Drops a deleted session's state; its open connections keep writing only to their own, now unreachable, copy. */
     fun forget(sessionId: String) {
         states.remove(sessionId)
     }
@@ -119,8 +137,7 @@ object IngestStates {
     internal fun clear() = states.clear()
 
     private fun markUncertain(connection: Connection) {
-        // A deleted (forgotten) session must not get state back from a socket that closes late.
-        val state = states[connection.sessionId] ?: return
+        val state = connection.state
         synchronized(state) {
             val t = state.transport
             state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
