@@ -238,7 +238,11 @@ class InstrumentedChannelTest {
             repeat(3) { channel.send(it) }
             receiver.join()
 
-            val sizes = session.store.all().filterIsInstance<ChannelBufferStateChanged>().map { it.currentSize }
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
             assertEquals(6, sizes.size, "a size after each send and each receive")
             assertEquals(listOf(0), sizes.distinct(), "got $sizes")
         }
@@ -259,7 +263,11 @@ class InstrumentedChannelTest {
             val receivers = (1..4).map { launch { repeat(250) { channel.receive() } } }
             (senders + receivers).forEach { it.join() }
 
-            val sizes = session.store.all().filterIsInstance<ChannelBufferStateChanged>().map { it.currentSize }
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
             assertTrue(sizes.all { it in 0..2 }, "sizes outside 0..2: ${sizes.filterNot { it in 0..2 }.distinct()}")
         }
 
