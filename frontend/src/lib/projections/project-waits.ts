@@ -33,7 +33,7 @@ const ENDS_WAIT: ReadonlySet<string> = new Set([
  * @param events - VizEvents in seq order (typically the replay `visibleEvents` slice)
  * @returns coroutineId -> its current wait, for coroutines waiting on a wrapper now
  */
-export function projectWaits(events: VizEvent[]): Map<string, WaitFact> {
+export function projectWaits(events: readonly VizEvent[]): Map<string, WaitFact> {
   const waits = new Map<string, WaitFact>()
 
   for (const event of events) {

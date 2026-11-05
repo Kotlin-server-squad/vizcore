@@ -180,6 +180,7 @@ describe('SemaphoreGauge', () => {
           totalPermits: 5,
           availablePermits: 3,
           activeHolders: [],
+          unknownHolderPermits: 0,
           waitQueue: [],
         }}
       />,
