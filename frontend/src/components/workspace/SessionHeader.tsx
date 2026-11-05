@@ -1,35 +1,27 @@
 import type { RefObject } from 'react'
-import {
-  Card,
-  CardBody,
-  CardHeader,
-  Chip,
-  Button,
-  Tooltip,
-} from '@heroui/react'
-import { FiRefreshCw, FiRadio, FiGitBranch, FiList, FiPlay, FiShare2, FiCheckSquare } from 'react-icons/fi'
-import { motion, AnimatePresence } from 'framer-motion'
+import { Button, Chip, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Tooltip } from '@heroui/react'
+import { FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
-import { sessionDisplayName } from '@/lib/session-kind'
+import { formatDuration } from '@/lib/format-duration'
+import type { RunOutcome } from '@/lib/run-outcome'
 import { ExportMenu } from '../export/ExportMenu'
+import { RunScenarioButton } from './RunScenarioButton'
+import type { ScenarioActions } from './use-scenario-actions'
 import type { SessionSnapshot, VizEvent } from '@/types/api'
 
-/**
- * The workspace's identity strip and toolbar.
- *
- * Presentational apart from `useCapabilities`, which lives here because the
- * server's sharing capability feeds exactly one thing — whether the Share
- * button is offered — and nothing else in the workspace reads it.
- */
 interface SessionHeaderProps {
   sessionId: string
   session: SessionSnapshot
-  scenarioName?: string
-  hasScenario: boolean
+  /** The scenario's name, or the app name the session id was minted from (#145). */
+  title: string
   /** Which fidelity rung this session is on (D-6). */
   rung: Rung
   readOnly: boolean
+  /** A demo run's outcome (S-3); null for an attached app. */
+  outcome: { outcome: RunOutcome; failedCount: number } | null
+  /** From the first to the last recorded event, for a run that has ended. */
+  runSpanNanos: number | null
   /** Live SSE stream state + toggle. */
   streamEnabled: boolean
   isConnected: boolean
@@ -42,29 +34,45 @@ interface SessionHeaderProps {
   onToggleStream: () => void
   /** Replay state + toggle (D-01). */
   replayActive: boolean
+  /** Time from the first event to the replay cursor's, on the app's clock. */
+  replayAtNanos: number | null
   newEventsCount: number
   onToggleReplay: () => void
   onExitReplay: () => void
-  /** Graph/list canvas mode. */
-  viewMode: 'graph' | 'list'
-  onViewModeChange: (next: 'graph' | 'list') => void
+  /** When the shared view loaded its data (epoch ms). */
+  loadedAtMs: number
   onRefetch: () => void
   onOpenShares: () => void
-  /** Opens the session-checks report (M-3) — validation, no longer a tab. */
+  /** Opens the session-checks report (M-3). */
   onOpenChecks: () => void
+  /** Run / Reset / Clear — only for a scenario session outside the shared view. */
+  scenario?: ScenarioActions
   /** ExportMenu wiring (ADR-018 / EXPT-01/02 / D-22). */
   panelRef: RefObject<HTMLDivElement | null>
   panelEvents: VizEvent[]
+  viewMode: 'graph' | 'list'
   onRecord?: () => void
 }
 
+/**
+ * The session's header (spec S-3, which revises triage T-7). It keeps three
+ * facts apart: the run outcome of a demo (Running, Finished, Failed — a run
+ * with any failed coroutine is Failed, in red), the app connection (a pill
+ * that arrives with the health API in Part 7, so none is shown yet) and the
+ * view (updating, paused, replay, loaded). Then the actions: Run (demos, until
+ * Run again in Part 9), Replay, Pause view, Export and "⋯".
+ *
+ * Presentational apart from `useCapabilities`, which decides whether Share is
+ * offered — nothing else in the workspace reads it.
+ */
 export function SessionHeader({
   sessionId,
   session,
-  scenarioName,
-  hasScenario,
+  title,
   rung,
   readOnly,
+  outcome,
+  runSpanNanos,
   streamEnabled,
   isConnected,
   streamError = null,
@@ -72,212 +80,223 @@ export function SessionHeader({
   onReconnect,
   onToggleStream,
   replayActive,
+  replayAtNanos,
   newEventsCount,
   onToggleReplay,
   onExitReplay,
-  viewMode,
-  onViewModeChange,
+  loadedAtMs,
   onRefetch,
   onOpenShares,
   onOpenChecks,
+  scenario,
   panelRef,
   panelEvents,
+  viewMode,
   onRecord,
 }: SessionHeaderProps) {
   // Sharing is DB-backed (ADR-019); in memory mode the share routes are absent.
-  // Gate the Share affordance on the server capability so we never offer an
-  // action that 404s (explicit false only — stay enabled while still loading).
+  // Gate the Share item on the server capability so we never offer an action
+  // that 404s (explicit false only — stay enabled while still loading).
   const { data: capabilities } = useCapabilities()
   const sharingDisabled = capabilities?.sharingEnabled === false
 
   return (
-    <Card>
-      <CardHeader className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            {/* Whose session this is (#145): the scenario's name, or the app
-                name the session id was minted from — not a generic label. */}
-            <h1 className="text-2xl font-bold">
-              {hasScenario && scenarioName ? scenarioName : sessionDisplayName(sessionId)}
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <p className="font-mono text-sm text-default-500">{sessionId}</p>
-            {/* Which fidelity rung this session is on (D-6). */}
-            <Chip
-              size="sm"
-              variant="flat"
-              color={rung === 'demo' ? 'default' : 'primary'}
-              data-testid="rung-badge"
-            >
-              {RUNG_LABEL[rung]}
-            </Chip>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Chip color="primary" variant="flat">
-              {session.coroutineCount} coroutines
-            </Chip>
-            <Chip color="secondary" variant="flat">
-              {session.eventCount} events
-            </Chip>
-            {/* REPLAY mode chip (D-15) — only solid-primary chip in the app. */}
-            {replayActive && (
-              <Chip size="sm" color="primary" variant="solid">
-                REPLAY
-              </Chip>
-            )}
-            {/* New-events badge (D-02/D-04): clickable, exits replay + applies
-                buffered events. Hidden when N = 0. */}
-            {replayActive && newEventsCount > 0 && (
-              <button
-                type="button"
-                aria-label="Exit replay and jump to live"
-                onClick={onExitReplay}
-              >
-                <Chip size="sm" color="warning" variant="dot">
-                  {newEventsCount === 1 ? '1 new event' : `${newEventsCount} new events`}
-                </Chip>
-              </button>
-            )}
-          </div>
-          <Button
-            isIconOnly
-            variant="flat"
-            onPress={onRefetch}
-          >
-            <FiRefreshCw />
+    <header className="space-y-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="text-xl font-bold">{title}</h1>
+        {/* Which fidelity rung this session is on (D-6). */}
+        <Chip size="sm" variant="flat" color={rung === 'demo' ? 'default' : 'primary'} data-testid="rung-badge">
+          {RUNG_LABEL[rung]}
+        </Chip>
+        {outcome && <OutcomePill outcome={outcome.outcome} failedCount={outcome.failedCount} spanNanos={runSpanNanos} />}
+        <ViewPill
+          readOnly={readOnly}
+          replayActive={replayActive}
+          replayAtNanos={replayAtNanos}
+          streamEnabled={streamEnabled}
+          isConnected={isConnected}
+          streamError={streamError}
+          loadedAtMs={loadedAtMs}
+        />
+        {!readOnly && streamEnabled && !isConnected && streamError && onReconnect && (
+          <Button size="sm" variant="light" onPress={onReconnect}>
+            Reconnect
           </Button>
-        </div>
-      </CardHeader>
-      <CardBody>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Live-stream toggle — a shared session is a frozen capture, so
-                it is gated OFF in read-only mode (T-03-22). The "Read-only
-                shared view" banner is rendered by the /shared/$token shell. */}
-            {!readOnly && (
-              <Button
-                color={streamEnabled ? 'success' : 'default'}
-                variant={streamEnabled ? 'flat' : 'bordered'}
-                startContent={<FiRadio />}
-                onPress={onToggleStream}
-              >
-                {streamEnabled ? 'Live Stream Active' : 'Enable Live Stream'}
-              </Button>
-            )}
-            {!readOnly && streamEnabled && (
-              <AnimatePresence>
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  className="flex items-center gap-2"
-                >
-                  <Chip
-                    color={isConnected ? 'success' : streamError ? 'danger' : 'warning'}
-                    variant="dot"
-                    data-testid="stream-status"
-                  >
-                    {isConnected ? 'Connected' : (streamError ?? 'Connecting...')}
-                  </Chip>
-                  {/* Connection problems are surfaced, not swallowed (#137).
-                      While disconnected the panels fall back to a slow poll. */}
-                  {!isConnected && streamError && onReconnect && (
-                    <Button size="sm" variant="light" onPress={onReconnect}>
-                      Reconnect
-                    </Button>
-                  )}
-                  {droppedCount > 0 && (
-                    <Tooltip content="The backend shed these events under load, so the view may be missing detail. Structural events (create/complete) are never shed.">
-                      <Chip color="warning" variant="flat" size="sm" data-testid="dropped-count">
-                        {droppedCount === 1 ? '1 event dropped' : `${droppedCount} events dropped`}
-                      </Chip>
-                    </Tooltip>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            )}
+        )}
+        {droppedCount > 0 && (
+          <Tooltip content="The backend shed these events under load, so the view may be missing detail. Structural events (create/complete) are never shed.">
+            <Chip color="warning" variant="flat" size="sm" data-testid="dropped-count">
+              {droppedCount === 1 ? '1 event dropped' : `${droppedCount} events dropped`}
+            </Chip>
+          </Tooltip>
+        )}
+        {/* New-events badge (D-02/D-04): clickable, exits replay + applies
+            buffered events. Hidden when N = 0. */}
+        {replayActive && newEventsCount > 0 && (
+          <button type="button" aria-label="Exit replay and jump to live" onClick={onExitReplay}>
+            <Chip size="sm" color="warning" variant="dot">
+              {newEventsCount === 1 ? '1 new event' : `${newEventsCount} new events`}
+            </Chip>
+          </button>
+        )}
+        <span className="text-sm text-default-500">
+          <span>{session.coroutineCount} coroutines</span> · <span>{session.eventCount} events</span>
+        </span>
 
-            {/* Replay toggle (D-01) — always visible. */}
-            <Button
-              size="sm"
-              color={replayActive ? 'primary' : 'default'}
-              variant={replayActive ? 'flat' : 'bordered'}
-              startContent={<FiPlay />}
-              onPress={onToggleReplay}
-            >
-              {replayActive ? 'Exit Replay' : 'Replay'}
-            </Button>
-          </div>
+        <div className="flex-1" />
 
-          <div className="flex items-center gap-2">
-            {/* Share / Manage-shares trigger (D-11/D-13) — owner only, gated
-                OFF in the read-only shared view so a shared link can never
-                re-share (ADR-019, T-03-22). */}
-            {!readOnly && (
-              <Tooltip
-                content="Sharing requires storage.type=database"
-                isDisabled={!sharingDisabled}
-              >
-                {/* Span wrapper so the Tooltip still shows over a disabled button. */}
-                <span className="inline-flex">
-                  <Button
-                    size="sm"
-                    variant="bordered"
-                    startContent={<FiShare2 />}
-                    onPress={onOpenShares}
-                    isDisabled={sharingDisabled}
-                  >
-                    Share
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-
-            {/* Session checks (M-3) — validation is an action, not a tab. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {scenario && outcome && (
+            <RunScenarioButton outcome={outcome.outcome} isPending={scenario.isRunPending} onRun={() => void scenario.run()} />
+          )}
+          {/* Replay toggle (D-01) — always available, the shared view included. */}
+          <Button
+            size="sm"
+            color={replayActive ? 'primary' : 'default'}
+            variant={replayActive ? 'flat' : 'bordered'}
+            startContent={<FiPlay aria-hidden />}
+            onPress={onToggleReplay}
+          >
+            {replayActive ? 'Exit replay' : 'Replay'}
+          </Button>
+          {/* A shared session is a frozen capture: no live stream to pause (T-03-22). */}
+          {!readOnly && (
             <Button
               size="sm"
               variant="bordered"
-              startContent={<FiCheckSquare />}
-              onPress={onOpenChecks}
+              startContent={streamEnabled ? <FiPause aria-hidden /> : <FiRadio aria-hidden />}
+              onPress={onToggleStream}
             >
-              Checks
+              {streamEnabled ? 'Pause view' : 'Resume view'}
             </Button>
-
-            {/* Export menu (ADR-018 / EXPT-01/02 / D-22). */}
-            <ExportMenu
-              getPanelEl={() => panelRef.current}
-              sessionId={sessionId}
-              sessionName={scenarioName ?? sessionId}
-              events={panelEvents}
-              panel={viewMode === 'graph' ? 'graph' : 'tree'}
-              onRecord={onRecord}
-            />
-
-            {/* View Mode Toggle */}
-            <Button
-              size="sm"
-              variant={viewMode === 'graph' ? 'flat' : 'light'}
-              color={viewMode === 'graph' ? 'primary' : 'default'}
-              startContent={<FiGitBranch />}
-              onPress={() => onViewModeChange('graph')}
+          )}
+          {/* Export is its own menu (PNG / SVG / JSON / Record): menus do not nest. */}
+          <ExportMenu
+            getPanelEl={() => panelRef.current}
+            sessionId={sessionId}
+            sessionName={title}
+            events={panelEvents}
+            panel={viewMode === 'graph' ? 'graph' : 'tree'}
+            onRecord={onRecord}
+          />
+          <Dropdown>
+            <DropdownTrigger>
+              <Button size="sm" variant="bordered" isIconOnly aria-label="More actions">
+                <FiMoreHorizontal aria-hidden />
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu
+              aria-label="More actions"
+              disabledKeys={[
+                ...(sharingDisabled ? ['share'] : []),
+                ...(scenario?.isResetPending ? ['reset'] : []),
+              ]}
+              onAction={key => {
+                if (key === 'share') onOpenShares()
+                else if (key === 'checks') onOpenChecks()
+                else if (key === 'refresh') onRefetch()
+                else if (key === 'reset') void scenario?.reset()
+                else if (key === 'clear') scenario?.clear()
+              }}
             >
-              Graph View
-            </Button>
-            <Button
-              size="sm"
-              variant={viewMode === 'list' ? 'flat' : 'light'}
-              color={viewMode === 'list' ? 'primary' : 'default'}
-              startContent={<FiList />}
-              onPress={() => onViewModeChange('list')}
-            >
-              List View
-            </Button>
-          </div>
+              {[
+                // Owner only: a shared link can never re-share (ADR-019, T-03-22).
+                ...(readOnly
+                  ? []
+                  : [
+                      <DropdownItem
+                        key="share"
+                        description={sharingDisabled ? 'Sharing requires storage.type=database' : undefined}
+                      >
+                        Share
+                      </DropdownItem>,
+                    ]),
+                // Session checks (M-3) — validation is an action, not a tab.
+                <DropdownItem key="checks">Checks</DropdownItem>,
+                <DropdownItem key="refresh">Refresh</DropdownItem>,
+                ...(scenario
+                  ? [
+                      <DropdownItem key="reset" description="Deletes this session and starts a fresh one">
+                        Reset session
+                      </DropdownItem>,
+                      <DropdownItem key="clear" description="Empties the live event list; keeps the session">
+                        Clear events
+                      </DropdownItem>,
+                    ]
+                  : []),
+              ]}
+            </DropdownMenu>
+          </Dropdown>
         </div>
-      </CardBody>
-    </Card>
+      </div>
+      {scenario?.errorText && (
+        <p role="alert" className="text-sm text-danger">
+          {scenario.errorText}
+        </p>
+      )}
+    </header>
+  )
+}
+
+function OutcomePill({
+  outcome,
+  failedCount,
+  spanNanos,
+}: {
+  outcome: RunOutcome
+  failedCount: number
+  spanNanos: number | null
+}) {
+  const span = spanNanos !== null && (outcome === 'finished' || outcome === 'failed') ? ` · ${formatDuration(spanNanos)}` : ''
+  const failed = `${failedCount} ${failedCount === 1 ? 'coroutine' : 'coroutines'} failed`
+  const text = {
+    notStarted: 'Not run yet',
+    running: 'Running',
+    finished: `Finished${span}`,
+    failed: `Failed · ${failed}${span}`,
+  }[outcome]
+  return (
+    <Chip
+      size="sm"
+      variant="dot"
+      color={outcome === 'failed' ? 'danger' : outcome === 'running' ? 'primary' : 'default'}
+      data-testid="run-outcome"
+      className={outcome === 'failed' ? 'border-danger text-danger' : undefined}
+    >
+      {text}
+    </Chip>
+  )
+}
+
+function ViewPill({
+  readOnly,
+  replayActive,
+  replayAtNanos,
+  streamEnabled,
+  isConnected,
+  streamError,
+  loadedAtMs,
+}: {
+  readOnly: boolean
+  replayActive: boolean
+  replayAtNanos: number | null
+  streamEnabled: boolean
+  isConnected: boolean
+  streamError: string | null
+  loadedAtMs: number
+}) {
+  const [text, color] = replayActive
+    ? [replayAtNanos !== null ? `Replay at ${formatDuration(replayAtNanos)}` : 'Replay', 'primary' as const]
+    : readOnly
+      ? [`Loaded at ${new Date(loadedAtMs).toLocaleTimeString()}`, 'default' as const]
+      : !streamEnabled
+        ? ['View paused', 'default' as const]
+        : isConnected
+          ? ['Updating', 'success' as const]
+          : [streamError ?? 'Connecting…', streamError ? ('danger' as const) : ('warning' as const)]
+  return (
+    <Chip size="sm" variant="dot" color={color} data-testid="view-status">
+      {text}
+    </Chip>
   )
 }
