@@ -99,7 +99,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
     await screen.findByText('Simple Flow: Stock Ticker')
     const names = screen.getAllByRole('button', { name: /^start /i }).map((b) => b.getAttribute('aria-label'))
     expect(new Set(names).size).toBe(32)
-    expect(screen.getByRole('button', { name: 'Start Producer-Consumer (Patterns)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start Producer-Consumer: Coffee Bar (Patterns)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start Producer-Consumer (Sync: Semaphore)' })).toBeInTheDocument()
   })
 

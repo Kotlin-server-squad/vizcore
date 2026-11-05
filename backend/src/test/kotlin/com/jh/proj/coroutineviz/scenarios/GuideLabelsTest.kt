@@ -2,6 +2,10 @@ package com.jh.proj.coroutineviz.scenarios
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.channel.ChannelReceiveCompleted
+import com.jh.proj.coroutineviz.events.channel.ChannelReceiveStarted
+import com.jh.proj.coroutineviz.events.channel.ChannelSendCompleted
+import com.jh.proj.coroutineviz.events.channel.ChannelSendStarted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineBodyCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
@@ -37,6 +41,8 @@ import kotlin.time.Duration.Companion.seconds
  * tree must be exactly the picture (the same coroutines, each at its depth and in its state), and
  * that point must lie within [TOLERANCE_SECONDS] of the pictured moment (`atSeconds`, scripted
  * time). So renaming, moving or retiming a coroutine in a demo fails here until its guide follows.
+ * At that point no pictured coroutine may be inside a channel send or receive (see
+ * [trackChannelOperations]).
  *
  * Matching a point of the event sequence, rather than the tree at one timestamp, keeps the test
  * steady: at test speed a long chain of steps drifts a few tenths of a second behind its script.
@@ -60,14 +66,17 @@ class GuideLabelsTest {
         // The scripted seconds at which the tree equals the picture, as [from, to) windows.
         val created = events.filterIsInstance<CoroutineCreated>().associateBy { it.coroutineId }
         val tree = mutableMapOf<String, Row>()
+        val inChannel = mutableMapOf<String, Int>()
         val windows = mutableListOf<ClosedFloatingPointRange<Double>>()
         var matchingSince: Double? = null
         events.forEachIndexed { i, event ->
             apply(event, created, tree)
+            trackChannelOperations(event, created, inChannel)
             val now = scripted(event.tsNanos - start)
             // The tree after the last event stays on screen.
             val next = events.getOrNull(i + 1)?.let { scripted(it.tsNanos - start) } ?: Double.POSITIVE_INFINITY
-            if (tree == picture) {
+            val inChannelOperation = demoId !in PICTURES_A_CHANNEL_WAIT && picture.keys.any { (inChannel[it] ?: 0) > 0 }
+            if (tree == picture && !inChannelOperation) {
                 if (matchingSince == null) matchingSince = now
                 if (next > now) {
                     // A flash between two events (a step resuming and suspending again) is no moment.
@@ -87,6 +96,30 @@ class GuideLabelsTest {
             windows.any { at in (it.start - TOLERANCE_SECONDS)..(it.endInclusive + TOLERANCE_SECONDS) },
             "$demoId: the picture shows the tree at ${windows.map { "%.1f-%.1f s".format(it.start, it.endInclusive) }}, not at about $at s",
         )
+    }
+
+    /**
+     * Counts, per coroutine, the channel sends and receives it has started and not finished. How the
+     * tree shows a coroutine waiting in one is changing (active today, suspended soon), so a picture
+     * must not be taken while a pictured coroutine is inside one. A coroutine that has ended waits
+     * for nothing, even after a receive that found the channel closed.
+     */
+    private fun trackChannelOperations(
+        event: VizEvent,
+        created: Map<String, CoroutineCreated>,
+        inChannel: MutableMap<String, Int>,
+    ) {
+        val (coroutineId, change) =
+            when (event) {
+                is ChannelSendStarted -> event.coroutineId to 1
+                is ChannelReceiveStarted -> event.coroutineId to 1
+                is ChannelSendCompleted -> event.coroutineId to -1
+                is ChannelReceiveCompleted -> event.coroutineId to -1
+                is CoroutineCompleted, is CoroutineCancelled, is CoroutineFailed -> event.coroutineId to 0
+                else -> return
+            }
+        val label = created[coroutineId]?.label ?: return
+        if (change == 0) inChannel.remove(label) else inChannel[label] = (inChannel[label] ?: 0) + change
     }
 
     private fun scripted(nanos: Long): Double = nanos / 1_000_000_000.0 / SCALE
@@ -167,6 +200,19 @@ class GuideLabelsTest {
             "flow/operators" -> FlowScenarios.flowOperators(session)
             "flow/stateflow" -> FlowScenarios.stateFlowDemo(session)
             "flow/sharedflow" -> FlowScenarios.sharedFlowDemo(session)
+            else -> startPattern(demoId, session)
+        }
+
+    private suspend fun startPattern(
+        demoId: String,
+        session: VizSession,
+    ): Job =
+        when (demoId) {
+            "patterns/retry" -> PatternScenarios.runRetry(session)
+            "patterns/producer-consumer" -> PatternScenarios.runProducerConsumer(session)
+            "patterns/fan-out-fan-in" -> PatternScenarios.runFanOutFanIn(session)
+            "patterns/supervisor" -> PatternScenarios.runSupervisor(session)
+            "patterns/circuit-breaker" -> PatternScenarios.runCircuitBreaker(session)
             else -> error("will-see.json pictures '$demoId'; add it to GuideLabelsTest.start")
         }
 
@@ -176,6 +222,12 @@ class GuideLabelsTest {
 
         /** How far, in scripted seconds, the pictured moment may lie from where the tree matches. */
         private const val TOLERANCE_SECONDS = 1.0
+
+        /**
+         * The pictures that show a coroutine waiting at a channel on purpose: the chef at the pass and the office at
+         * the full print queue, shown as active. They change with how the tree shows such a wait.
+         */
+        private val PICTURES_A_CHANNEL_WAIT = setOf("channel-rendezvous", "channel-buffered")
 
         /** How long, in scripted seconds, the tree must keep the pictured shape to count as a moment a person sees. */
         private const val MIN_VISIBLE_SECONDS = 0.2

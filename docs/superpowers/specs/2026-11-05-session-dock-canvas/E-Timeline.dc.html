@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>E: Timeline first</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#4da3ff}a:hover{color:#8cc4ff}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; display: flex; flex-direction: column; font-family: Inter, system-ui, sans-serif; background: {{t.bg}}; color: {{t.text}}">
+  <nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 0 24px; min-height: 52px; border-bottom: 1px solid {{t.border}}; background: {{t.surface}}">
+    <span style="font-weight: 700; font-size: 15px">Coroutine Visualizer</span>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Sessions</a>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Gallery</a>
+  </nav>
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 24px; border-bottom: 1px solid {{t.border}}">
+    <h1 style="margin: 0; font-size: 18px; font-weight: 700">E-commerce Orders</h1>
+    <span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: {{s.COMPLETED.tint}}; color: {{s.COMPLETED.text}}">Finished in 12.0 s</span>
+    <span style="font-size: 13px; color: {{t.muted}}">8 coroutines · 1 lock · 1 semaphore</span>
+    <div style="flex: 1"></div>
+    <button type="button" style="font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 0; background: {{t.primary}}; color: #ffffff">Run again</button>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Share</button>
+    <button type="button" aria-label="More actions" style="font: inherit; font-size: 13px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">More</button>
+  </header>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 24px">
+    <div role="group" aria-label="View" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: {{t.surface3}}">
+      <button type="button" aria-pressed="false" style="font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 0; background: transparent; color: {{t.muted}}">Tree</button>
+      <button type="button" aria-pressed="true" style="font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 6px; border: 0; background: {{t.surface}}; color: {{t.text}}">Timeline</button>
+    </div>
+    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: {{t.muted}}">Find
+      <input type="search" placeholder="coroutine name" style="font: inherit; font-size: 12px; width: 180px; padding: 6px 10px; border-radius: 6px; border: 1px solid {{t.border}}; background: {{t.surface}}; color: {{t.text}}">
+    </label>
+    <div style="flex: 1"></div>
+    <sc-for list="{{legend}}" as="l" hint-placeholder-count="3">
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: {{t.muted}}"><span style="width: 18px; height: 10px; border-radius: 2px; background: {{l.bg}}"></span>{{l.label}}</span>
+    </sc-for>
+  </div>
+
+  <section aria-label="Timeline" style="margin: 0 24px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface2}}; padding: 8px 0 12px">
+    <div style="display: flex; align-items: flex-end; height: 24px; padding: 0 16px">
+      <span style="width: 200px; flex: none; font-size: 11px; color: {{t.muted}}">Coroutine</span>
+      <div style="flex: 1; position: relative; height: 16px">
+        <sc-for list="{{ticks}}" as="k" hint-placeholder-count="7">
+          <span style="position: absolute; left: {{k.left}}; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace; font-size: 10px; color: {{t.muted}}">{{k.label}}</span>
+        </sc-for>
+      </div>
+    </div>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+      <div style="display: flex; align-items: center; height: 30px; padding: 0 16px; background: {{r.rowBg}}">
+        <span style="width: 200px; flex: none; box-sizing: border-box; padding-left: {{r.indent}}; font-family: 'JetBrains Mono', monospace; font-size: 12px">{{r.name}}</span>
+        <div style="flex: 1; position: relative; height: 20px">
+          <sc-for list="{{r.segs}}" as="g" hint-placeholder-count="3">
+            <div style="position: absolute; top: 0; bottom: 0; left: {{g.left}}; width: {{g.width}}; box-sizing: border-box; border-radius: 3px; background: {{g.bg}}; border: {{g.border}}; overflow: hidden; white-space: nowrap; font-size: 10px; line-height: 18px; padding-left: 5px; color: {{g.color}}">{{g.label}}</div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+    <div style="margin: 10px 16px 6px; border-top: 1px solid {{t.border}}"></div>
+    <sc-for list="{{lanes}}" as="r" hint-placeholder-count="3">
+      <div style="display: flex; align-items: center; height: 26px; padding: 0 16px">
+        <span style="width: 200px; flex: none; font-size: 12px; color: {{t.muted}}">{{r.name}}</span>
+        <div style="flex: 1; position: relative; height: 18px; border-radius: 3px; background: {{t.surface3}}">
+          <sc-for list="{{r.segs}}" as="g" hint-placeholder-count="4">
+            <div style="position: absolute; top: 2px; bottom: 2px; left: {{g.left}}; width: {{g.width}}; box-sizing: border-box; border-left: 1px solid {{t.surface2}}; background: {{g.bg}}; overflow: hidden; white-space: nowrap; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 14px; padding-left: 4px; color: #ffffff">{{g.label}}</div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </section>
+
+  <section aria-label="Selection" style="margin: 12px 24px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface}}">
+    <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 320px">
+      <span style="font-size: 14px"><span style="font-family: 'JetBrains Mono', monospace; font-weight: 500">order-7</span> waited <span style="font-weight: 700">9.0 s</span> for <span style="font-family: 'JetBrains Mono', monospace">inventory-lock</span>, the longest wait of the run</span>
+      <span style="font-size: 13px; color: {{t.muted}}">Six orders held the lock before it, 1.5 s each. When it finally got in, the laptops were sold out and it returned false in 0.6 s.</span>
+    </div>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 9px 14px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Show in the tree</button>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 9px 14px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Show the code</button>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const isLight = (this.props.theme ?? 'dark') === 'light';
+    const t = isLight
+      ? { bg: '#fafafa', surface: '#ffffff', surface2: '#f4f4f5', surface3: '#e4e4e7', border: '#e4e4e7', text: '#18181b', muted: '#52525b', primary: '#006fee', sel: '#005bc4', hl: 'rgba(0,111,238,0.08)' }
+      : { bg: '#0a0a0b', surface: '#131316', surface2: '#18181b', surface3: '#27272a', border: '#27272a', text: '#fafafa', muted: '#a1a1aa', primary: '#006fee', sel: '#4da3ff', hl: 'rgba(77,163,255,0.10)' };
+    const s = { COMPLETED: isLight ? { tint: '#17c96426', text: '#0e793c' } : { tint: '#17c96426', text: '#17c964' } };
+    const T = 12;
+    const pct = v => (v / T * 100) + '%';
+    const kinds = {
+      wait: { bg: '#f5a524', color: '#18181b', border: '0' },
+      delay: { bg: isLight ? '#fde7b8' : '#5c4413', color: isLight ? '#6b4a0c' : '#fde7b8', border: '0' },
+      hold: { bg: t.primary, color: '#ffffff', border: '0' },
+      children: { bg: isLight ? '#e9dcf7' : '#3b2459', color: isLight ? '#4c1d80' : '#d9c2f5', border: '0' }
+    };
+    const g = (k, from, to, label) => ({ ...kinds[k], left: pct(from), width: pct(to - from), label: label || '' });
+    const sel = { border: '2px solid ' + t.sel };
+    const row = (name, indent, segs, selected) => ({ name, indent: indent + 'px', segs, rowBg: selected ? t.hl : 'transparent' });
+    const lane = (o, from, to) => ({ bg: t.primary, left: pct(from), width: pct(to - from), label: o });
+    return {
+      t, s,
+      legend: [
+        { bg: kinds.hold.bg, label: 'Holds the lock' },
+        { bg: kinds.wait.bg, label: 'Waits for the lock or a permit' },
+        { bg: kinds.delay.bg, label: 'Suspended in delay (paying)' },
+        { bg: kinds.children.bg, label: 'Waits for children' }
+      ],
+      ticks: [0, 2, 4, 6, 8, 10, 12].map(v => ({ left: pct(v), label: v + ' s' })),
+      rows: [
+        row('demo scope', 0, [g('children', 0, 12, 'waits for its 7 orders')]),
+        row('order-1', 16, [g('hold', 0, 1.5, 'lock'), g('delay', 1.5, 4.5, 'paying')]),
+        row('order-2', 16, [g('wait', 0, 1.5, 'waits'), g('hold', 1.5, 3, 'lock'), g('delay', 3, 6, 'paying')]),
+        row('order-3', 16, [g('wait', 0, 3, 'waits for the lock'), g('hold', 3, 4.5, 'lock'), g('delay', 4.5, 7.5, 'paying')]),
+        row('order-4', 16, [g('wait', 0, 4.5, 'waits for the lock'), g('hold', 4.5, 6, 'lock'), g('delay', 6, 9, 'paying')]),
+        row('order-5', 16, [g('wait', 0, 6, 'waits for the lock'), g('hold', 6, 7.5, 'lock'), g('delay', 7.5, 10.5, 'declined'), g('hold', 10.5, 11, '')]),
+        row('order-6', 16, [g('wait', 0, 7.5, 'waits for the lock'), g('hold', 7.5, 9, 'lock'), g('delay', 9, 12, 'paying')]),
+        row('order-7', 16, [{ ...g('wait', 0, 9, 'waits for the lock: 9.0 s'), ...sel }, g('hold', 9, 9.6, '')], true)
+      ],
+      lanes: [
+        { name: 'inventory-lock holder', segs: [lane('o-1', 0, 1.5), lane('o-2', 1.5, 3), lane('o-3', 3, 4.5), lane('o-4', 4.5, 6), lane('o-5', 6, 7.5), lane('o-6', 7.5, 9), lane('o-7', 9, 9.6), lane('o-5', 10.5, 11)] },
+        { name: 'payment permit 1', segs: [lane('order-1', 1.5, 4.5), lane('order-3', 4.5, 7.5), lane('order-5', 7.5, 10.5)] },
+        { name: 'payment permit 2', segs: [lane('order-2', 3, 6), lane('order-4', 6, 9), lane('order-6', 9, 12)] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
