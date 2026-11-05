@@ -165,6 +165,38 @@ describe('ReplayController — keys owned by the dock', () => {
     expect(replay.seekTo).not.toHaveBeenCalled()
   })
 
+  it('leaves Home and End to an open menu', async () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <ul role="menu" aria-label="More actions">
+          <li role="menuitem" tabIndex={-1}>Share</li>
+        </ul>
+      </>,
+    )
+    screen.getByRole('menuitem').focus()
+    await userEvent.keyboard('{End}{Home}{ArrowLeft}')
+    screen.getByRole('menu').focus()
+    await userEvent.keyboard('{End}')
+    expect(replay.seekTo).not.toHaveBeenCalled()
+    expect(replay.stepBack).not.toHaveBeenCalled()
+  })
+
+  it('leaves a key alone that a focused control has already handled', () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <div data-testid="widget" tabIndex={0} onKeyDown={e => e.preventDefault()} />
+      </>,
+    )
+    const widget = screen.getByTestId('widget')
+    widget.focus()
+    fireEvent.keyDown(widget, { key: 'End' })
+    expect(replay.seekTo).not.toHaveBeenCalled()
+  })
+
   it('leaves Space to a focused button, so a disclosure opens instead of playback starting', async () => {
     const replay = makeReplay()
     const onToggle = vi.fn()

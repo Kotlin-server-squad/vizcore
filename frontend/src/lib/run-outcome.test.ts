@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { deriveRunOutcome, recordedSpanNanos } from './run-outcome'
-import type { SessionSnapshot, VizEvent } from '@/types/api'
+import { deriveRunOutcome } from './run-outcome'
+import type { SessionSnapshot } from '@/types/api'
 
 const session = (...states: string[]) =>
   ({
@@ -28,22 +28,5 @@ describe('deriveRunOutcome', () => {
   it('is failed as soon as one coroutine failed, even while others run (S-3)', () => {
     expect(deriveRunOutcome(session('FAILED', 'ACTIVE'))).toEqual({ outcome: 'failed', failedCount: 1, ended: false })
     expect(deriveRunOutcome(session('FAILED', 'FAILED', 'CANCELLED'))).toEqual({ outcome: 'failed', failedCount: 2, ended: true })
-  })
-})
-
-describe('recordedSpanNanos', () => {
-  const ev = (seq: number, tsNanos: number) => ({ seq, tsNanos, kind: 'CoroutineCreated' }) as unknown as VizEvent
-
-  it('is the time from the first to the last recorded event', () => {
-    expect(recordedSpanNanos([ev(1, 5_000), ev(2, 12_000), ev(3, 9_000)])).toBe(7_000)
-  })
-
-  it('spans every list it is given: the history loaded with the page and the events streamed since', () => {
-    expect(recordedSpanNanos([ev(1, 5_000), ev(2, 6_000)], [ev(3, 9_000)])).toBe(4_000)
-  })
-
-  it('is unknown with fewer than two events', () => {
-    expect(recordedSpanNanos([])).toBeNull()
-    expect(recordedSpanNanos([ev(1, 5_000)])).toBeNull()
   })
 })

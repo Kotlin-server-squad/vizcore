@@ -1,4 +1,4 @@
-import { CoroutineState, type SessionSnapshot, type VizEvent } from '@/types/api'
+import { CoroutineState, type SessionSnapshot } from '@/types/api'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<string>([
@@ -33,23 +33,4 @@ export function deriveRunOutcome(session: SessionSnapshot): RunOutcomeFacts {
   const ended = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
   if (failedCount > 0) return { outcome: 'failed', failedCount, ended }
   return { outcome: ended ? 'finished' : 'running', failedCount: 0, ended }
-}
-
-/**
- * From the first to the last event the page holds, across every list given
- * (the history loaded with the page and the events streamed since), on the
- * app's own clock. Null when there is nothing to measure. Event timestamps are
- * compared with each other only, never with the browser's clock.
- */
-export function recordedSpanNanos(...lists: ReadonlyArray<readonly VizEvent[]>): number | null {
-  let first = Infinity
-  let last = -Infinity
-  for (const events of lists) {
-    for (const e of events) {
-      if (!Number.isFinite(e.tsNanos)) continue
-      if (e.tsNanos < first) first = e.tsNanos
-      if (e.tsNanos > last) last = e.tsNanos
-    }
-  }
-  return last > first ? last - first : null
 }

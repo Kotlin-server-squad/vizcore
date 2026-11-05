@@ -45,24 +45,31 @@ export function DockSeparator({ controls, height, maxHeight, folded, onResize, o
   }
 
   // Moves are read on the window, so a fast drag that leaves the thin handle
-  // keeps resizing until the button is released.
+  // keeps resizing until the button is released. Only the pointer that started
+  // the drag counts, and a cancelled gesture ends it like a release.
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
+    detach.current?.()
+    const pointerId = e.pointerId
     drag.current = { startY: e.clientY, startHeight: height }
     const onMove = (m: globalThis.PointerEvent) => {
       const d = drag.current
-      if (d) onResize(d.startHeight + (d.startY - m.clientY))
+      if (d && m.pointerId === pointerId) onResize(d.startHeight + (d.startY - m.clientY))
     }
-    const onUp = () => detach.current?.()
+    const onEnd = (m: globalThis.PointerEvent) => {
+      if (m.pointerId === pointerId) detach.current?.()
+    }
     detach.current = () => {
       drag.current = null
       window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointerup', onEnd)
+      window.removeEventListener('pointercancel', onEnd)
       detach.current = null
     }
     window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointerup', onEnd)
+    window.addEventListener('pointercancel', onEnd)
   }
 
   return (

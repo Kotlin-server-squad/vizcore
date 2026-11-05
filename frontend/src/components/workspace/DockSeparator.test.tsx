@@ -68,4 +68,20 @@ describe('DockSeparator', () => {
     fireEvent.pointerMove(window, { clientY: 300, pointerId: 1 })
     expect(onResize).toHaveBeenCalledTimes(1)
   })
+
+  it('stops following the pointer when the browser cancels the drag', () => {
+    const { separator, onResize } = renderSeparator()
+    fireEvent.pointerDown(separator, { clientY: 500, pointerId: 1, button: 0 })
+    fireEvent.pointerMove(window, { clientY: 450, pointerId: 1 })
+    fireEvent.pointerCancel(window, { pointerId: 1 })
+    fireEvent.pointerMove(window, { clientY: 400, pointerId: 1 })
+    expect(onResize).toHaveBeenCalledTimes(1)
+  })
+
+  it('follows only the pointer that started the drag', () => {
+    const { separator, onResize } = renderSeparator()
+    fireEvent.pointerDown(separator, { clientY: 500, pointerId: 1, button: 0 })
+    fireEvent.pointerMove(window, { clientY: 300, pointerId: 2 })
+    expect(onResize).not.toHaveBeenCalled()
+  })
 })
