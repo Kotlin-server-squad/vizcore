@@ -182,6 +182,18 @@ class GuideLabelsTest {
             "patterns/fan-out-fan-in" -> PatternScenarios.runFanOutFanIn(session)
             "patterns/supervisor" -> PatternScenarios.runSupervisor(session)
             "patterns/circuit-breaker" -> PatternScenarios.runCircuitBreaker(session)
+            else -> startSync(demoId, session)
+        }
+
+    private suspend fun startSync(
+        demoId: String,
+        session: VizSession,
+    ): Job =
+        when (demoId) {
+            "sync/mutex/counter" -> SyncScenarios.runCounter(session)
+            "sync/mutex/bank-transfer" -> SyncScenarios.runBankTransfer(session)
+            "sync/mutex/cache" -> SyncScenarios.runCache(session)
+            "sync/mutex/deadlock-demo" -> SyncScenarios.runDeadlock(session)
             else -> error("will-see.json pictures '$demoId'; add it to GuideLabelsTest.start")
         }
 
