@@ -170,7 +170,11 @@ class FlowDemoPacingTest {
                 .sortedBy { it.seq }
                 .map { it.inputValuePreview }
         assertEquals(listOf("kotlin", "kotlin flow"), searched)
-        val dropped = run.events.filterIsInstance<FlowValueFiltered>().filter { !it.passed }.map { it.valuePreview }
+        val dropped =
+            run.events
+                .filterIsInstance<FlowValueFiltered>()
+                .filter { !it.passed }
+                .map { it.valuePreview }
         assertEquals(listOf("ko"), dropped, "the debounced \"ko\" is too short to search")
         // The keystroke "kotlin" is the one the search box received last before the search started.
         val typedKotlin =
