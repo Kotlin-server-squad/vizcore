@@ -432,4 +432,57 @@ class DebugProbesSourceTest {
 
         override fun clear() = delegate.clear()
     }
+
+    @Test
+    fun `every completed poll is reported after its events, quiet polls included`() =
+        runTest {
+            val session = VizSession("polls")
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(snap("a", CoroState.RUNNING)) },
+                )
+            val polls = mutableListOf<Pair<Long, Int>>()
+            source.onPollCompleted = { nanos, _ -> polls += nanos to session.store.all().size }
+            source.start()
+            runCurrent()
+            advanceTimeBy(interval)
+            runCurrent()
+            source.stop()
+
+            assertEquals(2, polls.size, "one report per poll, the quiet second one too")
+            assertEquals(2, polls[0].second, "the first poll's Created and Started were sent before it was reported")
+            val firstEvent = session.store.all().first()
+            assertTrue(polls[0].first <= firstEvent.tsNanos, "the poll time is taken before the dump")
+        }
+
+    @Test
+    fun `a failed poll and a stopped source report nothing`() =
+        runTest {
+            val session = VizSession("failed")
+            var tick = 0
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { if (tick++ == 0) error("dump failed") else emptyList() },
+                )
+            var reports = 0
+            source.onPollCompleted = { _, _ -> reports++ }
+            source.start()
+            runCurrent()
+            assertEquals(0, reports, "the failed poll is not reported")
+            advanceTimeBy(interval)
+            runCurrent()
+            assertEquals(1, reports)
+            source.stop()
+            advanceTimeBy(interval * 3)
+            runCurrent()
+            assertEquals(1, reports, "nothing after stop()")
+        }
 }

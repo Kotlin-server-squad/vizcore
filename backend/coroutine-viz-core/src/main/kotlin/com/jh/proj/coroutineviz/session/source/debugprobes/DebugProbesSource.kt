@@ -123,6 +123,20 @@ class DebugProbesSource(
     override val isRunning: Boolean get() = loop?.isActive == true
 
     /**
+     * Called after every poll whose events were all sent, also when the poll found no change, with the poll's time on
+     * the app clock ([System.nanoTime], the clock events carry) and its wall-clock time, both taken right before the
+     * dump: the poll observed the app no earlier than that. Runs on the poll loop after the poll's last `send`, so what
+     * it sends on the session's bus follows those events (the SDK's watermark, spec 2026-10-21 C-7). Not called for a
+     * failed poll or once the source stopped.
+     */
+    @Volatile
+    var onPollCompleted: ((pollNanos: Long, pollEpochMs: Long) -> Unit)? = null
+
+    // True between start() and stop(); a poll still running when stop() returns reports nothing.
+    @Volatile
+    private var polling = false
+
+    /**
      * Install DebugProbes now, without starting the poll loop. DebugProbes only track
      * coroutines created after installation, so a caller that starts the loop
      * asynchronously (the SDK's `VizcoreClient`) installs first: otherwise work the app
@@ -149,6 +163,7 @@ class DebugProbesSource(
         prev = emptyMap()
         adapter.reset()
 
+        polling = true
         loop =
             scope.launch {
                 while (isActive) {
@@ -164,6 +179,9 @@ class DebugProbesSource(
         // the already-delivered prefix (WR-02) nor loses the un-emitted suffix:
         // the suffix stays pending against the old state and recovers next tick.
         val committed = prev.toMutableMap()
+        // Taken before the dump: the poll observed the app no earlier than this (spec C-7, H-1).
+        val pollNanos = System.nanoTime()
+        val pollEpochMs = System.currentTimeMillis()
         try {
             val next = dump().associateBy { it.key }
             diff(prev, next).forEach { delta ->
@@ -180,6 +198,7 @@ class DebugProbesSource(
             }
             // Fully successful tick: committed == next.
             prev = next
+            if (polling) onPollCompleted?.invoke(pollNanos, pollEpochMs)
         } catch (ce: CancellationException) {
             // Cooperative cancellation (stop()/scope cancel) must propagate. Do NOT
             // commit partial progress: the loop is stopping.
@@ -228,6 +247,7 @@ class DebugProbesSource(
     }
 
     override fun stop() {
+        polling = false
         // Idempotent: a close-hook firing after an explicit stop() is a no-op.
         loop?.cancel()
         loop = null
