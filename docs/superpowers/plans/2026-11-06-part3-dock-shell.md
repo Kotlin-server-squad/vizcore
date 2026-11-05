@@ -3336,6 +3336,8 @@ git commit -m "feat(frontend): threads as a table grouped by thread name"
 - Rewrite: `src/components/workspace/EvidencePanels.test.tsx`
 - Delete: `src/components/LockedPanel.tsx`, `src/components/LockedPanel.test.tsx`, `src/components/ThreadTimeline.tsx` (its copy moves into the sections' "none captured" rows; no other user)
 
+Threads gets no replay "live data" notice: its table is projected from the replay cursor (`panelThreadActivity`), unlike the other panels, which read the live session (D-17).
+
 - [ ] **Step 1: Write the failing test** — replace `src/components/workspace/EvidencePanels.test.tsx` (keep its panel mocks; mock `../ThreadTable` instead of `../ThreadTimeline`):
 
 ```tsx
@@ -3442,7 +3444,13 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
   it('warns that an opened panel is not following the replay cursor (D-17)', async () => {
     renderPanels({ replayActive: true })
     await userEvent.click(screen.getByRole('button', { name: /Dispatchers/ }))
-    expect(screen.getByTestId('live-data-notice')).toBeInTheDocument()
+    expect(within(screen.getByTestId('evidence-section-Dispatchers')).getByTestId('live-data-notice')).toBeVisible()
+  })
+
+  it('gives Threads no live-data warning in replay: its table follows the cursor', async () => {
+    renderPanels({ replayActive: true })
+    await userEvent.click(screen.getByRole('button', { name: /Threads/ }))
+    expect(within(screen.getByTestId('evidence-section-Threads')).queryByTestId('live-data-notice')).toBeNull()
   })
 
   it('shows no live-data warning outside replay', async () => {
@@ -3604,7 +3612,9 @@ export function EvidencePanels({
         summary={threadActivity ? threadSummary(groups) : 'loading'}
         open={open.has('Threads')}
         onToggle={() => toggle('Threads')}
-        replayActive={replayActive}
+        // The table is projected from the replay cursor, so it needs no
+        // "showing current data" warning (D-17).
+        replayActive={false}
       >
         {threadActivity ? (
           <ThreadTable threadActivity={threadActivity} captureStartNanos={captureStartNanos} />
@@ -3689,7 +3699,7 @@ function Section({
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
       >
         {open ? <FiChevronDown className="h-4 w-4" aria-hidden /> : <FiChevronRight className="h-4 w-4" aria-hidden />}
-        <span className="font-semibold">{title}</span>
+        <span className="font-semibold">{title}</span>{' '}
         <span className="text-default-500">· {summary}</span>
       </button>
       {/* Hidden, not unmounted: the panels subscribe to the session's events
@@ -3793,9 +3803,30 @@ export function LearnPanel({ children }: { children?: ReactNode }) {
           How to read the tree
         </h3>
         <div data-testid="learn-legend" className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-          {/* … the five legend rows of today's StructuredConcurrencyInfo, verbatim,
-              with "Active / Waiting for children" split into two rows
-              ("Active" and "Waiting for children", both bg-primary) … */}
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse"></span>
+            <span>Active</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-primary"></span>
+            <span>Waiting for children</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-warning"></span>
+            <span>Suspended</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-success"></span>
+            <span>Completed</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-danger"></span>
+            <span>Failed</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-warning opacity-60"></span>
+            <span>Cancelled</span>
+          </div>
         </div>
       </section>
 
@@ -3855,6 +3886,8 @@ Expected: PASS (5 tests).
 
 ### Task 21: The Inspector's empty state is the session summary (T-3)
 
+H-4 asks for the sampling explanation where a user first meets an empty result. Two places: the session summary when nothing was captured ("Nothing captured yet. vizcore samples an attached app's coroutines on a poll, so one that starts and ends between two polls may not appear."), and the main view's empty state for an attached app (`CoroutineCanvas`, the "No live coroutines yet" description gains the same clause; a test in `CoroutineCanvas.test.tsx` checks for "on a poll").
+
 **Files:**
 - Create: `src/components/workspace/SessionSummary.tsx`, `src/components/workspace/SessionSummary.test.tsx`
 - Modify: `src/components/workspace/Inspector/Inspector.tsx`
@@ -3887,6 +3920,13 @@ describe('SessionSummary — the Inspector with nothing selected (T-3)', () => {
     metrics.mockReturnValue({ data: { leaks: [{ coroutineId: 'c-1', label: 'poll', aliveMs: 46_000 }], leakThresholdMs: 30_000 } })
     render(<SessionSummary sessionId="s-1" enabled coroutineCount={1} eventCount={2} />)
     expect(screen.getByText(/poll · alive 46\.0 s/)).toBeInTheDocument()
+  })
+
+  it('explains sampling where nothing has been captured yet (H-4)', () => {
+    metrics.mockReturnValue({ data: undefined })
+    render(<SessionSummary sessionId="s-1" enabled coroutineCount={0} eventCount={0} />)
+    expect(screen.getByTestId('session-captured')).toHaveTextContent('Nothing captured yet')
+    expect(screen.getByTestId('session-captured')).toHaveTextContent('on a poll')
   })
 
   it('passes the protected-fetch flag through (no /metrics without a Bearer)', () => {
@@ -3936,8 +3976,9 @@ import { LeakList } from '../LeakList'
  * metric tiles and its long-lived coroutines. Live view only — in replay the
  * numbers would describe now over a frozen view, and the shared view has no
  * Bearer for /metrics (M-4). The leak list renders once, from the same query
- * the tiles use (React Query dedupes the key; PD-02). The health payload's
- * counts join it with Part 7.
+ * the tiles use (React Query dedupes the key; PD-02). The app/vizcore split,
+ * and "in retained events since" once history is trimmed, join it with the
+ * health payload in Part 7.
  */
 export function SessionSummary({
   sessionId,
@@ -3956,14 +3997,24 @@ export function SessionSummary({
   return (
     <div data-testid="session-summary" className="space-y-4">
       <p className="text-sm text-default-400">Select a coroutine to inspect it</p>
-      <p data-testid="session-captured" className="text-sm">
-        {coroutineCount} coroutines and {eventCount} events captured
-        <span className="text-default-500">
-          {' '}
-          — what vizcore captured; which are your app's and which its own connection's arrives with the
-          health API (Part 7).
-        </span>
-      </p>
+      {coroutineCount === 0 ? (
+        // H-4: where a user first meets an empty result, say how capture works.
+        <p data-testid="session-captured" className="text-sm">
+          Nothing captured yet.{' '}
+          <span className="text-default-500">
+            vizcore samples an attached app's coroutines on a poll, so one that starts and ends between two polls may not appear.
+          </span>
+        </p>
+      ) : (
+        <p data-testid="session-captured" className="text-sm">
+          {coroutineCount} coroutines and {eventCount} events captured
+          <span className="text-default-500">
+            {' '}
+            — what vizcore captured; which are your app's and which its own connection's arrives with the
+            health API (Part 7).
+          </span>
+        </p>
+      )}
       <SessionMetrics sessionId={sessionId} enabled={enabled} showLeaks={false} />
       {metrics && metrics.leaks.length > 0 && (
         <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
@@ -4362,10 +4413,13 @@ Update the other existing tests:
 | Test | Change |
 |---|---|
 | `'the threads evidence panel renders thread activity …(UAT gap 1)'` | click the `Evidence` tab, then the `Threads` button; expect `worker-1` and `worker-2` in the table; replace the ASSIGNED-chip assertion with the row reading `1` in "Assignments observed" (`within(getByRole('row', { name: /worker-1/ })).getAllByText('1')`) |
-| `'shows LiveDataNotice on a projection-backed tab while replaying (D-17)'` | after entering replay: click `Evidence`, then `Threads`; expect a `live-data-notice` |
+| `'shows LiveDataNotice on a projection-backed tab while replaying (D-17)'` | unchanged: the notices are mounted (hidden) in the live-data sections, so `getAllByTestId('live-data-notice')` finds them; Threads has none, because its table follows the cursor |
 | `'puts the tree above the explanation'` | rename to `'keeps the explanation in Learn'`; click the `Learn` tab; expect `getByTestId('learn-legend')` |
 | `'mounts the metric strip below the live canvas'`, `'mounts SessionMetrics exactly once'`, `'keeps thread lanes and the metric strip on one screen …'` | the metric strip is in the Inspector tab (selected by default for `session-1`); drop the dispatcher assertion from the last one (covered by `'reaches the dispatchers in replay through Evidence'`) |
 | `vi.mock('./StructuredConcurrencyInfo', …)` | delete the mock |
+| `'folds the dock to its bar'` (3a) | `inspector-slot` is gone: assert `getByRole('tabpanel', { name: 'Inspector', hidden: true })` is not visible |
+| `'invites the next rung instead of hiding what is missing'` | `Lock contention` is now the `Locks and permits` row reading "none captured"; keep the `Swap Mutex() for VizMutex()` assertion |
+| the `'never invites a selection …(#145)'` test of the retired describe | move it into the new describe unchanged |
 | `SessionWorkspace.reachability.test.tsx` `'renders the read-only shared view with no metric strip …'` | unchanged (no `SessionSummary` in the shared view) |
 
 - [ ] **Step 2: Run them and see them fail**
@@ -4428,6 +4482,7 @@ Expected: FAIL — no tabs.
             height={dock.height}
             maxHeight={dock.maxHeight}
             folded={dock.folded}
+            hidden={dock.maximised}
             onResize={dock.resize}
             onToggleFold={dock.toggleFold}
             bar={
