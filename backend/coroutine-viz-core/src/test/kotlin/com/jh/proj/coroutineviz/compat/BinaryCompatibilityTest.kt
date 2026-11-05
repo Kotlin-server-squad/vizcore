@@ -1,8 +1,12 @@
 package com.jh.proj.coroutineviz.compat
 
+import com.jh.proj.coroutineviz.events.SemaphorePermitReleased
+import com.jh.proj.coroutineviz.events.SemaphoreStateChanged
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.models.TimelineEventSummary
 import com.jh.proj.coroutineviz.session.EventContext
 import com.jh.proj.coroutineviz.session.VizSession
 import org.junit.jupiter.api.Test
@@ -124,5 +128,68 @@ class BinaryCompatibilityTest {
         assertNotNull(
             helpers.getDeclaredMethod("coroutineSuspended\$default", *old, Int::class.javaPrimitiveType, Any::class.java),
         )
+    }
+
+    @Test
+    fun `CoroutineSuspended keeps its 0_3_x constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val str = String::class.java
+        val v03 =
+            arrayOf<Class<*>?>(
+                str, long, long, str, str, str, str, str, str, java.lang.Long::class.java, SuspensionPoint::class.java,
+                SuspensionProvenance::class.java,
+            )
+        val ctor = CoroutineSuspended::class.java.getDeclaredConstructor(*v03)
+        CoroutineSuspended::class.java.getDeclaredConstructor(*v03, Int::class.javaPrimitiveType, marker)
+        val event = ctor.newInstance("s", 1L, 2L, "c", "j", null, "sc", "l", "await", null, null, SuspensionProvenance.REAL_FRAME)
+        assertEquals(SuspensionProvenance.REAL_FRAME, event.provenance)
+        assertNull(event.waitKind)
+        assertNull(event.resourceId)
+    }
+
+    @Test
+    fun `EventContext coroutineSuspended keeps its 0_3_x JVM methods`() {
+        val helpers = Class.forName("com.jh.proj.coroutineviz.session.EventContextKt")
+        val v03 =
+            arrayOf(
+                EventContext::class.java,
+                String::class.java,
+                java.lang.Long::class.java,
+                SuspensionPoint::class.java,
+                SuspensionProvenance::class.java,
+            )
+        assertNotNull(helpers.getDeclaredMethod("coroutineSuspended", *v03))
+        assertNotNull(
+            helpers.getDeclaredMethod("coroutineSuspended\$default", *v03, Int::class.javaPrimitiveType, Any::class.java),
+        )
+    }
+
+    @Test
+    fun `semaphore events keep their 0_3_x constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val int = Int::class.javaPrimitiveType
+        val str = String::class.java
+        val list = List::class.java
+        SemaphorePermitReleased::class.java.getDeclaredConstructor(str, long, long, str, str, str, str, int, long)
+        SemaphoreStateChanged::class.java.getDeclaredConstructor(str, long, long, str, str, int, int, list, list, list, list)
+    }
+
+    @Test
+    fun `EventContext coroutineFailed keeps its 0_3_x JVM method`() {
+        val helpers = Class.forName("com.jh.proj.coroutineviz.session.EventContextKt")
+        assertNotNull(helpers.getDeclaredMethod("coroutineFailed", EventContext::class.java, String::class.java, String::class.java))
+    }
+
+    @Test
+    fun `TimelineEventSummary keeps its 0_3_x constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val str = String::class.java
+        val v03 = arrayOf<Class<*>?>(long, long, str, str, str, str, SuspensionPoint::class.java)
+        val ctor = TimelineEventSummary::class.java.getDeclaredConstructor(*v03)
+        TimelineEventSummary::class.java.getDeclaredConstructor(*v03, Int::class.javaPrimitiveType, marker)
+        val row = ctor.newInstance(1L, 2L, "coroutine.suspended", null, null, "delay", null)
+        assertEquals("delay", row.reason)
+        assertNull(row.waitKind)
+        assertNull(row.resourceId)
     }
 }

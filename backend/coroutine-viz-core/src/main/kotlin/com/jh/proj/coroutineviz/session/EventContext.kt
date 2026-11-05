@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.session
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
+import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.events.WaitingForChildren
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineBodyCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
@@ -122,9 +123,16 @@ fun EventContext.coroutineCancelled(cause: String?): CoroutineCancelled =
         cause = cause,
     )
 
+/** At most this many frames of a failure's stack trace are sent with [CoroutineFailed]. */
+internal const val MAX_STACK_TRACE_FRAMES = 50
+
+/** The innermost [MAX_STACK_TRACE_FRAMES] frames of this throwable, one `StackTraceElement.toString()` each. */
+internal fun Throwable.stackTraceLines(): List<String> = stackTrace.take(MAX_STACK_TRACE_FRAMES).map { it.toString() }
+
 fun EventContext.coroutineFailed(
     exceptionType: String?,
     message: String?,
+    stackTrace: List<String> = emptyList(),
 ): CoroutineFailed =
     CoroutineFailed(
         sessionId = sessionId,
@@ -136,9 +144,16 @@ fun EventContext.coroutineFailed(
         scopeId = scopeId,
         label = label,
         exceptionType = exceptionType,
-        stackTrace = emptyList(),
+        stackTrace = stackTrace,
         message = message,
     )
+
+/** Kept so code compiled against 0.3.x still links (its JVM signature has no `stackTrace`). */
+@Deprecated("binary compatibility with 0.3.x", level = DeprecationLevel.HIDDEN)
+fun EventContext.coroutineFailed(
+    exceptionType: String?,
+    message: String?,
+): CoroutineFailed = coroutineFailed(exceptionType, message, emptyList())
 
 // ============================================================================
 // Suspension & Resumption Events
@@ -149,6 +164,8 @@ fun EventContext.coroutineSuspended(
     durationMillis: Long? = null,
     suspensionPoint: SuspensionPoint? = null,
     provenance: SuspensionProvenance? = null,
+    waitKind: WaitKind? = null,
+    resourceId: String? = null,
 ): CoroutineSuspended =
     CoroutineSuspended(
         sessionId = sessionId,
@@ -163,7 +180,18 @@ fun EventContext.coroutineSuspended(
         durationMillis = durationMillis,
         suspensionPoint = suspensionPoint,
         provenance = provenance,
+        waitKind = waitKind,
+        resourceId = resourceId,
     )
+
+/** Kept so code compiled against 0.3.x still links (its JVM signature has no `waitKind` or `resourceId`). */
+@Deprecated("binary compatibility with 0.3.x", level = DeprecationLevel.HIDDEN)
+fun EventContext.coroutineSuspended(
+    reason: String,
+    durationMillis: Long? = null,
+    suspensionPoint: SuspensionPoint? = null,
+    provenance: SuspensionProvenance? = null,
+): CoroutineSuspended = coroutineSuspended(reason, durationMillis, suspensionPoint, provenance, waitKind = null)
 
 /** Kept so code compiled against 0.2.x still links (its JVM signature has no `provenance`). */
 @Deprecated("binary compatibility with 0.2.x", level = DeprecationLevel.HIDDEN)

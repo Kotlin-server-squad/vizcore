@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentMap
 class RuntimeSnapshot {
     val coroutines: ConcurrentMap<String, CoroutineNode> = ConcurrentHashMap()
     private val jobToCoroutineId = ConcurrentHashMap<Job, String>()
+    private val jobByCoroutineId = ConcurrentHashMap<String, Job>()
 
     /** Number of coroutines currently tracked; safe to call while events are being applied. */
     val coroutineCount: Int get() = coroutines.size
@@ -39,9 +40,13 @@ class RuntimeSnapshot {
         coroutineId: String,
     ) {
         jobToCoroutineId[job] = coroutineId
+        jobByCoroutineId[coroutineId] = job
     }
 
     fun getCoroutineIdFromJob(job: Job): String? {
         return jobToCoroutineId[job]
     }
+
+    /** The job registered for [coroutineId], or `null` (a coroutine not started by `vizLaunch` / `vizAsync`). */
+    fun jobOf(coroutineId: String): Job? = jobByCoroutineId[coroutineId]
 }

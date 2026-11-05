@@ -1998,6 +1998,15 @@ components:
           description: Reason for suspension (for suspension events)
         suspensionPoint:
           $ref: "#/components/schemas/SuspensionPoint"
+        waitKind:
+          type: string
+          nullable: true
+          enum: [MUTEX, SEMAPHORE, CHANNEL_SEND, CHANNEL_RECEIVE]
+          description: "On a suspension recorded by a mutex, semaphore or channel wrapper: what the coroutine waited for."
+        resourceId:
+          type: string
+          nullable: true
+          description: "On such a suspension: the mutexId, semaphoreId or channelId waited for."
 
     SuspensionPoint:
       type: object
