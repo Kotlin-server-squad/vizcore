@@ -9,6 +9,7 @@ import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.persistence.tables.SessionsTable
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.zaxxer.hikari.HikariConfig
@@ -21,7 +22,10 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -30,11 +34,14 @@ import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /**
  * Database sessions fold their summaries from the stored events on every read. What this process did not watch is not
  * vouched for, and a trimmed history makes the health unavailable until Part 5b persists the summaries (D-9).
  */
+@OptIn(ExperimentalTime::class)
 class SessionHealthDatabaseModeTest {
     private lateinit var dataSource: HikariDataSource
     private lateinit var db: Database
@@ -135,5 +142,33 @@ class SessionHealthDatabaseModeTest {
                 assertEquals("worker", assertIs<PossiblyBlockedIncident>(later.incidents.items.single()).coroutineId)
                 assertEquals(sec(12), later.asOfWatermark?.appNanos)
             }
+        }
+
+    @Test
+    fun `a session stored before this backend started is not vouched for, even without events`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("db-recovered")
+            // As if the row was written by an earlier backend process (crashed before any event was stored).
+            transaction(db) {
+                SessionsTable.update({ SessionsTable.id eq sessionId }) { it[createdAt] = Instant.fromEpochMilliseconds(0) }
+            }
+
+            val health = client.health(sessionId)
+
+            assertTrue(health.transport.deliveryUncertain)
+            assertEquals(1L, health.transport.sinceSeq)
+        }
+
+    @Test
+    fun `a session created by this backend and not yet connected awaits data with a clean transport`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("db-fresh")
+
+            val health = client.health(sessionId)
+
+            assertEquals(false, health.transport.deliveryUncertain)
+            assertEquals(com.jh.proj.coroutineviz.health.HealthState.AWAITING_FIRST_DATA, health.state)
         }
 }

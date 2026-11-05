@@ -2596,6 +2596,7 @@ components:
       - appEpochMs
       - receivedEpochMs
       - seq
+      - lowerBound
       properties:
         kind:
           $ref: "#/components/schemas/AsOfKind"
@@ -2617,6 +2618,9 @@ components:
           type: integer
           format: int64
           description: Last event seq the health reflects
+        lowerBound:
+          type: boolean
+          description: 'A replay cursor inside trimmed history: appNanos is the latest time known at or before it, a lower bound'
     EvaluationStatus:
       type: string
       enum:

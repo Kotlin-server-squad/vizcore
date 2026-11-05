@@ -289,4 +289,27 @@ class SessionHealthRouteTest {
                 SessionManager.configure()
             }
         }
+
+    @Test
+    fun `transport facts that arrive while a health is read are not lost`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("app-race")
+            val session = SessionManager.getSession(sessionId)!!
+            session.ingest(HealthEvents.created(sessionId, "c1", at = sec(1)))
+            session.ingest(HealthEvents.started(sessionId, "c1", at = sec(1)))
+            session.ingest(HealthEvents.suspended(sessionId, "c1", at = sec(2)))
+            val connection = IngestStates.connectionOpened(sessionId, firstSeq = 1)
+            IngestStates.watermarkReceived(connection, HealthEvents.watermark(sessionId, at = sec(3)), receivedEpochMs = 1)
+            // The cut a read took before resolving the session: clean so far.
+            val cut = IngestStates.snapshot(sessionId)
+            // Then a frame could not be read before the summaries were copied.
+            IngestStates.frameSkipped(connection)
+
+            val health = readSessionHealth(session, cut, atSeq = null, leakThresholdMs = 30_000)
+
+            assertTrue(health.transport.deliveryUncertain)
+            assertTrue(health.failuresAtLeast)
+            assertEquals(NotEvaluatedReason.EVENTS_DROPPED, health.possiblyBlocked.reason)
+        }
 }

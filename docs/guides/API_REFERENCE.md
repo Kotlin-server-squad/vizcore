@@ -88,7 +88,7 @@ Response `200` (trimmed to one incident):
 ```json
 {
   "state": "PROBLEMS",
-  "asOf": { "kind": "LAST_EVENT", "appNanos": 4000000000, "appEpochMs": null, "receivedEpochMs": null, "seq": 31 },
+  "asOf": { "kind": "LAST_EVENT", "appNanos": 4000000000, "appEpochMs": null, "receivedEpochMs": null, "seq": 31, "lowerBound": false },
   "asOfSeq": 31,
   "sessionOrigin": "REPORTED",
   "problemCount": 1,

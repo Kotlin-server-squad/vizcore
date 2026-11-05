@@ -130,4 +130,35 @@ class SummaryFoldSeedTest {
             }
         }
     }
+
+    @Test
+    fun `a cursor in trimmed history says its time is only a lower bound`() {
+        val script = EventScript()
+        script.created("a", at = sec(1))
+        script.suspended("a", at = sec(20))
+        script.resumed("a", at = sec(30))
+        script.created("b", at = sec(31))
+        val durable = script.table()
+        val retained = script.events.drop(3)
+        val retention = RetentionInfo(oldestRetainedSeq = 4, oldestRetainedAppNanos = sec(31), trimmed = true)
+
+        fun asOfAt(seq: Long) =
+            SessionHealthDerivation
+                .derive(
+                    HealthInput(
+                        summaries = SummaryFold.foldTo(retained, seq, durable),
+                        kind = SessionKind.ATTACHED,
+                        mode = HealthMode.Replay(seq),
+                        retention = retention,
+                    ),
+                ).asOf!!
+
+        val inTrimmed = asOfAt(2)
+        assertEquals(sec(1), inTrimmed.appNanos, "only the creation is known at or before seq 2")
+        assertTrue(inTrimmed.lowerBound)
+        assertEquals(2L, inTrimmed.seq)
+        val inRetained = asOfAt(4)
+        assertEquals(sec(31), inRetained.appNanos)
+        assertEquals(false, inRetained.lowerBound)
+    }
 }

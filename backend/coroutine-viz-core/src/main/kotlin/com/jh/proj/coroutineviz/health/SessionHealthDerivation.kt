@@ -117,7 +117,10 @@ object SessionHealthDerivation {
         val view = input.summaries
         val lastNanos = view.latestEventAppNanos
         val mode = input.mode
-        if (mode is HealthMode.Replay) return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq) }
+        if (mode is HealthMode.Replay) {
+            val inTrimmed = input.retention?.let { it.trimmed && mode.atSeq < (it.oldestRetainedSeq ?: Long.MAX_VALUE) } == true
+            return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq, lowerBound = inTrimmed) }
+        }
         val watermark = input.watermark
         return when {
             input.kind == SessionKind.DEMO -> lastNanos?.let { AsOf(AsOfKind.LAST_EVENT, it, seq = view.lastEventSeq) }

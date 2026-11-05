@@ -20,6 +20,7 @@ import com.jh.proj.coroutineviz.health.snapshot
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
+import java.lang.management.ManagementFactory
 
 /**
  * Whether a session's summaries saw every event it ever had. In memory they are applied on every append and outlive
@@ -50,27 +51,30 @@ internal class HistoryTrimmedException(
 ) : IllegalStateException(message)
 
 /**
- * The transport a read reports (spec C-3 `transport`). A database session outlives this process: events that arrived
- * before the first connection this process saw came through a connection nobody here watched end (a crash runs no close
- * handler), so nothing vouches that all of them arrived (H-3). Until Part 5b persists the transport and the "ingest
- * open" marker, such a session reads delivery-uncertain from its first seq.
+ * The transport a read reports (spec C-3 `transport`). A database session outlives this process: a row written before
+ * this JVM started, or events stored before the first connection this process saw, came through connections nobody
+ * here watched end (a crash runs no close handler), so nothing vouches that all their events arrived (H-3). Until Part
+ * 5b persists the transport and the "ingest open" marker, such an ATTACHED session reads delivery-uncertain from its
+ * first seq.
  */
 internal fun transportOf(
     ingest: IngestSnapshot,
+    session: VizSession,
     kind: SessionKind,
     lastSeq: Long,
 ): TransportStatus {
-    val unwatched =
-        !summariesSeeEveryEvent() &&
-            kind == SessionKind.ATTACHED &&
-            lastSeq > 0 &&
-            (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
+    // A row written before this JVM started may have had a connection that ended in the crash, even with no event stored.
+    val recovered = session.createdAtMs < PROCESS_STARTED_AT_MS
+    val eventsBeforeWatching = lastSeq > 0 && (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
+    val unwatched = !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && (recovered || eventsBeforeWatching)
     return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
 }
 
+private val PROCESS_STARTED_AT_MS: Long = ManagementFactory.getRuntimeMXBean().startTime
+
 /**
  * The session's health (spec C-3): live when [atSeq] is null, else the replay fold at the cursor, clamped to the last
- * event. [ingest] must be read before [session] was resolved: in database mode resolving rebuilds the session from the
+ * event. [watermarkCut] must be read before [session] was resolved: in database mode resolving rebuilds the session from the
  * stored events, and a watermark is recorded only after its poll's events were stored, so every event the watermark
  * vouches for is in the rebuilt summaries (spec C-7). The other order could compare a newer watermark with an older run
  * start and report a coroutine that has since suspended.
@@ -80,11 +84,15 @@ internal fun transportOf(
  */
 internal fun readSessionHealth(
     session: VizSession,
-    ingest: IngestSnapshot,
+    watermarkCut: IngestSnapshot,
     atSeq: Long?,
     leakThresholdMs: Long,
 ): SessionHealth {
     val durable = session.readSummaries { it.snapshot() }
+    // Transport facts are sticky and only grow, so the ones read after the copy cover every event in it: a frame skipped
+    // or a connection lost while this read ran must not be missed (a newer watermark could not do harm here, a cleaner
+    // transport could). The watermark stays the one from before the session was resolved.
+    val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = watermarkCut.watermark)
     // Read after the copy: the store holds at least every event the copy saw, possibly newer ones.
     val events = session.store.all()
     val everyEvent = summariesSeeEveryEvent()
@@ -97,7 +105,7 @@ internal fun readSessionHealth(
             kind = kind,
             watermark = ingest.watermark,
             lastIngestEpochMs = ingest.lastIngestEpochMs,
-            transport = transportOf(ingest, kind, durable.lastEventSeq),
+            transport = transportOf(ingest, session, kind, durable.lastEventSeq),
             leakThresholdMs = leakThresholdMs,
             retention = retention,
         )

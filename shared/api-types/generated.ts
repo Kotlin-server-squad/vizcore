@@ -782,6 +782,8 @@ export interface components {
              * @description Last event seq the health reflects
              */
             seq: number;
+            /** @description A replay cursor inside trimmed history: appNanos is the latest time known at or before it, a lower bound */
+            lowerBound: boolean;
         };
         /** @enum {string} */
         EvaluationStatus: "EVALUATED" | "NOT_EVALUATED";

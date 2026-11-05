@@ -28,6 +28,11 @@ data class AsOf(
     val appEpochMs: Long? = null,
     val receivedEpochMs: Long? = null,
     val seq: Long,
+    /**
+     * A replay cursor inside trimmed history: only what the durable summaries keep (creations and terminals) is known
+     * there, so [appNanos] is the latest time known at or before the cursor, a lower bound of the cursor's own time.
+     */
+    val lowerBound: Boolean = false,
 )
 
 /** A list capped at [HealthThresholds.LIST_CAP] entries, with the total before the cap. */
