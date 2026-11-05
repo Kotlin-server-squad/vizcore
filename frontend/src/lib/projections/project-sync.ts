@@ -63,7 +63,10 @@ export interface SemaphoreState {
   totalPermits: number
   availablePermits: number
   activeHolders: SemaphoreHolder[]
-  /** Permits in use whose holder is unknown: released by a coroutine that held none (S-7). */
+  /**
+   * Listed permits beyond those in use (S-7): a permit came back from a coroutine that held none, so some
+   * listed holder no longer holds one, and which is unknown. Not permits held by nobody known.
+   */
   unknownHolderPermits: number
   waitQueue: Holder[]
 }
@@ -95,8 +98,9 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
     }
   }
 
-  // The holder each lock had before its current one: its release may be recorded after the handover.
-  const previousHolders = new Map<string, string | null>()
+  // Per lock, holders displaced by a later acquisition whose own release is still to be recorded: VizMutex
+  // records a release after the lock has passed on. A multiset, as several handovers can come first.
+  const pendingReleases = new Map<string, string[]>()
 
   for (const event of inSeqOrder(events)) {
     if (!SYNC_EVENT_KINDS.has(event.kind)) continue
@@ -132,7 +136,10 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const e = syncEvent as MutexLockAcquired
         ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
         const state = mutexStates.get(e.mutexId)!
-        previousHolders.set(e.mutexId, state.currentHolder)
+        // A coroutine records its release before it can acquire again: none of its own is pending any more.
+        const pending = (pendingReleases.get(e.mutexId) ?? []).filter(id => id !== e.acquirerId)
+        if (state.isLocked && state.currentHolder && state.currentHolder !== e.acquirerId) pending.push(state.currentHolder)
+        pendingReleases.set(e.mutexId, pending)
         state.isLocked = true
         state.currentHolder = e.acquirerId
         state.currentHolderLabel = e.acquirerLabel
@@ -145,13 +152,11 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const e = syncEvent as MutexUnlocked
         ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
         const state = mutexStates.get(e.mutexId)!
-        // The previous holder's release, recorded after the next holder's acquisition: the lock is not free.
-        const lateRelease =
-          state.currentHolder !== null &&
-          e.releaserId !== state.currentHolder &&
-          e.releaserId === previousHolders.get(e.mutexId)
-        if (lateRelease) {
-          previousHolders.set(e.mutexId, null)
+        // A displaced holder's release, recorded after the next acquisition: the lock is not free.
+        const pending = pendingReleases.get(e.mutexId) ?? []
+        const late = pending.indexOf(e.releaserId)
+        if (late >= 0) {
+          pendingReleases.set(e.mutexId, pending.filter((_, i) => i !== late))
           break
         }
         state.isLocked = false
@@ -199,11 +204,16 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.remainingPermits
         // Counted now; the snapshot that follows replaces the list (a flush or a cursor can fall between).
+        // VizSemaphore records the holder before the event, so a snapshot may already list this permit: a
+        // listed acquirer gains one only while fewer permits are listed than are in use.
         const held = state.activeHolders.find(h => h.id === e.acquirerId)
-        state.activeHolders = held
-          ? state.activeHolders.map(h => (h === held ? { ...h, permits: h.permits + 1 } : h))
-          : [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
+        if (!held) {
+          state.activeHolders = [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
+        } else if (state.totalPermits === 0 || listedPermits(state) < permitsInUse(state)) {
+          state.activeHolders = state.activeHolders.map(h => (h === held ? { ...h, permits: h.permits + 1 } : h))
+        }
         state.waitQueue = state.waitQueue.filter(w => w.id !== e.acquirerId)
+        reconcilePermits(state)
         break
       }
       case 'SemaphorePermitReleased': {
@@ -211,16 +221,18 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.newAvailablePermits
+        // Its own release takes one back, unless a snapshot already did (the wrapper drops the record first).
+        // A release by a coroutine that held none (S-7) frees a listed permit whose holder is unknown: the
+        // listed permits beyond those in use say how many.
         const held = e.holderUnknown ? undefined : state.activeHolders.find(h => h.id === e.releaserId)
-        if (held) {
+        if (held && (state.totalPermits === 0 || listedPermits(state) > permitsInUse(state))) {
           state.activeHolders = state.activeHolders
             .map(h => (h === held ? { ...h, permits: h.permits - 1 } : h))
             .filter(h => h.permits > 0)
-        } else {
-          // Released by a coroutine that held none (S-7): one of the listed permits is free, whose is unknown.
-          const listed = state.activeHolders.reduce((sum, h) => sum + h.permits, 0)
-          state.unknownHolderPermits = Math.min(state.unknownHolderPermits + 1, listed)
+        } else if (!held && state.totalPermits === 0) {
+          state.unknownHolderPermits = Math.min(state.unknownHolderPermits + 1, listedPermits(state))
         }
+        reconcilePermits(state)
         break
       }
       case 'SemaphoreTryAcquireFailed': {
@@ -266,6 +278,31 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
     warnings,
     hasDeadlock: deadlocks.length > 0,
   }
+}
+
+/** Permits the holders are listed with. */
+function listedPermits(state: SemaphoreState): number {
+  return state.activeHolders.reduce((sum, h) => sum + h.permits, 0)
+}
+
+function permitsInUse(state: SemaphoreState): number {
+  return state.totalPermits - state.availablePermits
+}
+
+/**
+ * After an acquire or release: the listed permits beyond those in use have an unknown holder (the producer's
+ * own definition), and with every permit free nobody holds one. Needs the total, which a trimmed history may
+ * lack (`SemaphoreCreated` gone): then the counts are left as they are until the next snapshot.
+ */
+function reconcilePermits(state: SemaphoreState) {
+  if (state.totalPermits === 0) return
+  const inUse = permitsInUse(state)
+  if (inUse <= 0) {
+    state.activeHolders = []
+    state.unknownHolderPermits = 0
+    return
+  }
+  state.unknownHolderPermits = Math.max(0, listedPermits(state) - inUse)
 }
 
 function ensureMutex(map: Map<string, MutexState>, id: string, label: string | null) {

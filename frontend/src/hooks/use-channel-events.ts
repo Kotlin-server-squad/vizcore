@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useSessionEvents } from '@/hooks/use-sessions'
+import { inSeqOrder } from '@/lib/projections/in-seq-order'
 import type { VizEvent } from '@/types/api'
 import { CHANNEL_EVENT_KINDS } from '@/types/api'
 import type {
@@ -68,7 +69,8 @@ export function useChannelEvents(sessionId: string, given?: readonly VizEvent[])
       }
     }
 
-    for (const event of events) {
+    // In seq order: the live stream can deliver an earlier event late (inSeqOrder).
+    for (const event of inSeqOrder(events)) {
       if (!CHANNEL_EVENT_KINDS.has(event.kind)) continue
 
       const channelEvent = event as unknown as ChannelEvent

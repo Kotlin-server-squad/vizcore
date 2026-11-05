@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useSessionEvents } from '@/hooks/use-sessions'
+import { inSeqOrder } from '@/lib/projections/in-seq-order'
 import { JOB_EVENT_KINDS } from '@/types/api'
 import type {
   JobStateChangedEvent,
@@ -76,7 +77,8 @@ export function useJobEvents(sessionId: string, given?: readonly VizEvent[]): Us
       }
     }
 
-    for (const event of events) {
+    // In seq order: the live stream can deliver an earlier event late (inSeqOrder).
+    for (const event of inSeqOrder(events)) {
       if (!JOB_EVENT_KINDS.has(event.kind)) continue
 
       jobEvents.push(event)
