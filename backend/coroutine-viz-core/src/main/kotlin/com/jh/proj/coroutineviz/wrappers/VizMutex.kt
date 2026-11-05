@@ -155,6 +155,10 @@ class VizMutex(
      * Release the mutex lock
      */
     fun unlock(owner: Any? = null) {
+        // An unlock the delegate would refuse (not locked, or locked by another owner) fails as before, without
+        // reporting a release or changing what is tracked.
+        if (!delegate.isLocked || (owner != null && !delegate.holdsLock(owner))) delegate.unlock(owner)
+
         val coroutineElement =
             try {
                 // This might fail if called from non-coroutine context
@@ -171,29 +175,30 @@ class VizMutex(
 
         val nextWaiter = waitQueue.peek()
 
-        // Unlocking a mutex that is not locked fails as before, without reporting a release.
-        if (!delegate.isLocked) delegate.unlock(owner)
-
         // Clear owner before unlocking
         currentOwnerId = null
         currentOwnerLabel = null
 
         // Report the release before making it: once the delegate is unlocked, the next holder can report its
         // acquire on another thread straight away, and an unlock reported after that would clear the new holder.
-        session.send(
-            MutexUnlocked(
-                sessionId = session.sessionId,
-                seq = session.nextSeq(),
-                tsNanos = System.nanoTime(),
-                mutexId = mutexId,
-                mutexLabel = label,
-                releaserId = coroutineId,
-                releaserLabel = coroutineLabel,
-                nextWaiterId = nextWaiter?.coroutineId,
-                holdDurationNanos = holdDuration,
-            ),
-        )
-        delegate.unlock(owner)
+        // The release happens even if reporting it fails.
+        try {
+            session.send(
+                MutexUnlocked(
+                    sessionId = session.sessionId,
+                    seq = session.nextSeq(),
+                    tsNanos = System.nanoTime(),
+                    mutexId = mutexId,
+                    mutexLabel = label,
+                    releaserId = coroutineId,
+                    releaserLabel = coroutineLabel,
+                    nextWaiterId = nextWaiter?.coroutineId,
+                    holdDurationNanos = holdDuration,
+                ),
+            )
+        } finally {
+            delegate.unlock(owner)
+        }
     }
 
     /**
