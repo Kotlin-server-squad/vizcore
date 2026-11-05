@@ -5,7 +5,7 @@ import type { CoroutineNode, CoroutineState } from '@/types/api'
 import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
 import { fadeSlideIn, getStateVariant, hoverGlow } from '@/lib/animation-variants'
-import { getStateColors, isActiveState } from '@/lib/coroutine-state-colors'
+import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state-colors'
 import { layoutSpring } from '@/lib/layout-transition'
 
 interface CoroutineTreeProps {
@@ -168,7 +168,7 @@ function TreeNode({ node, depth, onSelect, selectedNodeId }: TreeNodeProps) {
                     ) : undefined
                   }
                 >
-                  {node.state}
+                  {stateLabel(node.state)}
                 </Chip>
                 <Chip size="sm" variant="bordered">
                   Scope: {node.scopeId}

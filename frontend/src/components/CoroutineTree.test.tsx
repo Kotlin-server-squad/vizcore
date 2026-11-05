@@ -60,8 +60,8 @@ describe('CoroutineTree', () => {
 
     render(<CoroutineTree coroutines={coroutines} />)
 
-    expect(screen.getByText('ACTIVE')).toBeInTheDocument()
-    expect(screen.getByText('COMPLETED')).toBeInTheDocument()
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Completed')).toBeInTheDocument()
   })
 
   it('renders nested tree with indentation', () => {
@@ -93,7 +93,7 @@ describe('CoroutineTree', () => {
 
     render(<CoroutineTree coroutines={coroutines} />)
 
-    expect(screen.getByText('WAITING_FOR_CHILDREN')).toBeInTheDocument()
+    expect(screen.getByText('Waiting for children')).toBeInTheDocument()
     expect(screen.getByText(/Waiting for.*child coroutine/)).toBeInTheDocument()
   })
 
@@ -108,7 +108,7 @@ describe('CoroutineTree', () => {
 
     render(<CoroutineTree coroutines={coroutines} />)
 
-    expect(screen.getByText('FAILED')).toBeInTheDocument()
+    expect(screen.getByText('Failed')).toBeInTheDocument()
     expect(screen.getByText('Coroutine Failed')).toBeInTheDocument()
     expect(
       screen.getByText(/Exception thrown.*will cancel parent and siblings/),

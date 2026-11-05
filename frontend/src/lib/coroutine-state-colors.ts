@@ -185,3 +185,25 @@ export function isActiveState(state: string): boolean {
   return state === 'ACTIVE' || state === 'WAITING_FOR_CHILDREN'
 }
 
+
+// ---- Words ----------------------------------------------------------------
+
+/**
+ * What each recorded state is called on screen (spec S-6). "Active", never
+ * "Running": vizcore records that a coroutine is active, not that it holds a
+ * thread at this instant.
+ */
+const STATE_LABEL: Record<string, string> = {
+  CREATED: 'Created',
+  ACTIVE: 'Active',
+  SUSPENDED: 'Suspended',
+  WAITING_FOR_CHILDREN: 'Waiting for children',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+  FAILED: 'Failed',
+}
+
+/** The state's on-screen name; an unknown state is shown as recorded. */
+export function stateLabel(state: string): string {
+  return STATE_LABEL[state] ?? state
+}

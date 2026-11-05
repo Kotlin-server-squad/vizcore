@@ -11,7 +11,7 @@ import { Button } from '@heroui/react'
 import type { CoroutineNode } from '@/types/api'
 import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
-import { getStateColors, isActiveState } from '@/lib/coroutine-state-colors'
+import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state-colors'
 import { chooseRowWidth, layoutTree, type TreeLayout } from '@/lib/tree-layout'
 import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize2, FiMinimize2, FiCrosshair } from 'react-icons/fi'
 
@@ -72,8 +72,10 @@ const DEFAULT_ROW_WIDTH = 1200
 
 export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId }: CoroutineTreeGraphProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines) as TreeNode[], [coroutines])
+  // The badge counts what the state bar calls Active (CREATED or ACTIVE); a parent
+  // waiting for its children is not running its body (spec S-6).
   const activeCount = useMemo(
-    () => coroutines.filter(c => isRunning(c.state)).length,
+    () => coroutines.filter(c => c.state === 'ACTIVE' || c.state === 'CREATED').length,
     [coroutines]
   )
   const nodesById = useMemo(() => {
@@ -342,7 +344,7 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId }: Cor
             {activeCount > 0 && (
               <div className="absolute top-3 left-3 z-20 flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-sm font-semibold text-primary backdrop-blur-sm">
                 <span className="h-2 w-2 rounded-full bg-primary" />
-                <span>{activeCount} coroutine{activeCount > 1 ? 's' : ''} actively running</span>
+                <span>{activeCount} active</span>
               </div>
             )}
 
@@ -513,7 +515,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected }: NodeCardP
               {node.label || node.id}
             </div>
             <div className="text-xs text-default-500">
-              {node.state}
+              {stateLabel(node.state)}
               {node.state === 'ACTIVE' && <span className="ml-2 inline-block">●</span>}
             </div>
           </div>

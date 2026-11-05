@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { CoroutineState } from '@/types/api'
 import { palette } from '@/styles/palette'
 import { deriveStateCounts } from './state-counts'
-import { stateColor, getStateColors } from './coroutine-state-colors'
+import { stateColor, getStateColors, stateLabel } from './coroutine-state-colors'
 
 const ALL_STATES = Object.values(CoroutineState)
 
@@ -114,5 +114,21 @@ describe('the canvas agrees with the state bar', () => {
     for (const state of ALL_STATES) {
       expect(getStateColors(state).chipColor, `${state}`).not.toBe('secondary')
     }
+  })
+})
+
+describe('stateLabel', () => {
+  it('names every state in plain words, never "Running"', () => {
+    expect(stateLabel(CoroutineState.CREATED)).toBe('Created')
+    expect(stateLabel(CoroutineState.ACTIVE)).toBe('Active')
+    expect(stateLabel(CoroutineState.SUSPENDED)).toBe('Suspended')
+    expect(stateLabel(CoroutineState.WAITING_FOR_CHILDREN)).toBe('Waiting for children')
+    expect(stateLabel(CoroutineState.COMPLETED)).toBe('Completed')
+    expect(stateLabel(CoroutineState.CANCELLED)).toBe('Cancelled')
+    expect(stateLabel(CoroutineState.FAILED)).toBe('Failed')
+  })
+
+  it('shows an unknown state as recorded rather than hiding it', () => {
+    expect(stateLabel('SOMETHING_NEW')).toBe('SOMETHING_NEW')
   })
 })
