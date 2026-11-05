@@ -34,7 +34,8 @@ data class IngestSnapshot(
 object IngestStates {
     private const val WATERMARK_BUFFER = 16
 
-    private val states = ConcurrentHashMap<String, State>()
+    // Internal so tests can check a session holds no state.
+    internal val states = ConcurrentHashMap<String, State>()
 
     /** Guarded by itself. */
     internal class State {
@@ -134,9 +135,23 @@ object IngestStates {
         states.remove(sessionId)
     }
 
-    internal fun clear() = states.clear()
+    internal fun clear() {
+        states.clear()
+        beforeStateAllocatedForTest = null
+    }
 
-    private fun stateOf(sessionId: String): State = states.computeIfAbsent(sessionId) { State() }
+    /**
+     * Test seam: runs just before a session's state is first allocated, so a test can delete the session in the window
+     * where the delete's [forget] has already run and the allocation comes after it.
+     */
+    @Volatile
+    internal var beforeStateAllocatedForTest: ((String) -> Unit)? = null
+
+    private fun stateOf(sessionId: String): State {
+        states[sessionId]?.let { return it }
+        beforeStateAllocatedForTest?.invoke(sessionId)
+        return states.computeIfAbsent(sessionId) { State() }
+    }
 }
 
 /** Delivery is uncertain from [connection]'s first seq on; sticky, like every transport fact. */
