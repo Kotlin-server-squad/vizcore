@@ -11,7 +11,10 @@ object SessionHealthDerivation {
     private val INCIDENT_ORDER: Comparator<Incident> =
         compareBy<Incident> { it.kind.ordinal }.thenByDescending { it.sortSeq }
 
-    fun derive(input: HealthInput): SessionHealth {
+    fun derive(input: HealthInput): SessionHealth = deriveFull(input).health
+
+    /** The health plus the uncapped lists behind its capped ones (spec C-3 `health/items`, `rounds`). */
+    fun deriveFull(input: HealthInput): DerivedHealth {
         val view = input.summaries
         val demo = input.kind == SessionKind.DEMO
         // Demo sessions are always REPORTED, whatever the producer stated.
@@ -26,8 +29,11 @@ object SessionHealthDerivation {
         val failuresAtLeast = view.untrackedCount > 0 || transportLossApplies(input) || input.historyIncomplete
         val problemRounds = HealthParts.problemRounds(incidents, view)
         val problemAnchors = problemRounds.mapTo(HashSet()) { it.anchorId }
+        val watermarkNanos = liveWatermarkNanos(input)
+        val longLived = HealthParts.longLived(evaluated, watermarkNanos, input)
+        val longSuspended = HealthParts.longSuspended(evaluated, watermarkNanos, input)
 
-        return SessionHealth(
+        val health = SessionHealth(
             state =
                 stateOf(
                     input = input,
@@ -51,7 +57,7 @@ object SessionHealthDerivation {
             possiblyBlockedCount = incidents.count { it is PossiblyBlockedIncident },
             incidents = Capped.of(incidents),
             possiblyBlocked = evaluation,
-            observations = HealthParts.observations(evaluated, liveWatermarkNanos(input), input),
+            observations = Observations(Capped.of(longLived), Capped.of(longSuspended)),
             counts = HealthParts.originCounts(view, originOf),
             failuresAtLeast = failuresAtLeast,
             vizcoreConnection = HealthParts.vizcoreConnection(vizcore),
@@ -59,8 +65,19 @@ object SessionHealthDerivation {
             roundCount = anchoring.anchorIds.count { id -> id in problemAnchors || view.get(id)?.let(originOf) != CoroutineOrigin.VIZCORE },
             problemRoundCount = problemRounds.size,
             problemRounds = Capped.of(problemRounds),
-            asOfWatermark = input.watermark?.takeIf { liveWatermarkNanos(input) != null },
+            asOfWatermark = input.watermark?.takeIf { watermarkNanos != null },
             retention = input.retention,
+        )
+        return DerivedHealth(
+            health = health,
+            incidents = incidents,
+            problemRounds = problemRounds,
+            longLived = longLived,
+            longSuspended = longSuspended,
+            anchoring = anchoring,
+            originOf = originOf,
+            view = view,
+            evaluatedIds = evaluated.mapTo(HashSet()) { it.id },
         )
     }
 
@@ -168,3 +185,38 @@ object SessionHealthDerivation {
         }
     }
 }
+
+/** The health plus the uncapped lists behind its capped ones, for paging (spec C-3 `health/items`, `rounds`; plan E-11). */
+class DerivedHealth internal constructor(
+    val health: SessionHealth,
+    /** Every incident, in the health's order (kind, then newest first). */
+    val incidents: List<Incident>,
+    /** Every round holding an incident, newest anchor first. */
+    val problemRounds: List<ProblemRound>,
+    val longLived: List<ObservedAge>,
+    val longSuspended: List<ObservedAge>,
+    val anchoring: RoundAnchoring,
+    /** The effective origin the derivation used for each coroutine (demo → APP, a session of UNKNOWN origin → UNKNOWN). */
+    val originOf: (CoroutineSummary) -> CoroutineOrigin,
+    private val view: SummaryView,
+    private val evaluatedIds: Set<String>,
+) {
+    /** The members of the failed-round incident [incidentId] (failures first, then cancellations after), or null when it is not one here. */
+    fun roundMembers(incidentId: String): List<RoundMember>? {
+        val incident = incidents.firstOrNull { it.id == incidentId } as? FailedRoundIncident ?: return null
+        val inRound = view.all.filter { it.id in evaluatedIds && anchoring.anchorOf(it.id) == incident.anchorId }
+        val (failures, cancelled) = FailureIncidents.members(inRound) ?: return emptyList()
+        return failures.map { it.member(MemberRole.FAILED) } + cancelled.map { it.member(MemberRole.CANCELLED_AFTER) }
+    }
+}
+
+private fun CoroutineSummary.member(role: MemberRole) =
+    RoundMember(
+        coroutineId = id,
+        name = name,
+        role = role,
+        exceptionType = failure?.exceptionType,
+        message = failure?.message,
+        terminalSeq = FailureIncidents.terminalSeq(this),
+        detailsDropped = reduced,
+    )

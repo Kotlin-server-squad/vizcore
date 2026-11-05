@@ -179,6 +179,22 @@ data class PossiblyBlockedIncident(
 }
 
 @Serializable
+enum class MemberRole { FAILED, CANCELLED_AFTER }
+
+/** One member of a failed round's incident (spec C-3 `health/items?list=round-members`). */
+@Serializable
+data class RoundMember(
+    val coroutineId: String,
+    val name: String?,
+    val role: MemberRole,
+    val exceptionType: String?,
+    val message: String?,
+    val terminalSeq: Long,
+    /** The summary was reduced to a stub: type and message are no longer known. */
+    val detailsDropped: Boolean,
+)
+
+@Serializable
 data class ObservedAge(
     val coroutineId: String,
     val name: String?,
