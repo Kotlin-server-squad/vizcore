@@ -271,6 +271,29 @@ class InstrumentedChannelTest {
         }
 
     /**
+     * A conflated channel closed with a value still in it hands that value out, and is empty
+     * afterwards. (`isEmpty` alone reads false for a closed channel, drained or not.)
+     */
+    @Test
+    @DisplayName("a closed conflated channel reads empty once its last value is taken")
+    fun `conflated size after close and drain`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<String>(Channel.CONFLATED, "conflated-closed")
+
+            channel.send("x")
+            channel.close()
+            assertEquals("x", channel.receive())
+
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
+            assertEquals(listOf(1, 0), sizes)
+        }
+
+    /**
      * A receiver already waiting on a conflated channel takes a sent value at once. On
      * [kotlinx.coroutines.Dispatchers.Unconfined] it even runs inside the send, so its update lands
      * before the sender's; the channel is empty afterwards all the same.

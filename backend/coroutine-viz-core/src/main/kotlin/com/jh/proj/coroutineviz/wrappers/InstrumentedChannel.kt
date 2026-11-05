@@ -64,7 +64,8 @@ class InstrumentedChannel<T>(
             Channel.RENDEZVOUS -> 0
             // Holds at most the latest value; whether it holds one is read from the channel itself,
             // since a send replacing an unread value and a hand-over cannot be told apart by counting.
-            Channel.CONFLATED -> if (delegate.isEmpty) 0 else 1
+            // isEmpty reads false for a closed channel, so a closed one is checked as well.
+            Channel.CONFLATED -> if (delegate.isEmpty || delegate.isClosedForReceive) 0 else 1
             Channel.UNLIMITED -> count.coerceAtLeast(0)
             Channel.BUFFERED -> count.coerceIn(0, defaultBufferCapacity)
             else -> count.coerceIn(0, capacity.coerceAtLeast(0))
