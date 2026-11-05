@@ -18,6 +18,8 @@ interface CoroutineCanvasProps {
   onToggleCompleted: () => void
   /** Coroutines the current view would show beyond the node cap. */
   moreCount: number
+  /** Unfinished children per parent over the whole snapshot (see `CoroutineTree`). */
+  pendingChildCounts?: ReadonlyMap<string, number>
   /** Which chip the state bar has active — decides which empty state is honest. */
   stateFilter: StateFilter
   /** A vizcore demo run, not the user's app: its empty state says to run the scenario. */
@@ -46,6 +48,7 @@ export function CoroutineCanvas({
   showCompleted,
   onToggleCompleted,
   moreCount,
+  pendingChildCounts,
   stateFilter,
   isDemo = false,
   selectedCoroutineId,
@@ -116,6 +119,7 @@ export function CoroutineCanvas({
                   coroutines={coroutines}
                   onSelect={onSelect}
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
+                  pendingChildCounts={pendingChildCounts}
                 />
               )}
             </div>

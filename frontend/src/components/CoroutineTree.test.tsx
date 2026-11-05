@@ -97,6 +97,16 @@ describe('CoroutineTree', () => {
     expect(screen.getByText(/Waiting for.*child coroutine/)).toBeInTheDocument()
   })
 
+  it('takes the waiting count from pendingChildCounts when the children are not rendered', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'p', label: 'WaitingParent', state: CoroutineState.WAITING_FOR_CHILDREN }),
+    ]
+
+    render(<CoroutineTree coroutines={coroutines} pendingChildCounts={new Map([['p', 2]])} />)
+
+    expect(screen.getByText(/Waiting for 2 child coroutine/)).toBeInTheDocument()
+  })
+
   it('shows failure indicator for FAILED state', () => {
     const coroutines: CoroutineNode[] = [
       makeCoroutine({

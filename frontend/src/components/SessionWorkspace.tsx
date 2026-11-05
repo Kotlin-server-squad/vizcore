@@ -201,6 +201,18 @@ export function SessionWorkspace({
     return { renderedCoroutines: shown, moreCount: pool.length - shown.length }
   }, [stateFilter, showCompleted, allFinished, panelCoroutines, activeCoroutines, leakIds])
 
+  // Unfinished children per parent, over the whole snapshot: the "Waiting for N
+  // child coroutines" line must not shrink when a chip or the cap hides them.
+  const pendingChildCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const c of panelCoroutines) {
+      if (c.parentId && c.state !== CoroutineState.COMPLETED) {
+        counts.set(c.parentId, (counts.get(c.parentId) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [panelCoroutines])
+
   /** Counts for the state bar — the whole snapshot, never the capped subset. */
   const stateCounts = useMemo(
     () => deriveStateCounts(panelCoroutines, leakIds),
@@ -406,6 +418,7 @@ export function SessionWorkspace({
               showCompleted={showCompleted}
               onToggleCompleted={() => setShowCompleted(prev => !prev)}
               moreCount={moreCount}
+              pendingChildCounts={pendingChildCounts}
               stateFilter={stateFilter}
               isDemo={hasScenario || isDemoSessionId(sessionId)}
               selectedCoroutineId={selectedCoroutineId}

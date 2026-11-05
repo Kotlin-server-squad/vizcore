@@ -259,6 +259,29 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     expect(node.className).toContain('ring-primary')
   })
 
+  it('counts a waiting parent\'s children over the whole run, even when the Waiting chip hides them', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({
+        coroutineCount: 2,
+        coroutines: [
+          { id: 'p', jobId: 'j-p', parentId: null, scopeId: 'scope-1', label: 'Parent', state: 'WAITING_FOR_CHILDREN' as CoroutineState },
+          { id: 'c', jobId: 'j-c', parentId: 'p', scopeId: 'scope-1', label: 'Child', state: 'ACTIVE' as CoroutineState },
+        ],
+      }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+
+    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
+
+    // The filter leaves only the parent on screen; its child is still running.
+    await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 1' }))
+    expect(screen.queryByText('Child')).toBeNull()
+    expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
+  })
+
   it('shows the placeholder + does not fetch the timeline until a node is clicked (no eager fetch)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
