@@ -288,13 +288,11 @@ export function SessionWorkspace({
 
   // What the Evidence tab holds, named on its label (S-4).
   const evidenceCounts = useMemo(() => countEvidence(panelEvents), [panelEvents])
-  // Which Evidence sections have anything, from the same events: in replay,
-  // the cursor's, so a resource created later is not reported yet. The rung
-  // keeps the whole session's categories.
-  const evidenceCategories = useMemo(
-    () => (replayActive ? categorizeEvents(panelEvents) : eventCategories),
-    [replayActive, panelEvents, eventCategories],
-  )
+  // Which Evidence sections have anything, from the same events their contents
+  // read: in replay the cursor's (a resource created later is not reported
+  // yet), live the shown ones (cleared events capture nothing). The rung keeps
+  // the whole session's categories.
+  const evidenceCategories = useMemo(() => categorizeEvents(panelEvents), [panelEvents])
   // What each coroutine waits for or holds (S-6), and the resources' names,
   // from the same events as the rest of the page: live, paused or at the
   // replay cursor — so they refresh with every new event.

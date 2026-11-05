@@ -42,7 +42,7 @@ vi.mock('framer-motion', async () => {
   return { ...actual, motion: { div: pass, span: pass, button: pass, circle: () => null }, AnimatePresence: ({ children }: { children: ReactNode }) => <>{children}</>, LayoutGroup: ({ children }: { children: ReactNode }) => <>{children}</> }
 })
 
-import { useSession } from '@/hooks/use-sessions'
+import { useSession, useSessionEvents } from '@/hooks/use-sessions'
 import { useEventStream } from '@/hooks/use-event-stream'
 
 const lock = { mutexId: 'm-1', mutexLabel: 'inventory-lock' }
@@ -96,6 +96,7 @@ describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
   beforeEach(() => {
     localStorage.clear()
     seq = 0
+    vi.mocked(useSessionEvents).mockReturnValue({ data: [], isPending: false, isError: false } as unknown as ReturnType<typeof useSessionEvents>)
     vi.mocked(useSession).mockReturnValue({ data: session(['ACTIVE' as CoroutineState, 'SUSPENDED' as CoroutineState]), isLoading: false, refetch: vi.fn() } as unknown as ReturnType<typeof useSession>)
   })
 
@@ -206,5 +207,13 @@ describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
     screen.getByRole('button', { name: /Select inventory-lock \(event #1\)/ }).focus()
     await userEvent.keyboard('{Enter}')
     expect(document.activeElement).toBe(screen.getByTestId('resource-m-1'))
+  })
+
+  it('outside replay too, Evidence says what the shown events hold: cleared live events capture nothing', async () => {
+    vi.mocked(useSessionEvents).mockReturnValue({ data: contended, isPending: false, isError: false } as unknown as ReturnType<typeof useSessionEvents>)
+    stream([])
+    render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: /Evidence/ }))
+    expect(screen.getByTestId('evidence-section-Locks and permits')).toHaveTextContent('none captured')
   })
 })

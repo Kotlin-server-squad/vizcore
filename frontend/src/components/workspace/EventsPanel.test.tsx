@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import type { VizEvent } from '@/types/api'
+import type { Selection } from '@/lib/selection'
 
 vi.mock('../EventsList', () => ({
   EventsList: ({ events, onSelect }: { events: VizEvent[]; onSelect?: unknown }) => (
@@ -65,4 +67,17 @@ describe('EventsPanel', () => {
     rerender(<EventsPanel events={EVENTS} selection={null} selectionLabel={null} subjectOf={() => null} onSelect={vi.fn()} />)
     expect(screen.getByTestId('events-list')).toHaveAttribute('data-selectable', 'true')
   })
+
+  it('keeps keyboard focus in the tab after "All events" clears the selection', async () => {
+    function Stateful() {
+      const [selection, setSelection] = useState<Selection | null>({ kind: 'coroutine', id: 'c-1' })
+      return <EventsPanel events={EVENTS} selection={selection} selectionLabel="c-1" onShowAll={() => setSelection(null)} />
+    }
+    render(<Stateful />)
+    screen.getByRole('button', { name: 'All events' }).focus()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByTestId('events-scope')).toHaveTextContent('All 5 events in this session')
+    expect(document.activeElement).toBe(screen.getByTestId('events-scope'))
+  })
 })
+

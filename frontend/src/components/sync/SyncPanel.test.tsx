@@ -183,6 +183,7 @@ describe('SemaphoreGauge', () => {
           activeHolders: [],
           unknownHolderPermits: 0,
           unsettled: false,
+          availableKnown: true,
           waitQueue: [],
         }}
       />,
@@ -360,6 +361,16 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     screen.getByRole('button', { name: 'c-3' }).focus()
     rerender(<SyncPanel sessionId="session-1" events={[...base, queue(['c-3'], 4)]} picker={picker} />)
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'c-3' }))
+  })
+
+  it('right after creation, says availability is not known yet (permits may be taken at creation)', () => {
+    const events = [makeSyncEvent('SemaphoreCreated', 1, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 })]
+    render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    const gauge = screen.getByTestId('semaphore-gauge')
+    expect(gauge).toHaveTextContent('3 permits · availability unknown')
+    expect(gauge).toHaveTextContent('?used')
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('holder unknown')
+    expect(screen.getByTestId('semaphore-holders')).not.toHaveTextContent('none')
   })
 
   it('selects a holder or a waiter by name', async () => {

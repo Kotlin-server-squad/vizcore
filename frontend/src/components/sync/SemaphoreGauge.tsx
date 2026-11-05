@@ -27,8 +27,10 @@ export function SemaphoreGauge({
   selectedCoroutineId = null,
   picker,
 }: SemaphoreGaugeProps) {
-  // No total in the retained events (its creation and every state snapshot trimmed): nothing about use is known.
+  // No total in the retained events (its creation and every state snapshot trimmed), or no event has reported
+  // the free permits yet (creation carries the capacity only): nothing about use is known.
   const totalKnown = semaphore.totalPermits > 0
+  const usageKnown = totalKnown && semaphore.availableKnown
   const usedPermits = semaphore.totalPermits - semaphore.availablePermits
   const percent = semaphore.totalPermits > 0 ? (usedPermits / semaphore.totalPermits) * 100 : 0
   const listed = semaphore.activeHolders.reduce((sum, h) => sum + h.permits, 0)
@@ -59,7 +61,11 @@ export function SemaphoreGauge({
               <div className="text-xs text-default-500 font-mono">{semaphore.semaphoreId}</div>
             </div>
             <Chip size="sm" variant="flat" color={color}>
-              {totalKnown ? `${semaphore.availablePermits} / ${semaphore.totalPermits} available` : 'total unknown'}
+              {usageKnown
+                ? `${semaphore.availablePermits} / ${semaphore.totalPermits} available`
+                : totalKnown
+                  ? `${semaphore.totalPermits} permits · availability unknown`
+                  : 'total unknown'}
             </Chip>
           </div>
         </CardHeader>
@@ -107,7 +113,7 @@ export function SemaphoreGauge({
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 25, delay: 0.3 }}
                 >
-                  {totalKnown ? usedPermits : '?'}
+                  {usageKnown ? usedPermits : '?'}
                 </motion.div>
                 <div className="text-[10px] text-default-400">used</div>
               </div>
@@ -120,12 +126,16 @@ export function SemaphoreGauge({
               rest have no recorded holder. Either way the line says so rather than guess. */}
           <div data-testid="semaphore-holders" className="text-xs">
             <span className="text-default-500">Held by </span>
-            {!totalKnown ? (
+            {!usageKnown ? (
               <>
                 <span className="font-semibold">holder unknown</span>
                 <span className="text-default-500">
                   {' '}
-                  — the permits in use are unknown (the semaphore&apos;s creation is not in the retained events)
+                  — the permits in use are unknown (
+                  {totalKnown
+                    ? 'no event has reported the free permits yet'
+                    : 'the semaphore\u2019s creation is not in the retained events'}
+                  )
                   {semaphore.activeHolders.length > 0 ? '; last recorded holders ' : ''}
                 </span>
                 <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} />

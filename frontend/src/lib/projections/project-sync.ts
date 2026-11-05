@@ -66,6 +66,11 @@ export interface SemaphoreState {
   label: string | null
   totalPermits: number
   availablePermits: number
+  /**
+   * An event has reported the free permits. `SemaphoreCreated` carries the capacity only, and a semaphore can
+   * start with permits taken (`acquiredPermits`), so until then the free permits are not known.
+   */
+  availableKnown: boolean
   activeHolders: SemaphoreHolder[]
   /**
    * Listed permits beyond those in use (S-7): a permit came back from a coroutine that held none, so some
@@ -200,6 +205,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
           activeHolders: [],
           unknownHolderPermits: 0,
           unsettled: false,
+          availableKnown: false,
           waitQueue: [],
         })
         break
@@ -214,6 +220,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.remainingPermits
+        state.availableKnown = true
         // An acquirer not listed yet is listed; no count changes (a snapshot may already have counted this
         // permit), and the list is unsettled until the next snapshot replaces it.
         if (!state.activeHolders.some(h => h.id === e.acquirerId)) {
@@ -229,6 +236,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.newAvailablePermits
+        state.availableKnown = true
         // No count changes (a snapshot may already have taken this permit back): the list is unsettled until
         // the next snapshot. Only a release that frees every permit is certain: then nobody holds one.
         state.unsettled = true
@@ -238,6 +246,9 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
       case 'SemaphoreTryAcquireFailed': {
         const e = syncEvent as SemaphoreTryAcquireFailed
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
+        const failed = semaphoreStates.get(e.semaphoreId)!
+        failed.availablePermits = e.availablePermits
+        failed.availableKnown = true
         break
       }
       case 'SemaphoreStateChanged': {
@@ -245,6 +256,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.availablePermits
+        state.availableKnown = true
         state.totalPermits = e.totalPermits
         state.activeHolders = e.activeHolders.map((id, i) => ({
           id,
@@ -288,7 +300,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
  * (`SemaphoreCreated` gone): then the list stands until the next snapshot.
  */
 function clearWhenAllFree(state: SemaphoreState) {
-  if (state.totalPermits > 0 && state.availablePermits >= state.totalPermits) {
+  if (state.totalPermits > 0 && state.availableKnown && state.availablePermits >= state.totalPermits) {
     state.activeHolders = []
     state.unknownHolderPermits = 0
     state.unsettled = false
@@ -320,6 +332,7 @@ function ensureSemaphore(map: Map<string, SemaphoreState>, id: string, label: st
       activeHolders: [],
       unknownHolderPermits: 0,
       unsettled: false,
+      availableKnown: false,
       waitQueue: [],
     })
   }

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { EventsList } from '../EventsList'
 import { eventConcerns, type Selection } from '@/lib/selection'
 import type { VizEvent } from '@/types/api'
@@ -38,11 +38,13 @@ export function EventsPanel({
     [events, selection],
   )
   const who = selection ? (selectionLabel ?? selection.id) : null
+  // "All events" disappears once pressed: keep focus in the tab, on the scope line.
+  const scopeRef = useRef<HTMLParagraphElement>(null)
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <p data-testid="events-scope" className="text-xs text-default-500">
+        <p ref={scopeRef} tabIndex={-1} data-testid="events-scope" className="text-xs text-default-500">
           {who ? (
             <>
               {selection?.kind === 'resource' ? 'Events about ' : 'Events for '}
@@ -53,7 +55,14 @@ export function EventsPanel({
           )}
         </p>
         {selection && onShowAll && (
-          <button type="button" onClick={onShowAll} className="ml-auto text-xs text-primary hover:underline">
+          <button
+            type="button"
+            onClick={() => {
+              onShowAll()
+              scopeRef.current?.focus()
+            }}
+            className="ml-auto text-xs text-primary hover:underline"
+          >
             All events
           </button>
         )}

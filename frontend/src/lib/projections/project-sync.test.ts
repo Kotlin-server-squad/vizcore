@@ -203,5 +203,9 @@ describe('projectSync', () => {
       expect(sem!.unsettled).toBe(false)
     })
   })
-})
 
+  it('knows a semaphore\'s free permits only once an event reports them, not from its creation', () => {
+    expect(projectSync([created]).semaphores[0]!.availableKnown).toBe(false)
+    expect(projectSync([created, stateChanged({ availablePermits: 1 })]).semaphores[0]!.availableKnown).toBe(true)
+  })
+})
