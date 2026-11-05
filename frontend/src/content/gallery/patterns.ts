@@ -17,7 +17,11 @@ export const PATTERNS_GUIDES: DemoGuide[] = [
     tags: ['retry', 'exponential backoff', 'coroutineScope'],
     story:
       'A weather app loads today\'s forecast, but the weather server is overloaded: it turns down the first three tries with HTTP 503. The app does not give up at once, and it does not hammer the server either. It waits before each new try, twice as long each time: 0.75 s, then 1.5 s, then 3 s. The fourth try gets the forecast.',
-    code: `suspend fun <T> retry(times: Int, initialDelay: Long, block: suspend () -> T): T {
+    code: `suspend fun <T> retry(
+    times: Int,
+    initialDelay: Long,
+    block: suspend () -> T,
+): T {
     var backoff = initialDelay
     repeat(times - 1) {
         try {
@@ -201,7 +205,9 @@ launch {                                          // load-forecast
             block().also { failures = 0; openedAt = null }  // 4
         } catch (e: HttpError) {
             failures++
-            if (opened != null || failures >= threshold) openedAt = now()  // 1
+            if (opened != null || failures >= threshold) {
+                openedAt = now()                  // 1
+            }
             throw e
         }
     }
