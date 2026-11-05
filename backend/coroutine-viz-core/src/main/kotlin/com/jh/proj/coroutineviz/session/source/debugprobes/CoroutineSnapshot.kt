@@ -89,6 +89,9 @@ data class CoroutineSnapshot(
      * constructors and `copy` keep their JVM signatures; not part of equality, and `copy` does not carry it.
      */
     internal var origin: CoroutineOrigin? = null
+
+    /** Set when the parent is a wrapper coroutine, whose events use its own id rather than a `dp-` one. Like [origin]. */
+    internal var parentCoroutineId: String? = null
 }
 
 /**

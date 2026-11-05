@@ -94,7 +94,8 @@ class DebugProbesEventSynthesizer(
             // Same "dp-" form as coroutineId(snapshot) (line above) so the child's
             // parentCoroutineId equals the parent coroutine's OWN id — edges connect
             // (D-01/D-02, key-consistency note). Null parentKey → root.
-            parentCoroutineId = snapshot.parentKey?.let { "dp-${it.token}" },
+            // A wrapper parent keeps the id its own wrapper events use (spec "Origin": captured once).
+            parentCoroutineId = snapshot.parentCoroutineId ?: snapshot.parentKey?.let { "dp-${it.token}" },
             // Dispatcher-derived grouping (D-03 / Open Q1 default); source-id fallback
             // when the dispatcher is unknown.
             scopeId = snapshot.dispatcherName ?: sourceId,

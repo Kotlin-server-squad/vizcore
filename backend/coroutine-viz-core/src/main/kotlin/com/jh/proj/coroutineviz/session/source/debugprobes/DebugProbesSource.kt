@@ -85,7 +85,11 @@ class DebugProbesSource(
         // lastObservedThread, so the Java bridge maps the unwrapped impl dump
         // straight into RawInfo — keeping the observed thread for ThreadAssigned
         // synthesis.
-        adapter.toSnapshots(excludeSdkOwned(DebugProbesImplBridge.dumpRawInfos(), internalDispatchers, transportRoots))
+        //
+        // Coroutines a VizScope of this session launched are reported by their wrapper events: they help rebuild the
+        // hierarchy, then leaveToWrappers drops them (spec "Origin": captured once).
+        val raws = excludeSdkOwned(DebugProbesImplBridge.dumpRawInfos(), internalDispatchers, transportRoots)
+        leaveToWrappers(raws, adapter.toSnapshots(raws), session)
     },
 ) : InstrumentationSource {
     private val logger = LoggerFactory.getLogger(DebugProbesSource::class.java)
