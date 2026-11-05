@@ -61,7 +61,9 @@ internal fun transportOf(
     lastSeq: Long,
 ): TransportStatus {
     val unwatched =
-        !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && lastSeq > 0 &&
+        !summariesSeeEveryEvent() &&
+            kind == SessionKind.ATTACHED &&
+            lastSeq > 0 &&
             (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
     return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
 }
@@ -123,8 +125,7 @@ internal class RetainedTransitions(
         val index = HashMap<String, MutableList<Transition>>()
         for (event in events) {
             if (event.seq > upToSeq || event !is CoroutineEvent) continue
-            val transition = Transitions.of(event) ?: continue
-            index.getOrPut(event.coroutineId) { mutableListOf() } += transition
+            Transitions.of(event)?.let { index.getOrPut(event.coroutineId) { mutableListOf() }.add(it) }
         }
         index
     }

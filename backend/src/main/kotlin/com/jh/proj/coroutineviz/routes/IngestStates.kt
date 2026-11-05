@@ -136,18 +136,19 @@ object IngestStates {
 
     internal fun clear() = states.clear()
 
-    private fun markUncertain(connection: Connection) {
-        val state = connection.state
-        synchronized(state) {
-            val t = state.transport
-            state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
-        }
-    }
-
     private fun stateOf(sessionId: String): State = states.computeIfAbsent(sessionId) { State() }
-
-    private fun earliest(
-        current: Long?,
-        candidate: Long,
-    ): Long = minOf(current ?: Long.MAX_VALUE, candidate)
 }
+
+/** Delivery is uncertain from [connection]'s first seq on; sticky, like every transport fact. */
+private fun markUncertain(connection: IngestStates.Connection) {
+    val state = connection.state
+    synchronized(state) {
+        val t = state.transport
+        state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
+    }
+}
+
+private fun earliest(
+    current: Long?,
+    candidate: Long,
+): Long = minOf(current ?: Long.MAX_VALUE, candidate)
