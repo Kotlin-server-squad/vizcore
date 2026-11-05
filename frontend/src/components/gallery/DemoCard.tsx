@@ -1,5 +1,7 @@
-import { Button, Card, CardBody, CardHeader, Chip } from '@heroui/react'
-import { FiClock, FiZap } from 'react-icons/fi'
+import { Button, Card, CardBody, CardHeader, Chip, button } from '@heroui/react'
+import { Link } from '@tanstack/react-router'
+import { FiBookOpen, FiClock, FiZap } from 'react-icons/fi'
+import { demoSlug } from '@/lib/demo-slug'
 import type { Scenario } from '@/types/api'
 import type { DemoGuide } from '@/content/gallery/types'
 
@@ -8,7 +10,7 @@ const LEVEL_COLOR = { beginner: 'success', intermediate: 'warning', advanced: 'd
 interface DemoCardProps {
   scenario: Scenario
   groupLabel: string
-  /** The demo's "How it works" content, when it has one: adds the level and tags. */
+  /** The demo's "How it works" content, when it has one: adds the level, the tags and a link to its page. */
   guide?: DemoGuide
   isStarting: boolean
   /** Another demo is starting; one start at a time. */
@@ -47,19 +49,33 @@ export function DemoCard({ scenario, groupLabel, guide, isStarting, isDisabled =
             </div>
           )}
         </div>
-        <Button
-          color="primary"
-          variant="flat"
-          startContent={isStarting ? undefined : <FiZap className="h-4 w-4" />}
-          isLoading={isStarting}
-          isDisabled={isDisabled}
-          onPress={onRun}
-          // Names repeat across groups (two Producer-Consumers).
-          aria-label={`Run ${scenario.name} (${groupLabel})`}
-          fullWidth
-        >
-          Run
-        </Button>
+        <div className="flex gap-2">
+          {guide && (
+            // A router Link styled as a button, so it keeps its link role and typed params.
+            <Link
+              to="/gallery/$slug"
+              params={{ slug: demoSlug(scenario.id) }}
+              aria-label={`How it works: ${scenario.name}`}
+              className={button({ variant: 'bordered', fullWidth: true })}
+            >
+              <FiBookOpen className="h-4 w-4" aria-hidden />
+              How it works
+            </Link>
+          )}
+          <Button
+            color="primary"
+            variant="flat"
+            startContent={isStarting ? undefined : <FiZap className="h-4 w-4" />}
+            isLoading={isStarting}
+            isDisabled={isDisabled}
+            onPress={onRun}
+            // Names repeat across groups (two Producer-Consumers).
+            aria-label={`Run ${scenario.name} (${groupLabel})`}
+            fullWidth
+          >
+            Run
+          </Button>
+        </div>
       </CardBody>
     </Card>
   )
