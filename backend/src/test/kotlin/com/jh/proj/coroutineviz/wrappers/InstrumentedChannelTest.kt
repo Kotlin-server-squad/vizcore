@@ -220,6 +220,128 @@ class InstrumentedChannelTest {
             assertTrue(senderCompleted, "Sender should complete after receive")
         }
 
+    /**
+     * A rendezvous channel holds nothing: a value goes from the sender straight to the receiver.
+     * Before, a send that met a waiting receiver reported one element in the buffer, which the
+     * Channels panel drew as a filled slot of a channel that has none.
+     */
+    @Test
+    @DisplayName("a rendezvous channel never reports a buffered element")
+    fun `rendezvous reports an empty buffer`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<Int>(Channel.RENDEZVOUS, "rendezvous-size")
+
+            // The receiver waits first, so each send hands its value straight over.
+            val receiver = launch { repeat(3) { channel.receive() } }
+            delay(20)
+            repeat(3) { channel.send(it) }
+            receiver.join()
+
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
+            assertEquals(6, sizes.size, "a size after each send and each receive")
+            assertEquals(listOf(0), sizes.distinct(), "got $sizes")
+        }
+
+    /**
+     * A conflated channel keeps only the latest value: a send over an unread one replaces it. The
+     * reported size counts what the channel holds, so it is empty again after the one receive.
+     */
+    @Test
+    @DisplayName("a conflated channel counts a replaced value once")
+    fun `conflated size after an overwrite`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<String>(Channel.CONFLATED, "conflated-size")
+
+            channel.send("a")
+            channel.send("b") // replaces "a"
+            assertEquals("b", channel.receive())
+
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
+            assertEquals(listOf(1, 1, 0), sizes)
+        }
+
+    /**
+     * A conflated channel closed with a value still in it hands that value out, and is empty
+     * afterwards. (`isEmpty` alone reads false for a closed channel, drained or not.)
+     */
+    @Test
+    @DisplayName("a closed conflated channel reads empty once its last value is taken")
+    fun `conflated size after close and drain`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<String>(Channel.CONFLATED, "conflated-closed")
+
+            channel.send("x")
+            channel.close()
+            assertEquals("x", channel.receive())
+
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
+            assertEquals(listOf(1, 0), sizes)
+        }
+
+    /**
+     * A receiver already waiting on a conflated channel takes a sent value at once. On
+     * [kotlinx.coroutines.Dispatchers.Unconfined] it even runs inside the send, so its update lands
+     * before the sender's; the channel is empty afterwards all the same.
+     */
+    @Test
+    @DisplayName("a conflated channel reads empty after a hand-over, whichever side updates first")
+    fun `conflated size after a hand-over`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<String>(Channel.CONFLATED, "conflated-handover")
+
+            val receiver = launch(kotlinx.coroutines.Dispatchers.Unconfined) { channel.receive() }
+            delay(20)
+            channel.send("x")
+            receiver.join()
+
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
+            assertEquals(0, sizes.last(), "the channel is empty after the hand-over, got $sizes")
+        }
+
+    /**
+     * When a receive frees a slot of a full channel, the sender waiting for that slot can count its
+     * element before the receiver counts its own; the reported size must still stay within the
+     * channel's capacity.
+     */
+    @Test
+    @DisplayName("a buffered channel never reports more elements than its capacity")
+    fun `buffered size stays within capacity`() =
+        runBlocking(kotlinx.coroutines.Dispatchers.Default) {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<Int>(2, "bounded-size")
+
+            val senders = (1..4).map { s -> launch { repeat(250) { channel.send(s * 1000 + it) } } }
+            val receivers = (1..4).map { launch { repeat(250) { channel.receive() } } }
+            (senders + receivers).forEach { it.join() }
+
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
+            assertTrue(sizes.all { it in 0..2 }, "sizes outside 0..2: ${sizes.filterNot { it in 0..2 }.distinct()}")
+        }
+
     // ========================================================================
     // MULTIPLE SENDER/RECEIVER TESTS
     // ========================================================================
