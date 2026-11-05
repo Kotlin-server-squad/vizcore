@@ -64,14 +64,15 @@ describe('exportToPng', () => {
 
   it('captures in the dark theme while light mode is on, then restores light', async () => {
     document.documentElement.className = 'light'
-    let classDuringCapture = ''
+    let classesDuringCapture: string[] = []
     mockHtml2Canvas.mockImplementationOnce(async () => {
-      classDuringCapture = document.documentElement.className
+      classesDuringCapture = [...document.documentElement.classList]
       return mockCanvas
     })
     try {
       await exportToPng(mockElement)
-      expect(classDuringCapture).toBe('dark')
+      expect(classesDuringCapture).toContain('dark')
+      expect(classesDuringCapture).not.toContain('light')
       expect(document.documentElement.className).toBe('light')
     } finally {
       document.documentElement.className = 'dark'

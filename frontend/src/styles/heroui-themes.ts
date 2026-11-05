@@ -25,8 +25,22 @@ export const darkThemeColors = {
   divider: palette.border,
 }
 
+/**
+ * Text-safe semantic colours for the light theme. The dark palette's green and
+ * amber are about 2:1 on white, so `text-success` and `text-warning` would be
+ * unreadable; these darker shades (HeroUI's 700 / 600 steps) reach WCAG AA
+ * (4.5:1) on the light surfaces. Coroutine-state colours in the visualizations
+ * come from `palette` via `stateColor()` and stay the same in both themes.
+ */
+const lightSemantic = {
+  success: { DEFAULT: '#0e793c', foreground: '#ffffff' },
+  warning: { DEFAULT: '#936316', foreground: '#ffffff' },
+  danger: { DEFAULT: '#c20e4d', foreground: '#ffffff' },
+}
+
 export const lightThemeColors = {
   ...semantic,
+  ...lightSemantic,
   background: lightPalette.bg,
   foreground: lightPalette.text,
   content1: lightPalette.surface,

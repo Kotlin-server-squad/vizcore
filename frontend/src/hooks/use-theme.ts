@@ -5,12 +5,16 @@ export type Theme = 'dark' | 'light'
 /** Also read by the inline script in index.html; keep the two in step. */
 export const THEME_STORAGE_KEY = 'vizcore-theme'
 
-/** The saved theme; dark when nothing (or nothing valid) is saved, or storage is blocked. */
+/**
+ * The saved theme; dark when nothing (or nothing valid) is saved. When storage
+ * is blocked, the theme already on <html> stands in for it, so a choice made
+ * this visit survives navigation, which mounts a fresh switch on every page.
+ */
 export function readStoredTheme(): Theme {
   try {
     return localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark'
   } catch {
-    return 'dark'
+    return document.documentElement.classList.contains('light') ? 'light' : 'dark'
   }
 }
 

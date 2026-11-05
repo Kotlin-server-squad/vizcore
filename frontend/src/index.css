@@ -31,6 +31,13 @@ html.light {
   color-scheme: light;
 }
 
+/* Set by withDarkTheme (lib/export-theme.ts) for the instant an export reads dark styles. */
+html.vz-no-transitions *,
+html.vz-no-transitions *::before,
+html.vz-no-transitions *::after {
+  transition: none !important;
+}
+
 body {
   margin: 0;
   min-width: 320px;

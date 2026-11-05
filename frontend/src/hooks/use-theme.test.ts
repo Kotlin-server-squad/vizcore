@@ -50,4 +50,21 @@ describe('useTheme', () => {
     act(() => result.current.toggle())
     expect(html().classList.contains('light')).toBe(true)
   })
+
+  it('keeps a choice made while storage is blocked when the page remounts the switch', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    const first = renderHook(() => useTheme())
+    act(() => first.result.current.toggle())
+    first.unmount()
+
+    // Every route renders its own Layout, so navigating mounts a fresh switch.
+    const second = renderHook(() => useTheme())
+    expect(second.result.current.theme).toBe('light')
+    expect(html().classList.contains('light')).toBe(true)
+  })
 })

@@ -151,7 +151,7 @@ describe('exportToSvg', () => {
     document.documentElement.className = 'light'
     const classesSeen = new Set<string>()
     vi.spyOn(window, 'getComputedStyle').mockImplementation(() => {
-      classesSeen.add(document.documentElement.className)
+      classesSeen.add(document.documentElement.classList.contains('light') ? 'light' : 'dark')
       return { getPropertyValue: () => '', length: 0 } as unknown as CSSStyleDeclaration
     })
     try {

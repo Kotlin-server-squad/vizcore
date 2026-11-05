@@ -253,10 +253,10 @@ describe('createReplayRecorder', () => {
     mockFindSvgRoot.mockReturnValue(null)
     const { asDarkClone } = await import('./export-theme')
     document.documentElement.className = 'light'
-    let classDuringCapture = ''
+    let classesDuringCapture: string[] = []
     const original = mockHtml2Canvas.getMockImplementation()
     mockHtml2Canvas.mockImplementationOnce(async (...args: unknown[]) => {
-      classDuringCapture = document.documentElement.className
+      classesDuringCapture = [...document.documentElement.classList]
       return original?.(...args)
     })
     try {
@@ -268,7 +268,8 @@ describe('createReplayRecorder', () => {
       })
       await recorder.captureFrame()
       expect(mockHtml2Canvas).toHaveBeenCalledWith(panelEl, expect.objectContaining({ onclone: asDarkClone }))
-      expect(classDuringCapture).toBe('dark')
+      expect(classesDuringCapture).toContain('dark')
+      expect(classesDuringCapture).not.toContain('light')
       expect(document.documentElement.className).toBe('light')
     } finally {
       document.documentElement.className = 'dark'
