@@ -1,8 +1,8 @@
 # Session page as an IDE dock — the tree on top, everything else in one dock
 
 **Date:** 2026-11-05
-**Status:** Design — approved on the canvas in conversation; revised after Codex review rounds 1 and 2; awaiting
-review of this document
+**Status:** Approved (2026-11-05) — approved on the canvas in conversation; revised after Codex review rounds 1
+to 3; this document approved by the user, with the Evidence tab kept as specified in S-4
 **Canvas:** "vizcore session view redesign", https://claude.ai/artifact/LoVDqCRuELHtFUaQbqK1xh, page
 "1 · The proposal" (4 boards). The boards are saved in [`2026-11-05-session-dock-canvas/`](2026-11-05-session-dock-canvas/README.md).
 Where a board and this document disagree, **this document wins**; the boards' numbers are illustrative.
