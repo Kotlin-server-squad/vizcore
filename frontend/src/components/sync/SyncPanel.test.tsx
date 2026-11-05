@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { SyncPanel } from './SyncPanel'
@@ -239,5 +240,56 @@ describe('WaitQueueList', () => {
     expect(screen.getAllByTestId('wait-queue-entry')).toHaveLength(2)
     expect(screen.getByText('First')).toBeInTheDocument()
     expect(screen.getByText('Second')).toBeInTheDocument()
+  })
+})
+
+describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
+  const lockEvents = [
+    makeSyncEvent('MutexCreated', 1, { mutexId: 'm-1', mutexLabel: 'inventory-lock', ownerCoroutineId: null }),
+    makeSyncEvent('MutexLockAcquired', 2, { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'c-1', acquirerLabel: 'order-1', waitDurationNanos: 0 }),
+    makeSyncEvent('MutexQueueChanged', 3, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-2'], waitingLabels: ['order-2'] }),
+  ]
+  const permitEvents = [
+    makeSyncEvent('SemaphoreCreated', 4, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
+    makeSyncEvent('SemaphoreStateChanged', 5, {
+      semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', availablePermits: 0, totalPermits: 3,
+      activeHolders: ['c-3'], activeHolderLabels: ['order-3'], activeHolderPermits: [2], unknownHolderPermits: 1,
+      waitingCoroutines: [], waitingLabels: [],
+    }),
+  ]
+
+  beforeEach(() => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+  })
+
+  it('reads the events it is given, so it follows the live stream', () => {
+    render(<SyncPanel sessionId="session-1" events={lockEvents} />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('mutex-state')).toHaveTextContent('order-1')
+  })
+
+  it('lists a semaphore\'s holders with their permits, and permits whose holder is unknown', () => {
+    render(<SyncPanel sessionId="session-1" events={permitEvents} />, { wrapper: createWrapper() })
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('order-3 (2 permits)')
+    expect(held).toHaveTextContent('1 permit, holder unknown')
+  })
+
+  it('selects a holder or a waiter by name', async () => {
+    const onSelectCoroutine = vi.fn()
+    render(<SyncPanel sessionId="session-1" events={lockEvents} onSelectCoroutine={onSelectCoroutine} />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'order-1' }))
+    await userEvent.click(screen.getByRole('button', { name: 'order-2' }))
+    expect(onSelectCoroutine.mock.calls).toEqual([['c-1'], ['c-2']])
+  })
+
+  it('marks the selected coroutine and rings the selected resource', () => {
+    render(
+      <SyncPanel sessionId="session-1" events={[...lockEvents, ...permitEvents]} selectedCoroutineId="c-1" selectedResourceId="sem-1" onSelectCoroutine={vi.fn()} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByRole('button', { name: 'order-1' })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: 'order-2' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByTestId('resource-sem-1')).toHaveAttribute('data-selected', 'true')
+    expect(screen.getByTestId('resource-m-1')).toHaveAttribute('data-selected', 'false')
   })
 })
