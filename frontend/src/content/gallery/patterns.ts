@@ -234,7 +234,7 @@ launch {                                          // checkout
       },
       {
         title: 'Half-open: one trial',
-        text: 'After 14 s the breaker is half-open. It lets the next order through as a trial: order 6, at 14.5 s, calls the provider again.',
+        text: 'After 14 s the breaker is half-open. It lets the next order through as a trial: order 6, at 14.5 s, calls the provider again. Only one call is a trial here because the checkout waits for each order before the next (join()). This simple breaker would let every caller through while half-open; with callers at the same time, a real breaker lets one trial through and keeps the others waiting or rejected until it ends.',
       },
       {
         title: 'The trial succeeds: closed',

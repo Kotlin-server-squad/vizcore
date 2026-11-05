@@ -40,7 +40,9 @@ import kotlin.time.Duration.Companion.seconds
  * and the circuit breaker's whole run.
  *
  * The demos run here at [SCALE] of their scripted speed (`scenarios.timeScale`); every time below
- * is scaled back up to scripted time.
+ * is scaled back up to scripted time. The Circuit Breaker's story depends on a clock (when the
+ * breaker half-opens, when the provider is back), so [CircuitBreakerStoryTest] checks it on
+ * virtual time; here it gets only the pacing checks.
  */
 class PatternsDemoPacingTest {
     private class Run(
@@ -49,7 +51,6 @@ class PatternsDemoPacingTest {
         private val start = events.minOf { it.tsNanos }
         private val coroutines = events.filterIsInstance<CoroutineCreated>()
         private val idOf = coroutines.associate { it.label to it.coroutineId }
-        private val labelOf = coroutines.associate { it.coroutineId to it.label }
 
         val labels: Set<String> = coroutines.mapNotNull { it.label }.toSet()
 
@@ -71,9 +72,6 @@ class PatternsDemoPacingTest {
         fun completed(label: String) = of<CoroutineCompleted>(label) != null
 
         fun failed(label: String) = of<CoroutineFailed>(label) != null
-
-        fun childrenOf(label: String): List<String> =
-            coroutines.filter { it.parentCoroutineId != null && labelOf[it.parentCoroutineId] == label }.mapNotNull { it.label }
 
         private fun id(label: String) = assertNotNull(idOf[label], "no coroutine $label")
 
@@ -185,8 +183,9 @@ class PatternsDemoPacingTest {
         assertTrue(largest <= times.size / 2, "$id shows $largest of its ${times.size} events at one moment")
     }
 
+    /** The Circuit Breaker's story hangs on a clock, so [CircuitBreakerStoryTest] checks its names on virtual time. */
     @ParameterizedTest(name = "{0}")
-    @MethodSource("patternIds")
+    @MethodSource("clockFreeIds")
     fun `the coroutines of a Patterns demo are named after its story`(id: String) {
         assertEquals(storyLabels.getValue(id), run(id).labels)
     }
@@ -256,47 +255,6 @@ class PatternsDemoPacingTest {
         assertTrue(run.completed("nightly-backup"), "a supervisor does not fail with its child")
     }
 
-    @Test
-    fun `the breaker opens after three failures, rejects orders, then lets one trial through and closes`() {
-        val run = run("patterns/circuit-breaker")
-
-        for (n in 1..3) {
-            assertEquals(listOf("charge-$n"), run.childrenOf("order-$n"), "order-$n calls the provider")
-            assertTrue(run.failed("charge-$n") && run.failed("order-$n"), "order-$n fails: the provider is down")
-        }
-        for (n in 4..5) {
-            assertTrue(run.failed("order-$n"), "order-$n is rejected")
-            assertEquals(emptyList(), run.childrenOf("order-$n"), "a rejected order does not call the provider")
-            // "At once" next to a charge's 1.5 s; broad, since at test scale 1 s is 100 ms of real time.
-            assertTrue(run.endedAt("order-$n") - run.startedAt("order-$n") < 1_000, "a rejected order fails at once")
-        }
-        assertTrue(
-            run.startedAt("order-6") - run.endedAt("charge-3") >= PatternScenarios.BREAKER_OPEN_MILLIS,
-            "the trial order comes after the cooldown",
-        )
-        for (n in 6..8) {
-            assertEquals(listOf("charge-$n"), run.childrenOf("order-$n"), "order-$n calls the provider")
-            assertTrue(run.completed("charge-$n") && run.completed("order-$n"), "order-$n is paid: the provider is back")
-        }
-        assertTrue(run.completed("checkout"), "the failed orders do not stop the checkout")
-    }
-
-    /**
-     * A delay never ends early, so the threads can only make an order later than scripted: order 6
-     * (three gaps after the breaker opens) is always past the cooldown, and only order 5 (two gaps)
-     * could slip into it. Checked on the script, not on a run, so it holds however slow a run is;
-     * the scripted room is what keeps a slow run's order 5 rejected.
-     */
-    @Test
-    fun `the breaker's cooldown leaves order 5 at least 1,5 s of room and ends before order 6`() {
-        val open = PatternScenarios.BREAKER_OPEN_MILLIS
-        val gap = PatternScenarios.ORDER_GAP_MILLIS
-
-        val room = open - 2 * gap
-        assertTrue(room >= 1_500, "order 5 comes ${2 * gap} ms after the breaker opens, only $room ms before it half-opens")
-        assertTrue(3 * gap >= open, "order 6 comes ${3 * gap} ms after the breaker opens, before it half-opens at $open ms")
-    }
-
     companion object {
         /** Well below 1 so the five demos take seconds here, well above 0 so their moments stay apart. */
         private const val SCALE = 0.1
@@ -309,11 +267,13 @@ class PatternsDemoPacingTest {
                 "patterns/producer-consumer" to setOf("coffee-bar", "cashier", "barista"),
                 "patterns/fan-out-fan-in" to setOf("make-album", "pick-photos", "resizer-1", "resizer-2", "resizer-3", "album"),
                 "patterns/supervisor" to setOf("nightly-backup", "backup-photos", "backup-contacts", "backup-messages", "send-report"),
-                "patterns/circuit-breaker" to
-                    setOf("checkout") + (1..8).map { "order-$it" } + listOf(1, 2, 3, 6, 7, 8).map { "charge-$it" },
             )
 
         @JvmStatic
-        fun patternIds(): List<String> = storyLabels.keys.toList()
+        fun clockFreeIds(): List<String> = storyLabels.keys.toList()
+
+        /** Every Patterns demo: the pacing checks hold for the Circuit Breaker too, however its run goes. */
+        @JvmStatic
+        fun patternIds(): List<String> = storyLabels.keys.toList() + "patterns/circuit-breaker"
     }
 }

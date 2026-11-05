@@ -9,6 +9,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.supervisorScope
 import org.slf4j.LoggerFactory
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * The Patterns demos: common ways to combine coroutines, told as everyday work. Like the Basics
@@ -225,18 +227,29 @@ object PatternScenarios {
      *
      * Orders 1-3 fail; after the third failure in a row (8.5 s) the breaker opens for 5.5 s. Orders
      * 4 (10.5 s) and 5 (12.5 s) are rejected at once, without calling the provider. From 14 s the
-     * breaker is half-open: it lets the next order, 6 at 14.5 s, through as a trial. The provider is back, the trial
-     * succeeds and the breaker closes; orders 7 and 8 are paid too, the last at about 21.5 s. Each
-     * order runs under `supervisorScope`, so a failed order does not stop the checkout.
+     * breaker is half-open: it lets the next order, 6 at 14.5 s, through as a trial. The provider
+     * is back, the trial succeeds and the breaker closes; orders 7 and 8 are paid too, the last at
+     * about 21.5 s. Each order runs under `supervisorScope`, so a failed order does not stop the
+     * checkout.
+     *
+     * The provider's recovery and the breaker's cooldown read [clockNanos]. A test passes a virtual
+     * clock with its test dispatcher in [context], so steps, recovery and cooldown share one clock
+     * and the story is exact; on real time a very slow scheduler could still bring order 5 after
+     * the cooldown.
      */
-    suspend fun runCircuitBreaker(session: VizSession): Job =
+    suspend fun runCircuitBreaker(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+        clockNanos: () -> Long = System::nanoTime,
+    ): Job =
         coroutineScope {
             logger.info("Starting circuit breaker scenario in session: ${session.sessionId}")
 
-            val viz = session.demoScope()
-            val start = System.nanoTime()
+            val viz = session.demoScope(context)
+            val start = clockNanos()
             val providerBackAt = start + viz.scaled(12_000) * NANOS_PER_MILLI
-            val breaker = CircuitBreaker(failureThreshold = 3, openNanos = viz.scaled(BREAKER_OPEN_MILLIS) * NANOS_PER_MILLI)
+            val breaker =
+                CircuitBreaker(failureThreshold = 3, openNanos = viz.scaled(BREAKER_OPEN_MILLIS) * NANOS_PER_MILLI, clock = clockNanos)
 
             viz.vizLaunch("checkout") {
                 supervisorScope {
@@ -245,7 +258,7 @@ object PatternScenarios {
                             breaker.call {
                                 coroutineScope {
                                     vizLaunch("charge-$order") {
-                                        if (System.nanoTime() < providerBackAt) {
+                                        if (clockNanos() < providerBackAt) {
                                             pause(1500) // no answer for a while
                                             throw HttpError(503, "the payment provider is down").intendedByDemo()
                                         }
@@ -268,14 +281,13 @@ object PatternScenarios {
     private const val NANOS_PER_MILLI = 1_000_000L
 
     /** How long after one order of the Circuit Breaker demo is done the next customer pays, in scripted milliseconds. */
-    internal const val ORDER_GAP_MILLIS = 2_000L
+    private const val ORDER_GAP_MILLIS = 2_000L
 
     /**
      * How long the Circuit Breaker demo's breaker stays open, in scripted milliseconds: order 5 comes
-     * 4 s after it opens and order 6 comes 6 s after. Threads can only make an order later, never
-     * earlier, so order 6 is safely past this; order 5 has 1.5 s of room before it.
+     * 4 s after it opens and order 6 comes 6 s after, so a live run has room either side.
      */
-    internal const val BREAKER_OPEN_MILLIS = 5_500L
+    private const val BREAKER_OPEN_MILLIS = 5_500L
 }
 
 /** A circuit breaker's answer while it is open: the call is not made at all. */

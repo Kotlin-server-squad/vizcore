@@ -45,6 +45,7 @@ Failures are marked as intended (`intendedByDemo()`), so where one reaches `demo
 - **The picture rule, enforced:** `GuideLabelsTest` now also tracks channel sends and receives. A picture only matches while no pictured coroutine is inside one; a coroutine that has ended counts as waiting for nothing. The two Channels pictures that show such a wait on purpose (`channel-rendezvous`, `channel-buffered`) are listed as exceptions. The new check was seen failing on exactly those two before they were listed.
 - **Logging:** the retry's caught failures never reach `demoFailureHandler`; the retry loop logs them at debug. Only the supervised failures (a backup, an order) reach the handler, and it logs them in one line.
 - **Breaker open for 5.5 s, not 5 s (Codex round 1):** at 5 s order 5 came only 1 s (100 ms real at test scale) before the breaker half-opened. A delay never ends early, so the threads can only make an order later: order 6 (6 s after the opening) is always past the cooldown, and only order 5 needs room. At 5.5 s it has 1.5 s, and a test checks that room on the script, at least 1.5 s (seen failing at 5 s). A first version measured it on the run, which left only 30 ms of real slack at test scale (Codex round 2).
+- **The breaker's story on virtual time (Codex pre-merge review):** the scripted 1.5 s of room still meant 150 ms of real time at test scale, so a slow CI scheduler could bring order 5 after the cooldown. `runCircuitBreaker` now takes a coroutine context and a clock. `CircuitBreakerStoryTest` runs it on `runTest` with a `StandardTestDispatcher`, and the steps, the provider's recovery and the breaker's cooldown all read the virtual clock. It checks the exact story: which orders call the provider, that orders 4 and 5 fail without a step, and 21.5 s in total. It was seen failing with a 4 s cooldown and passed 10 runs in a row. `PatternsDemoPacingTest` keeps only the pacing checks for this demo on real time. The guide now says that only one call is a trial because the checkout waits for each order; with callers at the same time this simple breaker would let all of them through.
 - **The gallery tests:** `GalleryPage.test.tsx` and `HowItWorksPage.test.tsx` used Patterns as their "no guide yet" example. They now use Sync: Mutex, and the "links every card" test also covers Channels and Patterns.
 
 ---
@@ -159,12 +160,12 @@ checkout                       supervisorScope: order-1 … order-8, one at a ti
 ```
 
 - The breaker's 5.5 s and the provider's 12 s are measured with `System.nanoTime()` and scaled with `scaled()`, so they keep the demo's pace.
-- A delay never ends early, so the threads can only make an order later. Order 5 comes 4 s after the breaker opens, 1.5 s before it half-opens; order 6 comes 6 s after, always past it. A test checks that room on the script (`ORDER_GAP_MILLIS`, `BREAKER_OPEN_MILLIS`).
+- Order 5 comes 4 s after the breaker opens, 1.5 s before it half-opens; order 6 comes 6 s after. The exact story is checked on virtual time (`CircuitBreakerStoryTest`), so a slow scheduler cannot change it in a test.
 - **Labels:** `checkout`, `order-1` … `order-8`, `charge-1` … `charge-3`, `charge-6` … `charge-8`.
 - **Behaviour test:**
   - orders 1–3 and their charges failed;
   - orders 4 and 5 failed within 1 s of starting, with no charge;
-  - order 6 started at least 5.5 s after `charge-3` failed; on the script, order 5 has at least 1.5 s of room before the breaker half-opens;
+  - on virtual time (`CircuitBreakerStoryTest`): order 6 is the trial after the 5.5 s cooldown, and the whole story takes 21.5 s;
   - orders 6–8 and their charges completed;
   - the root completed.
 
