@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz
 import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.UserStore
 import com.jh.proj.coroutineviz.routes.CorrelationRegistry
+import com.jh.proj.coroutineviz.routes.IngestStates
 import com.jh.proj.coroutineviz.routes.registerAuthRoutes
 import com.jh.proj.coroutineviz.routes.registerComparisonRoutes
 import com.jh.proj.coroutineviz.routes.registerFlowScenarioRoutes
@@ -36,6 +37,8 @@ fun Application.configureRouting() {
     // clobber"). Fires in BOTH the backing-store and in-memory delete branches, so eviction is
     // uniform across persistence modes. No TTL: the map is bounded purely by live-session lifecycle.
     SessionManager.addOnSessionClosed { sessionId -> CorrelationRegistry.evict(sessionId) }
+    // A deleted session's ingest state (watermark, transport) goes with it.
+    SessionManager.addOnSessionClosed { sessionId -> IngestStates.forget(sessionId) }
 
     // Stores built by configureAuth() (runs first in module()); reused for the token endpoint.
     val userStore = attributes.getOrNull(UserStoreKey) ?: UserStore(emptyList())
