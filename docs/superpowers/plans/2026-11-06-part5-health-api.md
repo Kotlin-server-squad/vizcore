@@ -1257,21 +1257,22 @@ object IngestStates {
 
     internal fun clear() = states.clear()
 
-    private fun markUncertain(connection: Connection) {
-        val state = connection.state
-        synchronized(state) {
-            val t = state.transport
-            state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
-        }
-    }
-
     private fun stateOf(sessionId: String): State = states.computeIfAbsent(sessionId) { State() }
-
-    private fun earliest(
-        current: Long?,
-        candidate: Long,
-    ): Long = minOf(current ?: Long.MAX_VALUE, candidate)
 }
+
+/** Delivery is uncertain from [connection]'s first seq on; sticky, like every transport fact. */
+private fun markUncertain(connection: IngestStates.Connection) {
+    val state = connection.state
+    synchronized(state) {
+        val t = state.transport
+        state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
+    }
+}
+
+private fun earliest(
+    current: Long?,
+    candidate: Long,
+): Long = minOf(current ?: Long.MAX_VALUE, candidate)
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -2411,7 +2412,9 @@ internal fun transportOf(
     lastSeq: Long,
 ): TransportStatus {
     val unwatched =
-        !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && lastSeq > 0 &&
+        !summariesSeeEveryEvent() &&
+            kind == SessionKind.ATTACHED &&
+            lastSeq > 0 &&
             (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
     return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
 }
@@ -2473,8 +2476,7 @@ internal class RetainedTransitions(
         val index = HashMap<String, MutableList<Transition>>()
         for (event in events) {
             if (event.seq > upToSeq || event !is CoroutineEvent) continue
-            val transition = Transitions.of(event) ?: continue
-            index.getOrPut(event.coroutineId) { mutableListOf() } += transition
+            Transitions.of(event)?.let { index.getOrPut(event.coroutineId) { mutableListOf() }.add(it) }
         }
         index
     }
@@ -3038,31 +3040,26 @@ Claude-Session: https://claude.ai/code/session_01W1v63uErFTcSoWqE152KLG"
 
 - [ ] **Step 2: `openapi.json`**
 
-Regenerate it from the YAML so the two cannot drift. First check that the conversion reproduces today's file:
-
-```bash
-python3 - <<'EOF'
-import json, yaml, subprocess
-old = subprocess.run(["git","show","HEAD~0:shared/api-types/openapi.json"],capture_output=True,text=True,cwd="..").stdout
-src = subprocess.run(["git","show","origin/main:backend/src/main/resources/openapi/documentation.yaml"],capture_output=True,text=True,cwd="..").stdout
-print(json.loads(old) == yaml.safe_load(src))
-EOF
-```
-
-(run from `backend/`). If it prints `True`, write the new file with
-`python3 -c 'import json,yaml,sys; json.dump(yaml.safe_load(open("src/main/resources/openapi/documentation.yaml")), open("../shared/api-types/openapi.json","w"), indent=2, ensure_ascii=False); open("../shared/api-types/openapi.json","a").write("\n")'`
-and check `git diff --stat ../shared/api-types/openapi.json` touches only the new parts (key order and indentation must
-match the existing file; if the diff rewrites unrelated lines, instead hand-edit `openapi.json` with exactly the
-additions of Step 1). If it prints `False`, hand-edit `openapi.json` with the additions of Step 1.
+`shared/api-types/openapi.json` is a curated subset of the API (the frontend's contract), not a conversion of
+`documentation.yaml` (checked: different paths and schemas). So both get the same additions from one script, which
+defines the schemas once as data and writes them into the JSON (`json.dump(indent=2)` reproduces today's file byte for
+byte, so only the additions show in the diff) and, as text, into the YAML (keeping its hand-written style elsewhere):
+`python3 $SCRATCH/part5/openapi_health.py` from the worktree root. Check `yaml.safe_load` still parses the YAML and
+`git diff --stat` shows only additions plus the extended `SessionSnapshotResponse.required` line.
 
 - [ ] **Step 3: `generated.ts`**
 
+First prove the generator reproduces today's file from today's `openapi.json`, then regenerate:
+
 ```bash
+git -C .. show origin/main:shared/api-types/openapi.json > "$SCRATCH/part5/openapi.main.json"
+npx --yes openapi-typescript@7 "$SCRATCH/part5/openapi.main.json" -o "$SCRATCH/part5/generated.main.ts"
+diff -q ../shared/api-types/generated.ts "$SCRATCH/part5/generated.main.ts" && echo REPRODUCES
 cd ../shared/api-types && npx --yes openapi-typescript@7 openapi.json -o generated.ts && cd ../../backend
-git -C .. diff --stat shared/api-types/generated.ts
 ```
 
-Expected: only additions for the new path and schemas, plus the new `SessionSnapshotResponse` fields.
+Expected: `REPRODUCES`, then only additions in `generated.ts` (the health path, its schemas, the new
+`SessionSnapshotResponse` fields).
 
 - [ ] **Step 4: `docs/guides/API_REFERENCE.md`**
 
@@ -3073,7 +3070,7 @@ fields, and the SSE `watermark` frame.
 - [ ] **Step 5: Type-check and commit**
 
 ```bash
-cd ../frontend && pnpm exec tsc --noEmit -p . && cd ../backend
+cd ../frontend && pnpm install --frozen-lockfile --prefer-offline && pnpm exec tsc --noEmit -p . && cd ../backend
 git -C .. add backend/src/main/resources/openapi/documentation.yaml shared/api-types docs/guides/API_REFERENCE.md
 git -C .. commit -m "docs(api): the health endpoint, the new session fields and the watermark frame
 
