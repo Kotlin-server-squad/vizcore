@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.events.PollWatermark
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
@@ -81,6 +82,13 @@ internal object HealthEvents {
         at: Long,
         parent: String? = null,
     ) = CoroutineCompleted(sessionId, 0, at, id, "job-$id", parent, "scope", id)
+
+    fun cancelled(
+        sessionId: String,
+        id: String,
+        at: Long,
+        parent: String? = null,
+    ) = CoroutineCancelled(sessionId, 0, at, id, "job-$id", parent, "scope", id, cause = null)
 
     fun failed(
         sessionId: String,

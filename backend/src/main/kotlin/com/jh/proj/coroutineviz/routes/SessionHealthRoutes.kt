@@ -17,6 +17,10 @@ fun Route.registerSessionHealthRoutes() {
     get("/api/sessions/{id}/rounds") {
         call.withSessionView { view -> call.respond(HttpStatusCode.OK, listRounds(view, call.request.queryParameters)) }
     }
+    // GET /api/sessions/{id}/health/items (spec C-3): the health's lists past their first 50.
+    get("/api/sessions/{id}/health/items") {
+        call.withSessionView { view -> call.respondHealthItems(view) }
+    }
 
     get("/api/sessions/{id}/health") {
         val sessionId =
