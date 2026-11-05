@@ -138,6 +138,26 @@ class IngestWatermarkTest {
         }
 
     @Test
+    fun `a binary data frame makes delivery uncertain, even before a final watermark`() =
+        testApplication {
+            application { module() }
+            val client = wsClient()
+            val sessionId = client.createSessionNamed("wm-binary")
+
+            client.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(HealthEvents.created(sessionId, "c1", at = sec(1)).frameText()))
+                send(Frame.Binary(true, HealthEvents.failed(sessionId, "c1", at = sec(2)).frameText().toByteArray()))
+                send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(3), final = true).frameText()))
+                eventually { IngestStates.snapshot(sessionId).watermark != null }
+            }
+            eventually { !IngestConnections.isConnected(sessionId) }
+
+            val transport = IngestStates.snapshot(sessionId).transport
+            assertTrue(transport.deliveryUncertain, "the binary frame was not read")
+            assertEquals(1L, transport.sinceSeq)
+        }
+
+    @Test
     fun `origin and provenance arrive with the events`() =
         testApplication {
             application { module() }

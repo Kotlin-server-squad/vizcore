@@ -29,8 +29,9 @@ data class AsOf(
     val receivedEpochMs: Long? = null,
     val seq: Long,
     /**
-     * A replay cursor inside trimmed history: only what the durable summaries keep (creations and terminals) is known
-     * there, so [appNanos] is the latest time known at or before the cursor, a lower bound of the cursor's own time.
+     * A replay of trimmed history: [appNanos] is the latest time known at or before the cursor, a lower bound. Inside the
+     * trimmed range only what the durable summaries keep (creations and terminals) is known, and appends are not in
+     * app-time order, so a trimmed event may be later in app time than every retained one.
      */
     val lowerBound: Boolean = false,
 )

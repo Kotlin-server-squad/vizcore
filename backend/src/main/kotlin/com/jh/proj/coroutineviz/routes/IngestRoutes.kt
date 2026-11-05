@@ -104,8 +104,11 @@ fun Route.registerIngestRoutes() {
                 // Frames already queued when the session was deleted must not land in it;
                 // the watcher above is closing the socket.
                 if (removed.get()) break
-                if (frame is Frame.Text) {
-                    publishFrame(session, connection, frame.readText())
+                when (frame) {
+                    is Frame.Text -> publishFrame(session, connection, frame.readText())
+                    // Events travel as text; a binary data frame is not read, and may have been one.
+                    is Frame.Binary -> IngestStates.frameSkipped(connection)
+                    else -> Unit
                 }
             }
         } finally {

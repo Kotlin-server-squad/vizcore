@@ -118,8 +118,9 @@ object SessionHealthDerivation {
         val lastNanos = view.latestEventAppNanos
         val mode = input.mode
         if (mode is HealthMode.Replay) {
-            val inTrimmed = input.retention?.let { it.trimmed && mode.atSeq < (it.oldestRetainedSeq ?: Long.MAX_VALUE) } == true
-            return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq, lowerBound = inTrimmed) }
+            // Appends are not in app-time order, so once events were trimmed no cursor's latest time is known for sure.
+            val trimmed = input.retention?.trimmed == true
+            return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq, lowerBound = trimmed) }
         }
         val watermark = input.watermark
         return when {
