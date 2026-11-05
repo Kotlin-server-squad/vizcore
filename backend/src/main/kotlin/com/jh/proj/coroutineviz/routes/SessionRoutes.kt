@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.health.SessionKind
+import com.jh.proj.coroutineviz.health.WatermarkObservation
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
@@ -25,6 +26,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
@@ -383,6 +385,7 @@ fun Route.registerSessionRoutes() {
                                 config = call.application.egressConfig(),
                                 heartbeatMillis = call.application.sseHeartbeatSeconds() * SECOND_MILLIS,
                                 onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
+                                watermarks = IngestStates.watermarks(sessionId),
                             ).collect { frame -> send(frame) }
                         }
                     // Without this the stream would keep sending heartbeats into a session that
@@ -479,12 +482,18 @@ internal fun snapshotResponseOf(
  * heartbeat could interleave with a frame mid-write. Replay and live frames come from one
  * producer, so the heartbeats are the only other writer on [out] and their presence changes
  * neither replay order nor the exactly-once watermark.
+ *
+ * The app's poll [watermarks] become `event: watermark` frames (spec 2026-10-21, C-3), merged the
+ * same way. They carry no id, so `Last-Event-ID` and the replay watermark above are unaffected; the
+ * page treats them as a signal to refetch health, which the backend derives from events it already
+ * applied, so their position among the event frames does not matter.
  */
 internal fun sessionSseFrames(
     session: VizSession,
     config: EgressConfig,
     heartbeatMillis: Long = DEFAULT_SSE_HEARTBEAT_SECONDS * SECOND_MILLIS,
     onShedDelta: (Long) -> Unit = {},
+    watermarks: Flow<WatermarkObservation> = emptyFlow(),
 ): Flow<ServerSentEvent> =
     flow {
         coroutineScope {
@@ -519,6 +528,7 @@ internal fun sessionSseFrames(
                                     out.send(heartbeatFrame())
                                 }
                             }
+                        val watermarkFrames = launch { watermarks.collect { out.send(it.toSse()) } }
                         subscribed.await()
                         val storedEvents = session.store.all()
                         watermark.complete(storedEvents.maxOfOrNull { it.seq } ?: 0L)
@@ -533,9 +543,10 @@ internal fun sessionSseFrames(
                         for (frame in liveFrames) {
                             out.send(frame)
                         }
-                        // Stop the only other writer and let this scope join it, so `out` is
+                        // Stop the other writers and let this scope join them, so `out` is
                         // closed below with no send in flight.
                         heartbeats.cancel()
+                        watermarkFrames.cancel()
                     }
                 } finally {
                     out.close()
@@ -547,6 +558,9 @@ internal fun sessionSseFrames(
             }
         }
     }
+
+internal fun WatermarkObservation.toSse(): ServerSentEvent =
+    ServerSentEvent(data = appJson.encodeToString(WatermarkObservation.serializer(), this), event = "watermark")
 
 internal fun VizEvent.toSse(): ServerSentEvent =
     ServerSentEvent(
