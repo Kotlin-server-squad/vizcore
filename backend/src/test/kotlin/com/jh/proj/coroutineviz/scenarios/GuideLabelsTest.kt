@@ -14,6 +14,7 @@ import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -26,6 +27,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -54,8 +56,8 @@ class GuideLabelsTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("picturedDemos")
     fun `a guide pictures the tree of a real moment of its demo, at about the time it names`(demoId: String) {
-        val events = run(demoId).sortedBy { it.seq }
-        val start = events.minOf { it.tsNanos }
+        val timeline = timeline(demoId)
+        val events = timeline.map { it.first }
         val picture = pictured(demoId)
         val at = atSeconds(demoId)
 
@@ -66,9 +68,9 @@ class GuideLabelsTest {
         var matchingSince: Double? = null
         events.forEachIndexed { i, event ->
             apply(event, created, tree)
-            val now = scripted(event.tsNanos - start)
+            val now = timeline[i].second
             // The tree after the last event stays on screen.
-            val next = events.getOrNull(i + 1)?.let { scripted(it.tsNanos - start) } ?: Double.POSITIVE_INFINITY
+            val next = timeline.getOrNull(i + 1)?.second ?: Double.POSITIVE_INFINITY
             if (tree == picture) {
                 if (matchingSince == null) matchingSince = now
                 if (next > now) {
@@ -83,7 +85,7 @@ class GuideLabelsTest {
 
         assertTrue(
             windows.isNotEmpty(),
-            "$demoId: the tree never shows the picture for a moment; at $at s it is ${treeAt(events, start, at)}",
+            "$demoId: the tree never shows the picture for a moment; at $at s it is ${treeAt(timeline, at)}",
         )
         assertTrue(
             windows.any { at in (it.start - TOLERANCE_SECONDS)..(it.endInclusive + TOLERANCE_SECONDS) },
@@ -95,15 +97,44 @@ class GuideLabelsTest {
 
     /** The tree after every event up to [at] scripted seconds, for the failure message. */
     private fun treeAt(
-        events: List<VizEvent>,
-        start: Long,
+        timeline: List<Pair<VizEvent, Double>>,
         at: Double,
     ): Map<String, Row> {
-        val created = events.filterIsInstance<CoroutineCreated>().associateBy { it.coroutineId }
+        val created = timeline.map { it.first }.filterIsInstance<CoroutineCreated>().associateBy { it.coroutineId }
         val tree = mutableMapOf<String, Row>()
-        events.filter { scripted(it.tsNanos - start) <= at }.forEach { apply(it, created, tree) }
+        timeline.filter { it.second <= at }.forEach { apply(it.first, created, tree) }
         return tree
     }
+
+    /**
+     * The demo's events in order, each with the scripted second it was sent at. A demo whose picture
+     * depends on which coroutine gets a lock first runs on virtual time, where that order is exact;
+     * the others run on real time at [SCALE].
+     */
+    private fun timeline(demoId: String): List<Pair<VizEvent, Double>> {
+        if (demoId in VIRTUAL_TIME_DEMOS) {
+            var run: VirtualDemoRun? = null
+            runTest { run = runOnVirtualTime("guide-$demoId") { session, context -> startOnVirtualTime(demoId, session, context) } }
+            val done = assertNotNull(run)
+            return done.events.map { it to done.at(it) / 1000.0 }
+        }
+        val events = run(demoId).sortedBy { it.seq }
+        val start = events.minOf { it.tsNanos }
+        return events.map { it to scripted(it.tsNanos - start) }
+    }
+
+    private suspend fun startOnVirtualTime(
+        demoId: String,
+        session: VizSession,
+        context: CoroutineContext,
+    ): Job =
+        when (demoId) {
+            "sync/mutex/counter" -> SyncScenarios.runCounter(session, context)
+            "sync/mutex/bank-transfer" -> SyncScenarios.runBankTransfer(session, context)
+            "sync/mutex/cache" -> SyncScenarios.runCache(session, context)
+            "sync/mutex/deadlock-demo" -> SyncScenarios.runDeadlock(session, context)
+            else -> error("$demoId does not run on virtual time")
+        }
 
     /** Applies one event to [tree] (label to depth and state), as the session view would show it. */
     private fun apply(
@@ -182,22 +213,14 @@ class GuideLabelsTest {
             "patterns/fan-out-fan-in" -> PatternScenarios.runFanOutFanIn(session)
             "patterns/supervisor" -> PatternScenarios.runSupervisor(session)
             "patterns/circuit-breaker" -> PatternScenarios.runCircuitBreaker(session)
-            else -> startSync(demoId, session)
-        }
-
-    private suspend fun startSync(
-        demoId: String,
-        session: VizSession,
-    ): Job =
-        when (demoId) {
-            "sync/mutex/counter" -> SyncScenarios.runCounter(session)
-            "sync/mutex/bank-transfer" -> SyncScenarios.runBankTransfer(session)
-            "sync/mutex/cache" -> SyncScenarios.runCache(session)
-            "sync/mutex/deadlock-demo" -> SyncScenarios.runDeadlock(session)
             else -> error("will-see.json pictures '$demoId'; add it to GuideLabelsTest.start")
         }
 
     companion object {
+        /** The demos whose picture is checked on virtual time: who gets a lock first decides their tree. */
+        private val VIRTUAL_TIME_DEMOS =
+            setOf("sync/mutex/counter", "sync/mutex/bank-transfer", "sync/mutex/cache", "sync/mutex/deadlock-demo")
+
         /** A tenth of scripted speed: each demo takes 1-2 s here. */
         private const val SCALE = 0.1
 

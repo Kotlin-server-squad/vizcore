@@ -10,15 +10,18 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.roundToLong
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -32,9 +35,11 @@ import kotlin.time.Duration.Companion.seconds
  * within one to four seconds.
  *
  * The demos run here on real time at [SCALE] of their scripted speed (`scenarios.timeScale`); every
- * time below is scaled back up to scripted time. Who waits for a lock and in which order depends
- * on when each coroutine asks, so [MutexStoriesTest] checks the exact stories on virtual time.
- * Here each demo gets only outcomes that hold in any order.
+ * time below is scaled back up to scripted time. A slow scheduler can stretch a real-time run, and
+ * who waits for a lock depends on when each coroutine asks, so what must be exact runs on virtual
+ * time: the length and moments of each demo here, the stories in [MutexStoriesTest]. On real time
+ * each demo gets only what holds however the threads run: at least 10 s, its steps, its names, and
+ * outcomes that hold in any order.
  */
 class MutexDemoPacingTest {
     private class Run(
@@ -66,8 +71,8 @@ class MutexDemoPacingTest {
         session: VizSession,
     ): Job =
         when (id) {
-            "sync/mutex/counter" -> SyncScenarios.runCounter(session) { counted[id] = it }
-            "sync/mutex/bank-transfer" -> SyncScenarios.runBankTransfer(session) { anna, ben -> balances[id] = anna to ben }
+            "sync/mutex/counter" -> SyncScenarios.runCounter(session) { counted.complete(it) }
+            "sync/mutex/bank-transfer" -> SyncScenarios.runBankTransfer(session) { anna, ben -> balances.complete(anna to ben) }
             "sync/mutex/cache" -> SyncScenarios.runCache(session)
             "sync/mutex/deadlock-demo" -> SyncScenarios.runDeadlock(session)
             else -> error("not a Sync: Mutex demo: $id")
@@ -94,14 +99,45 @@ class MutexDemoPacingTest {
             }
         }
 
+    /** The demo once more on virtual time, for what must be exact: its length and its moments. */
+    private fun virtual(id: String): VirtualDemoRun =
+        virtualRuns.getOrPut(id) {
+            var run: VirtualDemoRun? = null
+            runTest { run = runOnVirtualTime("virtual-${id.replace('/', '-')}") { session, context -> startVirtual(id, session, context) } }
+            assertNotNull(run)
+        }
+
+    private suspend fun startVirtual(
+        id: String,
+        session: VizSession,
+        context: CoroutineContext,
+    ): Job =
+        when (id) {
+            "sync/mutex/counter" -> SyncScenarios.runCounter(session, context)
+            "sync/mutex/bank-transfer" -> SyncScenarios.runBankTransfer(session, context)
+            "sync/mutex/cache" -> SyncScenarios.runCache(session, context)
+            "sync/mutex/deadlock-demo" -> SyncScenarios.runDeadlock(session, context)
+            else -> error("not a Sync: Mutex demo: $id")
+        }
+
     private fun VizEvent.isTerminal() = this is CoroutineCompleted || this is CoroutineCancelled || this is CoroutineFailed
 
+    /** Exactly, on virtual time: on real time a slow scheduler only makes a run longer. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("mutexIds")
     fun `each Sync Mutex demo runs for 10 to 30 seconds`(id: String) {
+        val run = virtual(id)
+
+        assertTrue(run.scriptedMillis in 10_000..30_000, "$id runs for ${run.scriptedMillis} ms")
+    }
+
+    /** A delay never ends early, so on real time too each demo takes at least its scripted 10 s. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("mutexIds")
+    fun `each Sync Mutex demo takes at least 10 seconds on real time too`(id: String) {
         val run = run(id)
 
-        assertTrue(run.durationMillis in 10_000.0..30_000.0, "$id runs for ${run.durationMillis.roundToLong()} ms")
+        assertTrue(run.durationMillis >= 10_000.0, "$id runs for ${run.durationMillis.roundToLong()} ms")
     }
 
     @ParameterizedTest(name = "{0}")
@@ -120,16 +156,17 @@ class MutexDemoPacingTest {
 
     /**
      * Events less than 0.2 s of scripted time apart belong to one moment. A demo the user can
-     * follow has many such moments, and no single burst carries most of what it shows.
+     * follow has many such moments, and no single burst carries most of what it shows. Checked on
+     * virtual time, where the moments are exactly as scripted.
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("mutexIds")
     fun `a Sync Mutex demo shows its work at many separate moments`(id: String) {
-        val run = run(id)
+        val run = virtual(id)
         val times = run.events.map { run.at(it) }.sorted()
         val moments =
-            times.fold(mutableListOf<MutableList<Double>>()) { moments, t ->
-                if (moments.isEmpty() || t - moments.last().last() >= 200.0) moments += mutableListOf(t) else moments.last() += t
+            times.fold(mutableListOf<MutableList<Long>>()) { moments, t ->
+                if (moments.isEmpty() || t - moments.last().last() >= 200) moments += mutableListOf(t) else moments.last() += t
                 moments
             }
 
@@ -148,7 +185,7 @@ class MutexDemoPacingTest {
     fun `the gates count every visitor, and a gate that finds the lock taken is suspended until it gets it`() {
         val run = run("sync/mutex/counter")
 
-        assertEquals(9, counted["sync/mutex/counter"], "no visitor is lost")
+        assertEquals(9, runBlocking { withTimeout(5.seconds) { counted.await() } }, "no visitor is lost")
         assertTrue(run.lockWaits.isNotEmpty(), "a gate waits for the lock")
         run.lockWaits.forEach { assertTrue(run.resumedAfter(it), "${it.label} resumes once it has the lock") }
         assertTrue(run.labels.all { run.completed(it) })
@@ -158,7 +195,11 @@ class MutexDemoPacingTest {
     fun `the transfers keep the household's money, and the holiday is declined`() {
         val run = run("sync/mutex/bank-transfer")
 
-        assertEquals(530 to 970, balances["sync/mutex/bank-transfer"], "in any order: Ben never has 1200 for the holiday")
+        assertEquals(
+            530 to 970,
+            runBlocking { withTimeout(5.seconds) { balances.await() } },
+            "in any order: Ben never has 1200 for the holiday",
+        )
         assertTrue(run.lockWaits.isNotEmpty(), "a transfer waits for an account")
         run.lockWaits.forEach { assertTrue(run.resumedAfter(it), "${it.label} resumes once it has the account") }
         assertTrue(run.labels.all { run.completed(it) })
@@ -195,8 +236,9 @@ class MutexDemoPacingTest {
         private const val SCALE = 0.1
 
         private val runs = ConcurrentHashMap<String, Run>()
-        private val counted = ConcurrentHashMap<String, Int>()
-        private val balances = ConcurrentHashMap<String, Pair<Int, Int>>()
+        private val counted = CompletableDeferred<Int>()
+        private val balances = CompletableDeferred<Pair<Int, Int>>()
+        private val virtualRuns = ConcurrentHashMap<String, VirtualDemoRun>()
 
         private val storyLabels =
             mapOf(

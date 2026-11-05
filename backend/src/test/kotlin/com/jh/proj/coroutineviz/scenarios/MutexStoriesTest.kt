@@ -11,25 +11,18 @@ import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
-import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The Sync: Mutex demos' stories, on virtual time. Who finds a lock free and who waits, and in
@@ -113,8 +106,8 @@ class MutexStoriesTest {
     @Test
     fun `three gates count nine visitors, taking turns at the lock, and eight of them wait for it`() =
         runTest {
-            var counted = -1
-            val story = runStory { session, context -> SyncScenarios.runCounter(session, context) { counted = it } }
+            val counted = CompletableDeferred<Int>()
+            val story = runStory { session, context -> SyncScenarios.runCounter(session, context) { counted.complete(it) } }
 
             assertEquals(setOf("count-visitors", "gate-1", "gate-2", "gate-3"), story.labels)
             assertEquals((1..3).flatMap { listOf("gate-1", "gate-2", "gate-3") }, story.holders("visitor-count"), "the gates take turns")
@@ -134,7 +127,7 @@ class MutexStoriesTest {
             assertEquals("gate-3", lastWait.label)
             assertTrue(story.seqOf<CoroutineCompleted>("gate-1") < lastWait.seq, "gate-1 is done before gate-3's last wait")
             assertEquals("gate-2", story.holderAt(lastWait.seq, "visitor-count"), "gate-2 holds the lock while gate-3 waits")
-            assertEquals(9, counted, "no visitor is lost")
+            assertEquals(9, counted.await(), "no visitor is lost")
             assertTrue(story.labels.all { story.completed(it) })
             assertEquals(14_000, story.scriptedMillis)
         }
@@ -142,13 +135,13 @@ class MutexStoriesTest {
     @Test
     fun `the transfers queue at Anna's account, which each locks first, and the holiday is declined`() =
         runTest {
-            var balances: Pair<Int, Int>? = null
+            val balances = CompletableDeferred<Pair<Int, Int>>()
             val story =
                 runStory {
                     session,
                     context,
                     ->
-                    SyncScenarios.runBankTransfer(session, context) { anna, ben -> balances = anna to ben }
+                    SyncScenarios.runBankTransfer(session, context) { anna, ben -> balances.complete(anna to ben) }
                 }
             val transfers = listOf("pay-rent", "pay-back-dinner", "split-groceries", "book-holiday")
 
@@ -163,7 +156,7 @@ class MutexStoriesTest {
                 "Ben's account is always free: it is locked second",
             )
             assertTrue(story.neverTwoHolders("account-anna") && story.neverTwoHolders("account-ben"))
-            assertEquals(530 to 970, balances, "rent, dinner and groceries move; the holiday is declined; the total stays 1500")
+            assertEquals(530 to 970, balances.await(), "rent, dinner and groceries move; the holiday is declined; the total stays 1500")
             assertTrue(story.labels.all { story.completed(it) })
             assertEquals(12_000, story.scriptedMillis)
         }
@@ -236,28 +229,6 @@ class MutexStoriesTest {
         }
 
     /** Runs a demo on this test's virtual time and returns its story once every coroutine has ended. */
-    private suspend fun TestScope.runStory(start: suspend (VizSession, CoroutineContext) -> Job): Story {
-        val session = VizSession("mutex-story")
-        try {
-            val demoRun = assertNotNull(DemoRuns(maxConcurrent = 0).tryStart())
-            withContext(demoRun) { start(session, StandardTestDispatcher(testScheduler)) }.join()
-            val scriptedMillis = testScheduler.currentTime
-            return Story(settled(session), scriptedMillis)
-        } finally {
-            session.close()
-        }
-    }
-
-    /** The session's events once every coroutine's terminal event is in; those can follow its job's end by a moment. */
-    private suspend fun settled(session: VizSession): List<VizEvent> =
-        withContext(Dispatchers.Default) {
-            withTimeout(5.seconds) {
-                while (session.store.all().count { it.isTerminal() } < session.store.all().count { it is CoroutineCreated }) {
-                    delay(5)
-                }
-            }
-            session.store.all().sortedBy { it.seq }
-        }
-
-    private fun VizEvent.isTerminal() = this is CoroutineCompleted || this is CoroutineCancelled || this is CoroutineFailed
+    private suspend fun TestScope.runStory(start: suspend (VizSession, CoroutineContext) -> Job): Story =
+        runOnVirtualTime("mutex-story", start).let { Story(it.events, it.scriptedMillis) }
 }

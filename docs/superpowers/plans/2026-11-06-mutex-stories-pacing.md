@@ -29,6 +29,12 @@
 - **The deadlock guide** first kept the old timing (a 0.5 s start delay, a watchdog every 2.5 s); the browser check caught it, and it now matches the code.
 - **Measured live** (scale 1, `scripts/demo-pacing-audit.py`, backend 18701): counter 14.1 s, bank 12.0 s, cache 11.5 s, deadlock 11.0 s, with 19, 13, 14 and 9 half-second moments. Each picture equals the live tree at its moment, and the session events confirm its caption (holders suspended in `delay`, waiters with `waitKind = MUTEX`, request-6 in `delay`).
 
+**Codex code review, round 1 (no P1):**
+- **`VizMutex.unlock`:** a failing event sink skipped the release, and an unlock with the wrong owner was reported before the delegate refused it. The release is now in a `finally`, and a refused unlock fails before anything is reported or untracked. Two `MutexWaitTest` cases, seen failing first.
+- **Result hooks** run in the root's completion handler, which can finish after `join()` returns; the tests now await them (`CompletableDeferred`).
+- **Real-time checks:** the pictures of the four Mutex demos, the 30 s ceiling and the moments ran on real time, where a slow scheduler could change who leads or stretch a run past 3 real seconds. They now run on virtual time through `runOnVirtualTime`, which records the virtual time each event was sent. Real time keeps a 10 s floor (a delay never ends early), the steps, the names and the order-free outcomes.
+- **The plan's spacing claim** is corrected (above).
+
 **Model:** #287 (Channels) and #289 (Patterns). Follow their patterns, test style and wording.
 
 **Working directory:** worktree `/Users/jirihermann/Documents/workspace-vizcore/vizcore-mutex`, branch `feat/mutex-stories-pacing`.
@@ -43,7 +49,7 @@
 
 ## The four demos
 
-Times are scripted seconds at scale 1. Every event that decides who waits (a request, a release) is at least 0.5 s from every other one in the script. That is only 50 ms at the tests' scale 0.1, so it does not make the order certain on real time: the tests that depend on the order run on virtual time only, and the real-time tests check outcomes that hold in any order.
+Times are scripted seconds at scale 1. In the scripts a lock request comes at least 0.5 s before or after any release it does not wait for (a waiter handed the lock at a release, such as the cache's requests 2 and 3 at 3.5 s, is a hand-off, not a race). That is only 50 ms at the tests' scale 0.1, so it does not make the order certain on real time. Everything that depends on the order or on exact times runs on virtual time: the stories (`MutexStoriesTest`), the demos' length and moments (`MutexDemoPacingTest`) and the four pictures (`GuideLabelsTest`). On real time the tests check only what holds however the threads run.
 
 ### Thread-Safe Counter: Festival Gates (`sync/mutex/counter`)
 
