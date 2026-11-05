@@ -1,7 +1,7 @@
 # Session page as an IDE dock — the tree on top, everything else in one dock
 
 **Date:** 2026-11-05
-**Status:** Design — approved on the canvas in conversation; revised after Codex review round 1; awaiting
+**Status:** Design — approved on the canvas in conversation; revised after Codex review rounds 1 and 2; awaiting
 review of this document
 **Canvas:** "vizcore session view redesign", https://claude.ai/artifact/LoVDqCRuELHtFUaQbqK1xh, page
 "1 · The proposal" (4 boards). The boards are saved in [`2026-11-05-session-dock-canvas/`](2026-11-05-session-dock-canvas/README.md).
@@ -98,7 +98,7 @@ be resized, folded to its tab row, or hidden by maximising the main view.
 | S-10 | **Timeline is the second main view.** One row per coroutine over time, a new multi-row view (today's `CoroutineTimelineView` is a single-coroutine event list and stays in the Inspector). The bar shows the recorded state; a thin band above it shows what the coroutine holds (the lock, a permit), because a coroutine can hold a lock while suspended. A mark ends each finished row. Lock-holder and permit lanes sit under the rows; permit lanes are unnumbered slots laid out for display, and a release with an unknown holder ends its band with an "unknown" mark. Clicking a bar selects it (S-2), and the Inspector sums it up in one sentence. When events were lost (the stream's loss count) or trimmed, the view says "some intervals may be missing" instead of drawing gaps it cannot locate. |
 | S-11 | **Every part shows the same moment.** A time bar (step back, play, step forward, a slider labelled in seconds, speed, Exit) sits under the header in replay. Every part shows the cursor's moment, including the Inspector, which today is paused. This carries triage's Modes rules: reads are bound to the cursor (`atSeq`), coroutines whose creation event was trimmed come from the durable summaries, a coroutine that cannot be rebuilt opens a summary-only Inspector ("events unavailable (trimmed)"), and the shared view uses the share endpoints with the same rules. In the timeline, the part after the cursor is outlined. |
 | S-12 | **Big apps stay readable.** Round picker and "find in all rounds" as in T-4; the "vizcore connection (n)" toggle as in triage's frontend section. "Group by name" (on by default for attached apps) groups **siblings only** — children of the same parent in the same round whose names differ only in a trailing number (`order-17`, `order-18` → `order-*`) — so ancestry is never hidden. A group shows its count and state mix; expanding it shows its members; selecting it opens a group summary in the Inspector (counts by state, the shared creation site if there is one). Find searches all coroutines (server-side, as T-4), clears filters that would hide the match, expands its group and renders it even past the 200-node cap. When the cap or the 10,000-event live history trims what is shown, the page says so. |
-| S-13 | **Run again starts a new session.** The session records which demo it was created for (a new `demoId` on the session, set at creation and returned by the session API; today it lives only in the page address, `use-start-demo.ts:49`). Run again creates a new session for the same demo, starts the run and opens it; the old session is untouched. It replaces today's disabled Run button (`ScenarioControls.tsx:125`) and stays separate from Reset session, which clears in place. The guide lookup for story mode uses the same `demoId`. |
+| S-13 | **Run again starts a new session.** The session records which demo it was created for (a new `demoId` on the session, set at creation and returned by the session API; today it lives only in the page address, `use-start-demo.ts:49`). Run again creates a new session for the same demo, starts the run and opens it; the old session is untouched. It replaces today's disabled Run button (`ScenarioControls.tsx:125`) and stays separate from Reset session, which today deletes the session and creates a fresh one (`ScenarioControls.tsx:83`) and keeps doing so. The guide lookup for story mode uses the same `demoId`. |
 | S-14 | **Works narrow, works with a keyboard.** Below 1,024 px the dock tabs scroll horizontally, the Inspector's columns stack, and the timeline scrolls inside its box. Tree nodes are buttons (Tab, Enter selects); dock tabs follow the WAI-ARIA tabs pattern (arrow keys, `aria-controls`); the replay slider announces its time ("4.2 seconds of 12.0"). Light mode gets a darker link colour token in `palette.ts` (the light link `#4da3ff` reads 2.6:1 on white); state is always text plus colour. |
 
 ### Wire contract for S-7
@@ -109,8 +109,13 @@ be resized, folded to its tab row, or hidden by maximising the main view.
 - A wrapper first tries without suspending (`tryLock`, `tryAcquire`, `trySend`, `tryReceive`). Only when that
   fails does it emit `CoroutineSuspended`, then call the suspending operation, then emit `CoroutineResumed`
   when it returns. This avoids racing on `isLocked` or `availablePermits`.
-- A wait that ends because the coroutine is cancelled emits no `CoroutineResumed`; the cancellation event
-  ends the suspension, and the wrapper removes the waiter from its queue (as `VizMutex` already does).
+- The wrapper emits `CoroutineResumed` in a `finally` block whenever the wait ends: by returning, or by an
+  exception the coroutine may survive (a closed channel, a `withTimeout` around the wait). It emits no
+  `CoroutineResumed` only when the tracked coroutine's own job is being cancelled: then its cancellation
+  event ends the suspension. In every case the wrapper removes the waiter from its queue (as `VizMutex`
+  already does). So a coroutine that goes on running is never left recorded as Suspended.
+- The existing constructors and helper signatures of `CoroutineSuspended` stay callable by compiled code: the
+  new fields come with a secondary constructor that keeps the old parameter list, and a test calls it.
 - Channels: `send`, `receive`, `receiveCatching` and iteration (`for (x in channel)`) are covered. `select`
   clauses are not, and stay ACTIVE (listed under "Later").
 - The per-coroutine timeline response and the frontend projection carry the two fields through.
@@ -139,11 +144,11 @@ Each part is its own PR, tests first, reviewed by Codex until clean, and checked
 |---|---|---|
 | **1 · Quick wins** (frontend) | In today's layout: the tree panel moves above the explanation and the metrics; `StructuredConcurrencyInfo` folds into one line, "How to read the tree", with the legend, closed by default and remembered; a finished demo shows its completed coroutines (when nothing is live); "Running" becomes "Active" and Waiting for children is its own chip; a run with a failure reads "Failed" in red; a held lock is neutral; one LIVE badge. | — |
 | **2 · Core fix** (core) | The S-7 wire contract, including `VizSemaphore` holder counts and unknown releases. Also sends exception stack traces, which the common emitter sends empty today. | — |
-| **3 · Dock shell** (frontend) | S-1, S-3 (without the connection pill), S-4, S-5 (without Problems), S-14: the layout, the graph filling its box, the header, the five tabs re-hosting today's Inspector, evidence panels (with the grouped thread table of T-5) and events drawer. The Problems tab is hidden until Part 7. | 1 |
+| **3 · Dock shell** (frontend) | S-1, S-3 (without the connection pill), S-4, S-5 (without Problems), S-14: the layout, the graph filling its box, the header, the five tabs re-hosting today's Inspector, evidence panels (with the grouped thread table of T-5) and events drawer; lifetimes formatted by a new `lib/format-duration.ts` (triage). The Problems tab is hidden until Part 7, and today's Run button stays until Run again arrives in Part 9. | 1 |
 | **4 · Shared selection and live facts** (frontend) | S-2 and S-6: one selection across tree, tabs and events; the activity line on nodes; live lock, permit and queue facts that refresh on new events (today `useSyncEvents` reads stored history that live updates do not invalidate, `use-sync-events.ts:57`). | 2, 3 |
 | **5 · Health API** (backend) | Triage PR 2 exactly as specified there: ingest of the new fields, `GET …/health` (with `atSeq`), rounds and server-side search, persistence, checks, shares, app connection state. | — (triage PR 1, merged) |
-| **6 · Big apps** (frontend) | S-12: rounds and "find in all rounds" (T-4), the vizcore-connection toggle, group by name, Find past the cap. | 3, 5 |
-| **7 · Problems** (frontend) | S-8 and S-3's connection pill; removes #232's frontend "may be blocked" hint and the standalone `LeakList` (T-5). | 3, 5 |
+| **6 · Big apps** (frontend) | S-12: rounds and "find in all rounds" (T-4), the vizcore-connection toggle, group by name with the group summary, Find past the cap. | 3, 4, 5 |
+| **7 · Problems** (frontend) | S-8 and S-3's connection pill; tree cards gain triage's C-2 fields and observation badges; removes #232's frontend "may be blocked" hint and the standalone `LeakList` (T-5). | 3, 4, 5, 6 |
 | **8 · One moment everywhere** (frontend, some backend) | S-11: cursor-bound projections for the Inspector, Evidence and metrics, with triage's trimmed-history fallbacks and the shared view; a timestamp-to-event mapping for the seconds slider (today seeking is by event index, `use-replay.ts:163`). | 4, 5 |
 | **9 · Learn and story mode** (frontend + guide content + backend test) | S-9 and S-13: the session's `demoId`, Run again, the anchored guide schema, predictions, the 7 Basics guides, and the anchor test. | 8 |
 | **10 · Timeline** (backend + frontend) | S-10: the multi-row view and lanes. The per-coroutine timeline response must include resume, terminal and body-completed events, which it omits today (`ProjectionService.kt:406`). | 2, 8 |
@@ -159,6 +164,8 @@ can be built any time after Part 5.
 | Header with two status pills, last data, start time, rung badge (T-2) | Part 3 (view pill), Part 7 (connection pill) |
 | Health strip, problem list, "Show" (T-1, T-3) | Part 7 (Problems tab, S-8) |
 | Inspector per problem kind: `ExceptionCard`, `ClueCard`, session summary (T-3) | Part 3 (session summary, re-hosted cards), Part 7 (`ExceptionCard`, `ClueCard`) |
+| Tree cards with C-2 fields and observation badges | Part 7 |
+| `lib/format-duration.ts` for lifetimes | Part 3 |
 | Round picker, "find in all rounds" (T-4) | Part 6 |
 | "vizcore connection (n)" toggle | Part 6 |
 | State bar as the filter; leak chip → "Long-lived (n)"; validation chip removed | Part 1 (moves), Part 7 (Long-lived, removal) |
@@ -175,7 +182,8 @@ can be built any time after Part 5.
   labels; the existing `SessionWorkspace` tests that assert "Nothing running now" are updated.
 - **Part 2:** core tests that a contended `lock`, `acquire`, `send`, `receive`, `receiveCatching` and channel
   iteration emit Suspended (with `waitKind` and `resourceId`) then Resumed; that an uncontended call emits
-  neither; concurrent handoffs between several waiters in a loop; cancellation while queued leaves no waiter
+  neither; that a wait ended by a caught closed-channel exception or a caught `withTimeout` emits Resumed;
+  that the old `CoroutineSuspended` constructor still works; concurrent handoffs between several waiters in a loop; cancellation while queued leaves no waiter
   and no Resumed; a semaphore held twice by one coroutine; a release by a coroutine that holds none. The
   Channels and Combined demos are re-measured with the pacing audit.
 - **Part 3:** vitest for the tab set, the always-listed Evidence sections with their unlock text, keyboard
