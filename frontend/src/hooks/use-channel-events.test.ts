@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
+import type { VizEvent } from '@/types/api'
 
 vi.mock('@/hooks/use-sessions', () => ({
   useSessionEvents: vi.fn(),
@@ -13,6 +14,17 @@ const mockedUseSessionEvents = vi.mocked(useSessionEvents)
 describe('useChannelEvents', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('reads the events it is given, not the stored history, when given some', () => {
+    mockedUseSessionEvents.mockReturnValue({ data: [] } as unknown as ReturnType<typeof useSessionEvents>)
+    const live = [
+      { kind: 'ChannelCreated', sessionId: 's1', seq: 1, tsNanos: 1, channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' },
+    ] as unknown as VizEvent[]
+
+    const { result } = renderHook(() => useChannelEvents('s1', live))
+
+    expect(result.current.channels.map(c => c.channelId)).toEqual(['ch-1'])
   })
 
   it('returns empty result when no events', () => {

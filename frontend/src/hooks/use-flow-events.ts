@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useSessionEvents } from '@/hooks/use-sessions'
+import type { VizEvent } from '@/types/api'
 import { FLOW_EVENT_KINDS } from '@/types/api'
 import type {
   FlowCreated,
@@ -60,9 +61,14 @@ export interface UseFlowEventsResult {
 /**
  * Filters session events to flow events, groups by flowId,
  * and tracks operator chains, backpressure, and value traces.
+ *
+ * Reads `given` when passed — the events the page shows, so the facts follow
+ * the live stream and the replay cursor — else the stored history, which live
+ * updates never invalidate. It subscribes to that history either way (#124).
  */
-export function useFlowEvents(sessionId: string): UseFlowEventsResult {
-  const { data: events } = useSessionEvents(sessionId)
+export function useFlowEvents(sessionId: string, given?: readonly VizEvent[]): UseFlowEventsResult {
+  const { data: stored } = useSessionEvents(sessionId)
+  const events = given ?? stored
 
   return useMemo(() => {
     const flowEvents: FlowOperatorEvent[] = []
