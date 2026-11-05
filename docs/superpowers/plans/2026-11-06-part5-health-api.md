@@ -1509,6 +1509,7 @@ import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.testing.ApplicationTestBuilder
@@ -1609,6 +1610,7 @@ class IngestWatermarkTest {
                 send(Frame.Text(HealthEvents.created(sessionId, "c1", at = sec(1)).frameText()))
                 eventually { eventCount(client, sessionId) == 1 }
             }
+            eventually { IngestStates.snapshot(sessionId).transport.deliveryUncertain }
             client.webSocket("/api/sessions/$sessionId/ingest") {
                 send(Frame.Text(HealthEvents.created(sessionId, "c2", at = sec(2)).frameText()))
                 send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(3), final = true).frameText()))
@@ -1659,6 +1661,25 @@ class IngestWatermarkTest {
             val transport = IngestStates.snapshot(sessionId).transport
             assertTrue(transport.deliveryUncertain, "the binary frame was not read")
             assertEquals(1L, transport.sinceSeq)
+        }
+
+    @Test
+    fun `a deleted session's ingest state goes with it`() =
+        testApplication {
+            application { module() }
+            val client = wsClient()
+            val sessionId = client.createSessionNamed("wm-deleted")
+
+            client.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(1)).frameText()))
+                eventually { IngestStates.snapshot(sessionId).watermark != null }
+                assertEquals(io.ktor.http.HttpStatusCode.OK, client.delete("/api/sessions/$sessionId").status)
+                // The server closes the socket with "Session not found".
+                incoming.receiveCatching()
+            }
+            eventually { !IngestConnections.isConnected(sessionId) }
+
+            assertEquals(IngestSnapshot(), IngestStates.snapshot(sessionId), "the watermark was dropped with the session")
         }
 
     @Test
@@ -1715,10 +1736,15 @@ Expected: FAIL — the watermark is stored as an event (2 events), `IngestStates
 
 ```kotlin
         } finally {
-            IngestConnections.closed(sessionId)
+            // Transport facts first (in memory, cannot fail): once the session reads as disconnected,
+            // how the connection ended is already known.
             IngestStates.connectionClosed(connection)
+            IngestConnections.closed(sessionId)
             sessionRemoved.cancel()
             session.ingestSocketClosed()
+            // A socket set up while its session was being deleted may have allocated ingest state after
+            // the delete dropped it.
+            if (removed.get() || !sessionStillExists(sessionId)) IngestStates.forget(sessionId)
         }
 ```
 
@@ -3079,7 +3105,11 @@ internal fun WatermarkObservation.toSse(): ServerSentEvent =
     ServerSentEvent(data = appJson.encodeToString(WatermarkObservation.serializer(), this), event = "watermark")
 ```
 
-4. In the SSE route's call to `sessionSseFrames(...)`, add `watermarks = IngestStates.watermarks(sessionId),`.
+4. In the SSE route's call to `sessionSseFrames(...)`, add `watermarks = IngestStates.watermarks(sessionId),`, and when
+   the stream ends because its session was deleted (`if (removed.get())`), call `IngestStates.forget(sessionId)` first:
+   subscribing allocates ingest state, and a stream set up during the delete may have done so after the delete dropped it.
+
+5. `ErrorResponse.code` in both schemas lists `summaries-unavailable` and `history-trimmed` (Task 11).
 
 Imports: `com.jh.proj.coroutineviz.health.WatermarkObservation`, `kotlinx.coroutines.flow.emptyFlow`.
 
