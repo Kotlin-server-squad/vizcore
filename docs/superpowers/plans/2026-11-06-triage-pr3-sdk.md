@@ -489,11 +489,58 @@ internal fun excludeWrapperOwned(
     }
 ```
 
-`DebugProbesSource` default `dump`:
+`DebugProbesSource` default `dump` keeps the wrapper coroutines for hierarchy reconstruction and drops them only
+afterwards, so a coroutine that inherited a wrapper's element keeps the wrapper as its parent, under the wrapper's
+own `coroutine-…` id (the id its wrapper events use):
 ```kotlin
         val raws = excludeSdkOwned(DebugProbesImplBridge.dumpRawInfos(), internalDispatchers, transportRoots)
-        adapter.toSnapshots(excludeWrapperOwned(raws, session))
+        leaveToWrappers(raws, adapter.toSnapshots(raws), session)
 ```
+and in `WrapperOwnedCoroutines.kt`:
+```kotlin
+/**
+ * Drops the snapshots of wrapper-owned coroutines ([excludeWrapperOwned]'s rule) after the hierarchy was reconstructed
+ * with them, and points their DebugProbes-captured children at the wrapper's own id ([VizCoroutineElement.coroutineId]),
+ * so ancestry and rounds stay intact. [snapshots] are [raws] mapped one to one by [CoroutineInfoAdapter.toSnapshots].
+ */
+internal fun leaveToWrappers(
+    raws: List<CoroutineInfoAdapter.RawInfo>,
+    snapshots: List<CoroutineSnapshot>,
+    session: VizSession,
+): List<CoroutineSnapshot> {
+    val owned = raws.indices.filter { isWrapperOwned(raws[it], session) }.toSet()
+    if (owned.isEmpty()) return snapshots
+    val wrapperIds = owned.associate { snapshots[it].key to raws[it].context[VizCoroutineElement]!!.coroutineId }
+    return snapshots.filterIndexed { i, _ -> i !in owned }.onEach { snap ->
+        snap.parentKey?.let(wrapperIds::get)?.let { snap.parentCoroutineId = it }
+    }
+}
+```
+`excludeWrapperOwned` becomes `raws.filterNot { isWrapperOwned(it, session) }` over a shared predicate holding the
+rule above (`internal fun isWrapperOwned(raw: CoroutineInfoAdapter.RawInfo, session: VizSession): Boolean`).
+
+`CoroutineSnapshot` gains a second body property, `internal var parentCoroutineId: String? = null` ("set when the
+parent is a wrapper coroutine, whose events use its own id"), and `DebugProbesEventSynthesizer.contextFor` uses
+`parentCoroutineId = snapshot.parentCoroutineId ?: snapshot.parentKey?.let { "dp-${it.token}" }`.
+
+Tests (add to `WrapperOwnedCoroutinesTest`):
+```kotlin
+    @Test
+    fun `a child of a wrapper keeps the wrapper as its parent, under the wrapper's own id`() {
+        val wrapperJob = Job()
+        val e = element(session, wrapperJob)
+        val raws = listOf(raw("wrapper", wrapperJob, e), raw("child", Job(wrapperJob), e))
+        val adapter = CoroutineInfoAdapter()
+        val kept = leaveToWrappers(raws, adapter.toSnapshots(raws), session)
+        assertEquals(1, kept.size)
+        assertEquals("coroutine-1", kept.single().parentCoroutineId)
+        val created =
+            DebugProbesEventSynthesizer().synthesize(CoroutineDelta.Appeared(kept.single()), session).first() as CoroutineCreated
+        assertEquals("coroutine-1", created.parentCoroutineId)
+    }
+```
+and in Task 9's `WrapperCapturedOnceTest`, `FakeBackend.Created` also records `parentCoroutineId`, and the test asserts
+the inheriting child's `parentCoroutineId` equals the `wrapped-launch` wrapper's `coroutineId`.
 
 - [ ] **Step 4: Run** — same command, plus `./gradlew :coroutine-viz-core:test --tests '*VizScope*' --tests '*Wrapper*'`; expected PASS.
 - [ ] **Step 5: Commit** — `git add` the new files, then `git commit -am "core: a VizScope coroutine is left to its wrapper events, as the app's (triage PR 3)"`.
@@ -1597,6 +1644,48 @@ class VizcoreClientStopTest {
     }
 
     @Test
+    fun `a second stop does not wait for the first one's teardown`() {
+        val stopping = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val blocked =
+            object : InstrumentationSource {
+                override val sourceId = "blocked"
+                @Volatile override var isRunning = false
+
+                override fun start() {
+                    isRunning = true
+                }
+
+                override fun stop() {
+                    stopping.countDown()
+                    release.await()
+                    isRunning = false
+                }
+            }
+        val client =
+            VizcoreClient(
+                httpClient = HttpClient(),
+                backendUrl = "",
+                sessionId = "s",
+                token = "t",
+                session = VizSession("s"),
+                source = blocked,
+                scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+                transport = { _, _ -> awaitCancellation() },
+            )
+        try {
+            client.start()
+            client.stop(0)
+            assertTrue(stopping.await(5, TimeUnit.SECONDS), "the teardown is under way and blocked")
+            val started = System.nanoTime()
+            client.stop(0)
+            assertTrue((System.nanoTime() - started) / 1_000_000 < 500, "the second stop returns at once")
+        } finally {
+            release.countDown()
+        }
+    }
+
+    @Test
     fun `once the client is capturing, an event sent right away reaches the buffer`() {
         // The feed's dispatcher is held back, as on a busy machine: start() alone would return before the feed subscribed.
         val feedThread = Executors.newSingleThreadExecutor()
@@ -1739,8 +1828,10 @@ after `buffer.feed(session, scope)` returns; `loopJob = scope.launch { reconnect
      */
     private fun releaseWithin(deadlineNanos: Long) {
         val release =
+            // Outside lifecycleLock: a second stop() must not wait for this. start()'s source start is under that lock
+            // and checks `running`, so it cannot start the source after this stop.
             thread(name = "vizcore-stop", isDaemon = true) {
-                synchronized(lifecycleLock) { source.stop() }
+                source.stop()
                 httpClient.close()
             }
         val remainingMillis = (deadlineNanos - System.nanoTime()) / NANOS_PER_MILLI
@@ -1781,10 +1872,24 @@ file-private `private const val NANOS_PER_MILLI = 1_000_000L`.
 Factory `start(…httpClient…)`: create `val outbound = OutboundBuffer()`, pass `buffer = outbound` to the constructor,
 and after `probes` is built: `probes.onPollCompleted = { nanos, epochMs -> outbound.poll(local, nanos, epochMs) }`
 (comment: "each completed poll's watermark, after that poll's events (spec C-7)"). Replace `.also { it.start() }` by
-`.also { it.start(); it.awaitCapture(CAPTURE_START_TIMEOUT_MS) }` with a file-private
-`private const val CAPTURE_START_TIMEOUT_MS = 5_000L` (P-16: an app's wrapper events sent right after `start` returns
-are captured; the wait is a local subscription, normally under a millisecond). The `catch (failure: Throwable)`
-cleanup stays as it is.
+```kotlin
+                ).also {
+                    it.start()
+                    // P-16: an app's wrapper events sent right after start returns must be captured; this is a local
+                    // subscription, normally well under a millisecond.
+                    if (!it.awaitCapture(CAPTURE_START_TIMEOUT_MS)) {
+                        it.stop(0)
+                        throw IllegalStateException("vizcore could not start capturing within $CAPTURE_START_TIMEOUT_MS ms")
+                    }
+                }
+```
+with a file-private `private const val CAPTURE_START_TIMEOUT_MS = 5_000L`, passed through a new internal factory
+parameter `captureTimeout: Duration = CAPTURE_START_TIMEOUT_MS.milliseconds` (used as `awaitCapture(captureTimeout.inWholeMilliseconds)`).
+The existing `catch (failure: Throwable)` cleanup then releases the probes, the scope, the session and the HTTP client;
+the factory's KDoc `@throws IllegalStateException` gains this case. Test in `VizcoreClientStartTest` (which already
+drives the internal factory with an injected `HttpClient`): `captureTimeout = Duration.ZERO` makes `awaitCapture`
+return `false` deterministically (`withTimeoutOrNull` with a non-positive timeout returns `null` at once), so the
+factory throws `IllegalStateException` and `DebugProbesInstall.count()` is back where it was.
 Update the class KDoc (stop drains; watermarks).
 
 - [ ] **Step 4: Run** — `./gradlew :coroutine-viz-client:test`; expected PASS. Where an existing test now waits for a
@@ -2249,6 +2354,7 @@ class SdkSessionHealthTest {
 - `cio-from-nio-reader`, `cio-to-nio-writer` and `cio-request-timeout` stay `APP` (P-1); they show only as long-lived.
 - `lostEvents` is per client, so a replacement session (#129) inherits the earlier session's count (overstates, P-6).
 - A session that dropped its connection reads delivery uncertain for the rest of the session (server rule, D-2).
-- If the bus evicts entries for the feed after `stop()` began, the close is not clean (P-8): losses happened anyway.
+- If the bus evicts entries for the feed while it lags, the close is still clean when the final watermark arrives; it then
+  reports those losses (`lostEvents`), so possibly blocked reads `NOT_EVALUATED (EVENTS_DROPPED)` (P-6, P-8).
 - `stop()` blocks the caller up to its deadline; an app that must not block calls `stop(0)`.
 - The SDK version bump and publication (release PR); the Problems tab and the "vizcore connection (n)" toggle (Parts 6/7).
