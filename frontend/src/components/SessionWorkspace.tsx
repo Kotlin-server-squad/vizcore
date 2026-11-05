@@ -372,17 +372,6 @@ export function SessionWorkspace({
         />
       )}
 
-      {/* Structured Concurrency Info - Show when session has coroutines */}
-      {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
-
-      {/* Scenario Pipeline View - shown for realistic scenarios */}
-      {scenarioId === 'order-processing' && allEvents.length > 0 && (
-        <OrderProcessingView events={allEvents} />
-      )}
-      {scenarioId === 'user-registration' && allEvents.length > 0 && (
-        <RegistrationFlowView events={allEvents} />
-      )}
-
       {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
       <StateBar
         counts={stateCounts}
@@ -402,8 +391,6 @@ export function SessionWorkspace({
           the replay cursor (D-17). */}
       <WorkspaceBody
         sessionId={sessionId}
-        streamEnabled={streamEnabled}
-        isConnected={isConnected}
         readOnly={readOnly}
         // The metric strip is live-only: in replay it would report current
         // numbers over a frozen view, and the shared shell has no Bearer for
@@ -450,6 +437,17 @@ export function SessionWorkspace({
           />
         }
       />
+
+      {/* How to read the tree — folded, below the tree (spec Part 1). */}
+      {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
+
+      {/* Scenario Pipeline View - shown for realistic scenarios */}
+      {scenarioId === 'order-processing' && allEvents.length > 0 && (
+        <OrderProcessingView events={allEvents} />
+      )}
+      {scenarioId === 'user-registration' && allEvents.length > 0 && (
+        <RegistrationFlowView events={allEvents} />
+      )}
 
       {/* The evidence section (M-1/M-2): what this session can show beyond the
           tree, and — where the rung is the reason it cannot — what unlocks it. */}

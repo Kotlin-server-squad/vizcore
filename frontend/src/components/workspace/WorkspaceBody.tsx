@@ -2,14 +2,9 @@ import type { ReactNode } from 'react'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { SessionMetrics } from '../SessionMetrics'
 import { LeakList } from '../LeakList'
-import { LivePill } from '../LivePill'
 
 interface WorkspaceBodyProps {
   sessionId: string
-  /** Drives the LivePill. */
-  streamEnabled: boolean
-  /** Whether the SSE stream is open — LIVE is only claimed when it is (#145). */
-  isConnected?: boolean
   /**
    * Read-only shared view (T-08-08): the shared shell carries no Bearer, so the
    * protected /metrics fetch/poll must be disabled. Forwarded as `!readOnly` to
@@ -17,7 +12,7 @@ interface WorkspaceBodyProps {
    */
   readOnly: boolean
   /**
-   * Whether the header strip of metric tiles renders (M-4). False in replay,
+   * Whether the strip of metric tiles renders (M-4). False in replay,
    * where live numbers over a frozen view would simply be wrong, and false in
    * the read-only shared view, which has no Bearer for /metrics. The leak list
    * follows the strip — it is the same data, and it is equally live.
@@ -40,16 +35,17 @@ interface WorkspaceBodyProps {
  * The workspace body — Surface 001's IDE-dock, now the one layout for all
  * three modes (M-4).
  *
- * A header strip of metric tiles (the reused, already-themed `SessionMetrics`,
- * with its internal leak Card suppressed) + the LIVE/DEMO pill, over a
- * two-column grid — the left column hosting the canvas and a single inline
- * amber `LeakList`, the right column the ~320px inspector.
+ * A two-column grid — the canvas and a single inline amber `LeakList` on the
+ * left, the ~320px inspector on the right — over a strip of metric tiles (the
+ * reused, already-themed `SessionMetrics`, with its internal leak Card
+ * suppressed). The tree comes first (spec Part 1); the live indicator is the
+ * header's stream chip, so the body has none of its own.
  *
  * Replay and the read-only shared view mount the same body with `showMetrics`
  * off: keeping a second, tabbed layout for them is the exact debt the workspace
  * redesign exists to remove, but neither may show live metrics.
  *
- * Leak placement (PD-02, LOCKED): the header strip is tiles-only
+ * Leak placement (PD-02, LOCKED): the metric strip is tiles-only
  * (`showLeaks={false}`); leaks render exactly ONCE, inline in the left column,
  * via the standalone `LeakList` fed by the SAME `useSessionMetrics` data (React
  * Query dedupes the `['session-metrics', sessionId]` key, so this shares one
@@ -61,8 +57,6 @@ interface WorkspaceBodyProps {
  */
 export function WorkspaceBody({
   sessionId,
-  streamEnabled,
-  isConnected = true,
   readOnly,
   showMetrics,
   liveList,
@@ -75,14 +69,6 @@ export function WorkspaceBody({
 
   return (
     <div className="mt-8 rounded-xl bg-content1 border-t-2 border-primary min-h-[200px]">
-      {/* Header strip: LIVE/DEMO pill + tiles-only metric strip (PD-04a). */}
-      {showMetrics && (
-        <div className="flex items-center justify-between gap-4 p-6">
-          <LivePill streamEnabled={streamEnabled} connected={isConnected} />
-          <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
-        </div>
-      )}
-
       {/* Two-column body: canvas + 320px inspector.
           `minmax(0, 1fr)` rather than `1fr`, and `min-w-0` on the column: a
           grid track sized `1fr` still expands past its container when its
@@ -107,6 +93,14 @@ export function WorkspaceBody({
           )}
         </div>
       </div>
+
+      {/* Metric tiles, below the tree (spec Part 1: the tree comes first). The
+          live indicator is the header's stream chip; the body no longer has one. */}
+      {showMetrics && (
+        <div className="px-6 pb-6">
+          <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
+        </div>
+      )}
     </div>
   )
 }

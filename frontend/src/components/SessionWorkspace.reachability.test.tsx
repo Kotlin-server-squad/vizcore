@@ -80,7 +80,6 @@ vi.mock('./DispatcherOverview', () => ({
   DispatcherOverview: () => <div data-testid="dispatcher-overview" />,
 }))
 vi.mock('./SessionMetrics', () => ({ SessionMetrics: () => <div data-testid="session-metrics" /> }))
-vi.mock('./LivePill', () => ({ LivePill: () => <div data-testid="live-pill" /> }))
 vi.mock('./channels/ChannelPanel', () => ({ ChannelPanel: () => <div /> }))
 vi.mock('./flow/FlowPanel', () => ({ FlowPanel: () => <div /> }))
 vi.mock('./sync/SyncPanel', () => ({ SyncPanel: () => <div /> }))
@@ -276,10 +275,8 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
   it('renders the workspace body (metric strip + canvas) in the live view, with a single inline leak list', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
-    // The body's header strip mounts the metric tiles + LIVE/DEMO pill
-    // (un-buried from the Threads tab). Mounted exactly once.
+    // The body mounts the metric tiles exactly once.
     expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
-    expect(screen.getByTestId('live-pill')).toBeInTheDocument()
 
     // The canvas still renders inside the body's left column.
     expect(screen.getByText(/What's running now/)).toBeInTheDocument()
@@ -294,10 +291,9 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
 
     // The shared view now uses the same workspace body as every other mode
-    // (M-4), but with the metric strip + LIVE pill gated OFF — the shell has no
-    // Bearer for the /metrics fetch behind them.
+    // (M-4), but with the metric strip gated OFF — the shell has no Bearer for
+    // the /metrics fetch behind it.
     expect(screen.queryByTestId('session-metrics')).toBeNull()
-    expect(screen.queryByTestId('live-pill')).toBeNull()
 
     // The live list still renders (presentational).
     expect(screen.getByText(/What's running now/)).toBeInTheDocument()

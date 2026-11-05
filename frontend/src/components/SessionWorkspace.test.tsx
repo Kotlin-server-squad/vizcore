@@ -109,12 +109,6 @@ vi.mock('./SessionMetrics', () => ({
   ),
 }))
 
-vi.mock('./LivePill', () => ({
-  LivePill: ({ streamEnabled }: { streamEnabled: boolean }) => (
-    <div data-testid="live-pill" data-stream={String(streamEnabled)} />
-  ),
-}))
-
 vi.mock('./channels/ChannelPanel', () => ({
   ChannelPanel: () => <div data-testid="channel-panel" />,
 }))
@@ -1038,15 +1032,20 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(graph).toHaveAttribute('data-count', '200')
   })
 
-  it('mounts the docked metrics panel (LivePill + SessionMetrics) below the live canvas (Delta L1)', () => {
+  it('mounts the metric strip below the live canvas', () => {
     mountSession([coro('a-active', 'ACTIVE')])
     // The dock lives in the live "Coroutines" tab region (default selected) —
     // no tab switch needed; it is always visible below the canvas.
     const metrics = screen.getByTestId('session-metrics')
     expect(metrics).toBeInTheDocument()
     expect(metrics).toHaveAttribute('data-session', 'session-1')
-    // The LIVE/DEMO pill renders in the dock header.
-    expect(screen.getByTestId('live-pill')).toBeInTheDocument()
+  })
+
+  it('puts the tree above the explanation', () => {
+    mountSession([coro('a-active', 'ACTIVE')])
+    const tree = screen.getByTestId('coroutine-tree-graph')
+    const info = screen.getByTestId('structured-concurrency-info')
+    expect(tree.compareDocumentPosition(info) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('mounts SessionMetrics exactly once (single /metrics poll — no double-mount, T-08.1-04)', () => {
