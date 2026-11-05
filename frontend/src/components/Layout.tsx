@@ -20,12 +20,13 @@ export function Layout({ children }: LayoutProps) {
     <div className="min-h-screen bg-background">
       <Navbar isBordered>
         <NavbarBrand>
-          <Link to="/" className="flex items-center gap-2 font-bold text-inherit">
-            <FiActivity className="h-6 w-6" />
-            <span>Coroutine Visualizer</span>
+          {/* The name gives way to the icon on narrow screens, so the links and the theme switch fit. */}
+          <Link to="/" aria-label="Coroutine Visualizer" className="flex items-center gap-2 font-bold text-inherit">
+            <FiActivity className="h-6 w-6" aria-hidden />
+            <span className="hidden sm:inline">Coroutine Visualizer</span>
           </Link>
         </NavbarBrand>
-        <NavbarContent className="gap-6" justify="start">
+        <NavbarContent className="gap-3 sm:gap-6" justify="start">
           <NavbarItem>
             <Link
               to="/"
