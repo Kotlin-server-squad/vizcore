@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.events.MutexLockAcquired
 import com.jh.proj.coroutineviz.events.MutexQueueChanged
+import com.jh.proj.coroutineviz.events.MutexUnlocked
 import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.session.VizSession
@@ -119,5 +120,32 @@ class MutexWaitTest {
             }
             assertEquals(0, mutex.getWaitQueueSize())
             assertTrue(!mutex.isLocked)
+        }
+
+    /**
+     * The Lock contention panel follows the events in order: an unlock clears the holder, an acquire sets the next.
+     * The next holder can only get the lock once it is released, so its acquire must come after that unlock.
+     */
+    @Test
+    fun `the lock is reported released before the next holder reports it acquired`() =
+        runBlocking {
+            val mutex = VizMutex(session, "hot-lock")
+            val holder = holding(mutex)
+            val workers = (1..8).map { n -> viz.vizLaunch("worker-$n") { repeat(400) { mutex.withLock { } } } }
+            for (n in 1..8) session.awaitSuspension("worker-$n")
+            release.complete(Unit)
+            withTimeout(20.seconds) { (workers + holder).joinAll() }
+
+            var held: String? = null
+            for (event in session.store.all().sortedBy { it.seq }) {
+                when (event) {
+                    is MutexLockAcquired -> {
+                        assertNull(held, "${event.acquirerLabel} reported the lock acquired while $held still held it")
+                        held = event.acquirerLabel
+                    }
+                    is MutexUnlocked -> held = null
+                    else -> Unit
+                }
+            }
         }
 }
