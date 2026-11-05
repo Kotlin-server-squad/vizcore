@@ -55,8 +55,8 @@ function formatElapsed(ms: number): string {
  * True when the focused element handles this key itself, so the replay
  * shortcut must be suppressed: a text-entry surface (T-02-13, mirrors
  * standard log-viewer behavior), the dock's separator (arrows resize it), a
- * tab (arrows move between tabs), or — for Space and Enter — a button, link or
- * menu item, which those keys press.
+ * tab (arrows move between tabs), a menu or list box (its keys move within
+ * it), or — for Space and Enter — a button or link, which those keys press.
  */
 function focusOwnsKey(key: string): boolean {
   const el = document.activeElement
@@ -66,7 +66,8 @@ function focusOwnsKey(key: string): boolean {
   if ((el as HTMLElement).isContentEditable) return true
   const role = el.getAttribute('role')
   if (role === 'separator' || role === 'tab') return true
-  const pressable = tag === 'BUTTON' || tag === 'A' || role === 'button' || role === 'menuitem'
+  if (el.closest('[role="menu"], [role="listbox"]')) return true
+  const pressable = tag === 'BUTTON' || tag === 'A' || role === 'button'
   return pressable && (key === ' ' || key === 'Enter')
 }
 
@@ -110,7 +111,8 @@ export function ReplayController({
     if (isRecording) return
 
     const handler = (e: KeyboardEvent) => {
-      if (focusOwnsKey(e.key)) return
+      // A control that handled the key itself has already prevented its default.
+      if (e.defaultPrevented || focusOwnsKey(e.key)) return
       if (isEmpty) return
 
       switch (e.key) {
