@@ -88,6 +88,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Duplicate `SessionManager`, `VizSession`, and `EventStore` in app module (now uses core library versions with `createdAtMs`, `maxEvents`, bounded stores)
 
 ### Fixed
+- A coroutine waiting for a `VizMutex`, a `VizSemaphore` permit, or a channel send or receive (`send`, `receive`, `receiveCatching`, `for (x in channel)`) is shown Suspended instead of Active. The wrappers try first and, only when they must wait, send `CoroutineSuspended` with the new optional `waitKind` and `resourceId`, then `CoroutineResumed` when the wait ends, also when a closed channel or a timeout ends it. `select` clauses are not covered yet. The coroutine timeline API (`GET /api/sessions/{id}/coroutines/{coroutineId}/timeline`) carries both fields, and the Channels "How it works" guides say a waiting chef or office shows as suspended
+- `VizSemaphore` counts the permits each coroutine holds. A permit released by a coroutine that holds none is reported with `holderUnknown` instead of being charged to an arbitrary holder, and `SemaphoreStateChanged` gains `activeHolderPermits` and `unknownHolderPermits`
+- `VizSemaphore.release` and `tryAcquire` name the calling coroutine; they could not find it before. A `for` loop over a channel names its coroutine instead of `iterator`
+- `CoroutineFailed` carries the exception's stack trace (up to 50 frames); it was always empty
 - A channel never reports more elements than it can hold: where a send met a receive, the two updates of the buffer counter could land in either order, so a rendezvous channel showed a filled slot, a full buffer one element more than its capacity, or the size went negative
 - `InstrumentedStateFlow.subscriptionCount` follows its collectors; it returned a snapshot taken when it was read, so waiting on it for a new collector never ended
 - ESLint no longer lints build output in `dist/`
