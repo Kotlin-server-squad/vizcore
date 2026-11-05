@@ -41,10 +41,10 @@ Failures are marked as intended (`intendedByDemo()`), so where one reaches `demo
 - **Fan-Out / Fan-In timing:** the plan left the resize times open, and the first run ended at 10.3 s, just over the 10 s floor. The times are now fixed per photo (2.5, 1.5, 2, 3, 1, 2, 2.5, 1.5, 2 s), a photo is picked every 0.6 s and the album needs 1 s a photo. The album gets the photos as 2, 1, 3, 5, 4, …, the resizers are done at about 7.8 s, and the demo ends at about 11.7 s.
 - **The breaker on a test clock:** `CircuitBreaker` is a small internal class with a replaceable clock. `CircuitBreakerTest` checks open, reject, half-open, reopen and "cancellation is not a failure" without real time. The demo's own boundaries stay 1 s (scripted) away from every order.
 - **Retry backoff from the recorded steps:** the test reads `load-forecast`'s recorded delays, exactly 0.75, 1.5, 3 and 1 s. The real gaps between tries are only checked broadly (at least 80 % of the wait), since at test scale 0.3 s is 30 ms.
-- **A rejected order fails "at once":** this now means within 0.5 s (scripted), not 0.2 s. The main proof is that it has no `charge` child.
+- **A rejected order fails "at once":** this now means within 1 s (scripted; 100 ms real at test scale), not 0.2 s. The main proof is that it has no `charge` child.
 - **The picture rule, enforced:** `GuideLabelsTest` now also tracks channel sends and receives. A picture only matches while no pictured coroutine is inside one; a coroutine that has ended counts as waiting for nothing. The two Channels pictures that show such a wait on purpose (`channel-rendezvous`, `channel-buffered`) are listed as exceptions. The new check was seen failing on exactly those two before they were listed.
 - **Logging:** the retry's caught failures never reach `demoFailureHandler`; the retry loop logs them at debug. Only the supervised failures (a backup, an order) reach the handler, and it logs them in one line.
-- **Breaker open for 5.5 s, not 5 s (Codex round 1):** at 5 s order 5 came only 1 s (100 ms real at test scale) before the breaker half-opened. A delay never ends early, so the threads can only make an order later: order 6 (6 s after the opening) is always past the cooldown, and only order 5 needs room. At 5.5 s it has 1.5 s, and the test checks that room (at least 1.2 s, seen failing at 5 s).
+- **Breaker open for 5.5 s, not 5 s (Codex round 1):** at 5 s order 5 came only 1 s (100 ms real at test scale) before the breaker half-opened. A delay never ends early, so the threads can only make an order later: order 6 (6 s after the opening) is always past the cooldown, and only order 5 needs room. At 5.5 s it has 1.5 s, and a test checks that room on the script, at least 1.5 s (seen failing at 5 s). A first version measured it on the run, which left only 30 ms of real slack at test scale (Codex round 2).
 - **The gallery tests:** `GalleryPage.test.tsx` and `HowItWorksPage.test.tsx` used Patterns as their "no guide yet" example. They now use Sync: Mutex, and the "links every card" test also covers Channels and Patterns.
 
 ---
@@ -100,11 +100,11 @@ A phone makes a holiday album from 9 photos. Three resizers share the work (fan-
 
 ```
 make-album                 joins the resizers, then closes `resized`
-├── pick-photos            sends photo-1 … photo-9 into `photos`, one every 0.5 s; closes it after the last
+├── pick-photos            sends photo-1 … photo-9 into `photos`, one every 0.6 s; closes it after the last
 ├── resizer-1              photos.receive(), resizes it (1–3 s, fixed per photo), resized.send(photo)
 ├── resizer-2              the same
 ├── resizer-3              the same
-└── album                  resized.receive(), adds the photo to the album (0.8 s)
+└── album                  resized.receive(), adds the photo to the album (1 s)
 ```
 
 - `photos` and `resized` are buffered (`Channel.BUFFERED`), so `pick-photos` and the resizers never wait in `send`.
@@ -159,11 +159,11 @@ checkout                       supervisorScope: order-1 … order-8, one at a ti
 ```
 
 - The breaker's 5.5 s and the provider's 12 s are measured with `System.nanoTime()` and scaled with `scaled()`, so they keep the demo's pace.
-- The nearest order is 1 s from each boundary, so the outcome does not depend on thread timing.
+- A delay never ends early, so the threads can only make an order later. Order 5 comes 4 s after the breaker opens, 1.5 s before it half-opens; order 6 comes 6 s after, always past it. A test checks that room on the script (`ORDER_GAP_MILLIS`, `BREAKER_OPEN_MILLIS`).
 - **Labels:** `checkout`, `order-1` … `order-8`, `charge-1` … `charge-3`, `charge-6` … `charge-8`.
 - **Behaviour test:**
   - orders 1–3 and their charges failed;
-  - orders 4 and 5 failed within 0.2 s of starting, with no charge;
+  - orders 4 and 5 failed within 1 s of starting, with no charge;
   - order 6 started at least 5.5 s after `charge-3` failed, and order 5 at least 1.2 s before that;
   - orders 6–8 and their charges completed;
   - the root completed.

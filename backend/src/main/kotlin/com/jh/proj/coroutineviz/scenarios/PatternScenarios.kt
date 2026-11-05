@@ -254,7 +254,7 @@ object PatternScenarios {
                                 }
                             }
                         }.join()
-                        if (order < ORDERS) pause(2000) // the next customer pays
+                        if (order < ORDERS) pause(ORDER_GAP_MILLIS) // the next customer pays
                     }
                 }
             }
@@ -266,6 +266,9 @@ object PatternScenarios {
     private const val RESIZERS = 3
     private const val ORDERS = 8
     private const val NANOS_PER_MILLI = 1_000_000L
+
+    /** How long after one order of the Circuit Breaker demo is done the next customer pays, in scripted milliseconds. */
+    internal const val ORDER_GAP_MILLIS = 2_000L
 
     /**
      * How long the Circuit Breaker demo's breaker stays open, in scripted milliseconds: order 5 comes

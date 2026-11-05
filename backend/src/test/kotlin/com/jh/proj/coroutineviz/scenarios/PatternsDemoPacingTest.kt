@@ -270,18 +270,31 @@ class PatternsDemoPacingTest {
             // "At once" next to a charge's 1.5 s; broad, since at test scale 1 s is 100 ms of real time.
             assertTrue(run.endedAt("order-$n") - run.startedAt("order-$n") < 1_000, "a rejected order fails at once")
         }
-        // A delay never ends early, so the threads can only make an order later than scripted. Order 6
-        // is safely past the cooldown that way; order 5 needs room before it, or a slow run turns it
-        // into the trial.
-        val open = PatternScenarios.BREAKER_OPEN_MILLIS
-        val order5 = run.startedAt("order-5") - run.endedAt("charge-3")
-        assertTrue(order5 <= open - 1_200, "order 5 comes $order5 ms after the breaker opened, too close to its $open ms")
-        assertTrue(run.startedAt("order-6") - run.endedAt("charge-3") >= open, "the trial order comes after the cooldown")
+        assertTrue(
+            run.startedAt("order-6") - run.endedAt("charge-3") >= PatternScenarios.BREAKER_OPEN_MILLIS,
+            "the trial order comes after the cooldown",
+        )
         for (n in 6..8) {
             assertEquals(listOf("charge-$n"), run.childrenOf("order-$n"), "order-$n calls the provider")
             assertTrue(run.completed("charge-$n") && run.completed("order-$n"), "order-$n is paid: the provider is back")
         }
         assertTrue(run.completed("checkout"), "the failed orders do not stop the checkout")
+    }
+
+    /**
+     * A delay never ends early, so the threads can only make an order later than scripted: order 6
+     * (three gaps after the breaker opens) is always past the cooldown, and only order 5 (two gaps)
+     * could slip into it. Checked on the script, not on a run, so it holds however slow a run is;
+     * the scripted room is what keeps a slow run's order 5 rejected.
+     */
+    @Test
+    fun `the breaker's cooldown leaves order 5 at least 1,5 s of room and ends before order 6`() {
+        val open = PatternScenarios.BREAKER_OPEN_MILLIS
+        val gap = PatternScenarios.ORDER_GAP_MILLIS
+
+        val room = open - 2 * gap
+        assertTrue(room >= 1_500, "order 5 comes ${2 * gap} ms after the breaker opens, only $room ms before it half-opens")
+        assertTrue(3 * gap >= open, "order 6 comes ${3 * gap} ms after the breaker opens, before it half-opens at $open ms")
     }
 
     companion object {
