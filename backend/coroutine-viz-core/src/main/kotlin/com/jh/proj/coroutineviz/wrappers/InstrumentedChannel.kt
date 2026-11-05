@@ -56,14 +56,28 @@ class InstrumentedChannel<T>(
      * receive freeing a slot a waiting sender takes) the two updates can land in either order and
      * the counter runs a step ahead or behind for a moment. What is reported stays within what the
      * channel can hold: nothing for a rendezvous channel, at most one for a conflated one, at most
-     * its capacity for a sized buffer, and never less than zero.
+     * its capacity for a sized buffer (64 by default for [Channel.BUFFERED]), and never less than
+     * zero.
      */
     private fun reportedSize(count: Int): Int =
         when (capacity) {
             Channel.RENDEZVOUS -> 0
             Channel.CONFLATED -> count.coerceIn(0, 1)
-            Channel.BUFFERED, Channel.UNLIMITED -> count.coerceAtLeast(0)
+            Channel.UNLIMITED -> count.coerceAtLeast(0)
+            Channel.BUFFERED -> count.coerceIn(0, defaultBufferCapacity)
             else -> count.coerceIn(0, capacity.coerceAtLeast(0))
+        }
+
+    /**
+     * Counts a sent element. A conflated channel holds at most one: a send over an unread value
+     * replaces it, so the count is one, not one more.
+     */
+    private fun countSent(): Int =
+        if (capacity == Channel.CONFLATED) {
+            bufferCount.set(1)
+            1
+        } else {
+            bufferCount.incrementAndGet()
         }
 
     private val ctx: ChannelEventContext by lazy {
@@ -98,7 +112,7 @@ class InstrumentedChannel<T>(
 
         delegate.send(element)
 
-        val currentSize = reportedSize(bufferCount.incrementAndGet())
+        val currentSize = reportedSize(countSent())
         session.send(ctx.channelBufferStateChanged(currentSize))
         session.send(ctx.channelSendCompleted(coroutineId, valueDesc))
 
@@ -108,7 +122,7 @@ class InstrumentedChannel<T>(
     override fun trySend(element: T): ChannelResult<Unit> {
         val result = delegate.trySend(element)
         if (result.isSuccess) {
-            val currentSize = reportedSize(bufferCount.incrementAndGet())
+            val currentSize = reportedSize(countSent())
             val coroutineId =
                 runCatching {
                     kotlinx.coroutines.runBlocking {
@@ -259,6 +273,13 @@ class InstrumentedChannel<T>(
 
     companion object {
         private val logger = LoggerFactory.getLogger(InstrumentedChannel::class.java)
+
+        /**
+         * The capacity of a [Channel.BUFFERED] channel: kotlinx.coroutines' default buffer, 64
+         * unless the JVM property `kotlinx.coroutines.channels.defaultBuffer` sets another.
+         */
+        private val defaultBufferCapacity: Int =
+            System.getProperty("kotlinx.coroutines.channels.defaultBuffer")?.toIntOrNull()?.takeIf { it >= 1 } ?: 64
     }
 }
 

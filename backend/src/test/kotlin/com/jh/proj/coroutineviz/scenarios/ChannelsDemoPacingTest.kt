@@ -22,7 +22,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -199,9 +198,16 @@ class ChannelsDemoPacingTest {
         sends.drop(1).forEachIndexed { i, (started, completed) ->
             assertTrue(completed - started >= 1_000, "the chef waits at the pass with plate ${i + 2}, ${completed - started} ms")
         }
+        // A hand-over needs both: the send and the receive of each plate are under way at the same
+        // time (each starts before the other completes). Comparing intervals, not the instants the
+        // two completions were recorded, keeps this steady however the threads are scheduled.
         sends.zip(receives).forEachIndexed { i, (send, receive) ->
-            assertTrue(abs(send.second - receive.second) < 200, "plate ${i + 1} changes hands at ${send.second} / ${receive.second} ms")
+            assertTrue(
+                send.first <= receive.second && receive.first <= send.second,
+                "plate ${i + 1}: sent ${send.first}-${send.second} ms, received ${receive.first}-${receive.second} ms",
+            )
         }
+        assertEquals(listOf("soup", "salad", "steak", "pasta", "dessert"), run.receivedValuesBy("waiter"), "the plates, in order")
         assertTrue(run.labels.all { run.completed(it) })
     }
 

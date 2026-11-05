@@ -101,7 +101,10 @@ export const CHANNELS_GUIDES: DemoGuide[] = [
     code: `suspend fun supportDesk() = coroutineScope {       // support-desk
     val queue = Channel<String>(capacity = 3)       // 3
     launch {                                        // ticket-inbox
-        for (ticket in tickets) queue.send(ticket)  // 1
+        for (ticket in tickets) {
+            arrive(ticket)            // takes 0.5 s, later 1.2 s
+            queue.send(ticket)                      // 1
+        }
         queue.close()                               // 4
     }
     repeat(3) { n ->
@@ -125,7 +128,7 @@ export const CHANNELS_GUIDES: DemoGuide[] = [
       },
       {
         title: 'The queue is closed',
-        text: 'After ticket 12 the inbox calls close(). Each agent finishes its last ticket, finds the queue closed and empty, and stops, at about 13 s.',
+        text: 'After ticket 12, at about 10 s, the inbox calls close(). Each agent finishes its last ticket, finds the queue closed and empty, and stops; the last one stops at about 13 s.',
       },
     ],
     keyIdea:

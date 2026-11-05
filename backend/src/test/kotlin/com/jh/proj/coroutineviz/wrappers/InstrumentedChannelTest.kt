@@ -248,6 +248,25 @@ class InstrumentedChannelTest {
         }
 
     /**
+     * A conflated channel keeps only the latest value: a send over an unread one replaces it. The
+     * reported size counts what the channel holds, so it is empty again after the one receive.
+     */
+    @Test
+    @DisplayName("a conflated channel counts a replaced value once")
+    fun `conflated size after an overwrite`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<String>(Channel.CONFLATED, "conflated-size")
+
+            channel.send("a")
+            channel.send("b") // replaces "a"
+            assertEquals("b", channel.receive())
+
+            val sizes = session.store.all().filterIsInstance<ChannelBufferStateChanged>().map { it.currentSize }
+            assertEquals(listOf(1, 1, 0), sizes)
+        }
+
+    /**
      * When a receive frees a slot of a full channel, the sender waiting for that slot can count its
      * element before the receiver counts its own; the reported size must still stay within the
      * channel's capacity.
