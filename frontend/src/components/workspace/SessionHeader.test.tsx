@@ -82,6 +82,24 @@ describe('SessionHeader', () => {
       expect(screen.getByTestId('run-outcome')).toHaveTextContent(/^Failed · 1 coroutine failed$/)
     })
 
+    it('announces a run that fails while it is watched, in one live region (#290)', () => {
+      const props = {
+        sessionId: 's-1', session, title: 'Deadlock', rung: 'demo' as const, readOnly: false, runSpanNanos: null,
+        streamEnabled: true, isConnected: true, replayActive: false, replayAtNanos: null, newEventsCount: 0,
+        loadedAtMs: 0, panelRef: createRef<HTMLDivElement>(), panelEvents: [], viewMode: 'graph' as const,
+        onToggleStream: vi.fn(), onToggleReplay: vi.fn(), onExitReplay: vi.fn(), onRefetch: vi.fn(),
+        onOpenShares: vi.fn(), onOpenChecks: vi.fn(),
+      }
+      const { rerender } = render(<SessionHeader {...props} outcome={{ outcome: 'running', failedCount: 0, ended: false }} />)
+      const status = screen.getByRole('status', { name: 'Run outcome' })
+      expect(status).toHaveAttribute('aria-atomic', 'true')
+      expect(status).toHaveTextContent('Running')
+      rerender(<SessionHeader {...props} outcome={{ outcome: 'failed', failedCount: 1, ended: false }} />)
+      // The same region, so a screen reader hears the change.
+      expect(screen.getByRole('status', { name: 'Run outcome' })).toBe(status)
+      expect(status).toHaveTextContent('Failed · 1 coroutine failed')
+    })
+
     it('says "at least" when the backend dropped events', () => {
       renderHeader({ outcome: { outcome: 'finished', failedCount: 0, ended: true }, runSpanNanos: 12e9, droppedCount: 2 })
       expect(screen.getByTestId('run-outcome')).toHaveTextContent('Finished · at least 12.0 s')
