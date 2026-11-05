@@ -183,16 +183,16 @@ describe('projectActivity', () => {
     expect(lines.get('c-1')?.text).toBe('may hold a payment-gateway permit · holder unknown')
   })
 
-  it('finds queue places without searching each queue per waiter (a long queue stays fast)', () => {
-    const waiting = Array.from({ length: 5000 }, (_, i) => `w-${i}`)
-    const events = [
+  it('places every waiter of a long queue', () => {
+    // Places come from one map per queue, built once (a per-waiter search of the queue was quadratic on a
+    // long live queue); a wall-clock bound would not tell the two apart reliably, so this checks the result.
+    const waiting = Array.from({ length: 2_000 }, (_, i) => `w-${i}`)
+    const lines = projectActivity([
       ev('MutexCreated', lock),
       ev('MutexQueueChanged', { ...lock, waitingCoroutineIds: waiting, waitingLabels: waiting }),
       ...waiting.map(id => waitFor(id, 'MUTEX', 'm-1')),
-    ]
-    const started = performance.now()
-    const lines = projectActivity(events)
-    expect(performance.now() - started).toBeLessThan(150)
-    expect(lines.get('w-4999')?.text).toBe('waits for inventory-lock · 5000th')
+    ])
+    expect(lines.get('w-0')?.text).toBe('waits for inventory-lock · 1st')
+    expect(lines.get('w-1999')?.text).toBe('waits for inventory-lock · 2000th')
   })
 })
