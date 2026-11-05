@@ -212,6 +212,11 @@ data class TransportStatus(
     val lostEvents: Long = 0,
     val deliveryUncertain: Boolean = false,
     val sinceSeq: Long? = null,
+    /**
+     * Bumped by the backend on every change of the facts above, so a follow-up read can tell that the transport moved on
+     * since the health it is bound to (the facts are sticky and cannot be rebuilt at a past seq).
+     */
+    val revision: Long = 0,
 )
 
 /**

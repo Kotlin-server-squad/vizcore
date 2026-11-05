@@ -101,12 +101,13 @@ object IngestStates {
             if (current == null || observation.appNanos >= current.appNanos) state.watermark = observation
             val doubt = watermark.lostEvents > 0 || watermark.deliveryUncertain
             val t = state.transport
-            state.transport =
+            state.updateTransport(
                 t.copy(
                     lostEvents = maxOf(t.lostEvents, watermark.lostEvents),
                     deliveryUncertain = t.deliveryUncertain || watermark.deliveryUncertain,
                     sinceSeq = if (doubt) earliest(t.sinceSeq, connection.firstSeq) else t.sinceSeq,
-                )
+                ),
+            )
         }
         if (watermark.final) connection.finalWatermarkReceived = true
         state.watermarks.tryEmit(observation)
@@ -159,7 +160,7 @@ private fun markUncertain(connection: IngestStates.Connection) {
     val state = connection.state
     synchronized(state) {
         val t = state.transport
-        state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
+        state.updateTransport(t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq)))
     }
 }
 
@@ -167,3 +168,13 @@ private fun earliest(
     current: Long?,
     candidate: Long,
 ): Long = minOf(current ?: Long.MAX_VALUE, candidate)
+
+/** Replaces the transport facts with [next]'s, bumping the revision only when they differ. Caller holds the state's lock. */
+private fun IngestStates.State.updateTransport(next: TransportStatus) {
+    val current = transport
+    val changed =
+        next.lostEvents != current.lostEvents ||
+            next.deliveryUncertain != current.deliveryUncertain ||
+            next.sinceSeq != current.sinceSeq
+    if (changed) transport = next.copy(revision = current.revision + 1)
+}
