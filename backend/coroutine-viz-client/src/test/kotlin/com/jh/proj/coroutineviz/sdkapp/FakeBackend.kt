@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.sdkapp
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import kotlinx.serialization.PolymorphicSerializer
@@ -19,6 +20,9 @@ import kotlin.concurrent.thread
 internal data class Created(
     val label: String?,
     val fileName: String?,
+    val origin: CoroutineOrigin? = null,
+    val coroutineId: String = "",
+    val parentCoroutineId: String? = null,
 )
 
 /**
@@ -45,6 +49,10 @@ internal class FakeBackend(
     val sessionCreates: List<String> get() = sessionRequests.toList()
     private val events = ConcurrentHashMap<String, Created>()
     val created: List<Created> get() = events.values.toList()
+    private val frameKinds = CopyOnWriteArrayList<String>()
+
+    /** The kind of every frame the ingest socket received, in order (watermarks included). */
+    val kinds: List<String> get() = frameKinds.toList()
 
     init {
         thread(isDaemon = true, name = "fake-backend") {
@@ -57,6 +65,14 @@ internal class FakeBackend(
                     }
                 thread(isDaemon = true, name = "fake-backend-conn") { socket.use(::handle) }
             }
+        }
+    }
+
+    fun awaitKind(kind: String) {
+        val deadline = System.currentTimeMillis() + 15_000
+        while (kind !in frameKinds) {
+            check(System.currentTimeMillis() < deadline) { "no $kind frame arrived; got ${frameKinds.toSet()}" }
+            Thread.sleep(50)
         }
     }
 
@@ -89,6 +105,10 @@ internal class FakeBackend(
                     ).toByteArray(),
                 )
             }
+            // A server that serves session health takes watermarks (vizcore 1.3).
+            requestLine.startsWith("GET /api/sessions/$sessionId/health") -> {
+                out.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".toByteArray())
+            }
             requestLine.startsWith("GET /api/sessions/$sessionId/ingest") -> {
                 val accept =
                     Base64.getEncoder().encodeToString(
@@ -105,8 +125,10 @@ internal class FakeBackend(
                 out.flush()
                 readTextFrames(input) { text ->
                     val event = appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), text)
+                    frameKinds += event.kind
                     if (event is CoroutineCreated) {
-                        events[event.coroutineId] = Created(event.label, event.creationPoint?.fileName)
+                        events[event.coroutineId] =
+                            Created(event.label, event.creationPoint?.fileName, event.origin, event.coroutineId, event.parentCoroutineId)
                     }
                 }
             }
