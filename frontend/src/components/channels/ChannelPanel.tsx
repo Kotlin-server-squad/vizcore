@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardBody, CardHeader, Chip, Divider } from '@heroui/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiRadio, FiHash } from 'react-icons/fi'
@@ -19,15 +19,31 @@ interface ChannelPanelProps {
    * the shared view) the pick stays local to this panel.
    */
   onSelectChannel?: (channelId: string) => void
+  /** Changes with every selection, so selecting the same channel again scrolls to it again. */
+  revealKey?: unknown
 }
 
-export function ChannelPanel({ sessionId, events, focusChannelId = null, onSelectChannel }: ChannelPanelProps) {
+export function ChannelPanel({
+  sessionId,
+  events,
+  focusChannelId = null,
+  onSelectChannel,
+  revealKey,
+}: ChannelPanelProps) {
   const { channels, eventsByChannel, bufferStates } = useChannelEvents(sessionId, events)
   const [pickedChannelId, setPickedChannelId] = useState<string | null>(null)
   const pick = (channelId: string) => {
     setPickedChannelId(channelId)
     onSelectChannel?.(channelId)
   }
+
+  // Bring the page's channel into view; its section was unfolded in the same render.
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!focusChannelId) return
+    const el = listRef.current?.querySelector(`[data-testid="channel-selector-${CSS.escape(focusChannelId)}"]`)
+    el?.scrollIntoView?.({ block: 'nearest' })
+  }, [focusChannelId, revealKey])
 
   // The page's selection wins; then the last pick here; then the first channel.
   const wanted = focusChannelId ?? pickedChannelId
@@ -85,7 +101,7 @@ export function ChannelPanel({ sessionId, events, focusChannelId = null, onSelec
           </div>
         </CardHeader>
         <CardBody>
-          <div className="flex flex-wrap gap-2" data-testid="channel-list">
+          <div ref={listRef} className="flex flex-wrap gap-2" data-testid="channel-list">
             {channels.map((ch, index) => {
               const isSelected = ch.channelId === effectiveSelectedId
               const evtCount = eventsByChannel.get(ch.channelId)?.length ?? 0
@@ -97,8 +113,10 @@ export function ChannelPanel({ sessionId, events, focusChannelId = null, onSelec
                     isSelected
                       ? 'border-primary bg-primary/10'
                       : 'border-default-200 hover:bg-default-100'
-                  }`}
+                  }${ch.channelId === focusChannelId ? ' ring-2 ring-primary' : ''}`}
                   data-testid={`channel-selector-${ch.channelId}`}
+                  // The page's selection (S-2), ringed like a selected lock.
+                  data-focused={ch.channelId === focusChannelId ? 'true' : 'false'}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}

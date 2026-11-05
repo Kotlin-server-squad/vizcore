@@ -29,6 +29,9 @@ export function SemaphoreGauge({
 }: SemaphoreGaugeProps) {
   const usedPermits = semaphore.totalPermits - semaphore.availablePermits
   const percent = semaphore.totalPermits > 0 ? (usedPermits / semaphore.totalPermits) * 100 : 0
+  const listed = semaphore.activeHolders.reduce((sum, h) => sum + h.permits, 0)
+  // Permits in use that no listed holder accounts for (taken at creation, or before the retained history).
+  const unrecorded = Math.max(0, usedPermits - listed)
   const color = getGaugeColor(semaphore.availablePermits, semaphore.totalPermits)
 
   // SVG arc calculation
@@ -109,10 +112,13 @@ export function SemaphoreGauge({
 
           {/* Who holds the permits (S-6): counted, never numbered. When a permit came back from a
               coroutine that held none (S-7), more permits are listed than are in use, and which listed
-              holder still holds one is unknown: the line says "holder unknown", not a guess. */}
+              holder still holds one is unknown; when fewer are listed (permits taken at creation), the
+              rest have no recorded holder. Either way the line says so rather than guess. */}
           <div data-testid="semaphore-holders" className="text-xs">
             <span className="text-default-500">Held by </span>
-            {semaphore.unknownHolderPermits > 0 ? (
+            {usedPermits <= 0 ? (
+              <span>none</span>
+            ) : semaphore.unknownHolderPermits > 0 ? (
               <>
                 <span className="font-semibold">holder unknown</span>
                 <span className="text-default-500">
@@ -123,9 +129,22 @@ export function SemaphoreGauge({
                 <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
               </>
             ) : semaphore.activeHolders.length === 0 ? (
-              <span>none</span>
+              <>
+                <span className="font-semibold">holder unknown</span>
+                <span className="text-default-500">
+                  {' '}
+                  — {usedPermits} of {semaphore.totalPermits} permits in use; no holder was recorded
+                </span>
+              </>
             ) : (
-              <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} counts />
+              <>
+                <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} counts />
+                {unrecorded > 0 && (
+                  <span className="text-default-500">
+                    , and {unrecorded === 1 ? '1 permit' : `${unrecorded} permits`} with no recorded holder
+                  </span>
+                )}
+              </>
             )}
           </div>
 

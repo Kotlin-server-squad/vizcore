@@ -218,7 +218,7 @@ describe('EvidencePanels — the page\'s events and selection (S-2)', () => {
     expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('follows the replay cursor, so Locks and permits carries no live-data warning in replay', async () => {
+  it('reads the events it is given in replay too, so Locks and permits carries no live-data warning', async () => {
     renderPanels({ ...synced, events, replayActive: true })
     await userEvent.click(screen.getByRole('button', { name: /Locks and permits/ }))
     expect(within(screen.getByTestId('evidence-section-Locks and permits')).queryByTestId('live-data-notice')).toBeNull()

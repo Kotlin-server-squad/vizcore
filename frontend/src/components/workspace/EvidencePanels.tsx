@@ -147,6 +147,7 @@ export function EvidencePanels({
           selectedResourceId={selectedResource && selectedResource.resource !== 'channel' ? selectedResource.id : null}
           selectedCoroutineId={selectedCoroutineId}
           picker={picker}
+          revealKey={selection}
         />
       ),
     },
@@ -161,6 +162,7 @@ export function EvidencePanels({
           sessionId={sessionId}
           events={events}
           focusChannelId={selectedResource?.resource === 'channel' ? selectedResource.id : null}
+          revealKey={selection}
           onSelectChannel={
             onSelectResource ? id => onSelectResource({ kind: 'resource', resource: 'channel', id }) : undefined
           }

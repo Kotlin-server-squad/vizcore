@@ -26,6 +26,14 @@ vi.mock('./DispatcherOverview', () => ({ DispatcherOverview: () => null }))
 vi.mock('./SessionMetrics', () => ({ SessionMetrics: () => null }))
 vi.mock('./export/ExportMenu', () => ({ ExportMenu: () => null }))
 vi.mock('./replay/RecordConfirmModal', () => ({ RecordConfirmModal: () => null }))
+// A thin controller: replay's cursor is moved by the real useReplay, through this button.
+vi.mock('./replay/ReplayController', () => ({
+  ReplayController: ({ replay }: { replay: { seekTo: (i: number) => void } }) => (
+    <button type="button" onClick={() => replay.seekTo(0)}>
+      Seek to the first event
+    </button>
+  ),
+}))
 vi.mock('@tanstack/react-router', () => ({ useNavigate: vi.fn(() => vi.fn()) }))
 vi.mock('@/lib/animation-throttle', () => ({ useAnimationSlot: () => false }))
 vi.mock('framer-motion', async () => {
@@ -180,6 +188,15 @@ describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
     await userEvent.click(screen.getByTestId('channel-selector-ch-2'))
     await userEvent.click(screen.getByRole('tab', { name: 'Events' }))
     expect(screen.getByTestId('events-scope')).toHaveTextContent('Events about invoices · 2')
+  })
+
+  it('in replay, Evidence says what was captured by the cursor, not later', async () => {
+    stream([co('coroutine.started', 'c-1'), ...contended])
+    render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Seek to the first event' }))
+    await userEvent.click(screen.getByRole('tab', { name: /Evidence/ }))
+    expect(screen.getByTestId('evidence-section-Locks and permits')).toHaveTextContent('none captured')
   })
 })
 

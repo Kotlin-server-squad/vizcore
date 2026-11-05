@@ -290,6 +290,26 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(held).toHaveTextContent('last recorded holders order-3, order-4')
   })
 
+  it('says the holder is unknown when permits are in use with no holder recorded', () => {
+    // A semaphore created with permits already taken (acquiredPermits) lists no holder for them.
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 0, activeHolders: [], activeHolderLabels: [] })} />,
+      { wrapper: createWrapper() },
+    )
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown')
+    expect(held).toHaveTextContent('3 of 3 permits in use; no holder was recorded')
+    expect(held).not.toHaveTextContent('none')
+  })
+
+  it('names the recorded holders and counts the permits no holder was recorded for', () => {
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 1, activeHolders: ['c-3'], activeHolderLabels: ['order-3'], activeHolderPermits: [1] })} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3, and 1 permit with no recorded holder')
+  })
+
   it('selects a holder or a waiter by name', async () => {
     const select = vi.fn()
     render(<SyncPanel sessionId="session-1" events={lockEvents} picker={anyone(select)} />, { wrapper: createWrapper() })
@@ -311,6 +331,20 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(screen.getByTestId('mutex-state')).toHaveTextContent('outside any coroutine')
     expect(screen.getByText('gone')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'gone' })).toBeNull()
+  })
+
+  it('scrolls the selected resource into view, again when it is selected again', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    const wrapper = createWrapper()
+    const { rerender } = render(
+      <SyncPanel sessionId="session-1" events={lockEvents} selectedResourceId="m-1" revealKey={{}} />,
+      { wrapper },
+    )
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByTestId('resource-m-1'))
+    rerender(<SyncPanel sessionId="session-1" events={lockEvents} selectedResourceId="m-1" revealKey={{}} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 
   it('marks the selected coroutine and rings the selected resource', () => {

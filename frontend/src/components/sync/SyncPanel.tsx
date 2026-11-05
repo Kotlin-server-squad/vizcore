@@ -19,6 +19,8 @@ interface SyncPanelProps {
   selectedCoroutineId?: string | null
   /** Selects a coroutine by its name, when the page can (S-2). */
   picker?: CoroutinePicker
+  /** Changes with every selection, so selecting the same resource again scrolls to it again. */
+  revealKey?: unknown
 }
 
 export function SyncPanel({
@@ -27,6 +29,7 @@ export function SyncPanel({
   selectedResourceId = null,
   selectedCoroutineId = null,
   picker,
+  revealKey,
 }: SyncPanelProps) {
   const { mutexes, semaphores, deadlocks, warnings } = useSyncEvents(sessionId, events)
   // Bring a selected resource into view; its section was unfolded in the same render.
@@ -35,7 +38,7 @@ export function SyncPanel({
     if (!selectedResourceId) return
     const el = panelRef.current?.querySelector(`[data-testid="resource-${CSS.escape(selectedResourceId)}"]`)
     el?.scrollIntoView?.({ block: 'nearest' })
-  }, [selectedResourceId])
+  }, [selectedResourceId, revealKey])
 
   if (mutexes.length === 0 && semaphores.length === 0 && deadlocks.length === 0 && warnings.length === 0) {
     return (

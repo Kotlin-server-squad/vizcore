@@ -123,5 +123,10 @@ describe('resourceIds', () => {
     ])
     expect([...ids].sort()).toEqual(['ch-1', 'm-2', 'sem-1'])
   })
+
+  it('counts a resource a retained suspension still waits for', () => {
+    const ids = resourceIds([ev('coroutine.suspended', { coroutineId: 'c-1', waitKind: 'MUTEX', resourceId: 'm-9' })])
+    expect([...ids]).toEqual(['m-9'])
+  })
 })
 

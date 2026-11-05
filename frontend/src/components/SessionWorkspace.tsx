@@ -10,7 +10,7 @@ import {
 } from '@heroui/react'
 import { useSession, useSessionEvents } from '@/hooks/use-sessions'
 import { useThreadActivity } from '@/hooks/use-thread-activity'
-import { useEventCategories } from '@/hooks/use-event-categories'
+import { categorizeEvents, useEventCategories } from '@/hooks/use-event-categories'
 import { useWorkspaceReplay } from '@/hooks/use-workspace-replay'
 import { useValidation } from '@/hooks/use-validation'
 import { SSE_FALLBACK_POLL_MS } from '@/lib/poll-interval'
@@ -288,6 +288,13 @@ export function SessionWorkspace({
 
   // What the Evidence tab holds, named on its label (S-4).
   const evidenceCounts = useMemo(() => countEvidence(panelEvents), [panelEvents])
+  // Which Evidence sections have anything, from the same events: in replay,
+  // the cursor's, so a resource created later is not reported yet. The rung
+  // keeps the whole session's categories.
+  const evidenceCategories = useMemo(
+    () => (replayActive ? categorizeEvents(panelEvents) : eventCategories),
+    [replayActive, panelEvents, eventCategories],
+  )
   // What each coroutine waits for or holds (S-6), and the resources' names,
   // from the same events as the rest of the page: live, paused or at the
   // replay cursor — so they refresh with every new event.
@@ -595,7 +602,7 @@ export function SessionWorkspace({
             <EvidencePanels
               sessionId={sessionId}
               rung={rung}
-              categories={eventCategories}
+              categories={evidenceCategories}
               counts={evidenceCounts}
               replayActive={replayActive}
               readOnly={readOnly}

@@ -80,12 +80,15 @@ export function resourceNames(events: readonly VizEvent[]): Map<string, string> 
   return names
 }
 
-/** Every lock, semaphore and channel the events name: a selected resource no longer among them is gone. */
+/**
+ * Every lock, semaphore and channel the events name, a suspension waiting for one included (as
+ * `eventConcerns` counts it): a selected resource no longer among them is gone.
+ */
 export function resourceIds(events: readonly VizEvent[]): Set<string> {
   const ids = new Set<string>()
   for (const event of events) {
     const f = fieldsOf(event)
-    const id = f.mutexId ?? f.semaphoreId ?? f.channelId
+    const id = f.mutexId ?? f.semaphoreId ?? f.channelId ?? f.resourceId
     if (id) ids.add(id)
   }
   return ids
