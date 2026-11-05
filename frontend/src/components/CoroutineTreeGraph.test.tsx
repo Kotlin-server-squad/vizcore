@@ -102,6 +102,14 @@ function makeCoroutine(overrides: Partial<CoroutineNode> = {}): CoroutineNode {
 }
 
 describe('CoroutineTreeGraph', () => {
+  it('fills the box it is given instead of a fixed share of the window (S-1)', () => {
+    render(<CoroutineTreeGraph coroutines={[makeCoroutine()]} />)
+    const canvas = screen.getByTestId('graph-canvas')
+    expect(canvas.className).toContain('h-full')
+    expect(canvas.className).not.toContain('70vh')
+    expect(canvas.className).not.toContain('min-h-[480px]')
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     zoom.state = { positionX: 0, positionY: 0, scale: 1 }
