@@ -564,7 +564,11 @@ export function SessionWorkspace({
                 live flush. It fetches nothing, so mounting later costs no
                 request. Every other panel stays mounted and is hidden. */}
             {dockTab === 'events' && (
-              <EventsPanel events={panelEvents} selectedCoroutine={selectedCoroutine} />
+              <EventsPanel
+                events={panelEvents}
+                selection={selectedCoroutine ? { kind: 'coroutine', id: selectedCoroutine.id } : null}
+                selectionLabel={selectedCoroutine?.label ?? null}
+              />
             )}
           </DockTabPanel>
           <DockTabPanel id="learn" selected={dockTab === 'learn'}>
