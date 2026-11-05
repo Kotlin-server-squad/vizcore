@@ -120,7 +120,12 @@ export function ScenarioControls({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="mb-1 text-lg font-semibold">Scenario Controls</h3>
-            <p className={scenarioState === 'failed' ? 'text-sm text-danger' : 'text-sm text-default-500'}>
+            {/* A live region, so a screen reader hears a run fail without moving focus. */}
+            <p
+              role="status"
+              aria-atomic="true"
+              className={scenarioState === 'failed' ? 'text-sm text-danger' : 'text-sm text-default-500'}
+            >
               {scenarioState === 'notStarted' && 'Ready to run the scenario'}
               {scenarioState === 'running' && 'Scenario is running'}
               {scenarioState === 'finished' && 'Scenario finished'}

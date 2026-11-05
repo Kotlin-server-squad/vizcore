@@ -105,4 +105,26 @@ describe('ScenarioControls', () => {
     renderWith(finishedWith('FAILED', 'FAILED'))
     expect(screen.getByText('Scenario failed: 2 coroutines failed')).toBeInTheDocument()
   })
+
+  it('announces a run that fails while it is watched, in one live region', () => {
+    const { rerender } = renderWith(finishedWith('ACTIVE', 'ACTIVE'))
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-atomic', 'true')
+    expect(status).toHaveTextContent('Scenario is running')
+
+    rerender(
+      <HeroUIProvider>
+        <ScenarioControls
+          sessionId="s-1"
+          scenarioId="exception-propagation"
+          session={finishedWith('FAILED', 'ACTIVE')}
+          onClearEvents={vi.fn()}
+          onRefetch={vi.fn()}
+        />
+      </HeroUIProvider>,
+    )
+    // The same region, so a screen reader hears the change.
+    expect(screen.getByRole('status')).toBe(status)
+    expect(status).toHaveTextContent('Scenario failed: 1 coroutine failed')
+  })
 })
