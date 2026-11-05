@@ -160,11 +160,15 @@ class GuideLabelsTest {
             "mixed" -> BasicScenarios.runMixedScenario(session)
             "exception" -> BasicScenarios.runExceptionScenario(session)
             "dispatcher" -> BasicScenarios.runDispatcherScenario(session)
+            "flow/simple" -> FlowScenarios.simpleFlow(session)
+            "flow/operators" -> FlowScenarios.flowOperators(session)
+            "flow/stateflow" -> FlowScenarios.stateFlowDemo(session)
+            "flow/sharedflow" -> FlowScenarios.sharedFlowDemo(session)
             else -> error("will-see.json pictures '$demoId'; add it to GuideLabelsTest.start")
         }
 
     companion object {
-        /** A tenth of scripted speed: the seven demos take about 10 s here. */
+        /** A tenth of scripted speed: each demo takes 1-2 s here. */
         private const val SCALE = 0.1
 
         /** How far, in scripted seconds, the pictured moment may lie from where the tree matches. */
