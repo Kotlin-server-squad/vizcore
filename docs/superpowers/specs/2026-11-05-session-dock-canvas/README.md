@@ -10,6 +10,7 @@ history stay with the code.
 
 | File | Canvas page | What it shows |
 |---|---|---|
+| `D0-Deliver.dc.html` | 0 · What you will get | The ten parts: what each delivers, for whom, where to see it, and its status on 2026-11-05 |
 | `G0-Map.dc.html` | 1 · The proposal | How the page is built: header, main view (Tree / Timeline), dock tabs, what opens first |
 | `G2-Story.dc.html` | 1 · The proposal | A learner: a Gallery demo in story mode, predict then reveal |
 | `G1-App.dc.html` | 1 · The proposal | A developer: a real app opens on Problems, coroutines grouped by name |

@@ -7,20 +7,24 @@
   "title": "vizcore session view redesign",
   "launch": {
     "view": "canvas",
-    "page": "proposal"
+    "page": "deliver"
   },
   "pages": [
     {
+      "id": "deliver",
+      "name": "0 · What you will get"
+    },
+    {
       "id": "proposal",
-      "name": "1 \u00b7 The proposal"
+      "name": "1 · The proposal"
     },
     {
       "id": "quickwins",
-      "name": "2 \u00b7 Quick wins first"
+      "name": "2 · Quick wins first"
     },
     {
       "id": "explore",
-      "name": "3 \u00b7 All explorations"
+      "name": "3 · All explorations"
     }
   ],
   "boards": {
@@ -38,7 +42,7 @@
       "w": 1440,
       "h": 800,
       "expand": "fill",
-      "title": "A \u00b7 Canvas first, side panel",
+      "title": "A · Canvas first, side panel",
       "page": "explore"
     },
     "OptionB.dc.html": {
@@ -47,7 +51,7 @@
       "w": 1440,
       "h": 800,
       "expand": "fill",
-      "title": "B \u00b7 IDE dock (Codex + my recommendation)",
+      "title": "B · IDE dock (Codex + my recommendation)",
       "page": "explore"
     },
     "OptionC.dc.html": {
@@ -56,7 +60,7 @@
       "w": 1440,
       "h": 800,
       "expand": "fill",
-      "title": "C \u00b7 Keep the page, fold everything (quick wins)",
+      "title": "C · Keep the page, fold everything (quick wins)",
       "page": "explore"
     },
     "S1-Finished.dc.html": {
@@ -65,7 +69,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "Step 1 \u00b7 Quick wins: a finished demo",
+      "title": "Step 1 · Quick wins: a finished demo",
       "page": "quickwins"
     },
     "S1-Live.dc.html": {
@@ -74,7 +78,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "Step 1 \u00b7 Quick wins: a live run, 6 s in",
+      "title": "Step 1 · Quick wins: a live run, 6 s in",
       "page": "quickwins"
     },
     "S2-Live.dc.html": {
@@ -83,7 +87,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "Step 2 \u00b7 IDE dock: live run, Inspector tab",
+      "title": "Step 2 · IDE dock: live run, Inspector tab",
       "page": "explore"
     },
     "S2-Failed.dc.html": {
@@ -92,7 +96,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "Step 2 \u00b7 IDE dock: a failed run, Events tab",
+      "title": "Step 2 · IDE dock: a failed run, Events tab",
       "page": "explore"
     },
     "S2-Replay.dc.html": {
@@ -101,7 +105,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "Step 2 \u00b7 IDE dock: replay, Locks and permits tab",
+      "title": "Step 2 · IDE dock: replay, Locks and permits tab",
       "page": "explore"
     },
     "D-Story.dc.html": {
@@ -110,7 +114,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "D \u00b7 Story mode: the demo explains itself (learners)",
+      "title": "D · Story mode: the demo explains itself (learners)",
       "page": "explore"
     },
     "E-Timeline.dc.html": {
@@ -119,7 +123,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "E \u00b7 Timeline first: who waited for what, and when",
+      "title": "E · Timeline first: who waited for what, and when",
       "page": "explore"
     },
     "F-Problems.dc.html": {
@@ -128,7 +132,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "F \u00b7 Problems first: a real app with 300+ coroutines",
+      "title": "F · Problems first: a real app with 300+ coroutines",
       "page": "explore"
     },
     "G0-Map.dc.html": {
@@ -137,7 +141,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "1 \u00b7 How the page is built",
+      "title": "1 · How the page is built",
       "page": "proposal"
     },
     "G2-Story.dc.html": {
@@ -146,7 +150,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "2 \u00b7 A learner opens a demo",
+      "title": "2 · A learner opens a demo",
       "page": "proposal"
     },
     "G1-App.dc.html": {
@@ -155,7 +159,7 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "3 \u00b7 A developer opens their app",
+      "title": "3 · A developer opens their app",
       "page": "proposal"
     },
     "G3-Timeline.dc.html": {
@@ -164,11 +168,21 @@
       "w": 1440,
       "h": 900,
       "expand": "fill",
-      "title": "4 \u00b7 Anyone switches to Timeline",
+      "title": "4 · Anyone switches to Timeline",
       "page": "proposal"
+    },
+    "D0-Deliver.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1000,
+      "expand": "fill",
+      "title": "What you will get, part by part",
+      "page": "deliver"
     }
   },
   "order": [
+    "D0-Deliver.dc.html",
     "Main.dc.html",
     "OptionA.dc.html",
     "OptionB.dc.html",
@@ -222,7 +236,7 @@
     "step2": {
       "x": 0,
       "y": 3580,
-      "text": "Step 2 \u00b7 The IDE dock",
+      "text": "Step 2 · The IDE dock",
       "kind": "title1",
       "maxW": 4480,
       "page": "explore"
@@ -230,7 +244,7 @@
     "bolder": {
       "x": 0,
       "y": 5100,
-      "text": "Bolder directions \u00b7 one per kind of customer",
+      "text": "Bolder directions · one per kind of customer",
       "kind": "title1",
       "maxW": 4480,
       "page": "explore"
@@ -282,6 +296,14 @@
       "w": 700,
       "fill": "blue",
       "text": "How to read this page\nLeft to right: how the page is built, then the same page as a learner, a developer with a real app, and in Timeline view.\nThese 4 boards are one design, not 4 options. Comment on any board: keep, change or drop."
+    },
+    "deliverHow": {
+      "page": "deliver",
+      "x": 1520,
+      "y": 0,
+      "w": 560,
+      "fill": "blue",
+      "text": "How to use this page\nEach row is one part you will get. The last column says where to see it: page 1 for the full design, page 2 for Part 1.\nTo change what you get: comment on a row (keep, change, drop, do earlier), then tell Claude \"read the comments\"."
     }
   },
   "designSystems": []
