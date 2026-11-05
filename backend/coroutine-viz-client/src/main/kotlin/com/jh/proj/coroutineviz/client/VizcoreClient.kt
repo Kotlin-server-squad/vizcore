@@ -8,12 +8,14 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -21,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.random.Random
 import kotlin.time.Duration
@@ -54,6 +57,14 @@ private const val START_SESSION_TIMEOUT_MS = 3_000L
  * The same bound as the ingest handshake.
  */
 private const val BACKGROUND_SESSION_TIMEOUT_MS = 10_000L
+
+/**
+ * How long [VizcoreClient.start] waits for its outbound feed to subscribe to the session bus before returning, so the
+ * app's wrapper events sent right after it are captured (a local subscription, normally well under a millisecond).
+ */
+private const val CAPTURE_START_TIMEOUT_MS = 5_000L
+
+private const val NANOS_PER_MILLI = 1_000_000L
 
 /**
  * The embeddable client half of real-app transport (RCO-04).
@@ -131,7 +142,11 @@ class VizcoreClient internal constructor(
      * reconnects with backoff).
      */
     private val transport: suspend (sessionId: String, lifetime: SocketLifetime) -> Unit = { id, lifetime ->
-        stream(httpClient, backendUrl, id, token, buffer, IngestTimeouts(), lifetime)
+        val timeouts = IngestTimeouts()
+        // Asked before every connection: a server upgraded or replaced meanwhile answers anew. A 1.2 server would store
+        // every watermark as an event, so only a server that serves session health gets them (spec 2026-10-21, C-7).
+        val watermarks = takesWatermarks(httpClient, backendUrl, id, token, timeouts.handshakeMillis) == true
+        stream(httpClient, backendUrl, id, token, buffer, timeouts, lifetime, sendWatermarks = watermarks)
     },
     /**
      * Bootstrap a REPLACEMENT server session and return its id, used when the
@@ -175,6 +190,20 @@ class VizcoreClient internal constructor(
     // while the feed is still subscribing cannot be undone by a late source.start().
     private val lifecycleLock = Any()
 
+    // Set for good by stop(): the scope is cancelled then, so a client never runs again.
+    @Volatile
+    private var stopped = false
+
+    // The reconnect loop, joined by stop() while it finishes the open socket.
+    @Volatile
+    private var loopJob: Job? = null
+
+    // The current connection attempt's socket; stop() waits for delivery only through an open one.
+    private val liveSocket = AtomicReference<SocketLifetime?>(null)
+
+    // Completed once the outbound feed has subscribed to the session bus.
+    private val capturing = CompletableDeferred<Unit>()
+
     /**
      * The server session currently being streamed into. MUTABLE because the backend
      * can lose the session under us (eviction, restart) and the client then
@@ -211,7 +240,7 @@ class VizcoreClient internal constructor(
      */
     fun start() {
         synchronized(lifecycleLock) {
-            if (running) return
+            if (running || stopped) return
             running = true
         }
         // Feed-then-source ordering: subscribe the bus and await the subscription
@@ -219,14 +248,22 @@ class VizcoreClient internal constructor(
         // for the whole client lifetime on the scope.
         scope.launch {
             buffer.feed(session, scope)
+            capturing.complete(Unit)
             // The source owns its own scope, so a source started after stop() would keep
             // polling (and hold its probe reference) forever. Start it only if still running.
             synchronized(lifecycleLock) {
                 if (running) source.start()
             }
         }
-        scope.launch { reconnectLoop() }
+        loopJob = scope.launch { reconnectLoop() }
     }
+
+    /**
+     * Wait up to [timeoutMillis] until the client takes the session's events (its outbound feed subscribed to the bus):
+     * an event the app sends from then on is sent, or counted as lost. The factory calls it before returning, because a
+     * wrapper coroutine's events have no other way to the backend (DebugProbes leave it to them).
+     */
+    internal fun awaitCapture(timeoutMillis: Long): Boolean = runBlocking { withTimeoutOrNull(timeoutMillis) { capturing.await() } } != null
 
     /**
      * The single reconnect loop: connect, stream until the socket ends, back off,
@@ -274,6 +311,7 @@ class VizcoreClient internal constructor(
     private suspend fun streamOnce(sessionId: String): Boolean {
         val lifetime = SocketLifetime(clock)
         var sessionGone = false
+        liveSocket.set(lifetime)
         try {
             transport(sessionId, lifetime)
         } catch (ce: CancellationException) {
@@ -287,6 +325,8 @@ class VizcoreClient internal constructor(
             logger.warn("Ingest connection dropped; reconnecting with backoff: {}", silent.message)
         } catch (t: Throwable) {
             logger.warn("Ingest connection dropped; reconnecting with backoff", t)
+        } finally {
+            liveSocket.compareAndSet(lifetime, null)
         }
         if (!currentCoroutineContext().isActive || !running) return false
         // Read before the recovery below, whose time is not socket time.
@@ -322,8 +362,8 @@ class VizcoreClient internal constructor(
                     backendUrl,
                     RuntimeRequirements.linkageFailure(linkage),
                 )
-                // Releases the probes, the feed and the HTTP client too, and ends this loop.
-                stop()
+                // Releases the probes, the feed and the HTTP client too, and ends this loop (which must not wait for itself).
+                stop(0)
                 null
             } catch (t: Throwable) {
                 t.message ?: t.toString()
@@ -366,21 +406,83 @@ class VizcoreClient internal constructor(
         }
     }
 
+    /** [stop] with the default deadline, [DEFAULT_STOP_TIMEOUT_MILLIS]. */
+    fun stop() = stop(DEFAULT_STOP_TIMEOUT_MILLIS)
+
     /**
-     * Stop the source, close the outbound [buffer] (so the feed collector + any active
-     * drain terminate), close the WebSocket/HTTP client, and cancel the client scope.
-     * Idempotent and leak-free: after [stop] the [source] is no longer running, the
-     * buffer is closed, and the scope is cancelled.
+     * Stop capturing and close the connection (spec 2026-10-21, C-7). Sets the capture cutoff first: everything the app's
+     * coroutines produced before it is sent, nothing after it. With a socket open, it then waits — blocking the caller,
+     * at most [timeoutMillis] from the call — while the buffer drains, a final watermark with the final loss count goes
+     * out, and the socket closes normally: the backend reads a clean close. It never reconnects to finish. If the
+     * deadline passes first, the calling thread is interrupted, or no socket is open, it closes without that message,
+     * and the backend reads delivery as uncertain. The source (its DebugProbes) and the HTTP client are released on a
+     * thread of their own, which [stop] waits for only until the deadline; the buffer is closed and the scope cancelled
+     * at once. Idempotent; a stopped client never starts again. An app that must not wait passes 0.
+     *
+     * @throws IllegalArgumentException when [timeoutMillis] is negative.
      */
-    fun stop() {
-        synchronized(lifecycleLock) {
-            if (!running) return
-            running = false
-            source.stop()
+    fun stop(timeoutMillis: Long) {
+        require(timeoutMillis >= 0) { "timeoutMillis must not be negative, was $timeoutMillis" }
+        val deadline = System.nanoTime() + timeoutMillis * NANOS_PER_MILLI
+        val socketOpen =
+            synchronized(lifecycleLock) {
+                if (!running) return
+                running = false
+                stopped = true
+                liveSocket.get()?.isOpen == true
+            }
+        try {
+            buffer.cutoff(session)
+            if (socketOpen) awaitDelivery(deadline, timeoutMillis)
+        } finally {
+            buffer.close()
+            scope.cancel()
+            releaseWithin(deadline)
         }
-        buffer.close()
-        httpClient.close()
-        scope.cancel()
+    }
+
+    /** Wait until [deadlineNanos] for the reconnect loop to finish the open socket: drain, final watermark, close. */
+    private fun awaitDelivery(
+        deadlineNanos: Long,
+        timeoutMillis: Long,
+    ) {
+        val loop = loopJob ?: return
+        val remainingMillis = (deadlineNanos - System.nanoTime()) / NANOS_PER_MILLI
+        val delivered =
+            try {
+                remainingMillis > 0 && runBlocking { withTimeoutOrNull(remainingMillis) { loop.join() } } != null
+            } catch (_: InterruptedException) {
+                // The caller wants out: keep its interrupt and release everything without waiting.
+                Thread.currentThread().interrupt()
+                false
+            }
+        if (!delivered) {
+            logger.warn(
+                "vizcore could not send every event within {} ms of stop(); the session will say events may have been lost",
+                timeoutMillis,
+            )
+        }
+    }
+
+    /**
+     * Stop the source and close the HTTP client on a daemon thread of their own, joined until [deadlineNanos]: releasing
+     * DebugProbes can retransform classes and take a while, and [stop] returns by its deadline. Outside [lifecycleLock],
+     * so a second [stop] never waits for it; [start]'s source start runs under that lock and checks [running], so it
+     * cannot start the source after this. An interrupted caller does not wait.
+     */
+    private fun releaseWithin(deadlineNanos: Long) {
+        val release =
+            thread(name = "vizcore-stop", isDaemon = true) {
+                source.stop()
+                httpClient.close()
+            }
+        val remainingMillis = (deadlineNanos - System.nanoTime()) / NANOS_PER_MILLI
+        if (remainingMillis <= 0 || Thread.currentThread().isInterrupted) return
+        try {
+            release.join(remainingMillis)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     companion object {
@@ -412,7 +514,7 @@ class VizcoreClient internal constructor(
          * buffered events once it succeeds; until then [sessionIdOrNull] is `null` and
          * [currentSessionId] is empty. So an app can call this during its own startup.
          *
-         * @throws IllegalStateException when the app's kotlin-stdlib or kotlinx-coroutines is older than
+         * @throws IllegalStateException when the client could not start capturing within 5 s, or when the app's kotlin-stdlib or kotlinx-coroutines is older than
          *   the SDK needs (see [RuntimeRequirements]).
          */
         fun start(
@@ -435,7 +537,7 @@ class VizcoreClient internal constructor(
          * Like [start], it returns a running client when the backend is unreachable (#254).
          *
          * @throws IllegalArgumentException when [pollIntervalMillis] is below [MIN_POLL_INTERVAL_MILLIS].
-         * @throws IllegalStateException when the app's kotlin-stdlib or kotlinx-coroutines is older than
+         * @throws IllegalStateException when the client could not start capturing within 5 s, or when the app's kotlin-stdlib or kotlinx-coroutines is older than
          *   the SDK needs (see [RuntimeRequirements]).
          */
         @JvmOverloads
@@ -477,6 +579,9 @@ class VizcoreClient internal constructor(
         /** How often [start] samples coroutines unless told otherwise. */
         const val DEFAULT_POLL_INTERVAL_MILLIS: Long = 150
 
+        /** How long [stop] waits for the last events to be sent. */
+        const val DEFAULT_STOP_TIMEOUT_MILLIS: Long = 5_000
+
         /** The shortest interval [start] accepts; each sample dumps every coroutine in the JVM. */
         const val MIN_POLL_INTERVAL_MILLIS: Long = 10
 
@@ -491,6 +596,7 @@ class VizcoreClient internal constructor(
             internalDispatchers: Set<ContinuationInterceptor> = emptySet(),
             pollInterval: Duration = DEFAULT_POLL_INTERVAL_MILLIS.milliseconds,
             sessionTimeout: Duration = START_SESSION_TIMEOUT_MS.milliseconds,
+            captureTimeout: Duration = CAPTURE_START_TIMEOUT_MS.milliseconds,
         ): VizcoreClient {
             var session: VizSession? = null
             var scope: CoroutineScope? = null
@@ -516,6 +622,9 @@ class VizcoreClient internal constructor(
                 // asynchronously, and DebugProbes miss every coroutine created before
                 // installation, so work the app launches right after start(...) was lost.
                 probes.install()
+                val outbound = OutboundBuffer()
+                // Each completed poll's watermark, after that poll's events (spec 2026-10-21, C-7).
+                probes.onPollCompleted = { pollNanos, pollEpochMs -> outbound.poll(local, pollNanos, pollEpochMs) }
                 VizcoreClient(
                     httpClient = httpClient,
                     backendUrl = backendUrl,
@@ -528,7 +637,15 @@ class VizcoreClient internal constructor(
                     // is created under the SAME app name, not under a session id.
                     appName = appName,
                     correlation = correlation,
-                ).also { it.start() }
+                    buffer = outbound,
+                ).also {
+                    it.start()
+                    // An app's wrapper events sent right after start returns must be captured.
+                    if (!it.awaitCapture(captureTimeout.inWholeMilliseconds)) {
+                        it.stop(0)
+                        throw IllegalStateException("vizcore could not start capturing within ${captureTimeout.inWholeMilliseconds} ms")
+                    }
+                }
             } catch (failure: Throwable) {
                 // No client reaches the caller, so nothing else could ever close what this opened.
                 source?.stop()

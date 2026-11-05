@@ -87,7 +87,8 @@ class VizcoreClientPendingSessionTest {
             assertEquals("created-1", client.currentSessionId)
             assertEquals(listOf("created-1"), streamedIds.toList(), "nothing is streamed before the session exists")
 
-            client.stop()
+            // Its fake socket never drains the buffer: stop without waiting for delivery.
+            client.stop(0)
             testScheduler.advanceUntilIdle()
         }
 
@@ -129,7 +130,8 @@ class VizcoreClientPendingSessionTest {
             assertEquals("created-2", client.sessionIdOrNull)
             assertEquals(listOf("created-2"), streamedIds.toList())
 
-            client.stop()
+            // Its fake socket never drains the buffer: stop without waiting for delivery.
+            client.stop(0)
             testScheduler.advanceUntilIdle()
         }
 
@@ -225,7 +227,8 @@ class VizcoreClientPendingSessionTest {
 
             assertEquals(2, creates.get(), "the loop must retry after the request's own cancellation")
             assertEquals("created-1", client.sessionIdOrNull)
-            client.stop()
+            // Its fake socket never drains the buffer: stop without waiting for delivery.
+            client.stop(0)
             testScheduler.advanceUntilIdle()
         }
 
