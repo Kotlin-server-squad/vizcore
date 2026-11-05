@@ -77,4 +77,35 @@ class DeriveFullTest {
         assertNull(full.roundMembers("failure:x"), "not an incident of this health")
         assertNull(full.roundMembers("failed:round:nope"))
     }
+
+    @Test
+    fun `equal seqs are ordered by id, so paging by key never skips or repeats`() {
+        // Legacy database logs can repeat a seq: build summaries whose terminal and first-observed seqs tie.
+        val table = SummaryTable()
+        val events =
+            EventScript().apply {
+                for (id in listOf("z", "a", "m")) {
+                    created(id, at = sec(1))
+                    started(id, at = sec(1))
+                    failed(id, at = sec(2))
+                }
+                for (id in listOf("q", "b")) {
+                    created(id, at = sec(1))
+                    started(id, at = sec(1))
+                    suspended(id, at = sec(2))
+                }
+            }.events
+        for (e in events) {
+            // Collapse every seq onto one of two values.
+            e.seq = if (e.seq <= 9) 5 else 9
+            table.apply(e)
+        }
+        val full =
+            SessionHealthDerivation.deriveFull(
+                HealthInput(summaries = table, kind = SessionKind.ATTACHED, watermark = watermark, leakThresholdMs = 1_000),
+            )
+        assertEquals(listOf("failed:round:a", "failed:round:m", "failed:round:z"), full.incidents.map { it.id })
+        assertEquals(listOf("b", "q"), full.longLived.filter { it.coroutineId in setOf("b", "q") }.map { it.coroutineId })
+        assertEquals(full.problemRounds.sortedBy { it.anchorId }.map { it.anchorId }, full.problemRounds.map { it.anchorId })
+    }
 }

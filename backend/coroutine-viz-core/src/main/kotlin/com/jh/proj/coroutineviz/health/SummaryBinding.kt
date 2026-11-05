@@ -58,4 +58,12 @@ private class OverlaidView(
     override fun get(id: String): CoroutineSummary? = overrides[id] ?: base.get(id)
 
     override val all: Collection<CoroutineSummary> = base.all.map { overrides[it.id] ?: it }
+
+    // A known summary may have been observed later (or earlier) in app time than any event the fold applied: appends are
+    // not in app-time order, so its own observations count too (plan E-1).
+    override val latestEventAppNanos: Long? =
+        (listOfNotNull(base.latestEventAppNanos) + overrides.values.map { it.lastObservedNanos }).maxOrNull()
+
+    override val earliestEventAppNanos: Long? =
+        (listOfNotNull(base.earliestEventAppNanos) + overrides.values.map { it.firstObserved.appNanos }).minOrNull()
 }

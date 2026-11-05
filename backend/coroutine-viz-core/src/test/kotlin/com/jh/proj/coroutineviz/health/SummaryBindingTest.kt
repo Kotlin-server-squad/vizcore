@@ -108,6 +108,21 @@ class SummaryBindingTest {
     }
 
     @Test
+    fun `the view's observation times include the known summaries' observations`() {
+        val script =
+            EventScript().apply {
+                created("a", at = sec(1))
+                started("a", at = sec(100)) // trimmed, the latest app time of the session
+                suspended("a", at = sec(3)) // seq 3: a's last change
+                created("b", at = sec(4)) // seq 4, the only retained event
+            }
+        val (bound, truth) = bind(script, trimBefore = 4, atSeq = 3)
+        assertEquals(RebuildLevel.EXACT, bound.levelOf("a"))
+        assertEquals(truth.latestEventAppNanos, bound.view.latestEventAppNanos)
+        assertEquals(truth.earliestEventAppNanos, bound.view.earliestEventAppNanos)
+    }
+
+    @Test
     fun `every known summary equals the untrimmed history's at every trim point and seq`() {
         var knownTrimmed = 0
         var unknown = 0

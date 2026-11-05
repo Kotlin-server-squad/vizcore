@@ -39,7 +39,7 @@ internal object HealthParts {
         val end = { s: CoroutineSummary -> maxOf(watermarkNanos ?: Long.MIN_VALUE, s.lastObservedNanos) }
         return evaluated
             .filter { !it.isTerminal && keep(it, end(it) - sinceOf(it)) }
-            .sortedByDescending(seqOf)
+            .sortedWith(compareByDescending(seqOf).thenBy { it.id })
             .map { ObservedAge(it.id, it.name, end(it) - sinceOf(it)) }
     }
 
@@ -57,7 +57,7 @@ internal object HealthParts {
     }
 
     fun vizcoreConnection(vizcore: List<CoroutineSummary>): VizcoreConnectionHealth {
-        val failed = vizcore.filter { it.failed }.sortedByDescending(FailureIncidents::terminalSeq)
+        val failed = vizcore.filter { it.failed }.sortedWith(FailureIncidents.NEWEST_TERMINAL_FIRST)
         return VizcoreConnectionHealth(
             captured = vizcore.size,
             failed = failed.size,
@@ -90,7 +90,8 @@ internal object HealthParts {
                 )
             }.sortedWith(
                 compareByDescending<ProblemRound> { it.anchorCreatedNanos }
-                    .thenByDescending { view.get(it.anchorId)?.firstObserved?.seq ?: 0L },
+                    .thenByDescending { view.get(it.anchorId)?.firstObserved?.seq ?: 0L }
+                    .thenBy { it.anchorId },
             )
     }
 }

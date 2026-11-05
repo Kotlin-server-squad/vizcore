@@ -9,7 +9,7 @@ import com.jh.proj.coroutineviz.events.CoroutineOrigin
  */
 object SessionHealthDerivation {
     private val INCIDENT_ORDER: Comparator<Incident> =
-        compareBy<Incident> { it.kind.ordinal }.thenByDescending { it.sortSeq }
+        compareBy<Incident> { it.kind.ordinal }.thenByDescending { it.sortSeq }.thenBy { it.id }
 
     fun derive(input: HealthInput): SessionHealth = deriveFull(input).health
 
