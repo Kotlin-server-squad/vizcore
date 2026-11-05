@@ -171,13 +171,15 @@ class VizMutex(
 
         val nextWaiter = waitQueue.peek()
 
+        // Unlocking a mutex that is not locked fails as before, without reporting a release.
+        if (!delegate.isLocked) delegate.unlock(owner)
+
         // Clear owner before unlocking
         currentOwnerId = null
         currentOwnerLabel = null
 
-        delegate.unlock(owner)
-
-        // Emit unlocked
+        // Report the release before making it: once the delegate is unlocked, the next holder can report its
+        // acquire on another thread straight away, and an unlock reported after that would clear the new holder.
         session.send(
             MutexUnlocked(
                 sessionId = session.sessionId,
@@ -191,6 +193,7 @@ class VizMutex(
                 holdDurationNanos = holdDuration,
             ),
         )
+        delegate.unlock(owner)
     }
 
     /**
