@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.EventContext
 import com.jh.proj.coroutineviz.session.VizSession
@@ -23,7 +24,8 @@ import com.jh.proj.coroutineviz.session.threadAssigned
  * - the TRUE suspension frame (first user frame of `lastObservedStackTrace`) +
  *   reason → `SuspensionPoint(function, fileName, lineNumber, reason)` on
  *   `coroutine.suspended`, falling back to the creation-derived frame when the
- *   observed stack has no user frame (15-08 Task 3 — a frame is never lost)
+ *   observed stack has no user frame (15-08 Task 3 — a frame is never lost), with `provenance`
+ *   `REAL_FRAME` or `CREATION_FALLBACK` saying which (spec "Suspension-point provenance")
  * - the launch site (creation-derived frame) → `CoroutineCreated.creationPoint`
  *   (GAP-JUMP-WRONG-FRAME: the creation frame used to be stamped onto every
  *   suspended event as its SuspensionPoint, making "Suspended at" structurally
@@ -106,25 +108,29 @@ class DebugProbesEventSynthesizer(
      * to the creation-derived snapshot fields so an available frame is never
      * lost — degrade, never null-out.
      */
-    private fun suspensionPointOf(snapshot: CoroutineSnapshot): SuspensionPoint? {
+    private fun suspensionPointOf(snapshot: CoroutineSnapshot): Pair<SuspensionPoint, SuspensionProvenance>? {
         val observed = snapshot.lastObservedStackTrace?.let { SourceAttribution.fromStack(it) }
         val observedFunction = observed?.function
         if (observedFunction != null) {
-            return SuspensionPoint(
-                function = observedFunction,
-                fileName = observed.fileName,
-                lineNumber = observed.lineNumber,
+            val point =
+                SuspensionPoint(
+                    function = observedFunction,
+                    fileName = observed.fileName,
+                    lineNumber = observed.lineNumber,
+                    reason = snapshot.reason ?: DEFAULT_REASON,
+                )
+            return point to SuspensionProvenance.REAL_FRAME
+        }
+        // Fallback: creation-derived fields (the pre-15-08 behavior), marked as such (spec "Suspension-point provenance").
+        val function = snapshot.function ?: return null
+        val point =
+            SuspensionPoint(
+                function = function,
+                fileName = snapshot.fileName,
+                lineNumber = snapshot.lineNumber,
                 reason = snapshot.reason ?: DEFAULT_REASON,
             )
-        }
-        // Fallback: creation-derived fields (the pre-15-08 behavior).
-        val function = snapshot.function ?: return null
-        return SuspensionPoint(
-            function = function,
-            fileName = snapshot.fileName,
-            lineNumber = snapshot.lineNumber,
-            reason = snapshot.reason ?: DEFAULT_REASON,
-        )
+        return point to SuspensionProvenance.CREATION_FALLBACK
     }
 
     /**
@@ -146,13 +152,16 @@ class DebugProbesEventSynthesizer(
     private fun suspendedEvents(
         ctx: EventContext,
         snapshot: CoroutineSnapshot,
-    ): List<VizEvent> =
-        listOf(
+    ): List<VizEvent> {
+        val point = suspensionPointOf(snapshot)
+        return listOf(
             ctx.coroutineSuspended(
                 reason = snapshot.reason ?: DEFAULT_REASON,
-                suspensionPoint = suspensionPointOf(snapshot),
+                suspensionPoint = point?.first,
+                provenance = point?.second,
             ),
         )
+    }
 
     /**
      * ThreadAssigned when BOTH thread id and name were observed (15-08 Task 2);
