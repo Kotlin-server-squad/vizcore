@@ -185,6 +185,23 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     expect(requestCount() - afterLoad).toBe(0)
   })
 
+  it('folding, unfolding, maximising and restoring the dock long after load refetch nothing', async () => {
+    renderWorkspace()
+    await advance(MINUTE)
+    const afterLoad = requestCount()
+
+    // Past every query's stale time: a panel that re-subscribed now would refetch.
+    fireEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
+    await advance(5_000)
+    fireEvent.click(screen.getByRole('button', { name: 'Unfold the dock' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Maximise' }))
+    await advance(5_000)
+    fireEvent.click(screen.getByRole('button', { name: 'Restore dock' }))
+    await advance(5_000)
+
+    expect(requestCount() - afterLoad).toBe(0)
+  })
+
   it('stream ON with a busy stream: stays well under 60 requests a minute', async () => {
     renderWorkspace()
     await advance(1000)

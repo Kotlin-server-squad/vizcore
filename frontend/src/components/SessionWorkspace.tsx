@@ -245,7 +245,12 @@ export function SessionWorkspace({
   // A demo's run outcome (S-3); an attached app has none.
   const isDemo = hasScenario || isDemoSessionId(sessionId)
   const outcome = useMemo(() => (isDemo && session ? deriveRunOutcome(session) : null), [isDemo, session])
-  const runSpanNanos = useMemo(() => recordedSpanNanos(allEvents), [allEvents])
+  // The run's length over everything the page holds: the history loaded with
+  // it and whatever streamed in since (either may be missing the other's part).
+  const runSpanNanos = useMemo(
+    () => recordedSpanNanos(storedEvents ?? [], streamEnabled ? liveEvents : []),
+    [storedEvents, streamEnabled, liveEvents],
+  )
   // Where the replay cursor is, as time since the first event (the view pill).
   const replayAtNanos = useMemo(() => {
     const visible = replay.visibleEvents
@@ -440,77 +445,76 @@ export function SessionWorkspace({
         />
 
         {/* The dock (S-1). In this PR it holds today's panels in one scrolling
-            body; Part 3b gives them tabs. Maximise unmounts it. */}
-        {!dock.maximised && (
-          <SessionDock
-            height={dock.height}
-            maxHeight={dock.maxHeight}
-            folded={dock.folded}
-            onResize={dock.resize}
-            onToggleFold={dock.toggleFold}
-            bar={<h2 className="px-2 text-sm font-semibold">Details</h2>}
-          >
-            <div className="space-y-6">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <div data-testid="inspector-slot" className="min-w-0">
-                  <Inspector
-                    sessionId={sessionId}
-                    coroutine={isLiveView ? selectedCoroutine : null}
-                    readOnly={readOnly}
-                    // Selection is live-only, so outside the live view the
-                    // inspector must not invite a click that cannot work (#145).
-                    placeholder={
-                      replayActive
-                        ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
-                        : readOnly
-                          ? 'Coroutine details are not included in a shared link.'
-                          : undefined
-                    }
-                    threadActivity={panelThreadActivity}
-                  />
-                </div>
-                {/* Events, scoped to the current selection. */}
-                <div className="min-w-0">
-                  <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
-                </div>
+            body; Part 3b gives them tabs. Maximise hides it, never unmounts it. */}
+        <SessionDock
+          height={dock.height}
+          maxHeight={dock.maxHeight}
+          folded={dock.folded}
+          hidden={dock.maximised}
+          onResize={dock.resize}
+          onToggleFold={dock.toggleFold}
+          bar={<h2 className="px-2 text-sm font-semibold">Details</h2>}
+        >
+          <div className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div data-testid="inspector-slot" className="min-w-0">
+                <Inspector
+                  sessionId={sessionId}
+                  coroutine={isLiveView ? selectedCoroutine : null}
+                  readOnly={readOnly}
+                  // Selection is live-only, so outside the live view the
+                  // inspector must not invite a click that cannot work (#145).
+                  placeholder={
+                    replayActive
+                      ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
+                      : readOnly
+                        ? 'Coroutine details are not included in a shared link.'
+                        : undefined
+                  }
+                  threadActivity={panelThreadActivity}
+                />
               </div>
-
-              {/* The metric strip and the leak list are live-only: in replay they
-                  would report current numbers over a frozen view, and the shared
-                  shell has no Bearer for /metrics (M-4). Leaks render once (PD-02). */}
-              {isLiveView && (
-                <div className="space-y-4">
-                  <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
-                  {metrics && metrics.leaks.length > 0 && (
-                    <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
-                  )}
-                </div>
-              )}
-
-              {/* How to read the tree (spec Part 1). */}
-              {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
-
-              {/* Scenario Pipeline View - shown for realistic scenarios */}
-              {scenarioId === 'order-processing' && allEvents.length > 0 && (
-                <OrderProcessingView events={allEvents} />
-              )}
-              {scenarioId === 'user-registration' && allEvents.length > 0 && (
-                <RegistrationFlowView events={allEvents} />
-              )}
-
-              {/* The evidence section (M-1/M-2): what this session can show beyond the
-                  tree, and — where the rung is the reason it cannot — what unlocks it. */}
-              <EvidencePanels
-                sessionId={sessionId}
-                rung={rung}
-                categories={eventCategories}
-                replayActive={replayActive}
-                readOnly={readOnly}
-                threadActivity={panelThreadActivity}
-              />
+              {/* Events, scoped to the current selection. */}
+              <div className="min-w-0">
+                <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
+              </div>
             </div>
-          </SessionDock>
-        )}
+
+            {/* The metric strip and the leak list are live-only: in replay they
+                would report current numbers over a frozen view, and the shared
+                shell has no Bearer for /metrics (M-4). Leaks render once (PD-02). */}
+            {isLiveView && (
+              <div className="space-y-4">
+                <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
+                {metrics && metrics.leaks.length > 0 && (
+                  <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
+                )}
+              </div>
+            )}
+
+            {/* How to read the tree (spec Part 1). */}
+            {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
+
+            {/* Scenario Pipeline View - shown for realistic scenarios */}
+            {scenarioId === 'order-processing' && allEvents.length > 0 && (
+              <OrderProcessingView events={allEvents} />
+            )}
+            {scenarioId === 'user-registration' && allEvents.length > 0 && (
+              <RegistrationFlowView events={allEvents} />
+            )}
+
+            {/* The evidence section (M-1/M-2): what this session can show beyond the
+                tree, and — where the rung is the reason it cannot — what unlocks it. */}
+            <EvidencePanels
+              sessionId={sessionId}
+              rung={rung}
+              categories={eventCategories}
+              replayActive={replayActive}
+              readOnly={readOnly}
+              threadActivity={panelThreadActivity}
+            />
+          </div>
+        </SessionDock>
       </div>
     </div>
   )

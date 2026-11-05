@@ -1240,7 +1240,7 @@ describe('SessionWorkspace — header, main view and dock (S-1)', () => {
   it('folds the dock to its bar', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
-    expect(screen.queryByTestId('inspector-slot')).toBeNull()
+    expect(screen.getByTestId('inspector-slot')).not.toBeVisible()
     expect(screen.getByRole('button', { name: 'Unfold the dock' })).toBeInTheDocument()
   })
 

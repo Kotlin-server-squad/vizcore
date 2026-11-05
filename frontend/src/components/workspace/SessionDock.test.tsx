@@ -24,6 +24,8 @@ describe('SessionDock', () => {
   it('is a labelled region with a separator, its bar and its body at the size asked', () => {
     renderDock()
     const dock = screen.getByRole('region', { name: 'Dock' })
+    expect(dock).toHaveAttribute('id', 'session-dock')
+    expect(screen.getByRole('separator')).toHaveAttribute('aria-controls', 'session-dock')
     expect(dock).toHaveStyle({ height: '300px' })
     expect(screen.getByRole('separator', { name: 'Resize the dock' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument()
@@ -43,9 +45,20 @@ describe('SessionDock', () => {
     renderDock(true)
     const dock = screen.getByRole('region', { name: 'Dock' })
     expect(dock.style.height).toBe('')
-    expect(screen.queryByText('dock body')).not.toBeInTheDocument()
+    // Hidden, not unmounted: panels keep their state and fetch nothing again (D-17, #124).
+    expect(screen.getByText('dock body')).not.toBeVisible()
     const unfold = screen.getByRole('button', { name: 'Unfold the dock' })
     expect(unfold).toHaveAttribute('aria-expanded', 'false')
-    expect(unfold).not.toHaveAttribute('aria-controls')
+    expect(unfold).toHaveAttribute('aria-controls', 'dock-body')
+  })
+
+  it('is hidden, not unmounted, while the main view is maximised', () => {
+    render(
+      <SessionDock height={300} maxHeight={500} folded={false} hidden onResize={vi.fn()} onToggleFold={vi.fn()} bar={null}>
+        <p>dock body</p>
+      </SessionDock>,
+    )
+    expect(screen.queryByRole('region', { name: 'Dock' })).toBeNull()
+    expect(screen.getByText('dock body')).not.toBeVisible()
   })
 })

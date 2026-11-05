@@ -7,6 +7,8 @@ interface SessionDockProps {
   height: number
   maxHeight: number
   folded: boolean
+  /** The main view is maximised: the dock is hidden, not unmounted. */
+  hidden?: boolean
   onResize: (height: number) => void
   onToggleFold: () => void
   /** The dock's bar: the tab row (3b), with the Fold button added on the right. */
@@ -17,16 +19,34 @@ interface SessionDockProps {
 /**
  * The dock under the main view (spec S-1): a separator to resize it, a bar
  * that stays when the dock is folded, and a body that scrolls on its own.
- * Maximise is the caller's business: a maximised page does not mount the dock.
+ *
+ * Folding and maximising hide the body rather than unmount it: the panels keep
+ * their state, and none of them re-subscribes to a query that has gone stale
+ * meanwhile — a stale `/events` read would refetch history, and in the shared
+ * view it would be a protected request (#124, T-03-22).
  */
-export function SessionDock({ height, maxHeight, folded, onResize, onToggleFold, bar, children }: SessionDockProps) {
+export function SessionDock({
+  height,
+  maxHeight,
+  folded,
+  hidden = false,
+  onResize,
+  onToggleFold,
+  bar,
+  children,
+}: SessionDockProps) {
   return (
     <section
+      id="session-dock"
       aria-label="Dock"
-      className="flex shrink-0 flex-col rounded-xl border border-default-200 bg-content1"
+      hidden={hidden}
+      // `flex` would beat the `[hidden]` rule of Tailwind's preflight, so a
+      // hidden dock drops it.
+      className={hidden ? 'hidden' : 'flex shrink-0 flex-col rounded-xl border border-default-200 bg-content1'}
       style={folded ? undefined : { height }}
     >
       <DockSeparator
+        controls="session-dock"
         height={height}
         maxHeight={maxHeight}
         folded={folded}
@@ -40,20 +60,16 @@ export function SessionDock({ height, maxHeight, folded, onResize, onToggleFold,
           variant="light"
           aria-label={folded ? 'Unfold the dock' : 'Fold the dock'}
           aria-expanded={!folded}
-          // Only while the body is mounted: an id that resolves to nothing is a
-          // broken relationship for assistive tech.
-          aria-controls={folded ? undefined : 'dock-body'}
+          aria-controls="dock-body"
           startContent={folded ? <FiChevronUp aria-hidden /> : <FiChevronDown aria-hidden />}
           onPress={onToggleFold}
         >
           {folded ? 'Unfold' : 'Fold'}
         </Button>
       </div>
-      {!folded && (
-        <div id="dock-body" className="min-h-0 flex-1 overflow-auto p-4">
-          {children}
-        </div>
-      )}
+      <div id="dock-body" hidden={folded} className="min-h-0 flex-1 overflow-auto p-4">
+        {children}
+      </div>
     </section>
   )
 }
