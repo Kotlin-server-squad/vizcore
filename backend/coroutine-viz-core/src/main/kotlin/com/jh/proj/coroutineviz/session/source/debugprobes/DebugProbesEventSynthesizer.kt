@@ -210,7 +210,8 @@ class DebugProbesEventSynthesizer(
         snapshot: CoroutineSnapshot,
     ): List<VizEvent> {
         val dispatcher = dispatcherEvents(ctx, snapshot)
-        val created = ctx.coroutineCreated(creationPoint = creationPointOf(snapshot))
+        // origin comes from the creation stack (SourceAttribution.origin, spec "Origin").
+        val created = ctx.coroutineCreated(creationPoint = creationPointOf(snapshot)).copy(origin = snapshot.origin)
         return when (snapshot.state) {
             CoroState.CREATED -> listOf<VizEvent>(created) + dispatcher
             CoroState.RUNNING ->
