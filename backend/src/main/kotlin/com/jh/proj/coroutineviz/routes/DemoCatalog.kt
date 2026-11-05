@@ -174,10 +174,34 @@ val demoCatalog: List<DemoCatalogEntry> =
             "flow",
             "Flow",
             "flow",
-            Demo("flow/simple", "Simple Flow", "Emit and collect 5 values from a cold Flow", "~1 second"),
-            Demo("flow/operators", "Flow Operators", "Chain map and filter operators on a flow", "~1 second"),
-            Demo("flow/stateflow", "StateFlow", "Mutable state with multiple observers", "~1 second"),
-            Demo("flow/sharedflow", "SharedFlow", "Broadcast events to multiple subscribers", "~1 second"),
+            Demo(
+                "flow/simple",
+                "Simple Flow: Stock Ticker",
+                "A stock ticker: a cold flow sends six prices to each screen that collects it; " +
+                    "a second screen gets its own run from the first price.",
+                "~16 seconds",
+            ),
+            Demo(
+                "flow/operators",
+                "Flow Operators: Search as You Type",
+                "Search as you type: keystrokes are debounced, short queries filtered out, " +
+                    "and the rest mapped to search results, in that order.",
+                "~14 seconds",
+            ),
+            Demo(
+                "flow/stateflow",
+                "StateFlow: Shopping Cart",
+                "A shopping cart: the total always has a value, " +
+                    "and a checkout page that opens later gets the latest total at once.",
+                "~12 seconds",
+            ),
+            Demo(
+                "flow/sharedflow",
+                "SharedFlow: Notifications",
+                "Notifications: every open screen gets each one at the same moment; " +
+                    "a screen opened later gets only what comes after.",
+                "~14 seconds",
+            ),
         ) +
         group(
             "patterns",
