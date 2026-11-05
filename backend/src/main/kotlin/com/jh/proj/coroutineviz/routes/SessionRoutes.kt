@@ -172,27 +172,7 @@ fun Route.registerSessionRoutes() {
             return@get
         }
 
-        // One point-in-time copy so the count and the list agree while events keep arriving.
-        val nodes = session.snapshot.nodes()
-        val snapshot =
-            SessionSnapshotResponse(
-                sessionId = session.sessionId,
-                coroutineCount = nodes.size,
-                eventCount = session.store.all().size,
-                coroutines =
-                    nodes.map { node ->
-                        CoroutineNodeDto(
-                            id = node.id,
-                            jobId = node.jobId,
-                            parentId = node.parentId,
-                            scopeId = node.scopeId,
-                            label = node.label,
-                            state = node.state.toString(),
-                        )
-                    },
-            )
-
-        call.respond(HttpStatusCode.OK, snapshot)
+        call.respond(HttpStatusCode.OK, snapshotResponseOf(session))
     }
 
     delete("/api/sessions/{id}") {
@@ -434,6 +414,44 @@ fun Route.registerSessionRoutes() {
             }
         }
     }
+}
+
+/**
+ * The body of `GET /api/sessions/{id}`, also the `session` of a share payload: the current coroutines plus the
+ * C-3 session facts (spec 2026-10-21: kind, start, capture start, origin, app connection, retention).
+ */
+internal fun snapshotResponseOf(
+    session: VizSession,
+    events: List<VizEvent> = session.store.all(),
+): SessionSnapshotResponse {
+    // One point-in-time copy so the count and the list agree while events keep arriving.
+    val nodes = session.snapshot.nodes()
+    val facts = readSessionFacts(session, events)
+    return SessionSnapshotResponse(
+        sessionId = session.sessionId,
+        coroutineCount = nodes.size,
+        eventCount = events.size,
+        coroutines =
+            nodes.map { node ->
+                CoroutineNodeDto(
+                    id = node.id,
+                    jobId = node.jobId,
+                    parentId = node.parentId,
+                    scopeId = node.scopeId,
+                    label = node.label,
+                    state = node.state.toString(),
+                )
+            },
+        kind = facts.kind,
+        startedAtEpochMs = session.createdAtMs,
+        captureStartAppNanos = facts.captureStartAppNanos,
+        origin = facts.origin,
+        appConnected = facts.appConnected,
+        lastIngestEpochMs = facts.lastIngestEpochMs,
+        lastWatermark = facts.lastWatermark,
+        oldestRetainedSeq = facts.retention.oldestRetainedSeq,
+        trimmed = facts.retention.trimmed,
+    )
 }
 
 /**

@@ -7,10 +7,14 @@ import com.jh.proj.coroutineviz.health.HealthMode
 import com.jh.proj.coroutineviz.health.RetentionInfo
 import com.jh.proj.coroutineviz.health.SessionHealth
 import com.jh.proj.coroutineviz.health.SessionHealthDerivation
+import com.jh.proj.coroutineviz.health.SessionKind
+import com.jh.proj.coroutineviz.health.SessionOrigin
+import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.SummaryFold
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.health.Transition
 import com.jh.proj.coroutineviz.health.Transitions
+import com.jh.proj.coroutineviz.health.WatermarkObservation
 import com.jh.proj.coroutineviz.health.snapshot
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -99,3 +103,41 @@ internal class RetainedTransitions(
 
 /** The first seq the session had (D-8): the summaries' own when they saw every event, else 1, every session's first. */
 internal fun SummaryView.firstSeqEver(everyEvent: Boolean): Long = if (everyEvent) firstEventSeq else 1L
+
+/** The C-3 session facts of `GET /api/sessions/{id}`, read from the ingest state, the summaries and [events]. */
+internal data class SessionFacts(
+    val kind: SessionKind,
+    val captureStartAppNanos: Long?,
+    val origin: SessionOrigin,
+    val appConnected: Boolean,
+    val lastIngestEpochMs: Long?,
+    val lastWatermark: WatermarkObservation?,
+    val retention: RetentionInfo,
+)
+
+internal fun readSessionFacts(
+    session: VizSession,
+    events: List<VizEvent>,
+): SessionFacts {
+    val kind = sessionKindOf(session.sessionId)
+    val ingest = IngestStates.snapshot(session.sessionId)
+    // Abandoned summaries leave origin and capture start unknown (H-3); the rest of the session still answers.
+    val durable =
+        try {
+            session.readSummaries { it.snapshot() }
+        } catch (_: SummariesUnavailableException) {
+            null
+        }
+    val everyEvent = summariesSeeEveryEvent()
+    val retention = retentionOf(events, firstSeqEver = durable?.firstSeqEver(everyEvent) ?: 1L)
+    return SessionFacts(
+        kind = kind,
+        // A database session that was trimmed no longer knows when its capture started (D-7).
+        captureStartAppNanos = durable?.earliestEventAppNanos?.takeIf { everyEvent || !retention.trimmed },
+        origin = durable?.let { SessionHealthDerivation.sessionOrigin(it, kind) } ?: SessionOrigin.UNKNOWN,
+        appConnected = IngestConnections.isConnected(session.sessionId),
+        lastIngestEpochMs = ingest.lastIngestEpochMs,
+        lastWatermark = ingest.watermark,
+        retention = retention,
+    )
+}
