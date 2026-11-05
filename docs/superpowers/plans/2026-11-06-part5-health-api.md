@@ -62,9 +62,10 @@ need 5b, and Part 7 as specified also depends on Part 6 (rounds). Full Problems 
 | D-7 | `captureStartAppNanos` | Smallest app-clock time of any event the summaries saw (so no "time into the capture" is negative). `null` when unknown: no events, summaries unavailable, or a database session whose stored events were trimmed. |
 | D-8 | `trimmed` | Memory mode: the summaries saw every event, so `trimmed` = the oldest retained seq is later than the first seq the summaries saw. Database mode (until 5b): the summaries are folded from the stored events, so the only signal is the oldest stored seq being later than 1, the first seq every session gets. A demo whose first two events raced (`VizSession.send` re-stamps) can start at seq 2 and read "trimmed" in database mode; the cost is an "at least" label, never a missed one. |
 | D-9 | Database sessions after a trim (until 5b) | Summaries folded from what is left lose the ancestry of coroutines whose parent's creation was trimmed, so one failed round can read as several ungrouped failures: "at least N" would overstate. `GET …/health` answers `503` `{"code":"history-trimmed"}` instead (H-1, H-3); `GET /api/sessions/{id}` still answers with `trimmed: true` and `captureStartAppNanos: null`. Core gains `HealthInput.historyIncomplete` (failures "at least", possibly blocked `NOT_EVALUATED` with the new reason `HISTORY_TRIMMED`, precedence REPLAY, DEMO, EVENTS_DROPPED, HISTORY_TRIMMED, OVERFLOW, NO_WATERMARK, never green, never "no application coroutines") for the one case that can only undercount: a replay whose seed cannot tell which coroutines beyond capacity existed at the cursor. |
-| D-9b | Database sessions after a backend restart (until 5b) | Ingest state is process-local. Events stored before the first connection this process saw came through a connection nobody here watched end, so for an ATTACHED database session with such events `transport` reads `deliveryUncertain` since seq 1 (failures "at least", possibly blocked `EVENTS_DROPPED`). 5b replaces this with the persisted transport and "ingest open" marker. |
-| D-9c | Order of a health read | The ingest state is read **before** the session is resolved: in database mode resolving rebuilds the summaries from the store, and a watermark is recorded only after its poll's events were stored, so the summaries include every event the watermark vouches for. |
+| D-9b | Database sessions after a backend restart (until 5b) | Ingest state is process-local. A session row created before this JVM started, or events stored before the first connection this process saw, came through connections nobody here watched end, so such an ATTACHED database session's `transport` reads `deliveryUncertain` since seq 1, even with no stored event (failures "at least", possibly blocked `EVENTS_DROPPED`). 5b replaces this with the persisted transport and "ingest open" marker. |
+| D-9c | Order of a health read | The watermark is read **before** the session is resolved: in database mode resolving rebuilds the summaries from the store, and a watermark is recorded only after its poll's events were stored, so the summaries include every event the watermark vouches for. The transport facts are read again **after** the summaries are copied: they only grow, so a frame skipped or a connection lost during the read is never missed. |
 | D-10 | Replay of trimmed history | `SummaryFold.foldTo(events, atSeq, durable)` seeds every coroutine whose creation was trimmed from its durable summary (creation, and its terminal when that was trimmed too), in seq order through the table's own creation and terminal bookkeeping, then applies the retained events. Promotion and round anchoring depend only on creations and terminals, so they are exact at the cursor; failures known from the durable summaries count; states between a trimmed creation and the first retained event are not known and not invented. |
+| D-10b | Replay time inside trimmed history | A cursor before the oldest retained event only knows the seeded creations and terminals, so its `asOf.appNanos` is the latest of those at or before it: `AsOf.lowerBound = true` says so (new field, default `false`). |
 | D-11 | `atSeq` out of range | Negative or not a number: `400`. Later than the last event: clamped to it (`asOfSeq` says which seq was used). |
 | D-12 | Summaries unavailable | `GET …/health` answers `503` `{"error":…,"code":"summaries-unavailable"}` (the table was abandoned after an apply failure); `GET /api/sessions/{id}` still answers, with `origin: UNKNOWN` and `captureStartAppNanos: null`. |
 | D-15 | Share payload | `SessionSnapshotResponse` is also the share payload's `session`, so both are built by one function and the share payload carries the new session fields too (a first piece of C-6; health at load time, the checks result and the one-cut guarantee are 5b). |
@@ -492,6 +493,37 @@ class SummaryFoldSeedTest {
             }
         }
     }
+
+    @Test
+    fun `a cursor in trimmed history says its time is only a lower bound`() {
+        val script = EventScript()
+        script.created("a", at = sec(1))
+        script.suspended("a", at = sec(20))
+        script.resumed("a", at = sec(30))
+        script.created("b", at = sec(31))
+        val durable = script.table()
+        val retained = script.events.drop(3)
+        val retention = RetentionInfo(oldestRetainedSeq = 4, oldestRetainedAppNanos = sec(31), trimmed = true)
+
+        fun asOfAt(seq: Long) =
+            SessionHealthDerivation
+                .derive(
+                    HealthInput(
+                        summaries = SummaryFold.foldTo(retained, seq, durable),
+                        kind = SessionKind.ATTACHED,
+                        mode = HealthMode.Replay(seq),
+                        retention = retention,
+                    ),
+                ).asOf!!
+
+        val inTrimmed = asOfAt(2)
+        assertEquals(sec(1), inTrimmed.appNanos, "only the creation is known at or before seq 2")
+        assertTrue(inTrimmed.lowerBound)
+        assertEquals(2L, inTrimmed.seq)
+        val inRetained = asOfAt(4)
+        assertEquals(sec(31), inRetained.appNanos)
+        assertEquals(false, inRetained.lowerBound)
+    }
 }
 ```
 
@@ -834,13 +866,26 @@ data class RetentionInfo(
             retention = input.retention,
 ```
 
-2. `evaluatePossiblyBlocked` gains a line right after the `EVENTS_DROPPED` one:
+2. `AsOf` gains `val lowerBound: Boolean = false` (KDoc: a replay cursor inside trimmed history; `appNanos` is the latest
+   time known at or before it), and `resolveAsOf`'s replay branch sets it when `input.retention` says the cursor is
+   before the oldest retained event:
+
+```kotlin
+        if (mode is HealthMode.Replay) {
+            val inTrimmed = input.retention?.let { it.trimmed && mode.atSeq < (it.oldestRetainedSeq ?: Long.MAX_VALUE) } == true
+            return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq, lowerBound = inTrimmed) }
+        }
+```
+
+   (Its test is the last one of `SummaryFoldSeedTest`, added with this task.)
+
+3. `evaluatePossiblyBlocked` gains a line right after the `EVENTS_DROPPED` one:
 
 ```kotlin
                 input.historyIncomplete -> NotEvaluatedReason.HISTORY_TRIMMED
 ```
 
-3. Add a public function and use it in `derive` (`input.reportedOrigin ?: sessionOrigin(view, input.kind)`), removing
+4. Add a public function and use it in `derive` (`input.reportedOrigin ?: sessionOrigin(view, input.kind)`), removing
    the private `sessionOriginOf`:
 
 ```kotlin
@@ -2189,6 +2234,29 @@ class SessionHealthRouteTest {
                 SessionManager.configure()
             }
         }
+
+    @Test
+    fun `transport facts that arrive while a health is read are not lost`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("app-race")
+            val session = SessionManager.getSession(sessionId)!!
+            session.ingest(HealthEvents.created(sessionId, "c1", at = sec(1)))
+            session.ingest(HealthEvents.started(sessionId, "c1", at = sec(1)))
+            session.ingest(HealthEvents.suspended(sessionId, "c1", at = sec(2)))
+            val connection = IngestStates.connectionOpened(sessionId, firstSeq = 1)
+            IngestStates.watermarkReceived(connection, HealthEvents.watermark(sessionId, at = sec(3)), receivedEpochMs = 1)
+            // The cut a read took before resolving the session: clean so far.
+            val cut = IngestStates.snapshot(sessionId)
+            // Then a frame could not be read before the summaries were copied.
+            IngestStates.frameSkipped(connection)
+
+            val health = readSessionHealth(session, cut, atSeq = null, leakThresholdMs = 30_000)
+
+            assertTrue(health.transport.deliveryUncertain)
+            assertTrue(health.failuresAtLeast)
+            assertEquals(NotEvaluatedReason.EVENTS_DROPPED, health.possiblyBlocked.reason)
+        }
 }
 ```
 
@@ -2209,6 +2277,7 @@ import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.persistence.tables.SessionsTable
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.zaxxer.hikari.HikariConfig
@@ -2221,7 +2290,10 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -2230,11 +2302,14 @@ import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /**
  * Database sessions fold their summaries from the stored events on every read. What this process did not watch is not
  * vouched for, and a trimmed history makes the health unavailable until Part 5b persists the summaries (D-9).
  */
+@OptIn(ExperimentalTime::class)
 class SessionHealthDatabaseModeTest {
     private lateinit var dataSource: HikariDataSource
     private lateinit var db: Database
@@ -2336,6 +2411,34 @@ class SessionHealthDatabaseModeTest {
                 assertEquals(sec(12), later.asOfWatermark?.appNanos)
             }
         }
+
+    @Test
+    fun `a session stored before this backend started is not vouched for, even without events`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("db-recovered")
+            // As if the row was written by an earlier backend process (crashed before any event was stored).
+            transaction(db) {
+                SessionsTable.update({ SessionsTable.id eq sessionId }) { it[createdAt] = Instant.fromEpochMilliseconds(0) }
+            }
+
+            val health = client.health(sessionId)
+
+            assertTrue(health.transport.deliveryUncertain)
+            assertEquals(1L, health.transport.sinceSeq)
+        }
+
+    @Test
+    fun `a session created by this backend and not yet connected awaits data with a clean transport`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("db-fresh")
+
+            val health = client.health(sessionId)
+
+            assertEquals(false, health.transport.deliveryUncertain)
+            assertEquals(com.jh.proj.coroutineviz.health.HealthState.AWAITING_FIRST_DATA, health.state)
+        }
 }
 ```
 
@@ -2371,6 +2474,7 @@ import com.jh.proj.coroutineviz.health.snapshot
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
+import java.lang.management.ManagementFactory
 
 /**
  * Whether a session's summaries saw every event it ever had. In memory they are applied on every append and outlive
@@ -2401,27 +2505,30 @@ internal class HistoryTrimmedException(
 ) : IllegalStateException(message)
 
 /**
- * The transport a read reports (spec C-3 `transport`). A database session outlives this process: events that arrived
- * before the first connection this process saw came through a connection nobody here watched end (a crash runs no close
- * handler), so nothing vouches that all of them arrived (H-3). Until Part 5b persists the transport and the "ingest
- * open" marker, such a session reads delivery-uncertain from its first seq.
+ * The transport a read reports (spec C-3 `transport`). A database session outlives this process: a row written before
+ * this JVM started, or events stored before the first connection this process saw, came through connections nobody
+ * here watched end (a crash runs no close handler), so nothing vouches that all their events arrived (H-3). Until Part
+ * 5b persists the transport and the "ingest open" marker, such an ATTACHED session reads delivery-uncertain from its
+ * first seq.
  */
 internal fun transportOf(
     ingest: IngestSnapshot,
+    session: VizSession,
     kind: SessionKind,
     lastSeq: Long,
 ): TransportStatus {
-    val unwatched =
-        !summariesSeeEveryEvent() &&
-            kind == SessionKind.ATTACHED &&
-            lastSeq > 0 &&
-            (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
+    // A row written before this JVM started may have had a connection that ended in the crash, even with no event stored.
+    val recovered = session.createdAtMs < PROCESS_STARTED_AT_MS
+    val eventsBeforeWatching = lastSeq > 0 && (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
+    val unwatched = !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && (recovered || eventsBeforeWatching)
     return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
 }
 
+private val PROCESS_STARTED_AT_MS: Long = ManagementFactory.getRuntimeMXBean().startTime
+
 /**
  * The session's health (spec C-3): live when [atSeq] is null, else the replay fold at the cursor, clamped to the last
- * event. [ingest] must be read before [session] was resolved: in database mode resolving rebuilds the session from the
+ * event. [watermarkCut] must be read before [session] was resolved: in database mode resolving rebuilds the session from the
  * stored events, and a watermark is recorded only after its poll's events were stored, so every event the watermark
  * vouches for is in the rebuilt summaries (spec C-7). The other order could compare a newer watermark with an older run
  * start and report a coroutine that has since suspended.
@@ -2431,11 +2538,15 @@ internal fun transportOf(
  */
 internal fun readSessionHealth(
     session: VizSession,
-    ingest: IngestSnapshot,
+    watermarkCut: IngestSnapshot,
     atSeq: Long?,
     leakThresholdMs: Long,
 ): SessionHealth {
     val durable = session.readSummaries { it.snapshot() }
+    // Transport facts are sticky and only grow, so the ones read after the copy cover every event in it: a frame skipped
+    // or a connection lost while this read ran must not be missed (a newer watermark could not do harm here, a cleaner
+    // transport could). The watermark stays the one from before the session was resolved.
+    val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = watermarkCut.watermark)
     // Read after the copy: the store holds at least every event the copy saw, possibly newer ones.
     val events = session.store.all()
     val everyEvent = summariesSeeEveryEvent()
@@ -2448,7 +2559,7 @@ internal fun readSessionHealth(
             kind = kind,
             watermark = ingest.watermark,
             lastIngestEpochMs = ingest.lastIngestEpochMs,
-            transport = transportOf(ingest, kind, durable.lastEventSeq),
+            transport = transportOf(ingest, session, kind, durable.lastEventSeq),
             leakThresholdMs = leakThresholdMs,
             retention = retention,
         )
