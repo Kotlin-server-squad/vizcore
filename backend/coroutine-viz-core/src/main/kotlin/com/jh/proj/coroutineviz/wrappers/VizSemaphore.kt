@@ -179,8 +179,7 @@ class VizSemaphore(
         val released = coroutineElement?.let { takeOldestPermit(it.coroutineId) }
 
         delegate.release()
-        // With every permit free nobody holds one: forget holders whose permits other coroutines released.
-        if (delegate.availablePermits == totalPermits) holders.clear()
+        forgetHoldersIfAllFree()
 
         session.send(
             SemaphorePermitReleased(
@@ -264,6 +263,19 @@ class VizSemaphore(
 
     private fun addHolder(holder: HolderInfo) {
         holders.merge(holder.coroutineId, listOf(holder)) { held, added -> held + added }
+    }
+
+    /**
+     * With every permit free nobody holds one: forgets the holders whose permits other coroutines released. Only
+     * entries recorded before every permit was seen free are removed, each only if unchanged since, so a coroutine
+     * that acquires meanwhile keeps its entry (its own release must still be attributed to it).
+     */
+    private fun forgetHoldersIfAllFree() {
+        // HashMap(holders), not toMap(): toMap's single-entry fast path calls iterator().next() and races a
+        // concurrent remove (see emitStateChanged).
+        val recorded = HashMap(holders)
+        if (recorded.isEmpty() || delegate.availablePermits != totalPermits) return
+        recorded.forEach { (coroutineId, held) -> holders.remove(coroutineId, held) }
     }
 
     /** Removes and returns the oldest permit [coroutineId] holds, or `null` when it holds none. */

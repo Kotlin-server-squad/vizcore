@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.models.TimelineEventSummary
 import com.jh.proj.coroutineviz.session.EventContext
 import com.jh.proj.coroutineviz.session.VizSession
 import org.junit.jupiter.api.Test
@@ -177,5 +178,18 @@ class BinaryCompatibilityTest {
     fun `EventContext coroutineFailed keeps its 0_3_x JVM method`() {
         val helpers = Class.forName("com.jh.proj.coroutineviz.session.EventContextKt")
         assertNotNull(helpers.getDeclaredMethod("coroutineFailed", EventContext::class.java, String::class.java, String::class.java))
+    }
+
+    @Test
+    fun `TimelineEventSummary keeps its 0_3_x constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val str = String::class.java
+        val v03 = arrayOf<Class<*>?>(long, long, str, str, str, str, SuspensionPoint::class.java)
+        val ctor = TimelineEventSummary::class.java.getDeclaredConstructor(*v03)
+        TimelineEventSummary::class.java.getDeclaredConstructor(*v03, Int::class.javaPrimitiveType, marker)
+        val row = ctor.newInstance(1L, 2L, "coroutine.suspended", null, null, "delay", null)
+        assertEquals("delay", row.reason)
+        assertNull(row.waitKind)
+        assertNull(row.resourceId)
     }
 }
