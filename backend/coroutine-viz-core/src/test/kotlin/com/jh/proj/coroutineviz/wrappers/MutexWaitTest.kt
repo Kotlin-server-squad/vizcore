@@ -18,6 +18,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -147,5 +148,33 @@ class MutexWaitTest {
                     else -> Unit
                 }
             }
+        }
+
+    @Test
+    fun `the lock is released even when reporting the release fails`() =
+        runBlocking {
+            val mutex = VizMutex(session, "fragile-lock")
+            assertTrue(mutex.tryLock())
+            session.onEventEmitted = { throw IllegalStateException("the event sink is down") }
+
+            assertFailsWith<IllegalStateException> { mutex.unlock() }
+
+            session.onEventEmitted = null
+            assertTrue(!mutex.isLocked, "the mutex is free although its release could not be reported")
+        }
+
+    @Test
+    fun `an unlock with the wrong owner fails without reporting a release`() =
+        runBlocking {
+            val mutex = VizMutex(session, "owned-lock")
+            val ownerA = Any()
+            assertTrue(mutex.tryLock(ownerA))
+
+            assertFailsWith<IllegalStateException> { mutex.unlock(Any()) }
+
+            assertTrue(mutex.isLocked, "ownerA still holds it")
+            assertEquals(emptyList(), session.store.all().filterIsInstance<MutexUnlocked>(), "no release was reported")
+            mutex.unlock(ownerA)
+            assertEquals(1, session.store.all().filterIsInstance<MutexUnlocked>().size)
         }
 }
