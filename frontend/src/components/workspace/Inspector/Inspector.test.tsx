@@ -129,9 +129,9 @@ describe('Inspector', () => {
 
     // 4.2s total, 200ms active, 4s suspended — sampling is poll-bounded, so
     // every duration is approximate and says so (validated sketch 001-C).
-    expect(await screen.findByText('~4.20s')).toBeInTheDocument()
-    expect(screen.getByText('~200.00ms')).toBeInTheDocument()
-    expect(screen.getByText('~4.00s')).toBeInTheDocument()
+    expect(await screen.findByText('~4.2 s')).toBeInTheDocument()
+    expect(screen.getByText('~200 ms')).toBeInTheDocument()
+    expect(screen.getByText('~4.0 s')).toBeInTheDocument()
   })
 
   it('says "not reported" rather than 0 when the backend sends no duration', async () => {
@@ -169,7 +169,7 @@ describe('Inspector', () => {
     const timing = await screen.findByTestId('timing-card')
     // The event span (3s) is longer than the closed intervals (1.2s) — the
     // larger figure is the honest lower bound.
-    expect(await within(timing).findByText('~3.00s so far')).toBeInTheDocument()
+    expect(await within(timing).findByText('~3.0 s so far')).toBeInTheDocument()
   })
 
   it('counts a running coroutine up to now and flags a long run without suspending (#218)', async () => {
@@ -197,7 +197,7 @@ describe('Inspector', () => {
     })
 
     const timing = await screen.findByTestId('timing-card')
-    expect(await within(timing).findByText(/^~60\.\d{2}s so far$/)).toBeInTheDocument()
+    expect(await within(timing).findByText(/^~(59\.\d s|1 m 0 s) so far$/)).toBeInTheDocument()
     expect(within(timing).getByTestId('possibly-blocked')).toHaveTextContent('without suspending')
   })
 

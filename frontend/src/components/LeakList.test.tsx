@@ -15,7 +15,7 @@ describe('LeakList', () => {
       <LeakList leaks={[leak({ coroutineId: 'dp-1' })]} leakThresholdMs={THRESHOLD} />,
     )
 
-    expect(screen.getByText(/fetchUser · alive 42s/)).toBeInTheDocument()
+    expect(screen.getByText(/fetchUser · alive 42\.0 s/)).toBeInTheDocument()
   })
 
   it('shows the singular badge "1 potential leak" for a single leak', () => {
@@ -38,7 +38,7 @@ describe('LeakList', () => {
     )
 
     expect(screen.getByText('2 potential leaks')).toBeInTheDocument()
-    expect(screen.getByText(/pollOrders · alive 61s/)).toBeInTheDocument()
+    expect(screen.getByText(/pollOrders · alive 1 m 1 s/)).toBeInTheDocument()
   })
 
   it('styles leaks as warning (amber), never danger', () => {
@@ -62,7 +62,7 @@ describe('LeakList', () => {
     // we assert the formatted threshold is present in the accessible markup).
     expect(
       screen.getByLabelText(
-        /Active longer than the leak threshold \(30s\)\. May be a stuck or never-completing coroutine\./,
+        /Active longer than the leak threshold \(30\.0 s\)\. May be a stuck or never-completing coroutine\./,
       ),
     ).toBeInTheDocument()
   })
@@ -82,6 +82,6 @@ describe('LeakList', () => {
       />,
     )
 
-    expect(screen.getByText(/dp-9 · alive 5s/)).toBeInTheDocument()
+    expect(screen.getByText(/dp-9 · alive 5\.0 s/)).toBeInTheDocument()
   })
 })
