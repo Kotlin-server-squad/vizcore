@@ -6,19 +6,34 @@ import { useChannelEvents } from '@/hooks/use-channel-events'
 import { ChannelBufferGauge } from './ChannelBufferGauge'
 import { ChannelTimeline } from './ChannelTimeline'
 import { ChannelProducerConsumer } from './ChannelProducerConsumer'
+import type { VizEvent } from '@/types/api'
 
 interface ChannelPanelProps {
   sessionId: string
+  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
+  events?: readonly VizEvent[]
+  /** The channel the page selected (S-2). While set it is the one shown: the page holds one selection. */
+  focusChannelId?: string | null
+  /**
+   * Picking a channel here selects it on the page (S-2). Without it (replay,
+   * the shared view) the pick stays local to this panel.
+   */
+  onSelectChannel?: (channelId: string) => void
 }
 
-export function ChannelPanel({ sessionId }: ChannelPanelProps) {
-  const { channels, eventsByChannel, bufferStates } = useChannelEvents(sessionId)
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
+export function ChannelPanel({ sessionId, events, focusChannelId = null, onSelectChannel }: ChannelPanelProps) {
+  const { channels, eventsByChannel, bufferStates } = useChannelEvents(sessionId, events)
+  const [pickedChannelId, setPickedChannelId] = useState<string | null>(null)
+  const pick = (channelId: string) => {
+    setPickedChannelId(channelId)
+    onSelectChannel?.(channelId)
+  }
 
-  // Auto-select first channel when data arrives
+  // The page's selection wins; then the last pick here; then the first channel.
+  const wanted = focusChannelId ?? pickedChannelId
   const effectiveSelectedId =
-    selectedChannelId && channels.some((c) => c.channelId === selectedChannelId)
-      ? selectedChannelId
+    wanted && channels.some((c) => c.channelId === wanted)
+      ? wanted
       : channels.length > 0
         ? channels[0]!.channelId
         : null
@@ -77,7 +92,7 @@ export function ChannelPanel({ sessionId }: ChannelPanelProps) {
               return (
                 <motion.button
                   key={ch.channelId}
-                  onClick={() => setSelectedChannelId(ch.channelId)}
+                  onClick={() => pick(ch.channelId)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
                     isSelected
                       ? 'border-primary bg-primary/10'

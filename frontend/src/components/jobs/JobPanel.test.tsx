@@ -55,6 +55,17 @@ describe('JobPanel', () => {
     vi.clearAllMocks()
   })
 
+  it('reads the events it is given, so it follows the live stream', () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const events = [
+      makeJobEvent('JobStateChanged', 1, {
+        jobId: 'job-1', coroutineId: 'c1', label: 'MainJob', isActive: true, isCompleted: false, isCancelled: false, childrenCount: 0,
+      }),
+    ]
+    render(<JobPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('job-panel')).toBeInTheDocument()
+  })
+
   it('renders empty state when no job events exist', async () => {
     mockedApiClient.getSessionEvents.mockResolvedValue([])
 

@@ -4,13 +4,16 @@ import { useJobEvents } from '@/hooks/use-job-events'
 import { JobStateBadge } from './JobStateBadge'
 import { WaitingForChildrenCard } from './WaitingForChildrenCard'
 import { JobHierarchyView } from './JobHierarchyView'
+import type { VizEvent } from '@/types/api'
 
 interface JobPanelProps {
   sessionId: string
+  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
+  events?: readonly VizEvent[]
 }
 
-export function JobPanel({ sessionId }: JobPanelProps) {
-  const { jobs, roots, waitingForChildren } = useJobEvents(sessionId)
+export function JobPanel({ sessionId, events }: JobPanelProps) {
+  const { jobs, roots, waitingForChildren } = useJobEvents(sessionId, events)
 
   if (jobs.length === 0) {
     return (
