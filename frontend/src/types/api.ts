@@ -19,6 +19,7 @@ import type {
   CoroutineCompleted,
   CoroutineCancelled,
   CoroutineFailed,
+  WaitKind,
   // Job events
   JobStateChanged,
   JobJoinRequested,
@@ -92,6 +93,7 @@ export type {
   CoroutineCompleted,
   CoroutineCancelled,
   CoroutineFailed,
+  WaitKind,
   // Job events
   JobStateChanged,
   JobJoinRequested,
@@ -502,6 +504,10 @@ export interface SuspensionPoint {
 export interface CoroutineSuspendedEvent extends CoroutineEvent {
   kind: 'coroutine.suspended'
   suspensionPoint?: SuspensionPoint | null
+  /** What a mutex, semaphore or channel wrapper waited for; absent on other suspensions and older events (S-7). */
+  waitKind?: WaitKind | null
+  /** The mutexId, semaphoreId or channelId waited for. */
+  resourceId?: string | null
 }
 
 // Timeline data structures.
@@ -541,6 +547,8 @@ export interface TimelineEvent {
   dispatcherName?: string | null
   reason?: string | null
   suspensionPoint?: SuspensionPoint | null
+  waitKind?: WaitKind | null
+  resourceId?: string | null
 }
 
 // Thread Activity - DERIVED view model.
