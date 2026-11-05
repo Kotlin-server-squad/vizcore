@@ -310,6 +310,17 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3, and 1 permit with no recorded holder')
   })
 
+  it('marks a holder listed only by its acquisition as unconfirmed until the next snapshot', () => {
+    const events = [
+      makeSyncEvent('SemaphoreCreated', 1, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
+      makeSyncEvent('SemaphorePermitAcquired', 2, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits: 2, waitDurationNanos: 0,
+      }),
+    ]
+    render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3 (may hold · holder unknown)')
+  })
+
   it('selects a holder or a waiter by name', async () => {
     const select = vi.fn()
     render(<SyncPanel sessionId="session-1" events={lockEvents} picker={anyone(select)} />, { wrapper: createWrapper() })

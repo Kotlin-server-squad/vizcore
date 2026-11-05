@@ -109,83 +109,81 @@ describe('projectSync', () => {
   })
 
   describe('permits between two state snapshots', () => {
+    // A snapshot is the only source of permit counts. An acquire or release between two snapshots only lists
+    // an acquirer not listed yet, as unconfirmed: whether a snapshot already counted an operation cannot be told
+    // from the totals (VizSemaphore records a holder before the acquisition event, and drops it before the
+    // release event; a semaphore can start with permits taken).
     const s = { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway' }
     const acquired = (who: string, remainingPermits = 1) =>
       event('SemaphorePermitAcquired', { ...s, acquirerId: who, acquirerLabel: who, remainingPermits, waitDurationNanos: 0 })
     const released = (who: string, holderUnknown = false, newAvailablePermits = 2) =>
       event('SemaphorePermitReleased', { ...s, releaserId: who, releaserLabel: who, newAvailablePermits, holdDurationNanos: 0, holderUnknown })
 
-    it('an acquisition counts before its snapshot arrives, and leaves the queue', () => {
+    it('an acquirer not listed yet is listed, unconfirmed, and leaves the queue', () => {
       const queued = stateChanged({ activeHolders: [], activeHolderLabels: [], waitingCoroutines: ['c-1'], waitingLabels: ['c-1'] })
       const [sem] = projectSync([created, queued, acquired('c-1')]).semaphores
-      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1, unconfirmed: true }])
       expect(sem!.waitQueue).toEqual([])
     })
 
-    it('a coroutine acquiring twice holds two', () => {
-      const [sem] = projectSync([created, acquired('c-1'), acquired('c-1')]).semaphores
-      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 2 }])
+    it('a listed acquirer keeps its count: the snapshot may have counted this permit already', () => {
+      // Three permits, one taken at creation: the snapshot lists c-1 and c-2 with one each, then c-2's own
+      // acquisition event arrives. Its count stays one.
+      const [sem] = projectSync([
+        created,
+        stateChanged({ availablePermits: 0, activeHolderPermits: [1, 1] }),
+        acquired('c-2', 0),
+      ]).semaphores
+      expect(sem!.activeHolders).toEqual([
+        { id: 'c-1', label: 'order-1', permits: 1 },
+        { id: 'c-2', label: 'order-2', permits: 1 },
+      ])
     })
 
-    it('its own release takes one back', () => {
-      const [sem] = projectSync([created, acquired('c-1'), acquired('c-2'), released('c-1')]).semaphores
-      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-2'])
-      expect(sem!.unknownHolderPermits).toBe(0)
-    })
-
-    it('a release by a coroutine that held none leaves the holders unknown, not shorter', () => {
-      const [sem] = projectSync([created, acquired('c-1'), acquired('c-2'), released('c-9', true)]).semaphores
+    it('a release changes no counts until the next snapshot', () => {
+      const [sem] = projectSync([
+        created,
+        stateChanged({ availablePermits: 2, activeHolderPermits: [1, 1], unknownHolderPermits: 1 }),
+        released('c-1', false, 2),
+      ]).semaphores
       expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-1', 'c-2'])
       expect(sem!.unknownHolderPermits).toBe(1)
     })
 
-    it('an acquisition a snapshot already counted is not counted twice', () => {
-      // VizSemaphore records a holder before it records the acquisition, so another coroutine's snapshot can
-      // list it first.
-      const two = event('SemaphoreCreated', { ...s, totalPermits: 2 })
+    it('a release by a coroutine that held none changes no counts either', () => {
       const [sem] = projectSync([
-        two,
-        acquired('c-1', 1),
-        stateChanged({ totalPermits: 2, availablePermits: 0, activeHolders: ['c-1', 'c-2'], activeHolderLabels: ['c-1', 'c-2'], activeHolderPermits: [1, 1] }),
-        acquired('c-2', 0),
-      ]).semaphores
-      expect(sem!.activeHolders).toEqual([
-        { id: 'c-1', label: 'c-1', permits: 1 },
-        { id: 'c-2', label: 'c-2', permits: 1 },
-      ])
-    })
-
-    it('a release a snapshot already took back is not taken back again', () => {
-      const two = event('SemaphoreCreated', { ...s, totalPermits: 2 })
-      const [sem] = projectSync([
-        two,
-        acquired('c-1', 1),
-        acquired('c-2', 0),
-        stateChanged({ totalPermits: 2, availablePermits: 1, activeHolders: ['c-2'], activeHolderLabels: ['c-2'], activeHolderPermits: [1] }),
-        released('c-1', false, 1),
-      ]).semaphores
-      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-2'])
-      expect(sem!.unknownHolderPermits).toBe(0)
-    })
-
-    it('when every permit is free, nobody holds one, whatever was listed', () => {
-      const two = event('SemaphoreCreated', { ...s, totalPermits: 2 })
-      const [sem] = projectSync([
-        two,
-        acquired('c-1', 1),
+        created,
+        stateChanged({ availablePermits: 1, activeHolderPermits: [1, 1] }),
         released('c-9', true, 2),
       ]).semaphores
+      expect(sem!.activeHolders.map(h => h.permits)).toEqual([1, 1])
+      expect(sem!.unknownHolderPermits).toBe(0)
+    })
+
+    it('when a release frees every permit, nobody holds one', () => {
+      const two = event('SemaphoreCreated', { ...s, totalPermits: 2 })
+      const [sem] = projectSync([two, acquired('c-1', 1), released('c-9', true, 2)]).semaphores
       expect(sem!.activeHolders).toEqual([])
       expect(sem!.unknownHolderPermits).toBe(0)
     })
 
-    it('the next snapshot replaces what the operations implied', () => {
+    it('a snapshot with every permit free means nobody holds one, whatever it lists', () => {
+      // VizSemaphore copies the holders before it reads the free permits; a release can fall between.
       const [sem] = projectSync([
-        created, acquired('c-1'), released('c-9', true),
-        stateChanged({ activeHolders: [], activeHolderLabels: [], unknownHolderPermits: 0 }),
+        created,
+        stateChanged({ availablePermits: 3, activeHolders: ['c-1'], activeHolderLabels: ['c-1'], activeHolderPermits: [1], unknownHolderPermits: 1 }),
       ]).semaphores
       expect(sem!.activeHolders).toEqual([])
       expect(sem!.unknownHolderPermits).toBe(0)
+    })
+
+    it('the next snapshot confirms or replaces what the operations listed', () => {
+      const [sem] = projectSync([
+        created,
+        acquired('c-1'),
+        stateChanged({ availablePermits: 2, activeHolders: ['c-1'], activeHolderLabels: ['c-1'], activeHolderPermits: [1] }),
+      ]).semaphores
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
     })
   })
 })

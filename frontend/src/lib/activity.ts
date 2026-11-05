@@ -86,10 +86,11 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   for (const s of sync.semaphores) {
     const name = nameOf(s.semaphoreId)
     // A permit came back from a coroutine that held none (S-7): which listed holder still holds one is unknown.
+    // A holder listed only by its acquisition is unknown too until a snapshot confirms it.
     const ambiguous = s.unknownHolderPermits > 0
     for (const h of s.activeHolders) {
       const permits = h.permits === 1 ? aPermit(name) : `${h.permits} ${name} permits`
-      hold(h.id, ambiguous ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
+      hold(h.id, ambiguous || h.unconfirmed ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
     }
   }
 

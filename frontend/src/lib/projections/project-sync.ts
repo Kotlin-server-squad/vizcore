@@ -6,11 +6,14 @@
  * Queues are the latest observed queue. Permits are counted per holder, never numbered; permits that came
  * back from a coroutine that held none have no known holder (S-7) and are counted apart.
  *
- * Reduced in seq order, whatever order the events arrived in. Two orderings the wrappers produce are handled:
- * VizMutex unlocks before it records the release, so the waiter it woke can record its acquisition first,
- * and the previous holder's late release must not free the lock; and a semaphore's state snapshot follows
- * each acquire and release, so the operation events themselves update the holders in between (a stream
- * flush or a replay cursor can fall between the two), and the next snapshot replaces what they implied.
+ * Reduced in seq order, whatever order the events arrived in. VizMutex unlocks before it records the release,
+ * so the waiter it woke can record its acquisition first — several times in a row — and a displaced holder's
+ * late release must not free the lock. A semaphore's state snapshot is the only source of permit counts:
+ * VizSemaphore records a holder before the acquisition event and drops it before the release event, and a
+ * semaphore can start with permits taken, so whether a snapshot already counted an operation cannot be told
+ * from the totals. An acquire or release between two snapshots (a stream flush or a replay cursor can fall
+ * there) therefore only lists an acquirer not listed yet, as unconfirmed, and changes no count; the next
+ * snapshot replaces the list. With every permit free, nobody holds one.
  */
 import { SYNC_EVENT_KINDS } from '@/types/api'
 import { inSeqOrder } from './in-seq-order'
@@ -42,6 +45,11 @@ export interface Holder {
 /** A semaphore holder and how many permits it holds. */
 export interface SemaphoreHolder extends Holder {
   permits: number
+  /**
+   * Listed by its acquisition event, not yet by a state snapshot: it may hold a permit, but whether a snapshot
+   * already counted it cannot be told, so its count is not trusted until the next snapshot.
+   */
+  unconfirmed?: true
 }
 
 /** Tracked state for a single mutex. */
@@ -203,17 +211,16 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.remainingPermits
-        // Counted now; the snapshot that follows replaces the list (a flush or a cursor can fall between).
-        // VizSemaphore records the holder before the event, so a snapshot may already list this permit: a
-        // listed acquirer gains one only while fewer permits are listed than are in use.
-        const held = state.activeHolders.find(h => h.id === e.acquirerId)
-        if (!held) {
-          state.activeHolders = [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
-        } else if (state.totalPermits === 0 || listedPermits(state) < permitsInUse(state)) {
-          state.activeHolders = state.activeHolders.map(h => (h === held ? { ...h, permits: h.permits + 1 } : h))
+        // Only an acquirer not listed yet is listed, unconfirmed; a listed one keeps its count (a snapshot may
+        // already have counted this permit). The next snapshot replaces the list.
+        if (!state.activeHolders.some(h => h.id === e.acquirerId)) {
+          state.activeHolders = [
+            ...state.activeHolders,
+            { id: e.acquirerId, label: e.acquirerLabel, permits: 1, unconfirmed: true },
+          ]
         }
         state.waitQueue = state.waitQueue.filter(w => w.id !== e.acquirerId)
-        reconcilePermits(state)
+        clearWhenAllFree(state)
         break
       }
       case 'SemaphorePermitReleased': {
@@ -221,18 +228,9 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.newAvailablePermits
-        // Its own release takes one back, unless a snapshot already did (the wrapper drops the record first).
-        // A release by a coroutine that held none (S-7) frees a listed permit whose holder is unknown: the
-        // listed permits beyond those in use say how many.
-        const held = e.holderUnknown ? undefined : state.activeHolders.find(h => h.id === e.releaserId)
-        if (held && (state.totalPermits === 0 || listedPermits(state) > permitsInUse(state))) {
-          state.activeHolders = state.activeHolders
-            .map(h => (h === held ? { ...h, permits: h.permits - 1 } : h))
-            .filter(h => h.permits > 0)
-        } else if (!held && state.totalPermits === 0) {
-          state.unknownHolderPermits = Math.min(state.unknownHolderPermits + 1, listedPermits(state))
-        }
-        reconcilePermits(state)
+        // No count changes until the next snapshot (a snapshot may already have taken this permit back);
+        // only a release that frees every permit is certain: then nobody holds one.
+        clearWhenAllFree(state)
         break
       }
       case 'SemaphoreTryAcquireFailed': {
@@ -253,6 +251,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
           permits: e.activeHolderPermits?.[i] ?? 1,
         }))
         state.unknownHolderPermits = e.unknownHolderPermits ?? 0
+        clearWhenAllFree(state)
         state.waitQueue = e.waitingCoroutines.map((id, i) => ({
           id,
           label: e.waitingLabels[i] ?? null,
@@ -280,29 +279,16 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
   }
 }
 
-/** Permits the holders are listed with. */
-function listedPermits(state: SemaphoreState): number {
-  return state.activeHolders.reduce((sum, h) => sum + h.permits, 0)
-}
-
-function permitsInUse(state: SemaphoreState): number {
-  return state.totalPermits - state.availablePermits
-}
-
 /**
- * After an acquire or release: the listed permits beyond those in use have an unknown holder (the producer's
- * own definition), and with every permit free nobody holds one. Needs the total, which a trimmed history may
- * lack (`SemaphoreCreated` gone): then the counts are left as they are until the next snapshot.
+ * With every permit free, nobody holds one, whatever was listed (a snapshot copies its holders before it reads
+ * the free permits, so a release can fall between). Needs the total, which a trimmed history may lack
+ * (`SemaphoreCreated` gone): then the list stands until the next snapshot.
  */
-function reconcilePermits(state: SemaphoreState) {
-  if (state.totalPermits === 0) return
-  const inUse = permitsInUse(state)
-  if (inUse <= 0) {
+function clearWhenAllFree(state: SemaphoreState) {
+  if (state.totalPermits > 0 && state.availablePermits >= state.totalPermits) {
     state.activeHolders = []
     state.unknownHolderPermits = 0
-    return
   }
-  state.unknownHolderPermits = Math.max(0, listedPermits(state) - inUse)
 }
 
 function ensureMutex(map: Map<string, MutexState>, id: string, label: string | null) {

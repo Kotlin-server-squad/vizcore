@@ -181,6 +181,8 @@ function HolderNames({
           {i > 0 && ', '}
           <CoroutineName id={h.id} label={h.label} picker={picker} selected={h.id === selectedCoroutineId} />
           {counts && h.permits > 1 && <span className="text-default-500"> ({h.permits} permits)</span>}
+          {/* Listed by its acquisition only: a snapshot has not confirmed it yet. */}
+          {h.unconfirmed && <span className="text-default-500"> (may hold · holder unknown)</span>}
         </span>
       ))}
     </>

@@ -138,5 +138,24 @@ describe('projectActivity', () => {
     expect(lines.get('c-1')).toEqual({ text: 'may hold a payment-gateway permit · holder unknown', waiting: false })
     expect(lines.get('c-2')?.text).toBe('may hold a payment-gateway permit · holder unknown')
   })
+
+  it('a holder listed only by its acquisition, before a snapshot confirms it, may hold the permit', () => {
+    const lines = projectActivity([
+      ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
+      ev('SemaphorePermitAcquired', { ...sem, acquirerId: 'c-1', acquirerLabel: 'c-1', remainingPermits: 2, waitDurationNanos: 0 }),
+    ])
+    expect(lines.get('c-1')).toEqual({ text: 'may hold a payment-gateway permit · holder unknown', waiting: false })
+  })
+
+  it('no one holds a permit when a snapshot has every permit free', () => {
+    const lines = projectActivity([
+      ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
+      ev('SemaphoreStateChanged', {
+        ...sem, availablePermits: 3, totalPermits: 3, activeHolders: ['c-1'], activeHolderLabels: ['c-1'],
+        activeHolderPermits: [1], waitingCoroutines: [], waitingLabels: [], unknownHolderPermits: 1,
+      }),
+    ])
+    expect(lines.has('c-1')).toBe(false)
+  })
 })
 
