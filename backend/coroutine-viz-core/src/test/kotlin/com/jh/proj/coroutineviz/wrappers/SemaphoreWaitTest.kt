@@ -224,4 +224,27 @@ class SemaphoreWaitTest {
             withTimeout(10.seconds) { keeper.join() }
             assertEquals(emptyList(), states().last().activeHolders, "with every permit free, nobody holds one")
         }
+
+    @Test
+    fun `permits that fresh coroutines acquired and others released do not pile up while the semaphore is never free`() =
+        runBlocking {
+            val semaphore = VizSemaphore(session, permits = 2, label = "slots")
+            val keeper = viz.vizLaunch("keeper") { semaphore.withPermit { release.await() } }
+            session.awaitEvent { it is SemaphorePermitAcquired && it.acquirerLabel == "keeper" }
+            // Each cycle a new coroutine takes the free permit and ends; another coroutine, holding none, gives it back.
+            repeat(50) { n ->
+                withTimeout(5.seconds) {
+                    viz.vizLaunch("acquirer-$n") { semaphore.acquire() }.join()
+                    viz.vizLaunch("releaser-$n") { semaphore.release() }.join()
+                }
+            }
+
+            // One permit is in use (the keeper's): the acquirers that ended hold nothing and are not listed.
+            assertEquals(1, semaphore.getActiveHolderCount())
+            assertEquals(listOf(session.idOf("keeper")), states().last().activeHolders)
+
+            release.complete(Unit)
+            withTimeout(10.seconds) { keeper.join() }
+            assertEquals(0, semaphore.getActiveHolderCount())
+        }
 }

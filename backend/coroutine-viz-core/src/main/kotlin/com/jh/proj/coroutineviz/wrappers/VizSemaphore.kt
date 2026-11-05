@@ -180,6 +180,7 @@ class VizSemaphore(
 
         delegate.release()
         trimHoldersToPermitsInUse()
+        retireEndedHolders()
 
         session.send(
             SemaphorePermitReleased(
@@ -277,6 +278,32 @@ class VizSemaphore(
                 val inUse = totalPermits - delegate.availablePermits
                 if (held.size > inUse) held.takeLast(inUse).ifEmpty { null } else held
             }
+        }
+    }
+
+    /**
+     * While more permits are listed than are in use, forgets the records of coroutines that have ended (or whose job
+     * is not known, e.g. an acquire outside any coroutine), oldest first: their permits were released by others.
+     * Without this, every coroutine that acquired a permit someone else released would stay listed for as long as
+     * the semaphore is never entirely free. A running coroutine's records are kept; the rest of the excess is
+     * reported as `unknownHolderPermits`.
+     */
+    private fun retireEndedHolders() {
+        var excess = holders.values.sumOf { it.size } - (totalPermits - delegate.availablePermits)
+        if (excess <= 0) return
+        val ended =
+            holders.entries
+                .filter { (coroutineId, _) -> session.snapshot.jobOf(coroutineId)?.isCompleted != false }
+                .flatMap { (coroutineId, held) -> held.map { coroutineId to it } }
+                .sortedBy { (_, holder) -> holder.acquireTime }
+        for ((coroutineId, holder) in ended) {
+            if (excess <= 0) break
+            var removed = false
+            holders.computeIfPresent(coroutineId) { _, held ->
+                removed = holder in held
+                (held - holder).ifEmpty { null }
+            }
+            if (removed) excess--
         }
     }
 
