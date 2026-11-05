@@ -105,7 +105,7 @@ export const CHANNELS_GUIDES: DemoGuide[] = [
         queue.close()                               // 4
     }
     repeat(3) { n ->
-        launch {                                    // agent-1, agent-2, agent-3
+        launch {                                    // agent-1 … agent-3
             for (ticket in queue) handle(ticket)    // 2
         }
     }
