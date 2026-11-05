@@ -9,6 +9,7 @@ import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -166,8 +167,9 @@ class SemaphoreWaitTest {
             assertEquals(0L, byStranger.holdDurationNanos)
             val afterStranger = states().last()
             assertEquals(listOf(session.idOf("owner")), afterStranger.activeHolders)
-            assertEquals(listOf(2), afterStranger.activeHolderPermits)
-            assertEquals(1, afterStranger.unknownHolderPermits)
+            // One permit is still in use, so the owner is listed with no more than that.
+            assertEquals(listOf(1), afterStranger.activeHolderPermits)
+            assertEquals(0, afterStranger.unknownHolderPermits)
 
             release.complete(Unit)
             owner.join()
@@ -187,5 +189,39 @@ class SemaphoreWaitTest {
             val released = releases().single()
             assertEquals("unknown", released.releaserId)
             assertTrue(released.holderUnknown)
+        }
+
+    @Test
+    fun `permits released by another coroutine do not pile up while the semaphore is never free`() =
+        runBlocking {
+            val semaphore = VizSemaphore(session, permits = 2, label = "slots")
+            val keeper = viz.vizLaunch("keeper") { semaphore.withPermit { release.await() } }
+            session.awaitEvent { it is SemaphorePermitAcquired && it.acquirerLabel == "keeper" }
+            // The producer acquires, the consumer releases: every release by the consumer has an unknown holder.
+            val handoff = Channel<Unit>()
+            val producer =
+                viz.vizLaunch("producer") {
+                    repeat(50) {
+                        semaphore.acquire()
+                        handoff.send(Unit)
+                    }
+                }
+            val consumer =
+                viz.vizLaunch("consumer") {
+                    repeat(50) {
+                        handoff.receive()
+                        semaphore.release()
+                    }
+                }
+            withTimeout(20.seconds) { joinAll(producer, consumer) }
+
+            // One permit is in use (the keeper's): nobody can be listed with more than that.
+            val busy = states().last()
+            assertEquals(1, 2 - busy.availablePermits)
+            assertTrue(busy.activeHolderPermits.all { it <= 1 }, "${busy.activeHolderLabels} ${busy.activeHolderPermits}")
+
+            release.complete(Unit)
+            withTimeout(10.seconds) { keeper.join() }
+            assertEquals(emptyList(), states().last().activeHolders, "with every permit free, nobody holds one")
         }
 }

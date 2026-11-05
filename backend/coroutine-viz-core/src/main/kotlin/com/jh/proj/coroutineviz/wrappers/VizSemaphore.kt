@@ -179,7 +179,7 @@ class VizSemaphore(
         val released = coroutineElement?.let { takeOldestPermit(it.coroutineId) }
 
         delegate.release()
-        forgetHoldersIfAllFree()
+        trimHoldersToPermitsInUse()
 
         session.send(
             SemaphorePermitReleased(
@@ -266,16 +266,18 @@ class VizSemaphore(
     }
 
     /**
-     * With every permit free nobody holds one: forgets the holders whose permits other coroutines released. Only
-     * entries recorded before every permit was seen free are removed, each only if unchanged since, so a coroutine
-     * that acquires meanwhile keeps its entry (its own release must still be attributed to it).
+     * Nobody holds more permits than are in use: drops a holder's oldest records beyond that, and every record once
+     * every permit is free. Without this, permits that other coroutines release (holder unknown) would pile up on
+     * their acquirer for as long as the semaphore is never entirely free. Permits in use are read inside each
+     * holder's update, so a permit a holder has just acquired and recorded is counted and keeps its record.
      */
-    private fun forgetHoldersIfAllFree() {
-        // HashMap(holders), not toMap(): toMap's single-entry fast path calls iterator().next() and races a
-        // concurrent remove (see emitStateChanged).
-        val recorded = HashMap(holders)
-        if (recorded.isEmpty() || delegate.availablePermits != totalPermits) return
-        recorded.forEach { (coroutineId, held) -> holders.remove(coroutineId, held) }
+    private fun trimHoldersToPermitsInUse() {
+        for (coroutineId in holders.keys) {
+            holders.computeIfPresent(coroutineId) { _, held ->
+                val inUse = totalPermits - delegate.availablePermits
+                if (held.size > inUse) held.takeLast(inUse).ifEmpty { null } else held
+            }
+        }
     }
 
     /** Removes and returns the oldest permit [coroutineId] holds, or `null` when it holds none. */
