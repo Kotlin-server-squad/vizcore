@@ -807,9 +807,9 @@ paths:
       tags: [Scenarios - Channel]
       summary: Run channel rendezvous scenario
       description: >
-        Zero-buffer channel where sender and receiver must meet for each
-        transfer. Demonstrates suspension on both sides when one party is
-        not ready.
+        A chef hands each plate to a waiter through a rendezvous channel (no
+        buffer): a plate changes hands only when both are there, so whoever
+        arrives first waits. Paced to about 17 seconds.
       operationId: runChannelRendezvousScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
@@ -832,8 +832,9 @@ paths:
       tags: [Scenarios - Channel]
       summary: Run channel buffered scenario
       description: >
-        Buffered channel (capacity 3) showing buffer fill and drain behavior.
-        Producer sends 5 items; consumer starts after a delay.
+        An office sends 8 jobs to a print queue with 5 slots, faster than the
+        printer prints: the buffer fills, the sender waits for a free slot,
+        and the printer drains the queue. Paced to about 23 seconds.
       operationId: runChannelBufferedScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
@@ -856,8 +857,9 @@ paths:
       tags: [Scenarios - Channel]
       summary: Run channel fan-out scenario
       description: >
-        Fan-out pattern: one producer dispatches 10 tasks and 3 workers
-        compete to receive and process them.
+        Fan-out: 12 support tickets go into one queue read by 3 agents; each
+        ticket goes to exactly one free agent, and tickets wait in the queue
+        while all agents are busy. Paced to about 13 seconds.
       operationId: runChannelFanOutScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
