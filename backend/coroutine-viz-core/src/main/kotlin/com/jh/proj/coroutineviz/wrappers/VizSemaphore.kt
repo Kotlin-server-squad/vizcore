@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.events.SemaphorePermitAcquired
 import com.jh.proj.coroutineviz.events.SemaphorePermitReleased
 import com.jh.proj.coroutineviz.events.SemaphoreStateChanged
 import com.jh.proj.coroutineviz.events.SemaphoreTryAcquireFailed
+import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Semaphore
@@ -17,9 +18,12 @@ import java.util.concurrent.ConcurrentLinkedQueue
  *
  * This wrapper provides full transparency into semaphore behavior:
  * - Permit acquisition and release timing
- * - Active holder tracking
- * - Wait queue management
+ * - Active holder tracking, with the number of permits each holds
+ * - Wait queue management; a wait for a permit is recorded as a suspension (spec 2026-11-05, S-7)
  * - Utilization metrics
+ *
+ * A permit released by a coroutine that holds none (or from outside any coroutine) is reported with
+ * `holderUnknown`: whose permit came back cannot be known, so none is named.
  *
  * Real-world use cases:
  * - Connection pool limiting (max N connections)
@@ -45,8 +49,9 @@ class VizSemaphore(
     private val delegate = Semaphore(permits, acquiredPermits)
     private val totalPermits = permits
 
-    // Active holders tracking
-    private val activeHolders = ConcurrentHashMap<String, HolderInfo>()
+    // The permits each coroutine acquired and has not released itself, oldest first; a coroutine can hold several.
+    // Each holder's list is replaced, never mutated, through merge/computeIfPresent.
+    private val holders = ConcurrentHashMap<String, List<HolderInfo>>()
 
     // Wait queue tracking
     private val waitQueue = ConcurrentLinkedQueue<WaiterInfo>()
@@ -83,9 +88,9 @@ class VizSemaphore(
     val availablePermits: Int get() = delegate.availablePermits
 
     /**
-     * Get number of active permit holders
+     * Number of coroutines holding at least one permit they acquired
      */
-    fun getActiveHolderCount(): Int = activeHolders.size
+    fun getActiveHolderCount(): Int = holders.size
 
     /**
      * Get number of coroutines waiting for permits
@@ -100,16 +105,18 @@ class VizSemaphore(
     }
 
     /**
-     * Acquire a permit (suspends if none available)
+     * Acquire a permit. Tries first; only when no permit is free does the coroutine queue and wait, and that wait
+     * is recorded as a suspension (spec 2026-11-05, S-7).
      */
     suspend fun acquire() {
         val coroutineElement = currentCoroutineContext()[VizCoroutineElement]
         val coroutineId = coroutineElement?.coroutineId ?: "unknown-${System.nanoTime()}"
         val coroutineLabel = coroutineElement?.label
 
+        // Try first, so whether to wait is never decided from `availablePermits`, which another coroutine can change.
         val available = delegate.availablePermits
+        val acquiredAtOnce = delegate.tryAcquire()
 
-        // Emit acquire requested
         session.send(
             SemaphoreAcquireRequested(
                 sessionId = session.sessionId,
@@ -119,28 +126,17 @@ class VizSemaphore(
                 semaphoreLabel = label,
                 requesterId = coroutineId,
                 requesterLabel = coroutineLabel,
-                availablePermits = available,
+                availablePermits = if (acquiredAtOnce) maxOf(available, 1) else 0,
                 permitsRequested = 1,
             ),
         )
 
-        // Add to wait queue if no permits available
-        val waiterInfo = WaiterInfo(coroutineId, coroutineLabel, System.nanoTime(), 1)
-        if (available == 0) {
-            waitQueue.add(waiterInfo)
-            emitStateChanged()
-        }
-
-        // Actually acquire the permit (may suspend)
         val startWait = System.nanoTime()
-        delegate.acquire()
+        if (!acquiredAtOnce) waitInQueue(WaiterInfo(coroutineId, coroutineLabel, startWait, 1))
         val waitDuration = System.nanoTime() - startWait
 
-        // Update tracking
-        waitQueue.remove(waiterInfo)
-        activeHolders[coroutineId] = HolderInfo(coroutineId, coroutineLabel, System.nanoTime())
+        addHolder(HolderInfo(coroutineId, coroutineLabel, System.nanoTime()))
 
-        // Emit permit acquired
         session.send(
             SemaphorePermitAcquired(
                 sessionId = session.sessionId,
@@ -158,34 +154,34 @@ class VizSemaphore(
         emitStateChanged()
     }
 
+    /** Queues [waiter] and waits for a permit, recorded as a suspension; the waiter leaves the queue however the wait ends. */
+    private suspend fun waitInQueue(waiter: WaiterInfo) {
+        waitQueue.add(waiter)
+        emitStateChanged()
+        var acquired = false
+        try {
+            session.recordWait(WaitKind.SEMAPHORE, semaphoreId) { delegate.acquire() }
+            acquired = true
+        } finally {
+            // Without a permit (cancelled, or a timeout around the wait) the waiter no longer waits; left in the
+            // queue it would show waiting for ever. With a permit, `acquire` reports the new state after Acquired.
+            if (waitQueue.remove(waiter) && !acquired) emitStateChanged()
+        }
+    }
+
     /**
-     * Release a permit back to the pool
+     * Release a permit back to the pool. It counts as the releasing coroutine's own (its oldest) when that
+     * coroutine holds one; otherwise whose permit came back is unknown, and the event says so (`holderUnknown`)
+     * instead of naming a holder.
      */
     fun release() {
-        val coroutineElement =
-            try {
-                kotlinx.coroutines.runBlocking { currentCoroutineContext()[VizCoroutineElement] }
-            } catch (_: Exception) {
-                null
-            }
-
-        val coroutineId =
-            coroutineElement?.coroutineId
-                ?: activeHolders.keys.firstOrNull()
-                ?: "unknown"
-        val coroutineLabel = coroutineElement?.label
-
-        val holderInfo = activeHolders.remove(coroutineId)
-        val holdDuration =
-            if (holderInfo != null) {
-                System.nanoTime() - holderInfo.acquireTime
-            } else {
-                0L
-            }
+        val coroutineElement = VizCoroutineElement.current()
+        val released = coroutineElement?.let { takeOldestPermit(it.coroutineId) }
 
         delegate.release()
+        // With every permit free nobody holds one: forget holders whose permits other coroutines released.
+        if (delegate.availablePermits == totalPermits) holders.clear()
 
-        // Emit permit released
         session.send(
             SemaphorePermitReleased(
                 sessionId = session.sessionId,
@@ -193,10 +189,11 @@ class VizSemaphore(
                 tsNanos = System.nanoTime(),
                 semaphoreId = semaphoreId,
                 semaphoreLabel = label,
-                releaserId = coroutineId,
-                releaserLabel = coroutineLabel,
+                releaserId = coroutineElement?.coroutineId ?: "unknown",
+                releaserLabel = coroutineElement?.label,
                 newAvailablePermits = delegate.availablePermits,
-                holdDurationNanos = holdDuration,
+                holdDurationNanos = released?.let { System.nanoTime() - it.acquireTime } ?: 0L,
+                holderUnknown = released == null,
             ),
         )
 
@@ -209,20 +206,15 @@ class VizSemaphore(
      * @return true if permit was acquired, false if none available
      */
     fun tryAcquire(): Boolean {
-        val coroutineElement =
-            try {
-                kotlinx.coroutines.runBlocking { currentCoroutineContext()[VizCoroutineElement] }
-            } catch (_: Exception) {
-                null
-            }
-
+        // The holder must be the real coroutine, or its own release would count as another's (holder unknown).
+        val coroutineElement = VizCoroutineElement.current()
         val coroutineId = coroutineElement?.coroutineId ?: "unknown-${System.nanoTime()}"
         val coroutineLabel = coroutineElement?.label
 
         val acquired = delegate.tryAcquire()
 
         if (acquired) {
-            activeHolders[coroutineId] = HolderInfo(coroutineId, coroutineLabel, System.nanoTime())
+            addHolder(HolderInfo(coroutineId, coroutineLabel, System.nanoTime()))
 
             session.send(
                 SemaphorePermitAcquired(
@@ -270,13 +262,30 @@ class VizSemaphore(
         }
     }
 
+    private fun addHolder(holder: HolderInfo) {
+        holders.merge(holder.coroutineId, listOf(holder)) { held, added -> held + added }
+    }
+
+    /** Removes and returns the oldest permit [coroutineId] holds, or `null` when it holds none. */
+    private fun takeOldestPermit(coroutineId: String): HolderInfo? {
+        var taken: HolderInfo? = null
+        holders.computeIfPresent(coroutineId) { _, held ->
+            taken = held.first()
+            held.drop(1).ifEmpty { null }
+        }
+        return taken
+    }
+
     private fun emitStateChanged() {
         // Atomic snapshots: Collection.toList() has a size==1 fast path that calls
         // iterator().next(), which races a concurrent remove() on these concurrent
         // collections and throws NoSuchElementException. toMutableList() copies via
         // ArrayList(this) → toArray(), which is a race-safe snapshot.
-        val holders = activeHolders.values.toMutableList()
         val waiters = waitQueue.toMutableList()
+        val held = holders.values.toMutableList()
+        val available = delegate.availablePermits
+        // Listed permits beyond those in use were released by other coroutines: their holder is unknown.
+        val unknownHolderPermits = (held.sumOf { it.size } - (totalPermits - available)).coerceAtLeast(0)
 
         session.send(
             SemaphoreStateChanged(
@@ -285,12 +294,14 @@ class VizSemaphore(
                 tsNanos = System.nanoTime(),
                 semaphoreId = semaphoreId,
                 semaphoreLabel = label,
-                availablePermits = delegate.availablePermits,
+                availablePermits = available,
                 totalPermits = totalPermits,
-                activeHolders = holders.map { it.coroutineId },
-                activeHolderLabels = holders.map { it.label },
+                activeHolders = held.map { it.first().coroutineId },
+                activeHolderLabels = held.map { it.first().label },
                 waitingCoroutines = waiters.map { it.coroutineId },
                 waitingLabels = waiters.map { it.label },
+                activeHolderPermits = held.map { it.size },
+                unknownHolderPermits = unknownHolderPermits,
             ),
         )
     }

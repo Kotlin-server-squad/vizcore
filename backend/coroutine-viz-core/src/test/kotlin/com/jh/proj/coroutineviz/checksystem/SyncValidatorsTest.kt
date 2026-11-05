@@ -145,6 +145,8 @@ class SyncValidatorsTest {
         totalPermits: Int,
         activeHolders: List<String> = emptyList(),
         waitingCoroutines: List<String> = emptyList(),
+        activeHolderPermits: List<Int> = emptyList(),
+        unknownHolderPermits: Int = 0,
     ): SemaphoreStateChanged {
         val seq = nextSeq()
         return SemaphoreStateChanged(
@@ -159,6 +161,8 @@ class SyncValidatorsTest {
             activeHolderLabels = activeHolders.map { null },
             waitingCoroutines = waitingCoroutines,
             waitingLabels = waitingCoroutines.map { null },
+            activeHolderPermits = activeHolderPermits,
+            unknownHolderPermits = unknownHolderPermits,
         )
     }
 
@@ -382,6 +386,41 @@ class SyncValidatorsTest {
         assertTrue(error.message!!.contains("permit limit exceeded"))
         assertTrue(error.message!!.contains("3 holders"))
         assertTrue(error.message!!.contains("2 permits"))
+    }
+
+    @Test
+    fun `verifyPermitBounds counts permits in use when holders carry counts`() {
+        val recorder = EventRecorder()
+        // A and B acquired, a coroutine holding none released one, C acquired: 3 listed, 2 in use.
+        recorder.record(
+            semaphoreStateChanged(
+                "s-1",
+                availablePermits = 0,
+                totalPermits = 2,
+                activeHolders = listOf("c-A", "c-B", "c-C"),
+                activeHolderPermits = listOf(1, 1, 1),
+                unknownHolderPermits = 1,
+            ),
+        )
+
+        SemaphoreValidator(recorder).verifyPermitBounds("s-1", 2) // Should not throw
+    }
+
+    @Test
+    fun `verifyPermitBounds fails when counted permits exceed the limit`() {
+        val recorder = EventRecorder()
+        recorder.record(
+            semaphoreStateChanged(
+                "s-1",
+                availablePermits = 0,
+                totalPermits = 2,
+                activeHolders = listOf("c-A"),
+                activeHolderPermits = listOf(3),
+            ),
+        )
+
+        val error = assertFailsWith<AssertionError> { SemaphoreValidator(recorder).verifyPermitBounds("s-1", 2) }
+        assertTrue(error.message!!.contains("3 permits held"))
     }
 
     @Test

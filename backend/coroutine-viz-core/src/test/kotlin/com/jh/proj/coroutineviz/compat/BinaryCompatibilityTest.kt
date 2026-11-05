@@ -1,5 +1,7 @@
 package com.jh.proj.coroutineviz.compat
 
+import com.jh.proj.coroutineviz.events.SemaphorePermitReleased
+import com.jh.proj.coroutineviz.events.SemaphoreStateChanged
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
@@ -159,5 +161,15 @@ class BinaryCompatibilityTest {
         assertNotNull(
             helpers.getDeclaredMethod("coroutineSuspended\$default", *v03, Int::class.javaPrimitiveType, Any::class.java),
         )
+    }
+
+    @Test
+    fun `semaphore events keep their 0_3_x constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val int = Int::class.javaPrimitiveType
+        val str = String::class.java
+        val list = List::class.java
+        SemaphorePermitReleased::class.java.getDeclaredConstructor(str, long, long, str, str, str, str, int, long)
+        SemaphoreStateChanged::class.java.getDeclaredConstructor(str, long, long, str, str, int, int, list, list, list, list)
     }
 }
