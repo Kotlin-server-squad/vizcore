@@ -41,9 +41,12 @@ lines, never built) shows one PR cannot hold it. It splits along the seam "what 
 
 5b may split again (reads 5b-1, persistence/checks/shares 5b-2) when its plan is written from the code as 5a leaves it.
 
-**Each is shippable alone.** After 5a, Part 7 (Problems tab, connection pill) can be built against live and replay health
-in the default memory mode, and every database session reads honestly ("at least", "not evaluated (history trimmed)")
-once trimmed. Part 6 (rounds, find) and the shared view of Part 8 wait for 5b.
+**Each is shippable alone.** 5a is the API foundation: every response it adds is honest on its own (memory mode, the
+default, fully; a database session answers `503 history-trimmed` once its stored events were trimmed, and reads
+delivery-uncertain for events this process did not watch arrive). It is not everything the frontend needs: the
+Problems tab's first lines, chips, the first 50 incidents and the connection pill (Part 7's S-3/S-8 core) can be built on
+it, but "Show" into a round, the C-2 card fields, lists beyond the first 50, the checks freshness and the shared view
+need 5b, and Part 7 as specified also depends on Part 6 (rounds). Full Problems activation therefore waits for 5b.
 
 ## Decisions this plan takes (spec gaps; the PR lists them for the user)
 
@@ -51,23 +54,28 @@ once trimmed. Part 6 (rounds, find) and the shared view of Part 8 wait for 5b.
 |---|---|---|
 | D-1 | How a watermark travels | Not stored, not numbered, not applied to the summaries: one per second would evict real events from the bounded store (10,000 in memory). The ingest route hands it to `IngestStates`; SSE gets it from there as a named frame `event: watermark`, data `{"appNanos","appEpochMs","receivedEpochMs"}`, no `id` (so `Last-Event-ID` is unaffected). The page uses it only as a "refetch health" signal, so its position relative to event frames does not matter: health is read from the backend, which applied a poll's events before it saw that poll's watermark (same socket, in order). |
 | D-2 | Clean vs unclean close (C-3 transport, C-7) | Clean only after a watermark with `final = true` on that connection. Every other close, and every frame the backend cannot decode, makes delivery uncertain for the rest of the session, from that connection's first seq (`sinceSeq` only moves earlier). Consequence today: no shipped SDK sends watermarks yet (triage PR 3), so an attached session reads "possibly blocked: not evaluated (no poll data)" while connected and "events may have been lost" after the app disconnects. That is the spec's honest reading (H-3): nothing says every event arrived. |
+| D-1b | Which watermark is "latest" | The newest by app clock: a delayed frame from an overlapping socket cannot move it back. Every frame's loss facts still count. (An SDK creates a new session per start, so one session never mixes two app clocks.) |
 | D-3 | `lastIngestEpochMs` | Backend receipt time of the last **event** frame (not watermarks), recorded just before the event is appended, never moving back. |
 | D-4 | `lostEvents` across reconnects | The largest cumulative count any watermark reported. |
 | D-5 | Session `kind` | From the id vizcore mints for its own runs (`scenario-…`, `auto-<ts>[-<ts>]`, `api-session-<ts>`), the rule the timeline route and `frontend/src/lib/session-kind.ts` already use. Demos are started by `POST /api/sessions?name=scenario-…`, so there is no other signal to record. |
 | D-6 | Session `origin` | `REPORTED` for demos or when a tracked coroutine reported `APP`/`VIZCORE`, else `UNKNOWN` (the derivation's rule, made public). `UNKNOWN` also when the summaries are unavailable. |
 | D-7 | `captureStartAppNanos` | Smallest app-clock time of any event the summaries saw (so no "time into the capture" is negative). `null` when unknown: no events, summaries unavailable, or a database session whose stored events were trimmed. |
 | D-8 | `trimmed` | Memory mode: the summaries saw every event, so `trimmed` = the oldest retained seq is later than the first seq the summaries saw. Database mode (until 5b): the summaries are folded from the stored events, so the only signal is the oldest stored seq being later than 1, the first seq every session gets. A demo whose first two events raced (`VizSession.send` re-stamps) can start at seq 2 and read "trimmed" in database mode; the cost is an "at least" label, never a missed one. |
-| D-9 | Database sessions after a trim (until 5b) | `HealthInput.historyIncomplete = true`: failures read "at least", possibly blocked is `NOT_EVALUATED` with the new reason `HISTORY_TRIMMED` (precedence REPLAY, DEMO, EVENTS_DROPPED, HISTORY_TRIMMED, OVERFLOW, NO_WATERMARK), never green, never "no application coroutines". Also set in replay when the durable summaries went over capacity and events were trimmed (the seed cannot tell which untracked coroutines existed at the cursor). |
+| D-9 | Database sessions after a trim (until 5b) | Summaries folded from what is left lose the ancestry of coroutines whose parent's creation was trimmed, so one failed round can read as several ungrouped failures: "at least N" would overstate. `GET …/health` answers `503` `{"code":"history-trimmed"}` instead (H-1, H-3); `GET /api/sessions/{id}` still answers with `trimmed: true` and `captureStartAppNanos: null`. Core gains `HealthInput.historyIncomplete` (failures "at least", possibly blocked `NOT_EVALUATED` with the new reason `HISTORY_TRIMMED`, precedence REPLAY, DEMO, EVENTS_DROPPED, HISTORY_TRIMMED, OVERFLOW, NO_WATERMARK, never green, never "no application coroutines") for the one case that can only undercount: a replay whose seed cannot tell which coroutines beyond capacity existed at the cursor. |
+| D-9b | Database sessions after a backend restart (until 5b) | Ingest state is process-local. Events stored before the first connection this process saw came through a connection nobody here watched end, so for an ATTACHED database session with such events `transport` reads `deliveryUncertain` since seq 1 (failures "at least", possibly blocked `EVENTS_DROPPED`). 5b replaces this with the persisted transport and "ingest open" marker. |
+| D-9c | Order of a health read | The ingest state is read **before** the session is resolved: in database mode resolving rebuilds the summaries from the store, and a watermark is recorded only after its poll's events were stored, so the summaries include every event the watermark vouches for. |
 | D-10 | Replay of trimmed history | `SummaryFold.foldTo(events, atSeq, durable)` seeds every coroutine whose creation was trimmed from its durable summary (creation, and its terminal when that was trimmed too), in seq order through the table's own creation and terminal bookkeeping, then applies the retained events. Promotion and round anchoring depend only on creations and terminals, so they are exact at the cursor; failures known from the durable summaries count; states between a trimmed creation and the first retained event are not known and not invented. |
 | D-11 | `atSeq` out of range | Negative or not a number: `400`. Later than the last event: clamped to it (`asOfSeq` says which seq was used). |
 | D-12 | Summaries unavailable | `GET …/health` answers `503` `{"error":…,"code":"summaries-unavailable"}` (the table was abandoned after an apply failure); `GET /api/sessions/{id}` still answers, with `origin: UNKNOWN` and `captureStartAppNanos: null`. |
+| D-15 | Share payload | `SessionSnapshotResponse` is also the share payload's `session`, so both are built by one function and the share payload carries the new session fields too (a first piece of C-6; health at load time, the checks result and the one-cut guarantee are 5b). |
 | D-13 | `startedAtEpochMs` in database mode | The session row's `created_at`. Today a rebuilt database session's `createdAtMs` is the time of the read; `ExposedSessionStore` now passes the row's time. |
 | D-14 | Where `retention` and `asOfWatermark` live | Added to core's `SessionHealth` (defaults `null`), filled by the derivation from `HealthInput`, so the payload is one flat object as C-3 lists it. |
 
 ## Not in 5a (each named in the PR body)
 
 - Everything in the 5b row above, including persistence of the watermark, transport and "ingest open" marker: after a
-  backend restart a database session has no ingest state until its app connects again.
+  backend restart a database session has no watermark until its app connects again, and reads delivery-uncertain (D-9b);
+  a trimmed database session's health is `503 history-trimmed` (D-9).
 - Live SSE in database mode is a pre-existing gap (each read builds a fresh `VizSession`, so the SSE route's bus never
   sees the ingest socket's events). Watermark frames work in both modes because they come from the id-keyed registry.
 - The SDK side (triage PR 3): watermark, origin by creation stack, provenance.
@@ -120,9 +128,9 @@ once trimmed. Part 6 (rounds, find) and the shared view of Part 8 wait for 5b.
 | `…/routes/IngestStates.kt` (new) | ingest state registry |
 | `…/routes/IngestRoutes.kt` | watermarks, skipped frames, close |
 | `…/persistence/ExposedSessionStore.kt` | keep summaries, row `created_at` |
-| `…/routes/SessionHealthReads.kt` (new) | `readSessionHealth`, `readSessionFacts`, `RetainedTransitions` |
+| `…/routes/SessionHealthReads.kt` (new) | `readSessionHealth`, `transportOf`, `readSessionFacts`, `RetainedTransitions` |
 | `…/routes/SessionHealthRoutes.kt` (new) | `GET /api/sessions/{id}/health` |
-| `…/routes/SessionRoutes.kt`, `…/routes/RouteDtos.kt` | C-3 fields; leak parser; SSE watermarks |
+| `…/routes/SessionRoutes.kt`, `…/routes/RouteDtos.kt`, `…/share/ShareRoutes.kt` | C-3 fields (one builder for the session read and the share payload); leak parser; SSE watermarks |
 | `…/Routing.kt` | register route; forget ingest state on close |
 | `backend/src/main/resources/openapi/documentation.yaml`, `shared/api-types/openapi.json`, `shared/api-types/generated.ts`, `docs/guides/API_REFERENCE.md` | API docs and types |
 
@@ -454,11 +462,11 @@ class SummaryFoldSeedTest {
     fun `a seeded fold anchors and counts like the full history, at every cut and cursor`() {
         val script = EventScript()
         script.created("app", at = sec(1))
-        for (i in 1..4) {
+        for (i in 1L..4L) {
             script.created("r$i", at = sec(1 + i), parent = "app")
             script.created("r$i-x", at = sec(1 + i), parent = "r$i")
-            if (i == 2) script.failed("r$i-x", at = sec(2 + i)) else script.completed("r$i-x", at = sec(2 + i))
-            if (i == 2) script.cancelled("r$i", at = sec(2 + i)) else script.completed("r$i", at = sec(2 + i))
+            if (i == 2L) script.failed("r$i-x", at = sec(2 + i)) else script.completed("r$i-x", at = sec(2 + i))
+            if (i == 2L) script.cancelled("r$i", at = sec(2 + i)) else script.completed("r$i", at = sec(2 + i))
         }
         script.created("late", at = sec(9), parent = "app")
         script.failed("late", at = sec(10))
@@ -802,9 +810,9 @@ data class RetentionInfo(
 
 ```kotlin
     /**
-     * The summaries cannot see every event the session had: they were folded from retained events after a trim (a
-     * database session until its summaries are persisted), or a replay seed could not account for coroutines beyond
-     * capacity. Failures then read "at least" and possibly blocked is not evaluated (HISTORY_TRIMMED).
+     * The summaries may miss failures the session had, though every incident they show is real: a replay seed cannot
+     * tell which coroutines beyond capacity existed at the cursor. Failures then read "at least" and possibly blocked is
+     * not evaluated (HISTORY_TRIMMED). Never set it when incidents could be overcounted (a lost ancestry splits a round).
      */
     val historyIncomplete: Boolean = false,
     /** The backend's retention facts, echoed in [SessionHealth.retention]. */
@@ -985,7 +993,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IngestStatesTest {
@@ -1010,14 +1017,28 @@ class IngestStatesTest {
     @Test
     fun `the latest watermark and the latest event receipt are kept`() {
         val connection = IngestStates.connectionOpened("s", firstSeq = 1)
-        IngestStates.eventReceived("s", receivedEpochMs = 100)
-        IngestStates.eventReceived("s", receivedEpochMs = 90)
+        IngestStates.eventReceived(connection, receivedEpochMs = 100)
+        IngestStates.eventReceived(connection, receivedEpochMs = 90)
         IngestStates.watermarkReceived(connection, watermark(appNanos = 5_000_000_000), receivedEpochMs = 120)
 
         val snapshot = IngestStates.snapshot("s")
         assertEquals(100L, snapshot.lastIngestEpochMs, "receipt time never moves back")
         assertEquals(WatermarkObservation(5_000_000_000, 1_792_000_005_000, 120), snapshot.watermark)
         assertEquals(TransportStatus(), snapshot.transport)
+        assertEquals(1L, snapshot.firstConnectionSeq)
+    }
+
+    @Test
+    fun `a delayed watermark from an overlapping socket does not move the watermark back, but its losses count`() {
+        val newer = IngestStates.connectionOpened("s", firstSeq = 1)
+        val older = IngestStates.connectionOpened("s", firstSeq = 5)
+        IngestStates.watermarkReceived(newer, watermark(appNanos = 20_000_000_000), receivedEpochMs = 1)
+        IngestStates.watermarkReceived(older, watermark(appNanos = 5_000_000_000, lost = 1), receivedEpochMs = 2)
+
+        val snapshot = IngestStates.snapshot("s")
+        assertEquals(20_000_000_000, snapshot.watermark?.appNanos)
+        assertEquals(TransportStatus(lostEvents = 1, sinceSeq = 5), snapshot.transport)
+        assertEquals(1L, snapshot.firstConnectionSeq, "the first connection this process saw")
     }
 
     @Test
@@ -1060,13 +1081,15 @@ class IngestStatesTest {
     }
 
     @Test
-    fun `a forgotten session gets no state back from a late close`() {
+    fun `a forgotten session gets no state back from late frames or a late close`() {
         val connection = IngestStates.connectionOpened("s", firstSeq = 1)
         IngestStates.forget("s")
+        IngestStates.eventReceived(connection, receivedEpochMs = 1)
+        IngestStates.watermarkReceived(connection, watermark(appNanos = 1), receivedEpochMs = 1)
+        IngestStates.frameSkipped(connection)
         IngestStates.connectionClosed(connection)
 
-        assertNull(IngestStates.snapshot("s").watermark)
-        assertFalse(IngestStates.snapshot("s").transport.deliveryUncertain)
+        assertEquals(IngestSnapshot(), IngestStates.snapshot("s"))
     }
 
     @Test
@@ -1106,11 +1129,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import java.util.concurrent.ConcurrentHashMap
 
-/** What [IngestStates] knows about one session; the defaults are "nothing ingested". */
+/**
+ * What [IngestStates] knows about one session; the defaults are "nothing ingested". [firstConnectionSeq] is the first
+ * seq of the first connection this process saw for the session: events before it arrived through a connection nobody
+ * here watched.
+ */
 data class IngestSnapshot(
     val watermark: WatermarkObservation? = null,
     val lastIngestEpochMs: Long? = null,
     val transport: TransportStatus = TransportStatus(),
+    val firstConnectionSeq: Long? = null,
 )
 
 /**
@@ -1121,17 +1149,20 @@ data class IngestSnapshot(
  * A watermark is transport state, not a session event: it is neither stored nor numbered, so one per second does not
  * evict real events from the bounded store. Keyed by session id for the same reason as [IngestConnections] (the
  * database store builds a fresh `VizSession` on every read), and process-local like it. Nothing here is persisted yet:
- * after a restart a database session has no ingest state until its app connects again (Part 5b, spec C-4).
+ * after a restart a database session has no ingest state until its app connects again (Part 5b, spec C-4); the health
+ * reads treat what this process did not watch as uncertain.
  */
 object IngestStates {
     private const val WATERMARK_BUFFER = 16
 
     private val states = ConcurrentHashMap<String, State>()
 
-    private class State {
+    /** Guarded by itself. */
+    internal class State {
         var watermark: WatermarkObservation? = null
         var lastIngestEpochMs: Long? = null
         var transport = TransportStatus()
+        var firstConnectionSeq: Long? = null
 
         // Only the newest watermark matters to a stream that fell behind.
         val watermarks =
@@ -1141,10 +1172,15 @@ object IngestStates {
             )
     }
 
-    /** One ingest socket. Its events get seqs from [firstSeq] on; it closed cleanly only once a final watermark arrived. */
+    /**
+     * One ingest socket. Its events get seqs from [firstSeq] on; it closed cleanly only once a final watermark arrived.
+     * It writes to the state it was opened with, so a frame that arrives after the session was deleted (and forgotten)
+     * cannot bring the session's state back.
+     */
     class Connection internal constructor(
         val sessionId: String,
         val firstSeq: Long,
+        internal val state: State,
     ) {
         @Volatile
         internal var finalWatermarkReceived = false
@@ -1154,32 +1190,35 @@ object IngestStates {
         sessionId: String,
         firstSeq: Long,
     ): Connection {
-        stateOf(sessionId)
-        return Connection(sessionId, firstSeq)
+        val state = stateOf(sessionId)
+        synchronized(state) { if (state.firstConnectionSeq == null) state.firstConnectionSeq = firstSeq }
+        return Connection(sessionId, firstSeq, state)
     }
 
     /** An event frame arrived; with several sockets a frame received earlier can finish later, so the time never moves back. */
     fun eventReceived(
-        sessionId: String,
+        connection: Connection,
         receivedEpochMs: Long,
     ) {
-        val state = stateOf(sessionId)
+        val state = connection.state
         synchronized(state) { state.lastIngestEpochMs = maxOf(state.lastIngestEpochMs ?: Long.MIN_VALUE, receivedEpochMs) }
     }
 
     /**
-     * A poll watermark arrived (spec C-7). Its loss count is cumulative per client, so the largest one is kept; a loss or
-     * an uncertain delivery dates from this connection's first seq at the latest.
+     * A poll watermark arrived (spec C-7). The newest poll (by app clock) is kept, so a delayed frame from an overlapping
+     * socket cannot move it back; every frame's loss facts count. The loss count is cumulative per client, so the largest
+     * one is kept; a loss or an uncertain delivery dates from this connection's first seq at the latest.
      */
     fun watermarkReceived(
         connection: Connection,
         watermark: PollWatermark,
         receivedEpochMs: Long,
     ) {
-        val state = stateOf(connection.sessionId)
+        val state = connection.state
         val observation = WatermarkObservation(watermark.tsNanos, watermark.pollEpochMs, receivedEpochMs)
         synchronized(state) {
-            state.watermark = observation
+            val current = state.watermark
+            if (current == null || observation.appNanos >= current.appNanos) state.watermark = observation
             val doubt = watermark.lostEvents > 0 || watermark.deliveryUncertain
             val t = state.transport
             state.transport =
@@ -1203,13 +1242,15 @@ object IngestStates {
 
     fun snapshot(sessionId: String): IngestSnapshot {
         val state = states[sessionId] ?: return IngestSnapshot()
-        return synchronized(state) { IngestSnapshot(state.watermark, state.lastIngestEpochMs, state.transport) }
+        return synchronized(state) {
+            IngestSnapshot(state.watermark, state.lastIngestEpochMs, state.transport, state.firstConnectionSeq)
+        }
     }
 
     /** The session's watermarks as they arrive, for its SSE streams; earlier ones are not replayed. */
     fun watermarks(sessionId: String): Flow<WatermarkObservation> = stateOf(sessionId).watermarks
 
-    /** Drops a deleted session's state. */
+    /** Drops a deleted session's state; its open connections keep writing only to their own, now unreachable, copy. */
     fun forget(sessionId: String) {
         states.remove(sessionId)
     }
@@ -1217,8 +1258,7 @@ object IngestStates {
     internal fun clear() = states.clear()
 
     private fun markUncertain(connection: Connection) {
-        // A deleted (forgotten) session must not get state back from a socket that closes late.
-        val state = states[connection.sessionId] ?: return
+        val state = connection.state
         synchronized(state) {
             val t = state.transport
             state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
@@ -1268,11 +1308,14 @@ package com.jh.proj.coroutineviz.routes
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.PollWatermark
+import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -1316,6 +1359,25 @@ internal object HealthEvents {
         parent: String? = null,
     ) = CoroutineStarted(sessionId, 0, at, id, "job-$id", parent, "scope", id)
 
+    fun suspended(
+        sessionId: String,
+        id: String,
+        at: Long,
+        provenance: SuspensionProvenance? = SuspensionProvenance.REAL_FRAME,
+    ) = CoroutineSuspended(
+        sessionId = sessionId,
+        seq = 0,
+        tsNanos = at,
+        coroutineId = id,
+        jobId = "job-$id",
+        parentCoroutineId = null,
+        scopeId = "scope",
+        label = id,
+        reason = "delay",
+        suspensionPoint = SuspensionPoint(function = "work", fileName = "App.kt", lineNumber = 10, reason = "delay"),
+        provenance = provenance,
+    )
+
     fun completed(
         sessionId: String,
         id: String,
@@ -1352,6 +1414,12 @@ internal object HealthEvents {
 }
 
 internal fun VizEvent.frameText(): String = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), this)
+
+/** The frame an SDK from before triage sends: the same event without the fields it did not know. */
+internal fun VizEvent.olderSdkFrameText(vararg newFields: String): String {
+    val full = appJson.parseToJsonElement(frameText()).jsonObject
+    return JsonObject(full.filterKeys { it !in newFields }).toString()
+}
 
 internal suspend fun HttpClient.createSessionNamed(name: String): String {
     val response = post("/api/sessions?name=$name")
@@ -1532,11 +1600,14 @@ class IngestWatermarkTest {
 
             client.webSocket("/api/sessions/$sessionId/ingest") {
                 send(Frame.Text(HealthEvents.created(sessionId, "c1", at = sec(1)).frameText()))
-                eventually { eventCount(client, sessionId) == 1 }
+                send(Frame.Text(HealthEvents.started(sessionId, "c1", at = sec(1)).frameText()))
+                send(Frame.Text(HealthEvents.suspended(sessionId, "c1", at = sec(2)).frameText()))
+                eventually { eventCount(client, sessionId) == 3 }
             }
 
-            val origin = SessionManager.getSession(sessionId)!!.readSummaries { it.get("c1")?.origin }
-            assertEquals(com.jh.proj.coroutineviz.events.CoroutineOrigin.APP, origin)
+            val summary = SessionManager.getSession(sessionId)!!.readSummaries { it.get("c1") }!!
+            assertEquals(com.jh.proj.coroutineviz.events.CoroutineOrigin.APP, summary.origin)
+            assertEquals(com.jh.proj.coroutineviz.events.SuspensionProvenance.REAL_FRAME, summary.lastSuspensionProvenance)
         }
 }
 ```
@@ -1610,7 +1681,7 @@ private fun publishFrame(
         return
     }
     // Recorded before the append: "last data" is never earlier than an event a health read includes.
-    IngestStates.eventReceived(connection.sessionId, receivedEpochMs)
+    IngestStates.eventReceived(connection, receivedEpochMs)
     session.ingest(event)
 }
 ```
@@ -1836,6 +1907,7 @@ import com.jh.proj.coroutineviz.health.HealthState
 import com.jh.proj.coroutineviz.health.NotEvaluatedReason
 import com.jh.proj.coroutineviz.health.PossiblyBlockedIncident
 import com.jh.proj.coroutineviz.health.SessionHealth
+import com.jh.proj.coroutineviz.health.SessionOrigin
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -2063,6 +2135,59 @@ class SessionHealthRouteTest {
                 SessionManager.configure()
             }
         }
+
+    @Test
+    fun `an app on an SDK from before triage is evaluated with what it sends`() =
+        testApplication {
+            application { module() }
+            val ws = createClient { install(WebSockets) }
+            val sessionId = ws.createSessionNamed("app-old-sdk")
+
+            ws.webSocket("/api/sessions/$sessionId/ingest") {
+                // No origin, no provenance, no watermark.
+                send(Frame.Text(HealthEvents.created(sessionId, "c1", at = sec(1)).olderSdkFrameText("origin")))
+                send(Frame.Text(HealthEvents.started(sessionId, "c1", at = sec(1)).frameText()))
+                send(Frame.Text(HealthEvents.suspended(sessionId, "c1", at = sec(2)).olderSdkFrameText("provenance")))
+                eventually { SessionManager.getSession(sessionId)!!.lastSeq == 3L }
+
+                val health = ws.health("/api/sessions/$sessionId/health")
+
+                assertEquals(SessionOrigin.UNKNOWN, health.sessionOrigin)
+                assertEquals(NotEvaluatedReason.NO_WATERMARK, health.possiblyBlocked.reason)
+                assertEquals(HealthState.NO_FAILURES_PARTIAL, health.state, "never green without origins")
+                assertEquals(1, health.counts.unknown)
+            }
+        }
+
+    @Test
+    fun `a blocked coroutine whose events were trimmed from memory is still detected`() =
+        testApplication {
+            application { module() }
+            val ws = createClient { install(WebSockets) }
+            ws.get("/api/sessions")
+            SessionManager.configure(maxEventsPerSession = 3)
+            try {
+                val sessionId = ws.createSessionNamed("app-trimmed")
+                ws.webSocket("/api/sessions/$sessionId/ingest") {
+                    send(Frame.Text(HealthEvents.created(sessionId, "worker", at = sec(1)).frameText()))
+                    send(Frame.Text(HealthEvents.started(sessionId, "worker", at = sec(1)).frameText()))
+                    send(Frame.Text(HealthEvents.created(sessionId, "f1", at = sec(2)).frameText()))
+                    send(Frame.Text(HealthEvents.completed(sessionId, "f1", at = sec(2)).frameText()))
+                    send(Frame.Text(HealthEvents.created(sessionId, "f2", at = sec(3)).frameText()))
+                    send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(12)).frameText()))
+                    eventually { IngestStates.snapshot(sessionId).watermark != null }
+
+                    val health = ws.health("/api/sessions/$sessionId/health")
+
+                    assertEquals(true, health.retention?.trimmed)
+                    val blocked = assertIs<PossiblyBlockedIncident>(health.incidents.items.single())
+                    assertEquals("worker", blocked.coroutineId)
+                    assertTrue(blocked.transitionsGap, "its transitions were trimmed")
+                }
+            } finally {
+                SessionManager.configure()
+            }
+        }
 }
 ```
 
@@ -2075,8 +2200,9 @@ The `503` branch (abandoned summaries) is not route-tested: the only way to aban
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.appJson
-import com.jh.proj.coroutineviz.health.HealthState
+import com.jh.proj.coroutineviz.health.EvaluationStatus
 import com.jh.proj.coroutineviz.health.NotEvaluatedReason
+import com.jh.proj.coroutineviz.health.PossiblyBlockedIncident
 import com.jh.proj.coroutineviz.health.SessionHealth
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
@@ -2087,10 +2213,13 @@ import com.jh.proj.coroutineviz.session.SessionManager
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
+import io.ktor.websocket.Frame
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -2098,9 +2227,13 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** Database sessions fold their summaries from the stored events; after a trim the health says it may be incomplete (D-9). */
+/**
+ * Database sessions fold their summaries from the stored events on every read. What this process did not watch is not
+ * vouched for, and a trimmed history makes the health unavailable until Part 5b persists the summaries (D-9).
+ */
 class SessionHealthDatabaseModeTest {
     private lateinit var dataSource: HikariDataSource
     private lateinit var db: Database
@@ -2137,31 +2270,70 @@ class SessionHealthDatabaseModeTest {
         return appJson.decodeFromString(SessionHealth.serializer(), response.bodyAsText())
     }
 
+    /** Events stored by a connection this process never saw: a backend restart in between. */
+    private fun storedByAnEarlierProcess(sessionId: String) {
+        val writer = SessionManager.getSession(sessionId)!!
+        writer.ingest(HealthEvents.created(sessionId, "req", at = sec(1)))
+        writer.ingest(HealthEvents.created(sessionId, "child", at = sec(1), parent = "req"))
+        writer.ingest(HealthEvents.failed(sessionId, "child", at = sec(2), parent = "req"))
+    }
+
     @Test
-    fun `a database session's health comes from its stored events, and says when they were trimmed`() =
+    fun `events from a connection this process never watched are not vouched for`() =
         testApplication {
             application { module() }
-            val sessionId = client.createSessionNamed("db-app")
-            val writer = SessionManager.getSession(sessionId)!!
-            writer.ingest(HealthEvents.created(sessionId, "req", at = sec(1)))
-            writer.ingest(HealthEvents.created(sessionId, "child", at = sec(1), parent = "req"))
-            writer.ingest(HealthEvents.failed(sessionId, "child", at = sec(2), parent = "req"))
+            val sessionId = client.createSessionNamed("db-restarted")
+            storedByAnEarlierProcess(sessionId)
 
-            val whole = client.health(sessionId)
-            assertEquals(1, whole.failedRoundCount)
-            assertEquals(false, whole.retention?.trimmed)
-            assertEquals(false, whole.failuresAtLeast)
+            val health = client.health(sessionId)
+
+            assertEquals(1, health.failedRoundCount)
+            assertEquals(false, health.retention?.trimmed)
+            assertTrue(health.transport.deliveryUncertain)
+            assertEquals(1L, health.transport.sinceSeq)
+            assertTrue(health.failuresAtLeast)
+            assertEquals(NotEvaluatedReason.EVENTS_DROPPED, health.possiblyBlocked.reason)
+        }
+
+    @Test
+    fun `a trimmed database session's health is unavailable rather than overcounted`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("db-trimmed")
+            storedByAnEarlierProcess(sessionId)
 
             DbRetentionPolicy(db = db, maxEventsPerSession = 2).cleanup()
-            val trimmed = client.health(sessionId)
+            val response = client.get("/api/sessions/$sessionId/health")
 
-            assertEquals(true, trimmed.retention?.trimmed)
-            assertEquals(2L, trimmed.retention?.oldestRetainedSeq)
-            assertTrue(trimmed.failuresAtLeast)
-            assertEquals(NotEvaluatedReason.HISTORY_TRIMMED, trimmed.possiblyBlocked.reason)
-            // The child's parent was trimmed: its failure is still counted, as an ungrouped failure.
-            assertEquals(1, trimmed.ungroupedFailureCount)
-            assertEquals(HealthState.PROBLEMS, trimmed.state)
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+            assertTrue(response.bodyAsText().contains("history-trimmed"), response.bodyAsText())
+        }
+
+    @Test
+    fun `a connected database session's health sees each new watermark`() =
+        testApplication {
+            application { module() }
+            val ws = createClient { install(WebSockets) }
+            val sessionId = ws.createSessionNamed("db-live")
+
+            ws.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(HealthEvents.created(sessionId, "worker", at = sec(1)).frameText()))
+                send(Frame.Text(HealthEvents.started(sessionId, "worker", at = sec(1)).frameText()))
+                send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(5)).frameText()))
+                eventually { IngestStates.snapshot(sessionId).watermark?.appNanos == sec(5) }
+
+                val early = ws.health(sessionId)
+                assertEquals(EvaluationStatus.EVALUATED, early.possiblyBlocked.status)
+                assertEquals(0, early.problemCount)
+                assertEquals(sec(5), early.asOfWatermark?.appNanos)
+
+                send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(12)).frameText()))
+                eventually { IngestStates.snapshot(sessionId).watermark?.appNanos == sec(12) }
+
+                val later = ws.health(sessionId)
+                assertEquals("worker", assertIs<PossiblyBlockedIncident>(later.incidents.items.single()).coroutineId)
+                assertEquals(sec(12), later.asOfWatermark?.appNanos)
+            }
         }
 }
 ```
@@ -2185,10 +2357,15 @@ import com.jh.proj.coroutineviz.health.HealthMode
 import com.jh.proj.coroutineviz.health.RetentionInfo
 import com.jh.proj.coroutineviz.health.SessionHealth
 import com.jh.proj.coroutineviz.health.SessionHealthDerivation
+import com.jh.proj.coroutineviz.health.SessionKind
+import com.jh.proj.coroutineviz.health.SessionOrigin
+import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.SummaryFold
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.health.Transition
 import com.jh.proj.coroutineviz.health.Transitions
+import com.jh.proj.coroutineviz.health.TransportStatus
+import com.jh.proj.coroutineviz.health.WatermarkObservation
 import com.jh.proj.coroutineviz.health.snapshot
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -2214,32 +2391,62 @@ internal fun retentionOf(
 }
 
 /**
+ * A database session whose stored events were trimmed (until Part 5b persists its summaries): its summaries are folded
+ * from what is left, and a coroutine whose parent's creation was trimmed loses its round, so one failed round can read
+ * as several ungrouped failures. "At least" would then overstate, so the health is unavailable instead (H-1, H-3).
+ */
+internal class HistoryTrimmedException(
+    message: String,
+) : IllegalStateException(message)
+
+/**
+ * The transport a read reports (spec C-3 `transport`). A database session outlives this process: events that arrived
+ * before the first connection this process saw came through a connection nobody here watched end (a crash runs no close
+ * handler), so nothing vouches that all of them arrived (H-3). Until Part 5b persists the transport and the "ingest
+ * open" marker, such a session reads delivery-uncertain from its first seq.
+ */
+internal fun transportOf(
+    ingest: IngestSnapshot,
+    kind: SessionKind,
+    lastSeq: Long,
+): TransportStatus {
+    val unwatched =
+        !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && lastSeq > 0 &&
+            (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
+    return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
+}
+
+/**
  * The session's health (spec C-3): live when [atSeq] is null, else the replay fold at the cursor, clamped to the last
- * event. Throws [com.jh.proj.coroutineviz.health.SummariesUnavailableException] when the session keeps no usable summaries.
+ * event. [ingest] must be read before [session] was resolved: in database mode resolving rebuilds the session from the
+ * stored events, and a watermark is recorded only after its poll's events were stored, so every event the watermark
+ * vouches for is in the rebuilt summaries (spec C-7). The other order could compare a newer watermark with an older run
+ * start and report a coroutine that has since suspended.
+ *
+ * @throws com.jh.proj.coroutineviz.health.SummariesUnavailableException when the session keeps no usable summaries.
+ * @throws HistoryTrimmedException for a trimmed database session.
  */
 internal fun readSessionHealth(
     session: VizSession,
+    ingest: IngestSnapshot,
     atSeq: Long?,
     leakThresholdMs: Long,
 ): SessionHealth {
-    // The ingest state first: a watermark is recorded only after its poll's events were applied, so the summaries copied
-    // next include every event it vouches for (spec C-7). The other order could compare a newer watermark with an older
-    // run start and report a coroutine that has since suspended.
-    val ingest = IngestStates.snapshot(session.sessionId)
     val durable = session.readSummaries { it.snapshot() }
     // Read after the copy: the store holds at least every event the copy saw, possibly newer ones.
     val events = session.store.all()
     val everyEvent = summariesSeeEveryEvent()
     val retention = retentionOf(events, firstSeqEver = durable.firstSeqEver(everyEvent))
+    if (retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
+    val kind = sessionKindOf(session.sessionId)
     val input =
         HealthInput(
             summaries = durable,
-            kind = sessionKindOf(session.sessionId),
+            kind = kind,
             watermark = ingest.watermark,
             lastIngestEpochMs = ingest.lastIngestEpochMs,
-            transport = ingest.transport,
+            transport = transportOf(ingest, kind, durable.lastEventSeq),
             leakThresholdMs = leakThresholdMs,
-            historyIncomplete = retention.trimmed && !everyEvent,
             retention = retention,
         )
     if (atSeq == null) {
@@ -2251,8 +2458,8 @@ internal fun readSessionHealth(
         input.copy(
             summaries = SummaryFold.foldTo(events, cursor, durable),
             mode = HealthMode.Replay(cursor),
-            // The seed cannot tell which coroutines beyond capacity existed at the cursor (D-9).
-            historyIncomplete = input.historyIncomplete || (retention.trimmed && durable.untrackedCount > 0),
+            // The seed cannot tell which coroutines beyond capacity existed at the cursor: their failures may be missing.
+            historyIncomplete = retention.trimmed && durable.untrackedCount > 0,
         ),
     )
 }
@@ -2308,19 +2515,27 @@ fun Route.registerSessionHealthRoutes() {
             call.respond(HttpStatusCode.BadRequest, ErrorResponse("atSeq must be a non-negative integer"))
             return@get
         }
+        // Before the session is resolved: see readSessionHealth.
+        val ingest = IngestStates.snapshot(sessionId)
         val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, ErrorResponse("Session not found"))
             return@get
         }
+        // H-3: unknown is shown as unknown, never as healthy.
         val health =
             try {
-                readSessionHealth(session, atSeq, call.leakThresholdMs())
+                readSessionHealth(session, ingest, atSeq, call.leakThresholdMs())
             } catch (_: SummariesUnavailableException) {
-                // H-3: unknown is shown as unknown, never as healthy.
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
                     ErrorResponse("Health is unavailable for this session", code = "summaries-unavailable"),
+                )
+                return@get
+            } catch (_: HistoryTrimmedException) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse("Health is unavailable: this session's early events were trimmed", code = "history-trimmed"),
                 )
                 return@get
             }
@@ -2519,47 +2734,67 @@ internal fun readSessionFacts(
 
 (imports `com.jh.proj.coroutineviz.health.SessionKind`, `SessionOrigin`, `WatermarkObservation`.)
 
-`SessionRoutes.kt` — in `get("/api/sessions/{id}")`, replace the body from `// One point-in-time copy…` to the
-`call.respond` with:
+`SessionRoutes.kt` — in `get("/api/sessions/{id}")`, replace everything from `// One point-in-time copy…` to the
+`call.respond` with `call.respond(HttpStatusCode.OK, snapshotResponseOf(session))`, and add (before `sessionSseFrames`):
 
 ```kotlin
-        // One point-in-time copy so the count and the list agree while events keep arriving.
-        val nodes = session.snapshot.nodes()
-        val events = session.store.all()
-        val facts = readSessionFacts(session, events)
-        val snapshot =
-            SessionSnapshotResponse(
-                sessionId = session.sessionId,
-                coroutineCount = nodes.size,
-                eventCount = events.size,
-                coroutines =
-                    nodes.map { node ->
-                        CoroutineNodeDto(
-                            id = node.id,
-                            jobId = node.jobId,
-                            parentId = node.parentId,
-                            scopeId = node.scopeId,
-                            label = node.label,
-                            state = node.state.toString(),
-                        )
-                    },
-                kind = facts.kind,
-                startedAtEpochMs = session.createdAtMs,
-                captureStartAppNanos = facts.captureStartAppNanos,
-                origin = facts.origin,
-                appConnected = facts.appConnected,
-                lastIngestEpochMs = facts.lastIngestEpochMs,
-                lastWatermark = facts.lastWatermark,
-                oldestRetainedSeq = facts.retention.oldestRetainedSeq,
-                trimmed = facts.retention.trimmed,
-            )
+/**
+ * The body of `GET /api/sessions/{id}`, also the `session` of a share payload: the current coroutines plus the
+ * C-3 session facts (spec 2026-10-21: kind, start, capture start, origin, app connection, retention).
+ */
+internal fun snapshotResponseOf(
+    session: VizSession,
+    events: List<VizEvent> = session.store.all(),
+): SessionSnapshotResponse {
+    // One point-in-time copy so the count and the list agree while events keep arriving.
+    val nodes = session.snapshot.nodes()
+    val facts = readSessionFacts(session, events)
+    return SessionSnapshotResponse(
+        sessionId = session.sessionId,
+        coroutineCount = nodes.size,
+        eventCount = events.size,
+        coroutines =
+            nodes.map { node ->
+                CoroutineNodeDto(
+                    id = node.id,
+                    jobId = node.jobId,
+                    parentId = node.parentId,
+                    scopeId = node.scopeId,
+                    label = node.label,
+                    state = node.state.toString(),
+                )
+            },
+        kind = facts.kind,
+        startedAtEpochMs = session.createdAtMs,
+        captureStartAppNanos = facts.captureStartAppNanos,
+        origin = facts.origin,
+        appConnected = facts.appConnected,
+        lastIngestEpochMs = facts.lastIngestEpochMs,
+        lastWatermark = facts.lastWatermark,
+        oldestRetainedSeq = facts.retention.oldestRetainedSeq,
+        trimmed = facts.retention.trimmed,
+    )
+}
+```
 
-        call.respond(HttpStatusCode.OK, snapshot)
+`share/ShareRoutes.kt` — the share payload's `session` is the same shape (D-15), so `sharedResponse` becomes (imports:
+`com.jh.proj.coroutineviz.routes.snapshotResponseOf` replaces `CoroutineNodeDto` and `SessionSnapshotResponse`):
+
+```kotlin
+/**
+ * Build the `{session, events}` body for a shared session — the same snapshot
+ * shape `GET /api/sessions/{id}` returns (with its session facts) plus the full
+ * event history (reusing the [VizSession] store, which the SSE/events paths also read).
+ */
+private fun sharedResponse(session: VizSession): SharedSessionResponse {
+    val events = session.store.all()
+    return SharedSessionResponse(session = snapshotResponseOf(session, events), events = events)
+}
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `./gradlew :test --tests "com.jh.proj.coroutineviz.routes.SessionFactsTest" --tests "com.jh.proj.coroutineviz.routes.SessionRoutesTest" --tests "com.jh.proj.coroutineviz.routes.SessionEventsIntegrationTest"`
+Run: `./gradlew :test --tests "com.jh.proj.coroutineviz.routes.SessionFactsTest" --tests "com.jh.proj.coroutineviz.routes.SessionRoutesTest" --tests "com.jh.proj.coroutineviz.routes.SessionEventsIntegrationTest" --tests "com.jh.proj.coroutineviz.share.*"`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
