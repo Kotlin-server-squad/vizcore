@@ -7,7 +7,7 @@ function renderSeparator(props: Partial<Parameters<typeof DockSeparator>[0]> = {
   const onResize = vi.fn()
   const onToggleFold = vi.fn()
   render(
-    <DockSeparator height={300} maxHeight={500} folded={false} onResize={onResize} onToggleFold={onToggleFold} {...props} />,
+    <DockSeparator controls="session-dock" height={300} maxHeight={500} folded={false} onResize={onResize} onToggleFold={onToggleFold} {...props} />,
   )
   return { separator: screen.getByRole('separator', { name: 'Resize the dock' }), onResize, onToggleFold }
 }
@@ -18,9 +18,16 @@ describe('DockSeparator', () => {
     expect(separator).toHaveAttribute('tabindex', '0')
     expect(separator).toHaveAttribute('aria-orientation', 'horizontal')
     expect(separator).toHaveAttribute('aria-valuenow', '300')
-    expect(separator).toHaveAttribute('aria-valuemin', '120')
+    expect(separator).toHaveAttribute('aria-valuemin', '0')
+    expect(separator).toHaveAttribute('aria-controls', 'session-dock')
     expect(separator).toHaveAttribute('aria-valuemax', '500')
     expect(separator).toHaveAttribute('aria-valuetext', 'Dock 300 pixels tall')
+  })
+
+  it('reports a folded dock as collapsed', () => {
+    const { separator } = renderSeparator({ folded: true })
+    expect(separator).toHaveAttribute('aria-valuenow', '0')
+    expect(separator).toHaveAttribute('aria-valuetext', 'Dock folded')
   })
 
   it('omits the maximum until the space is measured', () => {
@@ -28,7 +35,7 @@ describe('DockSeparator', () => {
     expect(separator).not.toHaveAttribute('aria-valuemax')
   })
 
-  it('moves with the arrow and page keys, and jumps with Home and End', async () => {
+  it('moves with the arrow and page keys; Home gives the dock its smallest size, End its largest (APG)', async () => {
     const { separator, onResize } = renderSeparator()
     separator.focus()
     await userEvent.keyboard('{ArrowUp}')
@@ -40,9 +47,9 @@ describe('DockSeparator', () => {
     await userEvent.keyboard('{PageDown}')
     expect(onResize).toHaveBeenLastCalledWith(204)
     await userEvent.keyboard('{Home}')
-    expect(onResize).toHaveBeenLastCalledWith(500)
-    await userEvent.keyboard('{End}')
     expect(onResize).toHaveBeenLastCalledWith(120)
+    await userEvent.keyboard('{End}')
+    expect(onResize).toHaveBeenLastCalledWith(500)
   })
 
   it('folds and unfolds with Enter', async () => {

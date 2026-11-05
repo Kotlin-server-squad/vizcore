@@ -2,6 +2,8 @@ import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from 'react'
 import { DOCK_MIN_PX, DOCK_STEP_PX } from '@/lib/dock-layout'
 
 interface DockSeparatorProps {
+  /** The id of the pane it sizes: the dock. */
+  controls: string
   /** The dock's current height in px. */
   height: number
   /** The largest the dock may be; Infinity until the page has been measured. */
@@ -13,11 +15,12 @@ interface DockSeparatorProps {
 
 /**
  * The handle between the main view and the dock (spec S-1, S-14): a focusable
- * `separator` following the WAI-ARIA window-splitter pattern. Up makes the dock
- * taller, down smaller; Home and End go to the largest and smallest dock;
- * Enter folds or unfolds it. Dragging follows the pointer.
+ * `separator` following the WAI-ARIA window-splitter pattern, with the dock as
+ * the pane it sizes. Up makes the dock taller, down smaller; Home gives the
+ * dock its smallest size and End its largest; Enter folds or unfolds it, and a
+ * folded dock reads as collapsed (0). Dragging follows the pointer.
  */
-export function DockSeparator({ height, maxHeight, folded, onResize, onToggleFold }: DockSeparatorProps) {
+export function DockSeparator({ controls, height, maxHeight, folded, onResize, onToggleFold }: DockSeparatorProps) {
   const drag = useRef<{ startY: number; startHeight: number } | null>(null)
   const detach = useRef<(() => void) | null>(null)
   useEffect(() => () => detach.current?.(), [])
@@ -29,12 +32,12 @@ export function DockSeparator({ height, maxHeight, folded, onResize, onToggleFol
     if (step !== undefined) {
       e.preventDefault()
       onResize(height + step)
-    } else if (e.key === 'Home' && Number.isFinite(maxHeight)) {
-      e.preventDefault()
-      onResize(maxHeight)
-    } else if (e.key === 'End') {
+    } else if (e.key === 'Home') {
       e.preventDefault()
       onResize(DOCK_MIN_PX)
+    } else if (e.key === 'End' && Number.isFinite(maxHeight)) {
+      e.preventDefault()
+      onResize(maxHeight)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       onToggleFold()
@@ -67,8 +70,10 @@ export function DockSeparator({ height, maxHeight, folded, onResize, onToggleFol
       role="separator"
       aria-orientation="horizontal"
       aria-label="Resize the dock"
-      aria-valuenow={height}
-      aria-valuemin={DOCK_MIN_PX}
+      aria-controls={controls}
+      // Folded is the collapsed position; unfolded, the dock is at least DOCK_MIN_PX.
+      aria-valuenow={folded ? 0 : height}
+      aria-valuemin={0}
       aria-valuemax={Number.isFinite(maxHeight) ? maxHeight : undefined}
       aria-valuetext={folded ? 'Dock folded' : `Dock ${height} pixels tall`}
       tabIndex={0}
