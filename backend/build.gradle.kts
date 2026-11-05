@@ -116,6 +116,11 @@ tasks.named<Test>("test") {
         .files(rootProject.file("../frontend/src/test/demo-catalog.json"))
         .withPropertyName("spaDemoCatalog")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // GuideLabelsTest checks the How-it-works pictures in the SPA's will-see.json against real runs.
+    inputs
+        .files(rootProject.file("../frontend/src/content/gallery/will-see.json"))
+        .withPropertyName("galleryWillSee")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     // ComposeDemoSettingsTest reads the Compose files at the repository root.
     inputs
         .files(rootProject.file("../docker-compose.yml"), rootProject.file("../docker-compose.prod.yml"))
