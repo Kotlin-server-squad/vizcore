@@ -42,7 +42,8 @@ import type { ThreadActivity } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
 import { useDockLayout } from '@/hooks/use-dock-layout'
-import { deriveRunOutcome, recordedSpanNanos } from '@/lib/run-outcome'
+import { deriveRunOutcome } from '@/lib/run-outcome'
+import { useRecordedSpan } from '@/hooks/use-recorded-span'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -245,12 +246,9 @@ export function SessionWorkspace({
   // A demo's run outcome (S-3); an attached app has none.
   const isDemo = hasScenario || isDemoSessionId(sessionId)
   const outcome = useMemo(() => (isDemo && session ? deriveRunOutcome(session) : null), [isDemo, session])
-  // The run's length over everything the page holds: the history loaded with
-  // it and whatever streamed in since (either may be missing the other's part).
-  const runSpanNanos = useMemo(
-    () => recordedSpanNanos(storedEvents ?? [], streamEnabled ? liveEvents : []),
-    [storedEvents, streamEnabled, liveEvents],
-  )
+  // The run's length over everything the page has held: the history loaded
+  // with it and whatever streamed in since — kept when the view is paused.
+  const runSpanNanos = useRecordedSpan(storedEvents ?? [], liveEvents)
   // Where the replay cursor is, as time since the first event (the view pill).
   const replayAtNanos = useMemo(() => {
     const visible = replay.visibleEvents
@@ -405,8 +403,9 @@ export function SessionWorkspace({
         onCancel={recordReplay.cancelConfirm}
       />
 
-      {/* The main view and the dock share the rest of the page (S-1). */}
-      <div ref={dock.sharedRef} className="flex min-h-[480px] flex-1 flex-col gap-3">
+      {/* The main view and the dock share the rest of the page (S-1). Each
+          keeps its own minimum, so a maximised view needs only the main view's. */}
+      <div ref={dock.sharedRef} className="flex min-h-0 flex-1 flex-col gap-3">
         <CoroutineCanvas
           coroutines={renderedCoroutines}
           viewMode={viewMode}
