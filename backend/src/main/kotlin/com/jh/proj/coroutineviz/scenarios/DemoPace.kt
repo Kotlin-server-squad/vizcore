@@ -33,7 +33,14 @@ class DemoPace(
 }
 
 /**
+ * [millis] of scripted time in real milliseconds at the scope's [DemoPace], for an operator that
+ * waits in real time (such as `debounce`), so it keeps the demo's pace. Outside a demo scope it
+ * is [millis].
+ */
+fun VizScope.scaled(millis: Long): Long = this.coroutineContext[DemoPace]?.scaled(millis) ?: millis
+
+/**
  * One step of a demo: suspends for [millis] of scripted time, scaled by the scope's [DemoPace],
  * and shows as a suspension in the session. Outside a demo scope it runs as scripted.
  */
-suspend fun VizScope.pause(millis: Long) = vizDelay(this.coroutineContext[DemoPace]?.scaled(millis) ?: millis)
+suspend fun VizScope.pause(millis: Long) = vizDelay(scaled(millis))
