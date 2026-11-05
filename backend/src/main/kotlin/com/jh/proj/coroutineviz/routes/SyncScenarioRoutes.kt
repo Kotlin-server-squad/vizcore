@@ -121,10 +121,36 @@ fun Route.registerSyncScenarioRoutes() {
         call.respond(
             HttpStatusCode.OK,
             listOf(
-                ScenarioInfo("mutex/counter", "Thread-Safe Counter", "Mutex", "Using mutex for atomic counter increments"),
-                ScenarioInfo("mutex/bank-transfer", "Bank Account Transfer", "Mutex", "Safe money transfer with consistent lock ordering"),
-                ScenarioInfo("mutex/cache", "Cache Read-Through", "Mutex", "Thread-safe lazy initialization pattern"),
-                ScenarioInfo("mutex/deadlock-demo", "Deadlock Demo", "Mutex", "Intentional deadlock for detection demonstration"),
+                ScenarioInfo(
+                    "mutex/counter",
+                    "Thread-Safe Counter: Festival Gates",
+                    "Mutex",
+                    "Three gates count festival visitors into one shared count. Each update holds a lock while it " +
+                        "reads, shows and writes the count, so the other gates wait for it, suspended, and no visitor is " +
+                        "lost.",
+                ),
+                ScenarioInfo(
+                    "mutex/bank-transfer",
+                    "Bank Account Transfer: Household Bills",
+                    "Mutex",
+                    "Anna and Ben send each other money. Each transfer locks both accounts, always Anna's first, so " +
+                        "the transfers queue instead of deadlocking; the one Ben cannot afford is declined.",
+                ),
+                ScenarioInfo(
+                    "mutex/cache",
+                    "Cache Read-Through: Product Prices",
+                    "Mutex",
+                    "Eight requests for two prices meet an empty cache. The first miss loads a price under the lock; " +
+                        "the others wait, check again and find it cached; later requests read the cache without the " +
+                        "lock. Two loads in all.",
+                ),
+                ScenarioInfo(
+                    "mutex/deadlock-demo",
+                    "Deadlock Demo: Two Transfers at Month End",
+                    "Mutex",
+                    "Anna pays Ben and Ben pays Anna, each locking the payer's account first. Each holds one account " +
+                        "and waits, suspended, for the other's. After 10 s a watchdog cancels both.",
+                ),
                 ScenarioInfo("semaphore/connection-pool", "Connection Pool", "Semaphore", "Limiting concurrent database connections"),
                 ScenarioInfo("semaphore/rate-limiter", "API Rate Limiter", "Semaphore", "Throttling concurrent API calls"),
                 ScenarioInfo("semaphore/file-processor", "File Processor", "Semaphore", "I/O-limited parallel file processing"),
