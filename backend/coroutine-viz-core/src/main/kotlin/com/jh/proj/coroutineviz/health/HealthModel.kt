@@ -49,11 +49,12 @@ data class Capped<T>(
 enum class EvaluationStatus { EVALUATED, NOT_EVALUATED }
 
 @Serializable
-enum class NotEvaluatedReason { NO_WATERMARK, DEMO, REPLAY, OVERFLOW, EVENTS_DROPPED }
+enum class NotEvaluatedReason { NO_WATERMARK, DEMO, REPLAY, OVERFLOW, EVENTS_DROPPED, HISTORY_TRIMMED }
 
 /**
  * Whether possibly blocked was evaluated. [reason] is set if and only if [status] is NOT_EVALUATED, and only the
- * highest-precedence reason is kept: REPLAY, DEMO, EVENTS_DROPPED, OVERFLOW, NO_WATERMARK (in that order).
+ * highest-precedence reason is kept: REPLAY, DEMO, EVENTS_DROPPED, HISTORY_TRIMMED, OVERFLOW, NO_WATERMARK (in that
+ * order).
  */
 @Serializable
 data class PossiblyBlockedEvaluation(
@@ -207,6 +208,17 @@ data class TransportStatus(
     val sinceSeq: Long? = null,
 )
 
+/**
+ * What the session still holds of its events (spec C-3 `retention`): the oldest retained event's seq and app time, and
+ * whether events before it were dropped. The backend supplies it; the health echoes it.
+ */
+@Serializable
+data class RetentionInfo(
+    val oldestRetainedSeq: Long?,
+    val oldestRetainedAppNanos: Long?,
+    val trimmed: Boolean,
+)
+
 @Serializable
 data class ProblemRound(
     val roundId: String,
@@ -240,6 +252,10 @@ data class SessionHealth(
     val roundCount: Int,
     val problemRoundCount: Int,
     val problemRounds: Capped<ProblemRound>,
+    /** The watermark the health was derived with (spec C-3 `asOfWatermark`): live attached sessions only, else `null`. */
+    val asOfWatermark: WatermarkObservation? = null,
+    /** Echo of [HealthInput.retention]. */
+    val retention: RetentionInfo? = null,
 )
 
 @Serializable
@@ -281,4 +297,12 @@ data class HealthInput(
     val longSuspendedThresholdNanos: Long = HealthThresholds.LONG_SUSPENDED_NANOS,
     /** Retained transitions of one coroutine, oldest first; used for possibly blocked coroutines only. */
     val transitionsFor: (String) -> List<Transition> = { emptyList() },
+    /**
+     * The summaries cannot see every event the session had: they were folded from retained events after a trim (a
+     * database session until its summaries are persisted), or a replay seed could not account for coroutines beyond
+     * capacity. Failures then read "at least" and possibly blocked is not evaluated (HISTORY_TRIMMED).
+     */
+    val historyIncomplete: Boolean = false,
+    /** The backend's retention facts, echoed in [SessionHealth.retention]. */
+    val retention: RetentionInfo? = null,
 )
