@@ -6,6 +6,7 @@ import { MutexStateIndicator } from './MutexStateIndicator'
 import { SemaphoreGauge } from './SemaphoreGauge'
 import { WaitQueueList } from './WaitQueueList'
 import { DeadlockWarning } from './DeadlockWarning'
+import type { CoroutinePicker } from './CoroutineName'
 import type { VizEvent } from '@/types/api'
 
 interface SyncPanelProps {
@@ -16,8 +17,8 @@ interface SyncPanelProps {
   selectedResourceId?: string | null
   /** The selected coroutine, marked where it holds or waits. */
   selectedCoroutineId?: string | null
-  /** Selects a coroutine by its name (S-2). */
-  onSelectCoroutine?: (id: string) => void
+  /** Selects a coroutine by its name, when the page can (S-2). */
+  picker?: CoroutinePicker
 }
 
 export function SyncPanel({
@@ -25,7 +26,7 @@ export function SyncPanel({
   events,
   selectedResourceId = null,
   selectedCoroutineId = null,
-  onSelectCoroutine,
+  picker,
 }: SyncPanelProps) {
   const { mutexes, semaphores, deadlocks, warnings } = useSyncEvents(sessionId, events)
   // Bring a selected resource into view; its section was unfolded in the same render.
@@ -92,14 +93,14 @@ export function SyncPanel({
                 mutex={mutex}
                 selected={mutex.mutexId === selectedResourceId}
                 selectedCoroutineId={selectedCoroutineId}
-                onSelectCoroutine={onSelectCoroutine}
+                picker={picker}
               />
               {mutex.waitQueue.length > 0 && (
                 <div className="ml-4">
                   <WaitQueueList
                     queue={mutex.waitQueue}
                     title="Mutex Wait Queue"
-                    onSelect={onSelectCoroutine}
+                    picker={picker}
                     selectedId={selectedCoroutineId}
                   />
                 </div>
@@ -135,14 +136,14 @@ export function SyncPanel({
                   semaphore={sem}
                   selected={sem.semaphoreId === selectedResourceId}
                   selectedCoroutineId={selectedCoroutineId}
-                  onSelectCoroutine={onSelectCoroutine}
+                  picker={picker}
                 />
                 {sem.waitQueue.length > 0 && (
                   <div className="ml-4">
                     <WaitQueueList
                       queue={sem.waitQueue}
                       title="Semaphore Wait Queue"
-                      onSelect={onSelectCoroutine}
+                      picker={picker}
                       selectedId={selectedCoroutineId}
                     />
                   </div>

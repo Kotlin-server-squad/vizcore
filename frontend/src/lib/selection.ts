@@ -37,7 +37,7 @@ interface Fields {
 const fieldsOf = (event: VizEvent) => event as unknown as Fields
 
 /** A coroutine id that names a coroutine; the wrappers write "unknown…" when there was none. */
-function namesCoroutine(id: string | null | undefined): id is string {
+export function namesCoroutine(id: string | null | undefined): id is string {
   return !!id && id !== 'unknown' && !id.startsWith('unknown-')
 }
 
@@ -80,11 +80,19 @@ export function resourceNames(events: readonly VizEvent[]): Map<string, string> 
   return names
 }
 
-/** A row's title in the event list: its coroutine, and for lock and permit events the resource too. */
-export function eventTitle(event: VizEvent): string {
+/** A wrapper used outside any coroutine names no coroutine; the title says so rather than "unknown-123". */
+const OUTSIDE = 'outside any coroutine'
+
+/**
+ * A row's title in the event list: its coroutine, and for lock, permit and channel events the resource too.
+ * A channel is named from `names` (the page's resource names, `resourceNames`), else by its id.
+ */
+export function eventTitle(event: VizEvent, names: ReadonlyMap<string, string> = new Map()): string {
   const f = fieldsOf(event)
-  const who =
-    f.label ?? f.requesterLabel ?? f.acquirerLabel ?? f.releaserLabel ?? f.coroutineId ?? f.requesterId ?? f.acquirerId ?? f.releaserId
-  const what = f.mutexLabel ?? f.mutexId ?? f.semaphoreLabel ?? f.semaphoreId
+  const id = f.coroutineId ?? f.requesterId ?? f.acquirerId ?? f.releaserId
+  const label = f.label ?? f.requesterLabel ?? f.acquirerLabel ?? f.releaserLabel
+  const who = label ?? (id == null ? null : namesCoroutine(id) ? id : OUTSIDE)
+  const channel = f.channelId ? (f.kind === 'ChannelCreated' && f.name ? f.name : (names.get(f.channelId) ?? f.channelId)) : null
+  const what = f.mutexLabel ?? f.mutexId ?? f.semaphoreLabel ?? f.semaphoreId ?? channel
   return [who, what].filter(Boolean).join(' · ')
 }

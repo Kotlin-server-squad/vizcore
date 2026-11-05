@@ -50,9 +50,19 @@ describe('projectActivity', () => {
     expect(lines.get('c-2')).toEqual({ text: 'holds inventory-lock', waiting: false })
   })
 
-  it('reads the queue alone from an older producer that records no wait kind', () => {
+  it('a queue alone is no wait: the line needs the suspension the wrapper recorded', () => {
+    // An older producer records no wait kind; and a waiter that has resumed can still be listed until the
+    // next queue event. Neither may read as waiting.
     const lines = projectActivity([ev('MutexCreated', lock), queue(['c-2'])])
-    expect(lines.get('c-2')?.text).toBe('waits for inventory-lock · 1st')
+    expect(lines.has('c-2')).toBe(false)
+    const resumed = projectActivity([ev('MutexCreated', lock), queue(['c-2']), waitFor('c-2', 'MUTEX', 'm-1'), ev('coroutine.resumed', { coroutineId: 'c-2' })])
+    expect(resumed.has('c-2')).toBe(false)
+  })
+
+  it('a wait that arrived after its own resume is still over (seq order, not arrival order)', () => {
+    const suspended = waitFor('c-2', 'MUTEX', 'm-1')
+    const resumed = ev('coroutine.resumed', { coroutineId: 'c-2' })
+    expect(projectActivity([resumed, suspended]).has('c-2')).toBe(false)
   })
 
   it('names a lock by its id when it has no label', () => {
@@ -116,4 +126,17 @@ describe('projectActivity', () => {
   it('a delay is no wait', () => {
     expect(projectActivity([ev('coroutine.suspended', { coroutineId: 'c-1', reason: 'delay' })]).has('c-1')).toBe(false)
   })
+
+  it('when a permit came back from a coroutine that held none, its holder is unknown', () => {
+    const lines = projectActivity([
+      ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
+      ev('SemaphoreStateChanged', {
+        ...sem, availablePermits: 2, totalPermits: 3, activeHolders: ['c-1', 'c-2'], activeHolderLabels: ['c-1', 'c-2'],
+        activeHolderPermits: [1, 1], waitingCoroutines: [], waitingLabels: [], unknownHolderPermits: 1,
+      }),
+    ])
+    expect(lines.get('c-1')).toEqual({ text: 'may hold a payment-gateway permit · holder unknown', waiting: false })
+    expect(lines.get('c-2')?.text).toBe('may hold a payment-gateway permit · holder unknown')
+  })
 })
+

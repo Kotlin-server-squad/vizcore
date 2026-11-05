@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
 import { motion } from 'framer-motion'
 import type { SemaphoreState } from '@/hooks/use-sync-events'
-import { CoroutineName } from './CoroutineName'
+import { CoroutineName, type CoroutinePicker } from './CoroutineName'
 
 interface SemaphoreGaugeProps {
   semaphore: SemaphoreState
@@ -9,8 +9,8 @@ interface SemaphoreGaugeProps {
   selected?: boolean
   /** The page's selected coroutine, marked when it holds a permit. */
   selectedCoroutineId?: string | null
-  /** Selects a holder (S-2). */
-  onSelectCoroutine?: (id: string) => void
+  /** Selects a holder, when the page can (S-2). */
+  picker?: CoroutinePicker
 }
 
 function getGaugeColor(available: number, total: number): 'success' | 'warning' | 'danger' {
@@ -25,7 +25,7 @@ export function SemaphoreGauge({
   semaphore,
   selected = false,
   selectedCoroutineId = null,
-  onSelectCoroutine,
+  picker,
 }: SemaphoreGaugeProps) {
   const usedPermits = semaphore.totalPermits - semaphore.availablePermits
   const percent = semaphore.totalPermits > 0 ? (usedPermits / semaphore.totalPermits) * 100 : 0
@@ -107,36 +107,25 @@ export function SemaphoreGauge({
             </div>
           </div>
 
-          {/* Who holds the permits (S-6): counted, never numbered; a permit that came back from a
-            coroutine that held none has no known holder (S-7). */}
+          {/* Who holds the permits (S-6): counted, never numbered. When a permit came back from a
+              coroutine that held none (S-7), more permits are listed than are in use, and which listed
+              holder still holds one is unknown: the line says "holder unknown", not a guess. */}
           <div data-testid="semaphore-holders" className="text-xs">
             <span className="text-default-500">Held by </span>
-            {semaphore.activeHolders.length === 0 && semaphore.unknownHolderPermits === 0 ? (
+            {semaphore.unknownHolderPermits > 0 ? (
+              <>
+                <span className="font-semibold">holder unknown</span>
+                <span className="text-default-500">
+                  {' '}
+                  — {usedPermits} of {semaphore.totalPermits} permits in use; last recorded holders{' '}
+                </span>
+                <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} />
+                <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
+              </>
+            ) : semaphore.activeHolders.length === 0 ? (
               <span>none</span>
             ) : (
-              <span className="inline-flex flex-wrap items-baseline gap-x-2">
-                {semaphore.activeHolders.map(h => (
-                  <span key={h.id}>
-                    <CoroutineName
-                      id={h.id}
-                      label={h.label}
-                      onSelect={onSelectCoroutine}
-                      selected={h.id === selectedCoroutineId}
-                    />
-                    {h.permits > 1 && (
-                      <span className="text-default-500"> ({h.permits} permits)</span>
-                    )}
-                  </span>
-                ))}
-                {semaphore.unknownHolderPermits > 0 && (
-                  <span className="text-default-500">
-                    {semaphore.unknownHolderPermits === 1
-                      ? '1 permit'
-                      : `${semaphore.unknownHolderPermits} permits`}
-                    , holder unknown
-                  </span>
-                )}
-              </span>
+              <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} counts />
             )}
           </div>
 
@@ -151,5 +140,30 @@ export function SemaphoreGauge({
         </CardBody>
       </Card>
     </div>
+  )
+}
+
+/** The listed holders, comma-separated; with `counts`, a holder of several permits says how many. */
+function HolderNames({
+  semaphore,
+  picker,
+  selectedCoroutineId,
+  counts = false,
+}: {
+  semaphore: SemaphoreState
+  picker?: CoroutinePicker
+  selectedCoroutineId: string | null
+  counts?: boolean
+}) {
+  return (
+    <>
+      {semaphore.activeHolders.map((h, i) => (
+        <span key={h.id}>
+          {i > 0 && ', '}
+          <CoroutineName id={h.id} label={h.label} picker={picker} selected={h.id === selectedCoroutineId} />
+          {counts && h.permits > 1 && <span className="text-default-500"> ({h.permits} permits)</span>}
+        </span>
+      ))}
+    </>
   )
 }

@@ -64,4 +64,76 @@ describe('projectSync', () => {
       waitQueue: [{ id: 'c-2', label: 'order-2' }, { id: 'c-3', label: 'order-3' }],
     })
   })
+
+  describe('a lock handed over', () => {
+    const m = { mutexId: 'm-1', mutexLabel: 'inventory-lock' }
+    const acquired = (who: string) => event('MutexLockAcquired', { ...m, acquirerId: who, acquirerLabel: who, waitDurationNanos: 0 })
+    const unlocked = (who: string) => event('MutexUnlocked', { ...m, releaserId: who, releaserLabel: who, nextWaiterId: null, holdDurationNanos: 0 })
+
+    it('the ordinary handoff: released, then acquired by the next', () => {
+      const [mutex] = projectSync([acquired('c-1'), unlocked('c-1'), acquired('c-2')]).mutexes
+      expect(mutex).toMatchObject({ isLocked: true, currentHolder: 'c-2' })
+    })
+
+    it('the previous holder\'s release recorded after the next acquisition does not free the lock', () => {
+      // VizMutex unlocks before it records the release, so the waiter it woke can record its acquisition first.
+      const [mutex] = projectSync([acquired('c-1'), acquired('c-2'), unlocked('c-1')]).mutexes
+      expect(mutex).toMatchObject({ isLocked: true, currentHolder: 'c-2' })
+    })
+
+    it('a release by some other coroutine frees it', () => {
+      const [mutex] = projectSync([acquired('c-1'), unlocked('c-9')]).mutexes
+      expect(mutex).toMatchObject({ isLocked: false, currentHolder: null })
+    })
+  })
+
+  it('reduces in seq order whatever order the events arrived in', () => {
+    const m = { mutexId: 'm-1', mutexLabel: 'inventory-lock' }
+    const a = event('MutexLockAcquired', { ...m, acquirerId: 'c-1', acquirerLabel: 'c-1', waitDurationNanos: 0 })
+    const u = event('MutexUnlocked', { ...m, releaserId: 'c-1', releaserLabel: 'c-1', nextWaiterId: null, holdDurationNanos: 0 })
+    const arrived = [u, a]
+    expect(projectSync(arrived).mutexes[0]).toMatchObject({ isLocked: false })
+    expect(arrived).toEqual([u, a])
+  })
+
+  describe('permits between two state snapshots', () => {
+    const s = { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway' }
+    const acquired = (who: string) => event('SemaphorePermitAcquired', { ...s, acquirerId: who, acquirerLabel: who, remainingPermits: 1, waitDurationNanos: 0 })
+    const released = (who: string, holderUnknown = false) =>
+      event('SemaphorePermitReleased', { ...s, releaserId: who, releaserLabel: who, newAvailablePermits: 2, holdDurationNanos: 0, holderUnknown })
+
+    it('an acquisition counts before its snapshot arrives, and leaves the queue', () => {
+      const queued = stateChanged({ activeHolders: [], activeHolderLabels: [], waitingCoroutines: ['c-1'], waitingLabels: ['c-1'] })
+      const [sem] = projectSync([created, queued, acquired('c-1')]).semaphores
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
+      expect(sem!.waitQueue).toEqual([])
+    })
+
+    it('a coroutine acquiring twice holds two', () => {
+      const [sem] = projectSync([created, acquired('c-1'), acquired('c-1')]).semaphores
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 2 }])
+    })
+
+    it('its own release takes one back', () => {
+      const [sem] = projectSync([created, acquired('c-1'), acquired('c-2'), released('c-1')]).semaphores
+      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-2'])
+      expect(sem!.unknownHolderPermits).toBe(0)
+    })
+
+    it('a release by a coroutine that held none leaves the holders unknown, not shorter', () => {
+      const [sem] = projectSync([created, acquired('c-1'), acquired('c-2'), released('c-9', true)]).semaphores
+      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-1', 'c-2'])
+      expect(sem!.unknownHolderPermits).toBe(1)
+    })
+
+    it('the next snapshot replaces what the operations implied', () => {
+      const [sem] = projectSync([
+        created, acquired('c-1'), released('c-9', true),
+        stateChanged({ activeHolders: [], activeHolderLabels: [], unknownHolderPermits: 0 }),
+      ]).semaphores
+      expect(sem!.activeHolders).toEqual([])
+      expect(sem!.unknownHolderPermits).toBe(0)
+    })
+  })
 })
+

@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
 import { motion } from 'framer-motion'
 import type { MutexState } from '@/hooks/use-sync-events'
-import { CoroutineName } from './CoroutineName'
+import { CoroutineName, type CoroutinePicker } from './CoroutineName'
 
 interface MutexStateIndicatorProps {
   mutex: MutexState
@@ -9,15 +9,15 @@ interface MutexStateIndicatorProps {
   selected?: boolean
   /** The page's selected coroutine, marked when it holds the lock. */
   selectedCoroutineId?: string | null
-  /** Selects the holder (S-2). */
-  onSelectCoroutine?: (id: string) => void
+  /** Selects the holder, when the page can (S-2). */
+  picker?: CoroutinePicker
 }
 
 export function MutexStateIndicator({
   mutex,
   selected = false,
   selectedCoroutineId = null,
-  onSelectCoroutine,
+  picker,
 }: MutexStateIndicatorProps) {
   // A held lock is normal work, not an error (spec S-6): neutral grey, never red.
   return (
@@ -78,7 +78,7 @@ export function MutexStateIndicator({
                   <CoroutineName
                     id={mutex.currentHolder}
                     label={mutex.currentHolderLabel}
-                    onSelect={onSelectCoroutine}
+                    picker={picker}
                     selected={mutex.currentHolder === selectedCoroutineId}
                   />
                 ) : (

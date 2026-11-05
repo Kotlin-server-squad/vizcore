@@ -1,7 +1,7 @@
 /** Unit tests for the page's one selection (S-2): what each event is about, and what a selection's events are. */
 import { describe, it, expect } from 'vitest'
 import type { VizEvent } from '@/types/api'
-import { eventConcerns, eventSubject, eventTitle, resourceNames } from './selection'
+import { eventConcerns, eventSubject, eventTitle, namesCoroutine, resourceNames } from './selection'
 
 function ev(kind: string, fields: Record<string, unknown> = {}): VizEvent {
   return { sessionId: 's', seq: 1, tsNanos: 1, kind, ...fields } as unknown as VizEvent
@@ -90,4 +90,26 @@ describe('eventTitle', () => {
     expect(eventTitle(ev('MutexCreated', lock))).toBe('inventory-lock')
     expect(eventTitle(ev('SemaphorePermitReleased', { semaphoreId: 'sem-1', semaphoreLabel: null, releaserId: 'c-3', releaserLabel: null }))).toBe('c-3 · sem-1')
   })
+
+  it('names a channel event by its channel, from the page\'s names', () => {
+    const names = new Map([['ch-1', 'orders']])
+    expect(eventTitle(ev('ChannelCreated', { channelId: 'ch-1', name: 'orders' }))).toBe('orders')
+    expect(eventTitle(ev('ChannelClosed', { channelId: 'ch-1', cause: null }), names)).toBe('orders')
+    expect(eventTitle(ev('ChannelBufferStateChanged', { channelId: 'ch-1', currentSize: 1, capacity: 2 }))).toBe('ch-1')
+    expect(eventTitle(ev('ChannelSendStarted', { channelId: 'ch-1', coroutineId: 'c-1' }), names)).toBe('c-1 · orders')
+  })
+
+  it('says "outside any coroutine" for a wrapper used outside one', () => {
+    expect(eventTitle(ev('MutexUnlocked', { ...lock, releaserId: 'unknown', releaserLabel: null }))).toBe('outside any coroutine · inventory-lock')
+  })
 })
+
+describe('namesCoroutine', () => {
+  it('is false for the ids the wrappers write when there was no coroutine', () => {
+    expect(namesCoroutine('c-1')).toBe(true)
+    expect(namesCoroutine('unknown')).toBe(false)
+    expect(namesCoroutine('unknown-123')).toBe(false)
+    expect(namesCoroutine(null)).toBe(false)
+  })
+})
+

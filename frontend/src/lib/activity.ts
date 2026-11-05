@@ -2,10 +2,13 @@
  * A node's second line (spec S-6): what a coroutine waits for or holds, as the lock, permit and channel
  * events show it — "waits for inventory-lock · 1st", "holds a payment-gateway permit".
  *
- * A wait is the suspension a wrapper recorded with its kind and resource (S-7, `projectWaits`); an older
- * producer records none, so the latest observed queue also says who waits. The place in the queue is the
- * latest observed one. Permits are counted, never numbered. A wait is drawn in the Suspended colour; a hold
- * alone is neutral, because a held lock is normal work.
+ * A wait is the suspension a wrapper recorded with its kind and resource (S-7, `projectWaits`), until the
+ * coroutine's next resume, suspension or end. A queue alone is not taken for a wait: a waiter that has resumed
+ * stays listed until the next queue event, and an older producer records no wait kind — no line is better
+ * than a wrong one. The place in the queue is the latest observed one. Permits are counted, never numbered;
+ * when a permit came back from a coroutine that held none, which listed holder still holds one is unknown,
+ * and the line says so. A wait is drawn in the Suspended colour; a hold alone is neutral, because a held
+ * lock is normal work.
  */
 import type { VizEvent, WaitKind } from '@/types/api'
 import { projectSync, type Holder } from './projections/project-sync'
@@ -74,17 +77,6 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   for (const [coroutineId, wait] of projectWaits(events)) {
     waits.set(coroutineId, describeWait(coroutineId, wait.waitKind, wait.resourceId))
   }
-  // An older producer records no wait kind: the latest queue still says who waits, and where.
-  for (const m of sync.mutexes) {
-    m.waitQueue.forEach((w, i) => {
-      if (!waits.has(w.id)) waits.set(w.id, `waits for ${nameOf(m.mutexId)} · ${ordinal(i + 1)}`)
-    })
-  }
-  for (const s of sync.semaphores) {
-    s.waitQueue.forEach((w, i) => {
-      if (!waits.has(w.id)) waits.set(w.id, `waits for ${aPermit(nameOf(s.semaphoreId))} · ${ordinal(i + 1)}`)
-    })
-  }
 
   const holds = new Map<string, string[]>()
   const hold = (coroutineId: string, text: string) => holds.set(coroutineId, [...(holds.get(coroutineId) ?? []), text])
@@ -93,8 +85,11 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   }
   for (const s of sync.semaphores) {
     const name = nameOf(s.semaphoreId)
+    // A permit came back from a coroutine that held none (S-7): which listed holder still holds one is unknown.
+    const ambiguous = s.unknownHolderPermits > 0
     for (const h of s.activeHolders) {
-      hold(h.id, h.permits === 1 ? `holds ${aPermit(name)}` : `holds ${h.permits} ${name} permits`)
+      const permits = h.permits === 1 ? aPermit(name) : `${h.permits} ${name} permits`
+      hold(h.id, ambiguous ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
     }
   }
 

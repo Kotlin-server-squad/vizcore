@@ -1,6 +1,6 @@
 import { Chip } from '@heroui/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CoroutineName } from './CoroutineName'
+import { CoroutineName, type CoroutinePicker } from './CoroutineName'
 
 interface WaitQueueEntry {
   id: string
@@ -10,13 +10,13 @@ interface WaitQueueEntry {
 interface WaitQueueListProps {
   queue: WaitQueueEntry[]
   title?: string
-  /** Selects a waiter (S-2). */
-  onSelect?: (id: string) => void
+  /** Selects a waiter, when the page can (S-2). */
+  picker?: CoroutinePicker
   /** The page's selected coroutine, marked in the queue. */
   selectedId?: string | null
 }
 
-export function WaitQueueList({ queue, title = 'Wait Queue', onSelect, selectedId = null }: WaitQueueListProps) {
+export function WaitQueueList({ queue, title = 'Wait Queue', picker, selectedId = null }: WaitQueueListProps) {
   if (queue.length === 0) {
     return (
       <div className="text-xs text-default-400" data-testid="wait-queue-empty">
@@ -42,7 +42,7 @@ export function WaitQueueList({ queue, title = 'Wait Queue', onSelect, selectedI
             >
               <Chip size="sm" variant="flat" color="warning">#{idx + 1}</Chip>
               <span className="truncate">
-                <CoroutineName id={entry.id} label={entry.label} onSelect={onSelect} selected={entry.id === selectedId} />
+                <CoroutineName id={entry.id} label={entry.label} picker={picker} selected={entry.id === selectedId} />
               </span>
             </motion.div>
           ))}

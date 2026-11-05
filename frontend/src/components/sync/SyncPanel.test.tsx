@@ -249,14 +249,15 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     makeSyncEvent('MutexLockAcquired', 2, { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'c-1', acquirerLabel: 'order-1', waitDurationNanos: 0 }),
     makeSyncEvent('MutexQueueChanged', 3, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-2'], waitingLabels: ['order-2'] }),
   ]
-  const permitEvents = [
+  const permits = (fields: Record<string, unknown>) => [
     makeSyncEvent('SemaphoreCreated', 4, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
     makeSyncEvent('SemaphoreStateChanged', 5, {
-      semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', availablePermits: 0, totalPermits: 3,
-      activeHolders: ['c-3'], activeHolderLabels: ['order-3'], activeHolderPermits: [2], unknownHolderPermits: 1,
-      waitingCoroutines: [], waitingLabels: [],
+      semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3,
+      activeHolders: ['c-3', 'c-4'], activeHolderLabels: ['order-3', 'order-4'], waitingCoroutines: [], waitingLabels: [],
+      ...fields,
     }),
   ]
+  const anyone = (select = vi.fn()) => ({ select, canSelect: () => true })
 
   beforeEach(() => {
     mockedApiClient.getSessionEvents.mockResolvedValue([])
@@ -267,24 +268,60 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(screen.getByTestId('mutex-state')).toHaveTextContent('order-1')
   })
 
-  it('lists a semaphore\'s holders with their permits, and permits whose holder is unknown', () => {
-    render(<SyncPanel sessionId="session-1" events={permitEvents} />, { wrapper: createWrapper() })
+  it('lists a semaphore\'s holders with their permits', () => {
+    render(<SyncPanel sessionId="session-1" events={permits({ availablePermits: 0, activeHolderPermits: [2, 1] })} />, {
+      wrapper: createWrapper(),
+    })
     const held = screen.getByTestId('semaphore-holders')
     expect(held).toHaveTextContent('order-3 (2 permits)')
-    expect(held).toHaveTextContent('1 permit, holder unknown')
+    expect(held).toHaveTextContent('order-4')
+    expect(held).not.toHaveTextContent('holder unknown')
+  })
+
+  it('says "holder unknown" when a permit came back from a coroutine that held none (S-6, S-7)', () => {
+    // Two permits listed, one in use: one of the two was released by somebody else, and which is unknown.
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 2, activeHolderPermits: [1, 1], unknownHolderPermits: 1 })} />,
+      { wrapper: createWrapper() },
+    )
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown')
+    expect(held).toHaveTextContent('1 of 3 permits in use')
+    expect(held).toHaveTextContent('last recorded holders order-3, order-4')
   })
 
   it('selects a holder or a waiter by name', async () => {
-    const onSelectCoroutine = vi.fn()
-    render(<SyncPanel sessionId="session-1" events={lockEvents} onSelectCoroutine={onSelectCoroutine} />, { wrapper: createWrapper() })
+    const select = vi.fn()
+    render(<SyncPanel sessionId="session-1" events={lockEvents} picker={anyone(select)} />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: 'order-1' }))
     await userEvent.click(screen.getByRole('button', { name: 'order-2' }))
-    expect(onSelectCoroutine.mock.calls).toEqual([['c-1'], ['c-2']])
+    expect(select.mock.calls).toEqual([['c-1'], ['c-2']])
+  })
+
+  it('offers no button for a coroutine the page cannot select, and names no coroutine for "unknown"', () => {
+    const events = [
+      makeSyncEvent('MutexCreated', 1, { mutexId: 'm-1', mutexLabel: 'inventory-lock', ownerCoroutineId: null }),
+      makeSyncEvent('MutexLockAcquired', 2, { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'unknown-42', acquirerLabel: null, waitDurationNanos: 0 }),
+      makeSyncEvent('MutexQueueChanged', 3, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-gone'], waitingLabels: ['gone'] }),
+    ]
+    render(
+      <SyncPanel sessionId="session-1" events={events} picker={{ select: vi.fn(), canSelect: id => id === 'c-1' }} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('mutex-state')).toHaveTextContent('outside any coroutine')
+    expect(screen.getByText('gone')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'gone' })).toBeNull()
   })
 
   it('marks the selected coroutine and rings the selected resource', () => {
     render(
-      <SyncPanel sessionId="session-1" events={[...lockEvents, ...permitEvents]} selectedCoroutineId="c-1" selectedResourceId="sem-1" onSelectCoroutine={vi.fn()} />,
+      <SyncPanel
+        sessionId="session-1"
+        events={[...lockEvents, ...permits({ availablePermits: 0, activeHolderPermits: [2, 1] })]}
+        selectedCoroutineId="c-1"
+        selectedResourceId="sem-1"
+        picker={anyone()}
+      />,
       { wrapper: createWrapper() },
     )
     expect(screen.getByRole('button', { name: 'order-1' })).toHaveAttribute('aria-current', 'true')

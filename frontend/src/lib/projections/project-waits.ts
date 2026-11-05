@@ -10,6 +10,7 @@
  */
 
 import type { CoroutineSuspendedEvent, VizEvent, WaitKind } from '@/types/api'
+import { inSeqOrder } from './in-seq-order'
 
 export interface WaitFact {
   waitKind: WaitKind
@@ -36,7 +37,8 @@ const ENDS_WAIT: ReadonlySet<string> = new Set([
 export function projectWaits(events: readonly VizEvent[]): Map<string, WaitFact> {
   const waits = new Map<string, WaitFact>()
 
-  for (const event of events) {
+  // In seq order: a suspension that arrived after its own resume is over (inSeqOrder).
+  for (const event of inSeqOrder(events)) {
     if (!ENDS_WAIT.has(event.kind) || !('coroutineId' in event)) continue
     waits.delete(event.coroutineId)
 
