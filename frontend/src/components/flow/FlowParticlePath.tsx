@@ -6,6 +6,7 @@ import {
   flowParticleFiltered,
   flowParticleTransform,
 } from '@/lib/animation-variants'
+import { vizColors } from '@/styles/palette'
 
 interface FlowParticlePathProps {
   flow: FlowState
@@ -19,11 +20,11 @@ const PARTICLE_R_INITIAL = 5
 
 function getOperatorFill(name: string): string {
   const lower = name.toLowerCase()
-  if (lower.includes('map') || lower.includes('transform')) return '#6366f1' // indigo
-  if (lower.includes('filter')) return '#f59e0b' // amber
-  if (lower.includes('collect') || lower.includes('reduce') || lower.includes('fold')) return '#10b981' // emerald
-  if (lower.includes('flat') || lower.includes('merge') || lower.includes('combine')) return '#a855f7' // purple
-  return '#94a3b8' // slate
+  if (lower.includes('map') || lower.includes('transform')) return vizColors.operatorTransform // indigo
+  if (lower.includes('filter')) return vizColors.operatorFilter // amber
+  if (lower.includes('collect') || lower.includes('reduce') || lower.includes('fold')) return vizColors.operatorTerminal // emerald
+  if (lower.includes('flat') || lower.includes('merge') || lower.includes('combine')) return vizColors.operatorCombine // purple
+  return vizColors.operatorSource // slate
 }
 
 export function FlowParticlePath({ flow }: FlowParticlePathProps) {
@@ -44,9 +45,9 @@ export function FlowParticlePath({ flow }: FlowParticlePathProps) {
       const x = SVG_PADDING + i * NODE_GAP
       const y = svgHeight / 2
       if (i === 0) {
-        positions.push({ x, y, label: 'source', color: '#94a3b8' })
+        positions.push({ x, y, label: 'source', color: vizColors.operatorSource })
       } else if (i === nodeCount - 1) {
-        positions.push({ x, y, label: 'collect', color: '#10b981' })
+        positions.push({ x, y, label: 'collect', color: vizColors.operatorTerminal })
       } else {
         const op = operators[i - 1]!
         positions.push({ x, y, label: op.operatorName, color: getOperatorFill(op.operatorName) })
@@ -133,7 +134,7 @@ export function FlowParticlePath({ flow }: FlowParticlePathProps) {
                 <motion.circle
                   key={`particle-${trace.sequenceNumber}-${idx}`}
                   r={PARTICLE_R_INITIAL}
-                  fill="#f59e0b"
+                  fill={vizColors.particleFiltered}
                   variants={flowParticleFiltered}
                   initial="enter"
                   animate="filtered"
@@ -161,7 +162,7 @@ export function FlowParticlePath({ flow }: FlowParticlePathProps) {
               <motion.circle
                 key={`particle-${trace.sequenceNumber}-${idx}`}
                 r={PARTICLE_R_INITIAL}
-                fill="#6366f1"
+                fill={vizColors.particleDefault}
                 variants={flowParticle}
                 initial="enter"
                 animate="animate"

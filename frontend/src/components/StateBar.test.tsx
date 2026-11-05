@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -84,6 +87,21 @@ describe('StateBar', () => {
     const { onFilterChange } = renderBar({ filter: 'suspended' })
     await userEvent.click(screen.getByRole('button', { name: /suspended 31/i }))
     expect(onFilterChange).toHaveBeenCalledWith('all')
+  })
+
+  it('writes the active chip in body text in light mode, in its state colour in dark', () => {
+    renderBar({ filter: 'completed' })
+    const chip = screen.getByRole('button', { name: /completed 1200/i })
+    // A state colour on its own 16% tint is under 4.5:1 on white; the dot and border keep the colour.
+    expect(chip.style.color).toBe('var(--state-chip-text, var(--success))')
+
+    const tokens = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../styles/tokens.css'),
+      'utf8',
+    )
+    const light = tokens.slice(tokens.indexOf('html.light {'))
+    expect(light).toContain('--state-chip-text: var(--text);')
+    expect(tokens.slice(0, tokens.indexOf('html.light {'))).not.toContain('--state-chip-text')
   })
 
   it('marks the active chip for assistive tech', () => {

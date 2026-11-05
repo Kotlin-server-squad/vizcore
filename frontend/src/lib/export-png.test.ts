@@ -11,6 +11,7 @@ vi.mock('html2canvas', () => ({
 
 // Must import after vi.mock
 const { exportToPng } = await import('./export-png')
+const { asDarkClone } = await import('./export-theme')
 
 describe('exportToPng', () => {
   let mockElement: HTMLElement
@@ -57,7 +58,25 @@ describe('exportToPng', () => {
       scale: 2,
       useCORS: true,
       logging: false,
+      onclone: asDarkClone,
     })
+  })
+
+  it('captures in the dark theme while light mode is on, then restores light', async () => {
+    document.documentElement.className = 'light'
+    let classesDuringCapture: string[] = []
+    mockHtml2Canvas.mockImplementationOnce(async () => {
+      classesDuringCapture = [...document.documentElement.classList]
+      return mockCanvas
+    })
+    try {
+      await exportToPng(mockElement)
+      expect(classesDuringCapture).toContain('dark')
+      expect(classesDuringCapture).not.toContain('light')
+      expect(document.documentElement.className).toBe('light')
+    } finally {
+      document.documentElement.className = 'dark'
+    }
   })
 
   it('triggers download with the correct custom filename', async () => {

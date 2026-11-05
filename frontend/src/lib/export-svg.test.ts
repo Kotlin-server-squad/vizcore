@@ -147,6 +147,22 @@ describe('exportToSvg', () => {
     })
   })
 
+  it('reads the computed styles in the dark theme while light mode is on', () => {
+    document.documentElement.className = 'light'
+    const classesSeen = new Set<string>()
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(() => {
+      classesSeen.add(document.documentElement.classList.contains('light') ? 'light' : 'dark')
+      return { getPropertyValue: () => '', length: 0 } as unknown as CSSStyleDeclaration
+    })
+    try {
+      withSvgCapture(() => exportToSvg(svg))
+      expect([...classesSeen]).toEqual(['dark'])
+      expect(document.documentElement.className).toBe('light')
+    } finally {
+      document.documentElement.className = 'dark'
+    }
+  })
+
   it('includes the ADR-018 metadata comment', () => {
     withSvgCapture((getSvg) => {
       exportToSvg(svg)

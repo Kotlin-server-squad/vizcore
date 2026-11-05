@@ -1,4 +1,5 @@
 import html2canvas from 'html2canvas'
+import { asDarkClone, withDarkTheme } from './export-theme'
 
 /**
  * ADR-018 info-header data composited onto PNG exports (D-08): session name,
@@ -71,12 +72,17 @@ export async function exportToPng(
   }
 
   try {
-    const canvas = await html2canvas(elementRef, {
-      backgroundColor: '#18181b',
-      scale: 2,
-      useCORS: true,
-      logging: false,
-    })
+    // Dark in both themes: html2canvas copies live computed styles onto cloned SVG elements
+    // while it clones (synchronously, before onclone), so the live page is read as dark too.
+    const canvas = await withDarkTheme(() =>
+      html2canvas(elementRef, {
+        backgroundColor: '#18181b',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        onclone: asDarkClone,
+      }),
+    )
 
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((b) => {

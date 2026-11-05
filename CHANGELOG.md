@@ -15,6 +15,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A `VizMutex` waiter cancelled while queued leaves the queue (a `MutexQueueChanged` without it), instead of being shown waiting for ever
 - Database mode: an event sent into a session that was deleted meanwhile is dropped instead of failing with a foreign-key error
 - `DEMO_TIME_SCALE` (default 1): how fast the paced demos run; each scripted step takes its time times this, so `0.1` runs them ten times faster (at least `0.01`). Both Compose files pass it on, as they now do `MAX_CONCURRENT_DEMOS` and `MAX_DEMO_RUN_SECONDS`. The tests and the smoke test use a small scale
+- Light mode: a ☾ / ☀ switch in the top bar changes between the dark and the new light theme; dark stays the default and the choice is remembered in the browser. Exported PNG and SVG, and recorded replays, keep the dark look
 
 #### Production Hardening
 - Session TTL with automatic cleanup via `RetentionPolicy` (configurable via `SESSION_MAX_AGE_MS`, `SESSION_MAX_COUNT`)

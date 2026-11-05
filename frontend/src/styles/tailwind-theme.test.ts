@@ -25,7 +25,10 @@ describe('tailwind/heroui theme', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const source = readFileSync(resolve(here, '../../tailwind.config.ts'), 'utf8')
     expect(source).not.toContain('#6366f1')
-    expect(source).toContain("from './src/styles/palette'")
+    expect(source).toContain("from './src/styles/heroui-themes'")
+    const themes = readFileSync(resolve(here, 'heroui-themes.ts'), 'utf8')
+    expect(themes).not.toContain('#6366f1')
+    expect(themes).toContain("from './palette'")
   })
 
   it('sources semantic colours from the palette module', () => {

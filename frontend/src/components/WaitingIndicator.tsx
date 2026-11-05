@@ -25,7 +25,7 @@ export function WaitingIndicator({ node, className }: WaitingIndicatorProps) {
   return (
     <div className={cn('flex flex-col gap-2', className)}>
       {/* Progress Bar */}
-      <div className="relative w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div className="relative w-full h-2 bg-default-200 rounded-full overflow-hidden">
         <div
           className="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300 ease-out"
           style={{ width: `${progress}%` }}
@@ -37,14 +37,14 @@ export function WaitingIndicator({ node, className }: WaitingIndicatorProps) {
         <span className="text-blue-600 dark:text-blue-400 font-medium">
           Waiting for {activeChildren} {activeChildren === 1 ? 'child' : 'children'}
         </span>
-        <span className="text-gray-500 dark:text-gray-400">
+        <span className="text-default-500">
           {completedChildren} / {totalChildren} completed
         </span>
       </div>
 
       {/* Active Children Badge */}
       {activeChildren > 0 && (
-        <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+        <div className="flex items-center gap-1 text-xs text-default-500">
           <svg
             className="w-3 h-3 animate-spin text-blue-500"
             xmlns="http://www.w3.org/2000/svg"

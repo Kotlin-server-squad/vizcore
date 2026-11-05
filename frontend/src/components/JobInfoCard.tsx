@@ -20,13 +20,13 @@ export function JobInfoCard({ node, className, compact = false }: JobInfoCardPro
   }
 
   return (
-    <div className={cn('rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4', className)}>
+    <div className={cn('rounded-lg border border-divider bg-content1 p-4', className)}>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+        <h3 className="text-sm font-semibold text-foreground">
           Job Status
         </h3>
-        <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-mono text-default-500">
           {node.jobId}
         </span>
       </div>
@@ -55,9 +55,9 @@ export function JobInfoCard({ node, className, compact = false }: JobInfoCardPro
         />
 
         {/* Children Count */}
-        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+        <div className="pt-2 border-t border-divider">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
+            <span className="text-xs font-mono text-default-500">
               childrenCount
             </span>
             <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
@@ -66,7 +66,7 @@ export function JobInfoCard({ node, className, compact = false }: JobInfoCardPro
           </div>
           {node.activeChildrenCount !== undefined && node.activeChildrenCount > 0 && (
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
+              <span className="text-xs font-mono text-default-500">
                 active children
               </span>
               <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
@@ -108,7 +108,7 @@ function JobInfoCompact({
 }) {
   return (
     <div className={cn('flex items-center gap-2 text-xs', className)}>
-      <span className="font-mono text-gray-500 dark:text-gray-400">Job:</span>
+      <span className="font-mono text-default-500">Job:</span>
       
       <JobBadge label="active" value={jobState.isActive} />
       <JobBadge label="completed" value={jobState.isCompleted} />
@@ -138,21 +138,21 @@ function JobProperty({
   return (
     <div className="group relative">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
+        <span className="text-xs font-mono text-default-500">
           {label}
         </span>
         <span className={cn(
           'text-sm font-bold',
           value 
             ? 'text-green-600 dark:text-green-400' 
-            : 'text-gray-400 dark:text-gray-600'
+            : 'text-default-400'
         )}>
           {value ? 'true' : 'false'}
         </span>
       </div>
       
       {/* Tooltip */}
-      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 text-xs bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 rounded shadow-lg">
+      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-64 p-2 text-xs bg-foreground text-background rounded shadow-lg">
         {description}
       </div>
     </div>
@@ -168,7 +168,7 @@ function JobBadge({ label, value }: { label: string; value: boolean }) {
       'px-1.5 py-0.5 rounded text-xs font-medium',
       value
         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'
+        : 'bg-default-100 text-default-500'
     )}>
       {label}
     </span>

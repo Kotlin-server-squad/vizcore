@@ -32,4 +32,50 @@ export const palette = {
   created: '#8b8b94', // created, not yet started
 } as const
 
+/**
+ * The light theme's surfaces, text and status colours. Applied by the
+ * `html.light` block in `tokens.css` and the HeroUI light theme.
+ *
+ * The status colours are darker shades (HeroUI's 700 / 600 steps): the dark
+ * palette's green and amber are about 2:1 on white, too faint for text; these
+ * reach WCAG AA (4.5:1). Primary and `created` are shared. The coroutine-state
+ * colours in the visualizations come from `palette` via `stateColor()` and are
+ * the same in both themes.
+ */
+export const lightPalette = {
+  bg: '#fafafa',
+  surface: '#ffffff',
+  'surface-2': '#f4f4f5',
+  'surface-3': '#e4e4e7',
+  border: '#e4e4e7',
+  'border-2': '#d4d4d8',
+  text: '#18181b',
+  'text-muted': '#52525b',
+  'text-faint': '#71717a',
+  success: '#0e793c',
+  warning: '#936316',
+  danger: '#c20e4d',
+} as const
+
+/**
+ * Fixed colours that carry meaning inside a visualization, the same in both
+ * themes. They are not CSS variables, so `tokens.test.ts` does not look for them.
+ */
+export const vizColors = {
+  // flow operators (FlowParticlePath)
+  operatorTransform: '#6366f1',
+  operatorFilter: '#f59e0b',
+  operatorTerminal: '#10b981',
+  operatorCombine: '#a855f7',
+  operatorSource: '#94a3b8',
+  particleFiltered: '#f59e0b',
+  particleDefault: '#6366f1',
+  // deadlock graph (DeadlockVisualization)
+  deadlockEdge: '#ef4444',
+  deadlockCoroutineFill: '#fecaca',
+  deadlockCoroutineStroke: '#ef4444',
+  deadlockLockFill: '#fde68a',
+  deadlockLockStroke: '#f59e0b',
+} as const
+
 export type PaletteKey = keyof typeof palette
