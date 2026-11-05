@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.compat
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.EventContext
@@ -123,6 +124,40 @@ class BinaryCompatibilityTest {
         assertNotNull(helpers.getDeclaredMethod("coroutineSuspended", *old))
         assertNotNull(
             helpers.getDeclaredMethod("coroutineSuspended\$default", *old, Int::class.javaPrimitiveType, Any::class.java),
+        )
+    }
+
+    @Test
+    fun `CoroutineSuspended keeps its 0_3_x constructors`() {
+        val long = Long::class.javaPrimitiveType
+        val str = String::class.java
+        val v03 =
+            arrayOf<Class<*>?>(
+                str, long, long, str, str, str, str, str, str, java.lang.Long::class.java, SuspensionPoint::class.java,
+                SuspensionProvenance::class.java,
+            )
+        val ctor = CoroutineSuspended::class.java.getDeclaredConstructor(*v03)
+        CoroutineSuspended::class.java.getDeclaredConstructor(*v03, Int::class.javaPrimitiveType, marker)
+        val event = ctor.newInstance("s", 1L, 2L, "c", "j", null, "sc", "l", "await", null, null, SuspensionProvenance.REAL_FRAME)
+        assertEquals(SuspensionProvenance.REAL_FRAME, event.provenance)
+        assertNull(event.waitKind)
+        assertNull(event.resourceId)
+    }
+
+    @Test
+    fun `EventContext coroutineSuspended keeps its 0_3_x JVM methods`() {
+        val helpers = Class.forName("com.jh.proj.coroutineviz.session.EventContextKt")
+        val v03 =
+            arrayOf(
+                EventContext::class.java,
+                String::class.java,
+                java.lang.Long::class.java,
+                SuspensionPoint::class.java,
+                SuspensionProvenance::class.java,
+            )
+        assertNotNull(helpers.getDeclaredMethod("coroutineSuspended", *v03))
+        assertNotNull(
+            helpers.getDeclaredMethod("coroutineSuspended\$default", *v03, Int::class.javaPrimitiveType, Any::class.java),
         )
     }
 }
