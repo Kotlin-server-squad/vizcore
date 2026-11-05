@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useCoroutineTimeline } from '@/hooks/use-timeline'
 import { resolveRunsOn } from '@/lib/runs-on'
+import { stateLabel } from '@/lib/coroutine-state-colors'
 import { TimingCard } from './TimingCard'
 import { SuspendedAtCard } from './SuspendedAtCard'
 import { RunsOnCard } from './RunsOnCard'
@@ -28,10 +29,12 @@ interface InspectorProps {
   threadActivity?: ThreadActivity
   /** What to say while nothing is selected (e.g. why selection is unavailable). */
   placeholder?: string
+  /** What to show while nothing is selected; overrides `placeholder` (T-3's session summary). */
+  emptyState?: ReactNode
 }
 
 /**
- * The right-hand detail column (D-7), ordered most-diagnostic-first:
+ * The Inspector tab (D-7, S-4), ordered most-diagnostic-first:
  * timing → suspended at → runs on → identity → events.
  *
  * That order is carried over from validated sketch 005 rather than re-derived.
@@ -48,6 +51,7 @@ export function Inspector({
   readOnly,
   threadActivity,
   placeholder = 'Select a coroutine to inspect it',
+  emptyState,
 }: InspectorProps) {
   const showTimeline = !!coroutine && !readOnly
   const { data: timeline, dataUpdatedAt, refetch: refetchTimeline } = useCoroutineTimeline(
@@ -81,7 +85,7 @@ export function Inspector({
   )
 
   if (!coroutine) {
-    return (
+    return emptyState ?? (
       <div className="text-sm text-default-400">
         {placeholder}
       </div>
@@ -90,15 +94,29 @@ export function Inspector({
 
   return (
     <div data-testid="inspector" className="space-y-3">
-      {showTimeline && (
-        <>
-          <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
-          <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
-          <RunsOnCard runsOn={runsOn} />
-        </>
-      )}
-      <IdentityCard coroutine={coroutine} />
-      {showTimeline && <EventsCard timeline={timeline} />}
+      <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
+        <span className="font-mono [overflow-wrap:anywhere]">{coroutine.label ?? coroutine.id}</span>
+        <span className="text-sm font-normal text-default-500">{stateLabel(coroutine.state)}</span>
+      </h2>
+      {/* Two columns on a wide dock, one below 1,024 px (S-14). D-7's order
+          reads down the first column, then the events. */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="min-w-0 space-y-3">
+          {showTimeline && (
+            <>
+              <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
+              <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
+              <RunsOnCard runsOn={runsOn} />
+            </>
+          )}
+          <IdentityCard coroutine={coroutine} />
+        </div>
+        {showTimeline && (
+          <div className="min-w-0">
+            <EventsCard timeline={timeline} />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

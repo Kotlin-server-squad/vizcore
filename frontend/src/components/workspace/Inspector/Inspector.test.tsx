@@ -115,11 +115,27 @@ describe('Inspector', () => {
     })
 
     const inspector = await screen.findByTestId('inspector')
+    // The cards' own headings; the h2 above them names the coroutine.
     const headings = within(inspector)
-      .getAllByRole('heading')
+      .getAllByRole('heading', { level: 4 })
       .map(h => h.textContent)
 
     expect(headings).toEqual(['Timing', 'Suspended at', 'Runs on', 'Identity', 'Events'])
+  })
+
+  it("heads the inspector with the coroutine's name and state", () => {
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, { wrapper: createWrapper() })
+    const heading = screen.getByRole('heading', { level: 2 })
+    expect(heading).toHaveTextContent('UserService.register')
+    expect(heading).toHaveTextContent('Suspended')
+  })
+
+  it('shows the empty state it is given when nothing is selected', () => {
+    render(<Inspector sessionId="s-1" coroutine={null} readOnly={false} emptyState={<p>summary</p>} />, {
+      wrapper: createWrapper(),
+    })
+    expect(screen.getByText('summary')).toBeInTheDocument()
+    expect(screen.queryByText(/Select a coroutine to inspect it/)).toBeNull()
   })
 
   it('marks durations as poll-bounded with a ~ prefix', async () => {
