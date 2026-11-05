@@ -1,0 +1,288 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-05T16:10:00Z"
+  },
+  "title": "vizcore session view redesign",
+  "launch": {
+    "view": "canvas",
+    "page": "proposal"
+  },
+  "pages": [
+    {
+      "id": "proposal",
+      "name": "1 \u00b7 The proposal"
+    },
+    {
+      "id": "quickwins",
+      "name": "2 \u00b7 Quick wins first"
+    },
+    {
+      "id": "explore",
+      "name": "3 \u00b7 All explorations"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 620,
+      "h": 1060,
+      "title": "Today: the page to scale (2,646 px)",
+      "page": "explore"
+    },
+    "OptionA.dc.html": {
+      "x": 700,
+      "y": 0,
+      "w": 1440,
+      "h": 800,
+      "expand": "fill",
+      "title": "A \u00b7 Canvas first, side panel",
+      "page": "explore"
+    },
+    "OptionB.dc.html": {
+      "x": 2220,
+      "y": 0,
+      "w": 1440,
+      "h": 800,
+      "expand": "fill",
+      "title": "B \u00b7 IDE dock (Codex + my recommendation)",
+      "page": "explore"
+    },
+    "OptionC.dc.html": {
+      "x": 3740,
+      "y": 0,
+      "w": 1440,
+      "h": 800,
+      "expand": "fill",
+      "title": "C \u00b7 Keep the page, fold everything (quick wins)",
+      "page": "explore"
+    },
+    "S1-Finished.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "Step 1 \u00b7 Quick wins: a finished demo",
+      "page": "quickwins"
+    },
+    "S1-Live.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "Step 1 \u00b7 Quick wins: a live run, 6 s in",
+      "page": "quickwins"
+    },
+    "S2-Live.dc.html": {
+      "x": 0,
+      "y": 3840,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "Step 2 \u00b7 IDE dock: live run, Inspector tab",
+      "page": "explore"
+    },
+    "S2-Failed.dc.html": {
+      "x": 1520,
+      "y": 3840,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "Step 2 \u00b7 IDE dock: a failed run, Events tab",
+      "page": "explore"
+    },
+    "S2-Replay.dc.html": {
+      "x": 3040,
+      "y": 3840,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "Step 2 \u00b7 IDE dock: replay, Locks and permits tab",
+      "page": "explore"
+    },
+    "D-Story.dc.html": {
+      "x": 0,
+      "y": 5360,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "D \u00b7 Story mode: the demo explains itself (learners)",
+      "page": "explore"
+    },
+    "E-Timeline.dc.html": {
+      "x": 1520,
+      "y": 5360,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "E \u00b7 Timeline first: who waited for what, and when",
+      "page": "explore"
+    },
+    "F-Problems.dc.html": {
+      "x": 3040,
+      "y": 5360,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "F \u00b7 Problems first: a real app with 300+ coroutines",
+      "page": "explore"
+    },
+    "G0-Map.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "1 \u00b7 How the page is built",
+      "page": "proposal"
+    },
+    "G2-Story.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "2 \u00b7 A learner opens a demo",
+      "page": "proposal"
+    },
+    "G1-App.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "3 \u00b7 A developer opens their app",
+      "page": "proposal"
+    },
+    "G3-Timeline.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "4 \u00b7 Anyone switches to Timeline",
+      "page": "proposal"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "OptionA.dc.html",
+    "OptionB.dc.html",
+    "OptionC.dc.html",
+    "S1-Finished.dc.html",
+    "S1-Live.dc.html",
+    "S2-Live.dc.html",
+    "S2-Failed.dc.html",
+    "S2-Replay.dc.html",
+    "D-Story.dc.html",
+    "E-Timeline.dc.html",
+    "F-Problems.dc.html",
+    "G0-Map.dc.html",
+    "G2-Story.dc.html",
+    "G1-App.dc.html",
+    "G3-Timeline.dc.html"
+  ],
+  "notes": {
+    "title": {
+      "x": 0,
+      "y": -320,
+      "text": "Session view: today vs three layouts",
+      "kind": "title1",
+      "maxW": 5180,
+      "page": "explore"
+    },
+    "codex": {
+      "x": 0,
+      "y": 1180,
+      "w": 620,
+      "fill": "orange",
+      "text": "Codex's top problems (ranked)\n1. The tree comes last: it starts at 1,090 px, below the first screen.\n2. A finished demo hides its result: \"Nothing running now\".\n3. The concurrency explanation is always open: ~370 px.\n4. Evidence grows without end: one thread row per event.\n5. Width wasted: narrow centre column + a fixed 320 px inspector.\n6. Controls scattered: two cards, two LIVE badges.\n7. No inspecting during Replay.\n8. Misleading colours: failed run shows green \"Completed\"; a held lock is red and pulses.",
+      "page": "explore"
+    },
+    "reco": {
+      "x": 700,
+      "y": 1180,
+      "w": 620,
+      "fill": "blue",
+      "text": "Recommendation (Claude + Codex)\nStep 1: quick wins in today's page (C) - tree moves up, explanation folds, finished demos keep their tree, honest colours.\nStep 2: the IDE dock (B) - tree on top, docked tabs below, metric tiles always visible, inspector as a dock tab instead of a fixed column.\n\nComment on any artboard: what to keep, move, drop.",
+      "page": "explore"
+    },
+    "step1": {
+      "x": 0,
+      "y": -280,
+      "text": "Optional first step: quick wins in today's page",
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "quickwins"
+    },
+    "step2": {
+      "x": 0,
+      "y": 3580,
+      "text": "Step 2 \u00b7 The IDE dock",
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "explore"
+    },
+    "bolder": {
+      "x": 0,
+      "y": 5100,
+      "text": "Bolder directions \u00b7 one per kind of customer",
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "explore"
+    },
+    "codexR1": {
+      "x": 3040,
+      "y": 2560,
+      "w": 620,
+      "fill": "orange",
+      "text": "Codex review, round 1 (fixed on these 5 screens)\n1. Promised data vizcore does not record: a coroutine waiting for a lock or permit is reported ACTIVE, not SUSPENDED; permit numbers; business results (paid, out of stock, returned false); \"thread released\"; threads busy x of 8. Now: recorded state on one line, what it waits for or holds on the next.\n2. One timeline for all screens (the paced Combined demo): 7 orders, no parent, lock held 1.5 s, payment 3 s, done at 12.0 s.\n3. The tree had no lines: parent-child connectors added.\n4. Failed run: the originating failure is marked; explanation rows are tagged apart from recorded events.\n5. Replay: time axis; future bars outlined; permit lanes are display slots.\nStill open for Step 2: where Channels, Flows and Jobs go in the dock; narrow widths; dock resizing; keyboard.",
+      "page": "explore"
+    },
+    "questions": {
+      "x": 3740,
+      "y": 2560,
+      "w": 620,
+      "fill": "blue",
+      "text": "Decisions for you\nA. Should waiting for a mutex, semaphore or channel show as SUSPENDED? It needs the wrappers to emit suspension events (the known follow-up).\nB. Run again on a finished demo: a new session, or a new run in the same one? Today the button is disabled.\nC. Should the Combined demo record business outcomes (paid, out of stock) as demo events?\nD. Which bolder direction (D story, E timeline, F problems) is worth a design next to Step 2?",
+      "page": "explore"
+    },
+    "roadmap": {
+      "x": 4440,
+      "y": 2560,
+      "w": 620,
+      "fill": "green",
+      "text": "Roadmap: Claude and Codex agree\n1. Step 1, quick wins: ship first.\n2. Core fix: waiting for a lock, permit or channel records SUSPENDED (Claude adds this; Codex flagged the gap).\n3. Step 2, the dock: one resizable dock, one selection, one replay cursor; group by name and search.\n4. D, story mode, inside Learn: start with the Basics, whose guides exist.\n5. E, timeline, as a dock tab that can be maximised.\n6. F as a page: dropped. Keep a Problems tab and group-by-name in the dock.\n\nCodex P1s still to fix on D/E/F: story steps tied to events, not seconds; a coroutine can hold a lock while suspended, so the timeline needs two layers; F's diagnoses must stick to recorded facts.",
+      "page": "explore"
+    },
+    "codexIdeas": {
+      "x": 4560,
+      "y": 5360,
+      "w": 620,
+      "fill": "purple",
+      "text": "Codex's own ideas (made without seeing D/E/F)\n1. Problem Inbox (debuggers): failures and possibly blocked work, each with why it is listed; mark as expected or dismiss. The core already computes these (SessionHealthDerivation) but the page does not show them. Cost M.\n2. Guided Replay (learners): predict what happens, then Reveal jumps the replay to that event. Cost M.\n3. Who is waiting on what: coroutines linked to the lock, permit or channel they wait for, and its holder. Cost L.\n4. Failure story: before, exception, cancellations, what survived. Needs exception stacks (sent empty today). Cost L.\n5. Compare two runs: did limiting concurrency help? Cost L.\nCodex would sketch next: 1 with a crowded real app, 2 with the cancellation demo.",
+      "page": "explore"
+    },
+    "combined": {
+      "x": 0,
+      "y": -280,
+      "text": "The proposal: the IDE dock, with the bolder ideas inside it",
+      "kind": "title1",
+      "maxW": 5960,
+      "page": "proposal"
+    },
+    "howto": {
+      "page": "proposal",
+      "x": 0,
+      "y": 1000,
+      "w": 700,
+      "fill": "blue",
+      "text": "How to read this page\nLeft to right: how the page is built, then the same page as a learner, a developer with a real app, and in Timeline view.\nThese 4 boards are one design, not 4 options. Comment on any board: keep, change or drop."
+    }
+  },
+  "designSystems": []
+}

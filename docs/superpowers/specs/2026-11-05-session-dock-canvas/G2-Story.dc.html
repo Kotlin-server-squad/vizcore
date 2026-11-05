@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Combined: a demo in story mode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; display: flex; flex-direction: column; font-family: Inter, system-ui, sans-serif; background: {{t.bg}}; color: {{t.text}}">
+  <nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 0 24px; min-height: 52px; border-bottom: 1px solid {{t.border}}; background: {{t.surface}}">
+    <span style="font-weight: 700; font-size: 15px">Coroutine Visualizer</span>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Sessions</a>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Gallery</a>
+  </nav>
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 24px; border-bottom: 1px solid {{t.border}}">
+    <h1 style="margin: 0; font-size: 18px; font-weight: 700">{{title}}</h1>
+    <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: {{status.tint}}; color: {{status.text}}"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{status.dot}}"></span>{{status.label}}</span>
+    <span style="font-size: 13px; color: {{t.muted}}">{{meta}}</span>
+    <div style="flex: 1"></div>
+    <sc-for list="{{actions}}" as="b" hint-placeholder-count="3">
+      <button type="button" aria-label="{{b.aria}}" style="font: inherit; font-size: 13px; font-weight: {{b.weight}}; padding: 8px 14px; border-radius: 8px; border: {{b.border}}; background: {{b.bg}}; color: {{b.color}}">{{b.label}}</button>
+    </sc-for>
+  </header>
+
+  <section aria-label="Main view" style="flex: 1; min-height: 330px; margin: 12px 24px 0; display: flex; flex-direction: column; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface2}}">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid {{t.border}}">
+        <div role="group" aria-label="Main view" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: {{t.surface3}}">
+          <sc-for list="{{views}}" as="v" hint-placeholder-count="2">
+            <button type="button" aria-pressed="{{v.pressed}}" style="font: inherit; font-size: 12px; font-weight: {{v.weight}}; padding: 4px 12px; border-radius: 6px; border: 0; background: {{v.bg}}; color: {{v.color}}">{{v.label}}</button>
+          </sc-for>
+        </div>
+        <span style="width: 8px"></span>
+        <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+          <button type="button" aria-pressed="{{f.pressed}}" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid {{f.border}}; background: {{f.bg}}; color: {{f.color}}">{{f.label}}</button>
+        </sc-for>
+        <div style="flex: 1"></div>
+        <span style="font-size: 12px; color: {{t.muted}}">{{viewNote}}</span>
+        <button type="button" aria-label="Maximise the main view" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Maximise</button>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px 16px">
+        <sc-for list="{{rows}}" as="row" hint-placeholder-count="2">
+          <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; border-top: {{row.top}}; padding: 0 8px">
+            <sc-for list="{{row.nodes}}" as="n" hint-placeholder-count="4">
+              <div style="display: flex; flex-direction: column; align-items: center; opacity: {{n.opacity}}">
+                <span aria-hidden="true" style="width: 2px; height: {{n.stub}}; background: {{t.line}}"></span>
+                <button type="button" aria-pressed="{{n.pressed}}" style="display: flex; flex-direction: column; gap: 3px; min-width: 124px; padding: 8px 12px; border-radius: 8px; border: {{n.border}}; background: {{t.surface}}; font: inherit; color: inherit; text-align: left">
+                  <span style="display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px"><span style="width: 9px; height: 9px; border-radius: 50%; background: {{n.dot}}"></span>{{n.name}}</span>
+                  <span style="font-size: 11px; color: {{n.color}}">{{n.label}}</span>
+                  <span style="font-size: 11px; color: {{n.noteColor}}">{{n.note}}</span>
+                </button>
+              </div>
+            </sc-for>
+          </div>
+          <span aria-hidden="true" style="width: 2px; height: {{row.below}}; background: {{t.line}}"></span>
+        </sc-for>
+      </div>
+  </section>
+
+  <section aria-label="Dock" style="margin: 12px 24px 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface}}; display: flex; flex-direction: column">
+    <div role="separator" aria-orientation="horizontal" aria-label="Resize the dock" tabindex="0" style="align-self: center; width: 48px; height: 4px; margin-top: 6px; border-radius: 2px; background: {{t.surface3}}"></div>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid {{t.border}}">
+      <div role="tablist" aria-label="Dock" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="6">
+          <button type="button" role="tab" aria-selected="{{tab.selected}}" style="display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; font-weight: {{tab.weight}}; padding: 6px 12px; border-radius: 6px; border: 0; background: {{tab.bg}}; color: {{tab.color}}">{{tab.label}}<span style="font-size: 11px; font-weight: 600; padding: {{tab.badgePad}}; border-radius: 999px; background: {{tab.badgeBg}}; color: {{tab.badgeColor}}">{{tab.badge}}</span></button>
+        </sc-for>
+      </div>
+      <div style="flex: 1"></div>
+      <sc-for list="{{tiles}}" as="m" hint-placeholder-count="4">
+        <span style="font-size: 12px; color: {{t.muted}}; padding: 0 8px">{{m.label}} <span style="font-weight: 700; color: {{m.color}}">{{m.value}}</span></span>
+      </sc-for>
+      <button type="button" aria-label="Fold the dock" style="font: inherit; font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 0; background: transparent; color: {{t.muted}}">Fold</button>
+    </div>
+    <div role="tabpanel" aria-label="Learn: story" style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 0">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border-right: 1px solid {{t.border}}">
+        <span style="font-size: 12px; color: {{t.muted}}">Step 4 of 6 · at the event where fetch-loyalty-points fails</span>
+        <h2 style="margin: 0; font-size: 20px; font-weight: 700">The loyalty service fails</h2>
+        <p style="margin: 0; font-size: 14px; line-height: 1.6"><span style="font-family: 'JetBrains Mono', monospace">fetch-loyalty-points</span> throws. Its parent, <span style="font-family: 'JetBrains Mono', monospace">load-account-page</span>, is a plain <span style="font-family: 'JetBrains Mono', monospace">launch</span>.</p>
+        <fieldset style="margin: 0; padding: 12px 14px; border: 1px solid {{t.border}}; border-radius: 10px; display: flex; flex-direction: column; gap: 8px">
+          <legend style="padding: 0 6px; font-size: 13px; font-weight: 600">Predict first: what happens to fetch-orders and fetch-invoices?</legend>
+          <sc-for list="{{choices}}" as="c" hint-placeholder-count="3">
+            <label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px"><input type="radio" name="predict" style="width: 18px; height: 18px; accent-color: {{t.primary}}">{{c}}</label>
+          </sc-for>
+          <div style="display: flex; gap: 8px; margin-top: 4px">
+            <button type="button" style="font: inherit; font-size: 13px; padding: 9px 14px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Previous step</button>
+            <button type="button" style="font: inherit; font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 0; background: {{t.primary}}; color: #ffffff">Reveal</button>
+          </div>
+        </fieldset>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px">
+        <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+          <sc-for list="{{steps}}" as="st" hint-placeholder-count="6">
+            <li><button type="button" aria-current="{{st.current}}" style="width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid {{st.border}}; background: {{st.bg}}; color: {{st.color}}"><span style="width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 11px; font-weight: 600; background: {{st.numBg}}; color: {{st.numColor}}">{{st.n}}</span>{{st.label}}</button></li>
+          </sc-for>
+        </ol>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: {{t.muted}}"><input type="checkbox" style="width: 16px; height: 16px; accent-color: {{t.primary}}"> Move to the next step by itself</label>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const isLight = (this.props.theme ?? 'dark') === 'light';
+    const t = isLight
+      ? { bg: '#fafafa', surface: '#ffffff', surface2: '#f4f4f5', surface3: '#e4e4e7', border: '#e4e4e7', text: '#18181b', muted: '#52525b', primary: '#006fee', sel: '#005bc4', hl: 'rgba(0,111,238,0.10)', line: '#a1a1aa', link: '#005bc4' }
+      : { bg: '#0a0a0b', surface: '#131316', surface2: '#18181b', surface3: '#27272a', border: '#27272a', text: '#fafafa', muted: '#a1a1aa', primary: '#006fee', sel: '#4da3ff', hl: 'rgba(77,163,255,0.14)', line: '#52525b', link: '#4da3ff' };
+    const pal = isLight
+      ? { ACTIVE: ['#006fee', '#005bc4'], SUSPENDED: ['#f5a524', '#936316'], WAITING: ['#9353d3', '#6020a0'], COMPLETED: ['#17c964', '#0e793c'], FAILED: ['#f31260', '#c20e4d'], CANCELLED: ['#a1a1aa', '#52525b'] }
+      : { ACTIVE: ['#006fee', '#4da3ff'], SUSPENDED: ['#f5a524', '#f5a524'], WAITING: ['#9353d3', '#b47cff'], COMPLETED: ['#17c964', '#17c964'], FAILED: ['#f31260', '#ff6b95'], CANCELLED: ['#71717a', '#a1a1aa'] };
+    const names = { ACTIVE: 'Active', SUSPENDED: 'Suspended', WAITING: 'Waiting for children', COMPLETED: 'Completed', FAILED: 'Failed', CANCELLED: 'Cancelled' };
+    const s = {};
+    for (const k of Object.keys(pal)) s[k] = { dot: pal[k][0], text: pal[k][1], tint: pal[k][0] + '26', label: names[k] };
+    const node = (name, st, o) => {
+      o = o || {};
+      const noteColors = { wait: s.SUSPENDED.text, hold: t.sel, fail: s.FAILED.text, muted: t.muted };
+      return {
+        name, dot: s[st].dot, color: s[st].text, label: o.detail ? s[st].label + ' · ' + o.detail : s[st].label,
+        note: o.note || '', noteColor: noteColors[o.kind || 'muted'], pressed: o.selected ? 'true' : 'false',
+        border: o.selected ? '2px solid ' + t.sel : o.actor ? '2px solid ' + s[st].dot : '1px solid ' + t.border,
+        stub: o.child ? '14px' : '0px', opacity: o.dim ? 0.45 : 1
+      };
+    };
+    const chip = (label, on) => ({ label, pressed: on ? 'true' : 'false', border: on ? t.sel : t.border, bg: on ? t.hl : 'transparent', color: on ? t.text : t.muted });
+    const view = (label, on) => ({ label, pressed: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? t.surface : 'transparent', color: on ? t.text : t.muted });
+    const tab = (label, on, badge, alert) => ({ label, selected: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? t.surface3 : 'transparent', color: on ? t.text : t.muted,
+      badge: badge || '', badgePad: badge ? '1px 7px' : '0', badgeBg: alert ? s.SUSPENDED.dot : t.surface3, badgeColor: alert ? '#18181b' : t.muted });
+    const btn = (label, primary, aria) => ({ label, aria: aria || label, weight: primary ? 600 : 400, border: primary ? '0' : '1px solid ' + t.border, bg: primary ? t.primary : 'transparent', color: primary ? '#ffffff' : t.text });
+    const step = (n, label, i) => {
+      const cur = i === 3, past = i < 3, hidden = i > 3;
+      return { n, label: hidden ? 'Predict, then reveal' : label, current: cur ? 'step' : 'false', border: cur ? t.sel : t.border, bg: cur ? t.hl : 'transparent',
+        color: hidden ? t.muted : t.text, numBg: past || cur ? t.primary : t.surface3, numColor: past || cur ? '#ffffff' : t.muted };
+    };
+    return {
+      t, s,
+      title: 'Exception: One Backend Call Fails',
+      status: { dot: t.muted, text: t.text, tint: t.surface3, label: 'Story · recorded run' },
+      meta: '6 coroutines · from the Gallery',
+      actions: [btn('Explore freely'), btn('Run again'), btn('More', false, 'More actions: Share, Export')],
+      views: [view('Tree', true), view('Timeline')],
+      filters: [],
+      viewNote: 'Highlighted: the coroutines this step is about',
+      rows: [
+        { top: '0', below: '14px', nodes: [node('load-account-page', 'WAITING', { actor: true, note: 'its child has just failed' })] },
+        { top: '2px solid ' + t.line, below: '0px', nodes: [
+          node('fetch-delivery-status', 'COMPLETED', { child: true, dim: true }), node('fetch-profile', 'COMPLETED', { child: true, dim: true }),
+          node('fetch-orders', 'SUSPENDED', { child: true, detail: 'in delay', note: '?', kind: 'wait' }),
+          node('fetch-invoices', 'SUSPENDED', { child: true, detail: 'in delay', note: '?', kind: 'wait' }),
+          node('fetch-loyalty-points', 'FAILED', { child: true, actor: true, note: 'where the failure starts', kind: 'fail' })
+        ] }
+      ],
+      tabs: [tab('Problems', false, '1'), tab('Inspector'), tab('Threads'), tab('Events'), tab('Learn', true)],
+      tiles: [],
+      choices: ['They keep loading: they are independent', 'They are cancelled', 'They fail with the same exception'],
+      steps: [
+        ['1', 'The page starts five requests'], ['2', 'fetch-delivery-status completes'], ['3', 'fetch-profile completes'],
+        ['4', 'fetch-loyalty-points throws'], ['5', ''], ['6', '']
+      ].map((x, i) => step(x[0], x[1], i))
+    };
+  }
+}
+</script>
+</body>
+</html>
