@@ -53,4 +53,78 @@ describe('ScenarioControls', () => {
       'Could not run the scenario: Server busy: too many demos running, try again in a few seconds',
     )
   })
+
+  const finishedWith = (...states: string[]) =>
+    ({
+      sessionId: 's-1',
+      coroutineCount: states.length,
+      coroutines: states.map((state, i) => ({
+        id: `c${i}`, jobId: `j${i}`, parentId: null, scopeId: 's', label: `c${i}`, state,
+      })),
+    }) as unknown as SessionSnapshot
+
+  const renderWith = (session: SessionSnapshot) =>
+    render(
+      <HeroUIProvider>
+        <ScenarioControls
+          sessionId="s-1"
+          scenarioId="exception-propagation"
+          session={session}
+          onClearEvents={vi.fn()}
+          onRefetch={vi.fn()}
+        />
+      </HeroUIProvider>,
+    )
+
+  it('reads Finished when every coroutine completed or was cancelled', () => {
+    renderWith(finishedWith('COMPLETED', 'CANCELLED'))
+    expect(screen.getByText('Scenario finished')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /scenario finished/i })).toBeDisabled()
+  })
+
+  it('reads Failed in red — never green Completed — when any coroutine failed', () => {
+    renderWith(finishedWith('COMPLETED', 'FAILED', 'CANCELLED'))
+    expect(screen.getByText('Scenario failed: 1 coroutine failed')).toBeInTheDocument()
+    const button = screen.getByRole('button', { name: /scenario failed/i })
+    expect(button).toBeDisabled()
+    expect(button.className).toMatch(/danger/)
+    expect(button.className).not.toMatch(/success/)
+    expect(screen.queryByText(/completed/i)).toBeNull()
+  })
+
+  it('reads Failed as soon as a coroutine failed, even while others still run', () => {
+    renderWith(finishedWith('FAILED', 'ACTIVE'))
+    expect(screen.getByText('Scenario failed: 1 coroutine failed')).toBeInTheDocument()
+    expect(screen.queryByText('Scenario is running')).toBeNull()
+
+    renderWith(finishedWith('FAILED', 'WAITING_FOR_CHILDREN'))
+    expect(screen.getAllByText('Scenario failed: 1 coroutine failed')).toHaveLength(2)
+  })
+
+  it('counts several failures in the plural', () => {
+    renderWith(finishedWith('FAILED', 'FAILED'))
+    expect(screen.getByText('Scenario failed: 2 coroutines failed')).toBeInTheDocument()
+  })
+
+  it('announces a run that fails while it is watched, in one live region', () => {
+    const { rerender } = renderWith(finishedWith('ACTIVE', 'ACTIVE'))
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-atomic', 'true')
+    expect(status).toHaveTextContent('Scenario is running')
+
+    rerender(
+      <HeroUIProvider>
+        <ScenarioControls
+          sessionId="s-1"
+          scenarioId="exception-propagation"
+          session={finishedWith('FAILED', 'ACTIVE')}
+          onClearEvents={vi.fn()}
+          onRefetch={vi.fn()}
+        />
+      </HeroUIProvider>,
+    )
+    // The same region, so a screen reader hears the change.
+    expect(screen.getByRole('status')).toBe(status)
+    expect(status).toHaveTextContent('Scenario failed: 1 coroutine failed')
+  })
 })

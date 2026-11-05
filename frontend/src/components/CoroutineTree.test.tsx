@@ -60,8 +60,8 @@ describe('CoroutineTree', () => {
 
     render(<CoroutineTree coroutines={coroutines} />)
 
-    expect(screen.getByText('ACTIVE')).toBeInTheDocument()
-    expect(screen.getByText('COMPLETED')).toBeInTheDocument()
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Completed')).toBeInTheDocument()
   })
 
   it('renders nested tree with indentation', () => {
@@ -93,8 +93,30 @@ describe('CoroutineTree', () => {
 
     render(<CoroutineTree coroutines={coroutines} />)
 
-    expect(screen.getByText('WAITING_FOR_CHILDREN')).toBeInTheDocument()
+    expect(screen.getByText('Waiting for children')).toBeInTheDocument()
     expect(screen.getByText(/Waiting for.*child coroutine/)).toBeInTheDocument()
+  })
+
+  it('takes the waiting count from pendingChildCounts when the children are not rendered', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'p', label: 'WaitingParent', state: CoroutineState.WAITING_FOR_CHILDREN }),
+    ]
+
+    render(<CoroutineTree coroutines={coroutines} pendingChildCounts={new Map([['p', 2]])} />)
+
+    expect(screen.getByText(/Waiting for 2 child coroutine/)).toBeInTheDocument()
+  })
+
+  it('counts only unfinished rendered children when no snapshot counts are given', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'p', label: 'WaitingParent', state: CoroutineState.WAITING_FOR_CHILDREN }),
+      makeCoroutine({ id: 'a', label: 'Running', parentId: 'p', state: CoroutineState.ACTIVE }),
+      makeCoroutine({ id: 'x', label: 'Stopped', parentId: 'p', state: CoroutineState.CANCELLED }),
+    ]
+
+    render(<CoroutineTree coroutines={coroutines} />)
+
+    expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
   })
 
   it('shows failure indicator for FAILED state', () => {
@@ -108,7 +130,7 @@ describe('CoroutineTree', () => {
 
     render(<CoroutineTree coroutines={coroutines} />)
 
-    expect(screen.getByText('FAILED')).toBeInTheDocument()
+    expect(screen.getByText('Failed')).toBeInTheDocument()
     expect(screen.getByText('Coroutine Failed')).toBeInTheDocument()
     expect(
       screen.getByText(/Exception thrown.*will cancel parent and siblings/),

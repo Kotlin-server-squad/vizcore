@@ -142,6 +142,11 @@ describe('MutexStateIndicator', () => {
     expect(screen.getByText('Worker-1')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('5')).toBeInTheDocument()
+
+    // Holding a lock is normal work, not an error (spec Problem 8): neutral, never red.
+    const chip = screen.getByTestId('lock-status')
+    expect(chip.className).not.toMatch(/danger/)
+    expect(chip.className).toMatch(/default/)
   })
 
   it('renders unlocked state', () => {

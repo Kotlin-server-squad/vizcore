@@ -139,7 +139,16 @@ describe('CoroutineTreeGraph', () => {
 
     render(<CoroutineTreeGraph coroutines={coroutines} />)
 
-    expect(screen.getByText('2 coroutines actively running')).toBeInTheDocument()
+    expect(screen.getByText('2 active')).toBeInTheDocument()
+  })
+
+  it('does not count a parent waiting for its children as active', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'p', label: 'Parent', state: CoroutineState.WAITING_FOR_CHILDREN }),
+      makeCoroutine({ id: 'c', label: 'Child', parentId: 'p', state: CoroutineState.ACTIVE }),
+    ]
+    render(<CoroutineTreeGraph coroutines={coroutines} />)
+    expect(screen.getByText('1 active')).toBeInTheDocument()
   })
 
   it('renders SVG elements for connections', () => {

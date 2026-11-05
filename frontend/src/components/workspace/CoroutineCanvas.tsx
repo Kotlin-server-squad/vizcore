@@ -12,10 +12,14 @@ interface CoroutineCanvasProps {
   viewMode: 'graph' | 'list'
   /** Terminal coroutines collapsed out of the default active-only view (D-08). */
   completedCount: number
+  /** Nothing is live and the canvas shows the whole finished run (spec Part 1). */
+  allFinished?: boolean
   showCompleted: boolean
   onToggleCompleted: () => void
-  /** Active coroutines beyond the node cap. */
+  /** Coroutines the current view would show beyond the node cap. */
   moreCount: number
+  /** Unfinished children per parent over the whole snapshot (see `CoroutineTree`). */
+  pendingChildCounts?: ReadonlyMap<string, number>
   /** Which chip the state bar has active — decides which empty state is honest. */
   stateFilter: StateFilter
   /** A vizcore demo run, not the user's app: its empty state says to run the scenario. */
@@ -28,8 +32,9 @@ interface CoroutineCanvasProps {
 }
 
 /**
- * The workspace's default body (D-4): the active coroutine set, filtered by the
- * state bar, rendered as a tree or a graph.
+ * The workspace's default body (D-4): the active coroutine set — or, once
+ * nothing is live, the whole finished run — filtered by the state bar, rendered
+ * as a tree or a graph.
  *
  * Presentational — every derivation (the active/terminal split, the node cap,
  * the state filter) happens in the caller so this component cannot disagree
@@ -39,9 +44,11 @@ export function CoroutineCanvas({
   coroutines,
   viewMode,
   completedCount,
+  allFinished = false,
   showCompleted,
   onToggleCompleted,
   moreCount,
+  pendingChildCounts,
   stateFilter,
   isDemo = false,
   selectedCoroutineId,
@@ -51,8 +58,10 @@ export function CoroutineCanvas({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">What&apos;s running now</h3>
-        {completedCount > 0 && (
+        <h3 className="text-lg font-semibold">
+          {allFinished ? 'Everything has finished' : <>What&apos;s running now</>}
+        </h3>
+        {completedCount > 0 && !allFinished && (
           <Button
             size="sm"
             variant="flat"
@@ -71,14 +80,10 @@ export function CoroutineCanvas({
           "no app connected" empty state. */}
       {coroutines.length === 0 ? (
         stateFilter === 'all' ? (
-          // Say what is actually true: everything finished, a demo not run yet,
-          // or an app that has not sent anything yet.
-          completedCount > 0 ? (
-            <EmptyState
-              title="Nothing running now"
-              description={`All ${completedCount} coroutines in this session have finished. Use "Show completed" to see them.`}
-            />
-          ) : isDemo ? (
+          // Say what is actually true: a demo not run yet, or an app that has not
+          // sent anything yet. A finished run is never empty — it shows its
+          // coroutines.
+          isDemo ? (
             <EmptyState
               title="No coroutines yet"
               description="Run the scenario to see its coroutines here."
@@ -114,6 +119,7 @@ export function CoroutineCanvas({
                   coroutines={coroutines}
                   onSelect={onSelect}
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
+                  pendingChildCounts={pendingChildCounts}
                 />
               )}
             </div>
