@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useCreateSession } from '@/hooks/use-sessions'
 import type { Scenario } from '@/types/api'
@@ -17,6 +17,7 @@ export interface DemoStartError {
  * in `startError` for the caller to show, instead of becoming an unhandled
  * rejection (#139). One start at a time: a second one while the first is still
  * creating its session is ignored, or the slower answer would open the other demo.
+ * A start whose page is gone by the time its session exists does not navigate.
  */
 export function useStartDemo(onStarted?: () => void) {
   const createSession = useCreateSession()
@@ -24,6 +25,13 @@ export function useStartDemo(onStarted?: () => void) {
   const [preparing, setPreparing] = useState<string | null>(null)
   const [startError, setStartError] = useState<DemoStartError | null>(null)
   const inFlight = useRef(false)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const start = useCallback(
     async (scenario: Scenario) => {
@@ -33,6 +41,7 @@ export function useStartDemo(onStarted?: () => void) {
       setStartError(null)
       try {
         const result = await createSession.mutateAsync(`scenario-${scenario.name}`)
+        if (!mounted.current) return
         onStarted?.()
         navigate({
           to: '/sessions/$sessionId',
@@ -40,10 +49,10 @@ export function useStartDemo(onStarted?: () => void) {
           search: { scenarioId: scenario.id, scenarioName: scenario.name },
         })
       } catch (error) {
-        setStartError({ scenario: scenario.name, error })
+        if (mounted.current) setStartError({ scenario: scenario.name, error })
       } finally {
         inFlight.current = false
-        setPreparing(null)
+        if (mounted.current) setPreparing(null)
       }
     },
     [createSession, navigate, onStarted],

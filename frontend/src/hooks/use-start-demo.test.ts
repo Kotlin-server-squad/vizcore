@@ -88,4 +88,22 @@ describe('useStartDemo', () => {
     expect(navigate).toHaveBeenCalledTimes(1)
     expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ search: expect.objectContaining({ scenarioId: 'nested' }) }))
   })
+  it('does not navigate once its page is gone, so an abandoned start cannot pull the reader away', async () => {
+    let finish: (v: { sessionId: string }) => void = () => {}
+    mutateAsync.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+    const onStarted = vi.fn()
+    const { result, unmount } = renderHook(() => useStartDemo(onStarted))
+
+    let first: Promise<void> = Promise.resolve()
+    act(() => {
+      first = result.current.start(nested)
+    })
+    unmount()
+    await act(async () => {
+      finish({ sessionId: 'sid-1' })
+      await first
+    })
+    expect(navigate).not.toHaveBeenCalled()
+    expect(onStarted).not.toHaveBeenCalled()
+  })
 })

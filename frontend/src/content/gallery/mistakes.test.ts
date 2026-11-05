@@ -31,14 +31,32 @@ const detector = readFileSync(
   'utf8',
 )
 
+/** The function `name` declared in `source`, up to the next declaration in the class. */
+function body(source: string, name: string): string {
+  const start = source.indexOf(`fun ${name}(`)
+  if (start < 0) throw new Error(`AntiPatternDetector has no fun ${name}`)
+  const next = source.slice(start + 1).search(/\n {4}(?:\/\*\*|fun |private |internal )/)
+  return next < 0 ? source.slice(start) : source.slice(start, start + 1 + next)
+}
+
+/** The kinds reported by the rules `detectAll()` actually runs, not every kind the file mentions. */
+function reportedByDetectAll(source: string): string[] {
+  const rules = [...body(source, 'detectAll').matchAll(/\b(detect[A-Za-z]+)\(\)/g)].map((m) => m[1]!)
+  const kinds = rules.flatMap((rule) => [...body(source, rule).matchAll(/AntiPatternType\.([A-Z_]+)/g)].map((m) => m[1]!))
+  return [...new Set(kinds)].sort()
+}
+
 describe('common mistakes', () => {
   it('has exactly one entry per anti-pattern kind', () => {
     expect(MISTAKES.map((m) => m.id).sort()).toEqual([...ALL].sort())
   })
 
   it('marks as detected exactly the kinds the detector reports today', () => {
-    const reported = [...new Set([...detector.matchAll(/AntiPatternType\.([A-Z_]+)/g)].map((m) => m[1]))].sort()
+    const reported = reportedByDetectAll(detector)
     expect(reported.length).toBeGreaterThan(0)
+    // A rule detectAll() no longer runs is not detected, even if its function is still there.
+    const withoutExplosion = detector.replace('findings.addAll(detectCoroutineExplosion())', '')
+    expect(reportedByDetectAll(withoutExplosion)).not.toContain('COROUTINE_EXPLOSION')
     expect(MISTAKES.filter((m) => m.detected).map((m) => m.id).sort()).toEqual(reported)
   })
 

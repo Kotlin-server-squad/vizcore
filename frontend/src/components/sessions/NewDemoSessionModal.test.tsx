@@ -64,6 +64,15 @@ describe('NewDemoSessionModal', () => {
   })
 })
 
+describe('NewDemoSessionModal while a demo starts', () => {
+  it('disables the other Start buttons, one start at a time', async () => {
+    mutateAsync.mockReturnValue(new Promise(() => {}))
+    renderModal()
+    await userEvent.click(await screen.findByRole('button', { name: /start order processing/i }))
+    expect(screen.getByRole('button', { name: /start nested coroutines/i })).toBeDisabled()
+  })
+})
+
 describe('NewDemoSessionModal with the full catalog', () => {
   const all = catalog.scenarios
 

@@ -59,6 +59,8 @@ export function NewDemoSessionModal({
         size="sm"
         startContent={<FiPlay />}
         isLoading={preparing === scenario.id}
+        // One start at a time (useStartDemo ignores a second one).
+        isDisabled={preparing !== null && preparing !== scenario.id}
         onPress={() => void start(scenario)}
         // Names can repeat across groups (two Producer-Consumers), and 32 bare
         // "Start" buttons are indistinguishable to a screen reader.
