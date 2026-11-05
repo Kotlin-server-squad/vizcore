@@ -152,22 +152,25 @@ val demoCatalog: List<DemoCatalogEntry> =
             "channel",
             Demo(
                 "channel-rendezvous",
-                "Channel Rendezvous",
-                "Zero-buffer channel where sender and receiver must meet for each transfer. " +
-                    "Demonstrates suspension on both sides.",
-                "~2-3 seconds",
+                "Rendezvous: Chef and Waiter",
+                "The chef hands each plate to the waiter at the pass, a channel with no room: a plate changes " +
+                    "hands only when both are there. The waiter waits for the first plate; after that the chef " +
+                    "waits for the waiter with each plate.",
+                "~17 seconds",
             ),
             Demo(
                 "channel-buffered",
-                "Channel Buffered",
-                "Buffered channel (capacity 3) showing buffer fill/drain. Producer sends 5 items, consumer starts after delay.",
-                "~2-3 seconds",
+                "Buffered Channel: Print Queue",
+                "The office sends 8 jobs to a print queue with 5 slots, faster than the printer prints. The " +
+                    "queue fills up, the office waits for a free slot, and the printer drains the queue.",
+                "~23 seconds",
             ),
             Demo(
                 "channel-fan-out",
-                "Channel Fan-Out",
-                "Fan-out pattern: one producer dispatches 10 tasks, 3 workers compete to receive and process them.",
-                "~3-5 seconds",
+                "Fan-Out: Support Desk",
+                "12 support tickets go into one queue read by 3 agents. Each ticket goes to exactly one free " +
+                    "agent; in the morning rush all three are busy and new tickets wait in the queue.",
+                "~13 seconds",
             ),
         ) +
         group(

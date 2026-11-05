@@ -128,5 +128,34 @@
       { "label": "push-server", "state": "SUSPENDED", "depth": 1 },
       { "label": "profile-screen", "state": "SUSPENDED", "depth": 1 }
     ]
+  },
+  "channel-rendezvous": {
+    "atSeconds": 7,
+    "moment": "About 7 s in: the chef waits at the pass with the steak while the waiter is still serving",
+    "coroutines": [
+      { "label": "dinner-service", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "chef", "state": "ACTIVE", "depth": 1 },
+      { "label": "waiter", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "channel-buffered": {
+    "atSeconds": 7,
+    "moment": "About 7 s in: the queue is full, the office waits with job 8, the printer prints job 2",
+    "coroutines": [
+      { "label": "office-printing", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "office", "state": "ACTIVE", "depth": 1 },
+      { "label": "printer", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "channel-fan-out": {
+    "atSeconds": 2.3,
+    "moment": "About 2.3 s in: the morning rush, all three agents are busy and tickets wait in the queue",
+    "coroutines": [
+      { "label": "support-desk", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "ticket-inbox", "state": "SUSPENDED", "depth": 1 },
+      { "label": "agent-1", "state": "SUSPENDED", "depth": 1 },
+      { "label": "agent-2", "state": "SUSPENDED", "depth": 1 },
+      { "label": "agent-3", "state": "SUSPENDED", "depth": 1 }
+    ]
   }
 }

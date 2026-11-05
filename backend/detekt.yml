@@ -44,6 +44,8 @@ style:
       - '**/test/**'
       # The Basics demos' scripts: each number is the length of one step, in milliseconds.
       - '**/scenarios/BasicScenarios.kt'
+      # The Channels demos' scripts, the same way.
+      - '**/scenarios/ChannelScenarios.kt'
       # The Flow demos' scripts, the same way.
       - '**/scenarios/FlowScenarios.kt'
     ignorePropertyDeclaration: true

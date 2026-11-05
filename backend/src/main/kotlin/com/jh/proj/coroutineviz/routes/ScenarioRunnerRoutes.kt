@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.routes
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarioDurationTimerRef
 import com.jh.proj.coroutineviz.scenarios.BasicScenarios
+import com.jh.proj.coroutineviz.scenarios.ChannelScenarios
 import com.jh.proj.coroutineviz.scenarios.ScenarioConfigRequest
 import com.jh.proj.coroutineviz.scenarios.ScenarioExecutionResponse
 import com.jh.proj.coroutineviz.scenarios.ScenarioRunner
@@ -163,7 +164,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running channel rendezvous scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runChannelRendezvous(session)
+            ChannelScenarios.runRendezvous(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -181,7 +182,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running channel buffered scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runChannelBuffered(session)
+            ChannelScenarios.runBuffered(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -199,7 +200,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running channel fan-out scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runChannelFanOut(session)
+            ChannelScenarios.runFanOut(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
