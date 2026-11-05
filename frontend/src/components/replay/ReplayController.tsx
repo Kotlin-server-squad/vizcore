@@ -52,16 +52,19 @@ function formatElapsed(ms: number): string {
 }
 
 /**
- * True when the currently focused element is a text-entry surface, so replay
- * shortcuts must be suppressed (T-02-13). Mirrors standard log-viewer behavior.
+ * True when the focused element handles these keys itself, so replay
+ * shortcuts must be suppressed: a text-entry surface (T-02-13, mirrors
+ * standard log-viewer behavior), the dock's separator (arrows resize it) or a
+ * tab (arrows move between tabs).
  */
-function isFormFieldFocused(): boolean {
+function focusOwnsKeys(): boolean {
   const el = document.activeElement
   if (!el) return false
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if ((el as HTMLElement).isContentEditable) return true
-  return false
+  const role = el.getAttribute('role')
+  return role === 'separator' || role === 'tab'
 }
 
 export function ReplayController({
@@ -98,13 +101,13 @@ export function ReplayController({
   // ADR-017 keyboard shortcuts — active only while the controller is mounted
   // (i.e. replay is active). Suppressed inside form fields; Space prevents
   // page scroll. When the Slider itself has focus its native key handling wins
-  // (the Slider is an input-range, caught by isFormFieldFocused's INPUT guard).
+  // (the Slider is an input-range, caught by focusOwnsKeys's INPUT guard).
   useEffect(() => {
     // The scripted recording pipeline owns playback; do not bind shortcuts.
     if (isRecording) return
 
     const handler = (e: KeyboardEvent) => {
-      if (isFormFieldFocused()) return
+      if (focusOwnsKeys()) return
       if (isEmpty) return
 
       switch (e.key) {

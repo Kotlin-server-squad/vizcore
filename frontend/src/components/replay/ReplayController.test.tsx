@@ -144,6 +144,26 @@ describe('ReplayController — ADR-017 keyboard shortcuts', () => {
   })
 })
 
+describe('ReplayController — keys owned by the dock', () => {
+  it('leaves the arrow keys to a focused separator or tab', async () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <div role="separator" tabIndex={0} aria-label="Resize the dock" />
+        <button role="tab" type="button">Inspector</button>
+      </>,
+    )
+    screen.getByRole('separator').focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowLeft}{Home}{End}')
+    screen.getByRole('tab').focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowLeft}{Home}{End}')
+    expect(replay.stepForward).not.toHaveBeenCalled()
+    expect(replay.stepBack).not.toHaveBeenCalled()
+    expect(replay.seekTo).not.toHaveBeenCalled()
+  })
+})
+
 describe('ReplayController — recording state', () => {
   it('renders the recording cluster and disables playback when isRecording', () => {
     const onStopRecording = vi.fn()
