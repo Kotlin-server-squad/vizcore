@@ -95,9 +95,6 @@ vi.mock('./export/ExportMenu', () => ({
   ExportMenu: () => <div data-testid="export-menu">ExportMenu</div>,
 }))
 
-vi.mock('./StructuredConcurrencyInfo', () => ({
-  StructuredConcurrencyInfo: () => <div data-testid="structured-concurrency-info" />,
-}))
 
 vi.mock('./DispatcherOverview', () => ({
   DispatcherOverview: () => <div data-testid="dispatcher-overview" />,
@@ -673,13 +670,15 @@ describe('SessionWorkspace - threads evidence wire shape (UAT gap 1)', () => {
       wrapper: createWrapper(),
     })
 
-    // The threads panel is evidence now, not a tab — reachable with no click.
+    // The threads table is in the Evidence tab, under the Threads section.
+    await userEvent.click(screen.getByRole('tab', { name: /^Evidence/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /Threads · 2 names/ }))
     // 2. Thread names from the wire map are rendered (values, not test names)
-    expect(await screen.findByText('worker-1')).toBeInTheDocument()
-    expect(screen.getByText('worker-2')).toBeInTheDocument()
+    expect(await screen.findByText('worker-1')).toBeVisible()
+    expect(screen.getByText('worker-2')).toBeVisible()
 
-    // 3. At least one ASSIGNED chip is rendered
-    expect(screen.getAllByText('ASSIGNED').length).toBeGreaterThanOrEqual(1)
+    // 3. One assignment observed on each name
+    expect(screen.getByRole('row', { name: /worker-1/ })).toHaveTextContent(/worker-1\s*1\s*1\s*1/)
 
     // 1. The UAT-observed permanent empty state is gone
     expect(screen.queryByText('No thread activity data available yet')).toBeNull()
@@ -979,7 +978,7 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     mountSession([coro('a-active', 'ACTIVE')], 'checkout-service')
     // The defect this fixes: today these panels silently vanish, so the user
     // never learns a richer view exists.
-    expect(screen.getByText('Lock contention')).toBeInTheDocument()
+    expect(screen.getByTestId('evidence-section-Locks and permits')).toHaveTextContent('none captured')
     expect(screen.getByText(/Swap Mutex\(\) for VizMutex\(\)/)).toBeInTheDocument()
   })
 
@@ -1067,11 +1066,11 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(metrics).toHaveAttribute('data-session', 'session-1')
   })
 
-  it('puts the tree above the explanation', () => {
+  it('keeps the explanation in Learn, not above or beside the tree', async () => {
     mountSession([coro('a-active', 'ACTIVE')])
-    const tree = screen.getByTestId('coroutine-tree-graph')
-    const info = screen.getByTestId('structured-concurrency-info')
-    expect(tree.compareDocumentPosition(info) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByTestId('learn-legend')).not.toBeVisible()
+    await userEvent.click(screen.getByRole('tab', { name: 'Learn' }))
+    expect(screen.getByTestId('learn-legend')).toBeVisible()
   })
 
   it('mounts SessionMetrics exactly once (single /metrics poll — no double-mount, T-08.1-04)', () => {
@@ -1130,9 +1129,10 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
   })
 })
 
-describe('SessionWorkspace — the tabs are retired (spec: where the eight tabs go)', () => {
+describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mockedUseSession.mockReturnValue({
       data: makeSession({ coroutineCount: 1 }),
       isLoading: false,
@@ -1140,33 +1140,74 @@ describe('SessionWorkspace — the tabs are retired (spec: where the eight tabs 
     } as unknown as ReturnType<typeof useSession>)
   })
 
-  it('renders no tab bar in the live view', () => {
+  it('offers Inspector, Evidence, Events and Learn — Problems stays hidden until Part 7', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
-
-    expect(screen.queryByRole('tablist')).toBeNull()
-    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Inspector', 'Evidence', 'Events', 'Learn'])
+    expect(screen.queryByRole('tab', { name: /problems/i })).toBeNull()
   })
 
-  it('renders no tab bar in the read-only shared view', () => {
-    render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
-
-    expect(screen.queryByRole('tablist')).toBeNull()
-  })
-
-  it('renders no tab bar in replay', async () => {
+  it('keeps the same tabs in the shared view and in replay', async () => {
+    const { unmount } = render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
+    expect(screen.getAllByRole('tab')).toHaveLength(4)
+    unmount()
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
-
-    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.getAllByRole('tab')).toHaveLength(4)
   })
 
-  it('reaches the canvas, the events drawer, the inspector and the evidence with no navigation', () => {
+  it('opens an attached app on the Inspector, with the session summary', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('tab', { name: 'Inspector' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Select a coroutine to inspect it')).toBeVisible()
+    expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
+  })
 
-    expect(screen.getByText(/What's running now/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^events \(/i })).toBeInTheDocument()
-    expect(screen.getByText('Select a coroutine to inspect it')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Evidence' })).toBeInTheDocument()
+  it('opens a demo started with its scenario on Learn while it runs', () => {
+    render(<SessionWorkspace sessionId="session-1" scenarioId="basics/launch" scenarioName="Launch" />, {
+      wrapper: createWrapper(),
+    })
+    expect(screen.getByRole('tab', { name: 'Learn' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opens a failed demo on the Inspector', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({
+        coroutineCount: 1,
+        coroutines: [{ id: 'c-1', jobId: 'j', parentId: null, scopeId: 's', label: 'x', state: 'FAILED' as CoroutineState }],
+      }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="session-1" scenarioId="basics/launch" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('tab', { name: 'Inspector' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('remembers the tab the user picked for this session', async () => {
+    const { unmount } = render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('tab', { name: 'Events' }))
+    unmount()
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('tab', { name: 'Events' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('names what Evidence holds', async () => {
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({
+      data: [
+        { sessionId: 's', seq: 1, tsNanos: 1, kind: 'MutexCreated', mutexId: 'm-1', mutexLabel: null, ownerCoroutineId: null },
+        { sessionId: 's', seq: 2, tsNanos: 2, kind: 'SemaphoreCreated', semaphoreId: 'p-1', semaphoreLabel: null, totalPermits: 2 },
+      ],
+    } as unknown as ReturnType<typeof useSessionEvents>)
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('tab', { name: 'Evidence · 1 lock, 1 semaphore' })).toBeInTheDocument()
+  })
+
+  it('unfolds a folded dock when a tab is chosen', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Learn' }))
+    expect(screen.getByRole('button', { name: 'Fold the dock' })).toBeInTheDocument()
+    expect(screen.getByTestId('learn-legend')).toBeVisible()
   })
 
   it('never invites a selection that cannot work: replay and shared views say why (#145)', async () => {
@@ -1183,21 +1224,12 @@ describe('SessionWorkspace — the tabs are retired (spec: where the eight tabs 
     expect(screen.getByText(/paused during replay/i)).toBeInTheDocument()
   })
 
-  it('keeps the thread lanes reachable in replay', async () => {
+  it('reaches the dispatchers in replay through Evidence', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
-
-    expect(screen.getByRole('heading', { name: 'Evidence' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /^Evidence/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Dispatchers/ }))
     expect(screen.getByTestId('dispatcher-overview')).toBeInTheDocument()
-  })
-
-  it('offers the checks report from the header instead of a Validation tab', async () => {
-    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
-
-    expect(screen.queryByRole('tab', { name: /validation/i })).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
-    await userEvent.click(await screen.findByRole('menuitem', { name: /checks/i }))
-    expect(await screen.findByRole('heading', { name: /session checks/i })).toBeInTheDocument()
   })
 })
 
@@ -1240,7 +1272,7 @@ describe('SessionWorkspace — header, main view and dock (S-1)', () => {
   it('folds the dock to its bar', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
-    expect(screen.getByTestId('inspector-slot')).not.toBeVisible()
+    expect(screen.getByRole('tabpanel', { name: 'Inspector', hidden: true })).not.toBeVisible()
     expect(screen.getByRole('button', { name: 'Unfold the dock' })).toBeInTheDocument()
   })
 
