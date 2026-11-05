@@ -50,7 +50,7 @@ function ActionEditor({
   }
 
   return (
-    <div className="flex items-start gap-2 p-2 bg-gray-50 rounded border">
+    <div className="flex items-start gap-2 p-2 bg-content2 rounded border">
       <select
         value={action.type}
         onChange={(e) => handleTypeChange(e.target.value as ActionType)}
@@ -172,11 +172,11 @@ function CoroutineNodeEditor({
 
   return (
     <div className="border-l-2 border-blue-300 pl-4" style={{ marginLeft: `${indent}px` }}>
-      <div className="mb-4 p-4 bg-white border rounded-lg shadow-sm">
+      <div className="mb-4 p-4 bg-content1 border rounded-lg shadow-sm">
         {/* Node Header */}
         <div className="flex items-center gap-2 mb-3">
           <div className="flex-1 flex items-center gap-2">
-            <span className="text-sm font-semibold text-gray-600">Coroutine:</span>
+            <span className="text-sm font-semibold text-default-500">Coroutine:</span>
             <input
               type="text"
               value={node.label}
@@ -198,17 +198,17 @@ function CoroutineNodeEditor({
         {/* Actions */}
         <div className="mb-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-gray-600">Actions:</span>
+            <span className="text-sm font-semibold text-default-500">Actions:</span>
             <button
               onClick={addAction}
-              className="px-2 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="px-2 py-1 text-sm bg-primary text-primary-foreground rounded hover:opacity-90"
             >
               + Add Action
             </button>
           </div>
           <div className="space-y-2">
             {node.actions.length === 0 && (
-              <p className="text-sm text-gray-400 italic">No actions yet</p>
+              <p className="text-sm text-default-400 italic">No actions yet</p>
             )}
             {node.actions.map((action, index) => (
               <ActionEditor
@@ -224,7 +224,7 @@ function CoroutineNodeEditor({
         {/* Add Child Button */}
         <button
           onClick={addChild}
-          className="w-full px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+          className="w-full px-3 py-2 bg-success text-success-foreground rounded hover:opacity-90"
         >
           + Add Child Coroutine
         </button>
@@ -301,16 +301,16 @@ export function ScenarioBuilder() {
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Scenario Builder</h1>
-        <p className="text-gray-600">
+        <p className="text-default-500">
           Build custom coroutine scenarios with delays, exceptions, and nested hierarchies
         </p>
       </div>
 
       {/* Scenario Metadata */}
-      <div className="mb-6 p-4 bg-white border rounded-lg shadow-sm">
+      <div className="mb-6 p-4 bg-content1 border rounded-lg shadow-sm">
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-semibold text-gray-600 mb-1">
+            <label className="block text-sm font-semibold text-default-500 mb-1">
               Scenario Name
             </label>
             <input
@@ -322,7 +322,7 @@ export function ScenarioBuilder() {
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-600 mb-1">
+            <label className="block text-sm font-semibold text-default-500 mb-1">
               Description (optional)
             </label>
             <textarea
@@ -350,14 +350,14 @@ export function ScenarioBuilder() {
         <button
           onClick={handleExecute}
           disabled={executeMutation.isPending}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold"
+          className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:bg-default-300 font-semibold"
         >
           {executeMutation.isPending ? 'Executing...' : '▶ Execute Scenario'}
         </button>
 
         <button
           onClick={handleExportJson}
-          className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold"
+          className="px-6 py-3 bg-default-500 text-white rounded-lg hover:opacity-90 font-semibold"
         >
           📥 Export JSON
         </button>
@@ -365,7 +365,7 @@ export function ScenarioBuilder() {
         <button
           // Back to the sessions list: /scenarios only redirects there (#139).
           onClick={() => navigate({ to: '/' })}
-          className="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-semibold"
+          className="px-6 py-3 bg-default-200 text-foreground rounded-lg hover:bg-default-300 font-semibold"
         >
           Cancel
         </button>

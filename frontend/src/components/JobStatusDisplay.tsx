@@ -47,7 +47,7 @@ export function JobStatusDisplay({
 
       {/* Additional Details */}
       {showDetails && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-2 text-xs text-default-500">
           {node.currentThreadName && (
             <span className="flex items-center gap-1">
               <ThreadIcon className="w-3 h-3" />
@@ -75,8 +75,8 @@ function getStateConfig(state: CoroutineState) {
       return {
         label: 'Created',
         icon: <CircleIcon />,
-        bgColor: 'bg-gray-200 dark:bg-gray-700',
-        textColor: 'text-gray-700 dark:text-gray-300',
+        bgColor: 'bg-default-200',
+        textColor: 'text-default-600',
       }
     case 'ACTIVE':
       return {
@@ -124,8 +124,8 @@ function getStateConfig(state: CoroutineState) {
       return {
         label: 'Unknown',
         icon: <CircleIcon />,
-        bgColor: 'bg-gray-200 dark:bg-gray-700',
-        textColor: 'text-gray-700 dark:text-gray-300',
+        bgColor: 'bg-default-200',
+        textColor: 'text-default-600',
       }
   }
 }

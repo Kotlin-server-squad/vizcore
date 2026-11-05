@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { FiAlertOctagon } from 'react-icons/fi'
 import { deadlockEdge, pathHighlight } from '@/lib/animation-variants'
 import type { DeadlockDetected } from '@/types/api'
+import { vizColors } from '@/styles/palette'
 
 interface DeadlockVisualizationProps {
   deadlock: DeadlockDetected
@@ -126,7 +127,7 @@ export function DeadlockVisualization({ deadlock }: DeadlockVisualizationProps) 
             {/* Arrow marker */}
             <defs>
               <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-                <polygon points="0 0, 8 3, 0 6" fill="#ef4444" />
+                <polygon points="0 0, 8 3, 0 6" fill={vizColors.deadlockEdge} />
               </marker>
             </defs>
 
@@ -137,8 +138,8 @@ export function DeadlockVisualization({ deadlock }: DeadlockVisualizationProps) 
                   cx={node.x}
                   cy={node.y}
                   r={node.type === 'coroutine' ? 20 : 14}
-                  fill={node.type === 'coroutine' ? '#fecaca' : '#fde68a'}
-                  stroke={node.type === 'coroutine' ? '#ef4444' : '#f59e0b'}
+                  fill={node.type === 'coroutine' ? vizColors.deadlockCoroutineFill : vizColors.deadlockLockFill}
+                  stroke={node.type === 'coroutine' ? vizColors.deadlockCoroutineStroke : vizColors.deadlockLockStroke}
                   strokeWidth={2}
                   variants={pathHighlight}
                   initial="hidden"
