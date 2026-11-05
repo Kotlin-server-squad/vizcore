@@ -142,6 +142,11 @@ export function SessionMetrics({
   )
 }
 
+/**
+ * One metric tile: its label and value as a term and its definition. The gap
+ * keeps them apart — the card shrinks to its content, so a `justify-between`
+ * row alone left none ("Active0").
+ */
 function MetricCard({
   icon,
   label,
@@ -154,13 +159,13 @@ function MetricCard({
   return (
     <Card>
       <CardBody>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-default-600">
+        <dl className="flex items-center justify-between gap-3">
+          <dt className="flex items-center gap-2 text-sm text-default-600">
             {icon}
             <span>{label}</span>
-          </div>
-          {value}
-        </div>
+          </dt>
+          <dd>{value}</dd>
+        </dl>
       </CardBody>
     </Card>
   )
