@@ -85,7 +85,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
 
   it('offers all 32 demos, each with its own Start button', async () => {
     renderModal()
-    await screen.findByText('Simple Flow')
+    await screen.findByText('Simple Flow: Stock Ticker')
     expect(all).toHaveLength(32)
     expect(screen.getAllByRole('button', { name: /start/i })).toHaveLength(32)
     for (const demo of all) {
@@ -96,7 +96,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
 
   it('names each Start button after its demo and group, so screen readers can tell them apart', async () => {
     renderModal()
-    await screen.findByText('Simple Flow')
+    await screen.findByText('Simple Flow: Stock Ticker')
     const names = screen.getAllByRole('button', { name: /^start /i }).map((b) => b.getAttribute('aria-label'))
     expect(new Set(names).size).toBe(32)
     expect(screen.getByRole('button', { name: 'Start Producer-Consumer (Patterns)' })).toBeInTheDocument()
@@ -105,7 +105,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
 
   it('groups the demos in the order of the catalog', async () => {
     renderModal()
-    await screen.findByText('Simple Flow')
+    await screen.findByText('Simple Flow: Stock Ticker')
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
       'Real life',
       'Basics',
@@ -132,7 +132,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
     ['Combined', 'sync/combined/ecommerce'],
   ])('starts a %s demo (%s) in a new demo session that runs that demo', async (label, id) => {
     renderModal()
-    await screen.findByText('Simple Flow')
+    await screen.findByText('Simple Flow: Stock Ticker')
     const demo = all.find((s) => s.id === id)!
     const row = within(sectionOf(label)).getByText(demo.name).closest('[data-demo-row]') as HTMLElement
     await userEvent.click(within(row).getByRole('button', { name: /start/i }))

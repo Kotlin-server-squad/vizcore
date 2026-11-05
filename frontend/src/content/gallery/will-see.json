@@ -89,6 +89,46 @@
       { "label": "download-photo-3", "state": "SUSPENDED", "depth": 2 }
     ]
   },
+  "flow/simple": {
+    "atSeconds": 6,
+    "moment": "About 6 s in: both screens are collecting; each waits for its next price",
+    "coroutines": [
+      { "label": "stock-ticker", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "price-chart", "state": "SUSPENDED", "depth": 1 },
+      { "label": "price-alert", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "flow/operators": {
+    "atSeconds": 8,
+    "moment": "About 8 s in: the user thinks, while the search service looks up \"kotlin\"",
+    "coroutines": [
+      { "label": "search-screen", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "show-results", "state": "SUSPENDED", "depth": 1 },
+      { "label": "type-query", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "flow/stateflow": {
+    "atSeconds": 8.5,
+    "moment": "About 8.5 s in: the badge and the checkout show 52 and wait for the next total",
+    "coroutines": [
+      { "label": "shopping-cart", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "cart-badge", "state": "ACTIVE", "depth": 1 },
+      { "label": "add-items", "state": "SUSPENDED", "depth": 1 },
+      { "label": "checkout-summary", "state": "ACTIVE", "depth": 1 }
+    ]
+  },
+  "flow/sharedflow": {
+    "atSeconds": 8,
+    "moment": "About 8 s in: the third notification reaches all four screens at once, and each draws it",
+    "coroutines": [
+      { "label": "notification-center", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "home-screen", "state": "SUSPENDED", "depth": 1 },
+      { "label": "chat-screen", "state": "SUSPENDED", "depth": 1 },
+      { "label": "settings-screen", "state": "SUSPENDED", "depth": 1 },
+      { "label": "push-server", "state": "SUSPENDED", "depth": 1 },
+      { "label": "profile-screen", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
   "channel-rendezvous": {
     "atSeconds": 7,
     "moment": "About 7 s in: the chef waits at the pass with the steak while the waiter is still serving",

@@ -73,8 +73,9 @@ class InstrumentedStateFlow<T>(
     override val replayCache: List<T>
         get() = delegate.replayCache
 
+    // Live, as on the MutableStateFlow: collect subscribes to the delegate, so its count follows the collectors.
     override val subscriptionCount: StateFlow<Int>
-        get() = MutableStateFlow(subscriberCount.get())
+        get() = delegate.subscriptionCount
 
     // ========================================================================
     // MutableStateFlow - Value Updates

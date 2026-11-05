@@ -2,7 +2,6 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarios.FlowScenarios
-import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.HttpStatusCode
@@ -14,29 +13,29 @@ import io.ktor.server.routing.get
 fun Route.registerFlowScenarioRoutes() {
     demoPost("/api/scenarios/flow/simple") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-simple")
-        val scope = session.demoScope()
-        FlowScenarios.simpleFlow(scope)
+        // Answers once the demo has ended, as the Flow demos always have.
+        FlowScenarios.simpleFlow(session).join()
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("Simple Flow completed"))
     }
 
     demoPost("/api/scenarios/flow/operators") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-operators")
-        val scope = session.demoScope()
-        FlowScenarios.flowOperators(scope)
+        // Answers once the demo has ended, as the Flow demos always have.
+        FlowScenarios.flowOperators(session).join()
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("Flow Operators completed"))
     }
 
     demoPost("/api/scenarios/flow/stateflow") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-stateflow")
-        val scope = session.demoScope()
-        FlowScenarios.stateFlowDemo(scope)
+        // Answers once the demo has ended, as the Flow demos always have.
+        FlowScenarios.stateFlowDemo(session).join()
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("StateFlow demo completed"))
     }
 
     demoPost("/api/scenarios/flow/sharedflow") {
         val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "flow-sharedflow")
-        val scope = session.demoScope()
-        FlowScenarios.sharedFlowDemo(scope)
+        // Answers once the demo has ended, as the Flow demos always have.
+        FlowScenarios.sharedFlowDemo(session).join()
         call.respond(HttpStatusCode.OK, session.toCompletionResponse("SharedFlow demo completed"))
     }
 
@@ -48,35 +47,35 @@ fun Route.registerFlowScenarioRoutes() {
                     listOf(
                         mapOf(
                             "id" to "flow/simple",
-                            "name" to "Simple Flow",
-                            "description" to "Emit and collect 5 values from a cold Flow",
+                            "name" to "Simple Flow: Stock Ticker",
+                            "description" to "A cold flow sends six prices to each screen that collects it",
                             "endpoint" to "/api/scenarios/flow/simple",
                             "category" to "flow",
-                            "duration" to "~1s",
+                            "duration" to "~16s",
                         ),
                         mapOf(
                             "id" to "flow/operators",
-                            "name" to "Flow Operators",
-                            "description" to "Chain map and filter operators on a flow",
+                            "name" to "Flow Operators: Search as You Type",
+                            "description" to "Keystrokes are debounced, filtered and mapped to search results",
                             "endpoint" to "/api/scenarios/flow/operators",
                             "category" to "flow",
-                            "duration" to "~1s",
+                            "duration" to "~14s",
                         ),
                         mapOf(
                             "id" to "flow/stateflow",
-                            "name" to "StateFlow",
-                            "description" to "Mutable state with multiple observers",
+                            "name" to "StateFlow: Shopping Cart",
+                            "description" to "The cart total always has a value; a late subscriber gets the latest at once",
                             "endpoint" to "/api/scenarios/flow/stateflow",
                             "category" to "flow",
-                            "duration" to "~2s",
+                            "duration" to "~12s",
                         ),
                         mapOf(
                             "id" to "flow/sharedflow",
-                            "name" to "SharedFlow",
-                            "description" to "Broadcast events to multiple subscribers",
+                            "name" to "SharedFlow: Notifications",
+                            "description" to "Every open screen gets each notification at the same moment",
                             "endpoint" to "/api/scenarios/flow/sharedflow",
                             "category" to "flow",
-                            "duration" to "~2s",
+                            "duration" to "~14s",
                         ),
                     ),
             ),

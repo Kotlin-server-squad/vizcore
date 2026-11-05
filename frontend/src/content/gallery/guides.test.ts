@@ -7,16 +7,16 @@ import { CoroutineState } from '@/types/api'
 import catalog from '@/test/demo-catalog.json'
 
 const ids = new Set(catalog.scenarios.map((s) => s.id))
-/** The groups whose demos all have a guide so far; the others follow as their stories are written. */
-const GUIDED_GROUPS = ['basics', 'channels']
-const guided = catalog.scenarios.filter((s) => GUIDED_GROUPS.includes(s.group)).map((s) => s.id)
+/** The groups whose demos all have a guide, with how many demos each has. */
+const GUIDED_GROUPS = { basics: 7, channels: 3, flow: 4 }
+const guided = (group: string) => catalog.scenarios.filter((s) => s.group === group).map((s) => s.id)
 /** The step markers in a snippet: `// 1`, `// 2` … (a duration is written `// takes 8 s`). */
 const markers = (code: string) => [...code.matchAll(/\/\/\s*(\d+)\b/g)].map((m) => Number(m[1]))
 
 describe('gallery guides', () => {
-  it('has a guide for every Basics and Channels demo', () => {
-    expect(guided).toHaveLength(10)
-    for (const id of guided) expect(GUIDES[id], id).toBeDefined()
+  it.each(Object.entries(GUIDED_GROUPS))('has a guide for every demo in %s', (group, count) => {
+    expect(guided(group)).toHaveLength(count)
+    for (const id of guided(group)) expect(GUIDES[id], id).toBeDefined()
   })
 
   it('keys every guide by its own demo id, which the catalog serves', () => {

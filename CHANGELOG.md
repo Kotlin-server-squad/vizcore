@@ -18,6 +18,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Light mode: a ☾ / ☀ switch in the top bar changes between the dark and the new light theme; dark stays the default and the choice is remembered in the browser. Exported PNG and SVG, and recorded replays, keep the dark look
 - The Gallery is back as a page (`/gallery`), linked with Sessions in the top bar: every demo by topic, in tabs that follow the server's groups and stay in the URL (`?group=basics`), each with Run. A "Common mistakes" tab explains the 10 mistakes the anti-pattern detector knows, what goes wrong and what to do instead; the five it detects today are marked, and their demos are still to come. Links such as `/gallery?group=mistakes#LEAKED_COROUTINE` open one mistake
 - "How it works" pages for the 7 Basics demos (`/gallery/nested`, `/gallery/deep-nesting`, …), linked from their Gallery cards: the story, the code with numbered steps, what the session tree shows at one moment of the run, the key idea and a related common mistake, with Run this example. A backend test runs each demo and checks that every coroutine the page pictures is really created at the depth it is drawn at
+- "How it works" pages for the 4 Flow demos (`/gallery/flow-simple`, `/gallery/flow-operators`, `/gallery/flow-stateflow`, `/gallery/flow-sharedflow`), checked against real runs like the Basics pages
 
 #### Production Hardening
 - Session TTL with automatic cleanup via `RetentionPolicy` (configurable via `SESSION_MAX_AGE_MS`, `SESSION_MAX_COUNT`)
@@ -72,6 +73,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - The seven Basics demos tell an everyday story and run at a pace you can follow: 12-16 s each, in steps of 0.5-3 s, where most used to end within a second and showed a finished tree straight away. Their coroutines are named after the story: Nested is a product page (`load-product-page`, `fetch-price`, `fetch-review-photos`), Parallel a dashboard, Cancellation a user closing a screen, Deep Nesting a search indexer walking folders, Mixed a checkout, Exception one backend call failing (`fetch-loyalty-points` answers HTTP 500), and Dispatchers photo thumbnails downloaded on IO and resized on Default
 - The three Channels demos tell an everyday story at a pace you can follow, 13-23 s each, where they used to end within two seconds, and each has a How it works page (`/gallery/channel-rendezvous`, …). Rendezvous is a chef handing plates to a waiter (`chef`, `waiter`) who must both be at the pass; Buffered a print queue with 5 slots that fills while the `office` sends faster than the `printer` prints; Fan-Out a support desk where 12 tickets go to 3 agents (`agent-1` … `agent-3`), each to exactly one, and wait in the queue in the morning rush
+- The four Flow demos tell an everyday story at a pace you can follow, 12-16 s each in steps of 0.5-3 s: Simple Flow is a stock ticker (a cold flow runs again, from the first price, for a screen that collects later), Operators is search as you type (`debounce`, `filter`, `map`, stopping after the results for the whole query), StateFlow a shopping cart (a checkout opened later gets the latest total at once) and SharedFlow notifications to every open screen (a screen opened later gets only what follows). They still answer once the demo has ended
 - License: the whole repository is Apache License 2.0, with `LICENSE` and `NOTICE` at the root; the frontend was MIT before
 - Backend Dockerfile `ENTRYPOINT` now supports `$JAVA_OPTS` environment variable
 - Docker prod health check uses `/health` instead of `/`
@@ -87,6 +89,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - A channel never reports more elements than it can hold: where a send met a receive, the two updates of the buffer counter could land in either order, so a rendezvous channel showed a filled slot, a full buffer one element more than its capacity, or the size went negative
+- `InstrumentedStateFlow.subscriptionCount` follows its collectors; it returned a snapshot taken when it was read, so waiting on it for a new collector never ended
 - ESLint no longer lints build output in `dist/`
 - Tab navigation restored for Events and Threads panels
 

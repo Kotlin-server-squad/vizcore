@@ -46,6 +46,8 @@ style:
       - '**/scenarios/BasicScenarios.kt'
       # The Channels demos' scripts, the same way.
       - '**/scenarios/ChannelScenarios.kt'
+      # The Flow demos' scripts, the same way.
+      - '**/scenarios/FlowScenarios.kt'
     ignorePropertyDeclaration: true
     ignoreCompanionObjectPropertyDeclaration: true
     ignoreAnnotation: true

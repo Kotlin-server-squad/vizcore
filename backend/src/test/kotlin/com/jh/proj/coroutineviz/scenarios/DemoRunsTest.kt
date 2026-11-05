@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.scenarios
 
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
+import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -223,6 +224,18 @@ class DemoRunsTest {
                     .filterIsInstance<CoroutineSuspended>()
                     .single()
             assertEquals(200L, suspended.durationMillis, "2 s of scripted time at a time scale of 0.1")
+            session.close()
+        }
+
+    /** An operator that waits in real time, such as debounce, must keep the demo's pace too. */
+    @Test
+    fun `scaled gives a real-time wait the run's time scale, and leaves it as scripted outside a demo`() =
+        runBlocking {
+            val session = VizSession("demo-runs-scaled")
+            val run = assertNotNull(DemoRuns(maxConcurrent = 0, timeScale = 0.1).tryStart())
+
+            assertEquals(120L, withContext(run) { session.demoScope().scaled(1_200) })
+            assertEquals(1_200L, VizScope(session).scaled(1_200))
             session.close()
         }
 
