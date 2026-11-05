@@ -21,6 +21,8 @@ export interface ReplayState {
   progress: number
   /** Events from index 0 up to and including currentIndex */
   visibleEvents: VizEvent[]
+  /** Every event being replayed (the frozen snapshot) */
+  events: VizEvent[]
   /** Total number of events */
   totalEvents: number
 }
@@ -188,6 +190,7 @@ export function useReplay(events: VizEvent[]): UseReplayReturn {
     speed,
     progress,
     visibleEvents,
+    events,
     totalEvents: events.length,
     play,
     pause,
