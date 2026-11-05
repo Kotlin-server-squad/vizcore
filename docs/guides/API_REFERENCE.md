@@ -51,9 +51,93 @@ Response `200`:
       "label": "root",
       "state": "COMPLETED"
     }
-  ]
+  ],
+  "kind": "ATTACHED",
+  "startedAtEpochMs": 1792000000000,
+  "captureStartAppNanos": 512000000000,
+  "origin": "REPORTED",
+  "appConnected": true,
+  "lastIngestEpochMs": 1792000012345,
+  "lastWatermark": { "appNanos": 524000000000, "appEpochMs": 1792000012300, "receivedEpochMs": 1792000012310 },
+  "oldestRetainedSeq": 1,
+  "trimmed": false
 }
 ```
+
+The session facts (spec 2026-10-21, C-3): `kind` is `DEMO` for vizcore's own runs (`scenario-…` ids) and
+`ATTACHED` otherwise; `captureStartAppNanos` is the app-clock time of the earliest event captured, the origin of
+"time into the capture" (`null` when unknown); `origin` is `REPORTED` once the producer reports coroutine origins
+(always for demos), else `UNKNOWN`; `appConnected` says whether the app's ingest socket is open on this backend now;
+`lastIngestEpochMs` is when the last event frame arrived; `lastWatermark` is the SDK's latest poll watermark;
+`trimmed` says older events were dropped (`oldestRetainedSeq` is the oldest one kept). The share payload's `session`
+has the same shape.
+
+### Get Session Health
+
+```
+GET /api/sessions/{id}/health[?atSeq=N][&leakThresholdMs=M]
+```
+
+The session's derived health (spec 2026-10-21, C-3), for a refetch at most once per second: failed rounds, ungrouped
+failures and possibly blocked coroutines (`incidents`, failures first, newest first), observations (long-lived,
+long-suspended), origin counts, transport and retention facts. Every list is capped at 50 with its `total`. Without
+`atSeq` the health is live; with it, the health at that event (clamped to the last one), where possibly blocked is not
+evaluated (`REPLAY`). `leakThresholdMs` works as on `/metrics`.
+
+Response `200` (trimmed to one incident):
+```json
+{
+  "state": "PROBLEMS",
+  "asOf": { "kind": "LAST_EVENT", "appNanos": 4000000000, "appEpochMs": null, "receivedEpochMs": null, "seq": 31, "lowerBound": false },
+  "asOfSeq": 31,
+  "sessionOrigin": "REPORTED",
+  "problemCount": 1,
+  "failedRoundCount": 1,
+  "ungroupedFailureCount": 0,
+  "possiblyBlockedCount": 0,
+  "incidents": {
+    "items": [
+      {
+        "type": "FAILED_ROUND",
+        "id": "failed:round:c-1",
+        "roundId": "round:c-1",
+        "anchorId": "c-1",
+        "failures": {
+          "items": [
+            { "coroutineId": "c-4", "name": "payment", "exceptionType": "java.lang.IllegalStateException",
+              "message": "Payment declined", "failedAtSeq": 28, "detailsDropped": false }
+          ],
+          "total": 1
+        },
+        "cancelledAfter": { "items": ["c-5"], "total": 1 },
+        "firstFailureSeq": 28,
+        "sortSeq": 28
+      }
+    ],
+    "total": 1
+  },
+  "possiblyBlocked": { "status": "NOT_EVALUATED", "reason": "DEMO" },
+  "observations": { "longLived": { "items": [], "total": 0 }, "longSuspended": { "items": [], "total": 0 } },
+  "counts": { "app": 6, "vizcore": 0, "unknown": 0, "untracked": 0 },
+  "failuresAtLeast": false,
+  "vizcoreConnection": { "captured": 0, "failed": 0, "failures": { "items": [], "total": 0 } },
+  "transport": { "lostEvents": 0, "deliveryUncertain": false, "sinceSeq": null },
+  "roundCount": 1,
+  "problemRoundCount": 1,
+  "problemRounds": { "items": [{ "roundId": "round:c-1", "anchorId": "c-1", "anchorCreatedNanos": 1000000, "kinds": ["FAILED"] }], "total": 1 },
+  "asOfWatermark": null,
+  "retention": { "oldestRetainedSeq": 1, "oldestRetainedAppNanos": 1000000, "trimmed": false }
+}
+```
+
+`possiblyBlocked.reason` is one of `REPLAY`, `DEMO`, `EVENTS_DROPPED`, `HISTORY_TRIMMED`, `OVERFLOW`, `NO_WATERMARK`
+(highest precedence first). An app that has not sent a poll watermark (SDKs before triage) reads `NO_WATERMARK` while
+connected; once its connection ends without a final watermark, delivery is uncertain for the rest of the session
+(`transport.deliveryUncertain`, failures read "at least").
+
+Responses: `400` when `atSeq` is not a non-negative integer, `404` when the session is unknown, `503` with
+`code: "summaries-unavailable"` when the session's summaries were abandoned, or `code: "history-trimmed"` for a
+database session whose early events were trimmed (its health returns once summaries are persisted, Part 5b).
 
 ### Delete Session
 
@@ -112,6 +196,8 @@ Behavior:
 1. Replays all stored events (history)
 2. Streams live events filtered by sequence number (no duplicates)
 3. Each SSE message includes `data`, `event` (kind), and `id` fields
+4. The app's poll watermarks arrive as `event: watermark` frames without an `id`, data
+   `{"appNanos", "appEpochMs", "receivedEpochMs"}`: a signal to refetch the session's health
 
 ---
 

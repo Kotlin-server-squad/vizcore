@@ -91,6 +91,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{id}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The session's derived health, live or at a replay cursor
+         * @description What the captured coroutines show (spec 2026-10-21, C-3): failed rounds, ungrouped failures and possibly blocked coroutines, observations, origin counts, transport and retention facts; every list is capped at 50 with its total. Without atSeq the health is live; with it, it is the fold of the retained events up to the cursor (clamped to the last event), seeded from the durable summaries for coroutines whose creation was trimmed.
+         */
+        get: operations["getSessionHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{id}/coroutines/{coroutineId}/timeline": {
         parameters: {
             query?: never;
@@ -418,6 +438,11 @@ export interface components {
         };
         ErrorResponse: {
             error: string;
+            /**
+             * @description Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s)
+             * @enum {string}
+             */
+            code?: "demo-limit" | "demo-time-limit" | "summaries-unavailable" | "history-trimmed";
         };
         /** @enum {string} */
         CoroutineState: "CREATED" | "ACTIVE" | "SUSPENDED" | "WAITING_FOR_CHILDREN" | "COMPLETED" | "CANCELLED" | "FAILED";
@@ -434,6 +459,34 @@ export interface components {
             coroutineCount: number;
             eventCount: number;
             coroutines: components["schemas"]["CoroutineNodeDto"][];
+            kind: components["schemas"]["SessionKind"];
+            /**
+             * Format: int64
+             * @description When the session was created (backend wall clock)
+             */
+            startedAtEpochMs: number;
+            /**
+             * Format: int64
+             * @description App-clock time of the earliest event captured; null when unknown
+             */
+            captureStartAppNanos: number | null;
+            origin: components["schemas"]["SessionOrigin"];
+            /** @description Whether an app's ingest socket is open on this backend right now */
+            appConnected: boolean;
+            /**
+             * Format: int64
+             * @description Backend receipt time of the last event frame from the app
+             */
+            lastIngestEpochMs: number | null;
+            /** @description The app's latest poll watermark */
+            lastWatermark: components["schemas"]["WatermarkObservation"] | null;
+            /**
+             * Format: int64
+             * @description Seq of the oldest event still retained
+             */
+            oldestRetainedSeq: number | null;
+            /** @description Whether older events were dropped */
+            trimmed: boolean;
         };
         HierarchyNode: {
             id: string;
@@ -688,6 +741,289 @@ export interface components {
             /** @description Reason for suspension (e.g. "delay", "withContext", "join", "await") */
             reason: string;
         } | null;
+        /**
+         * @description ATTACHED for a connected app's session, DEMO for vizcore's own runs
+         * @enum {string}
+         */
+        SessionKind: "ATTACHED" | "DEMO";
+        /**
+         * @description REPORTED when the producer reports coroutine origins (or for demos)
+         * @enum {string}
+         */
+        SessionOrigin: "REPORTED" | "UNKNOWN";
+        /** @description An SDK poll watermark (spec C-7) */
+        WatermarkObservation: {
+            /**
+             * Format: int64
+             * @description Poll time on the app clock
+             */
+            appNanos: number;
+            /**
+             * Format: int64
+             * @description The app's wall-clock time of that poll
+             */
+            appEpochMs: number;
+            /**
+             * Format: int64
+             * @description When the backend received it
+             */
+            receivedEpochMs: number;
+        };
+        /** @enum {string} */
+        AsOfKind: "WATERMARK" | "INGEST" | "LAST_EVENT" | "REPLAY_CURSOR";
+        /** @description The observation a health statement is about (spec H-2) */
+        AsOf: {
+            kind: components["schemas"]["AsOfKind"];
+            /**
+             * Format: int64
+             * @description Latest app-clock time observed in the events up to seq
+             */
+            appNanos: number;
+            /**
+             * Format: int64
+             * @description The app's wall-clock time of the observation, when known
+             */
+            appEpochMs: number | null;
+            /**
+             * Format: int64
+             * @description The backend's receipt time
+             */
+            receivedEpochMs: number | null;
+            /**
+             * Format: int64
+             * @description Last event seq the health reflects
+             */
+            seq: number;
+            /** @description A replay of trimmed history: appNanos is the latest time known at or before the cursor, a lower bound */
+            lowerBound: boolean;
+        };
+        /** @enum {string} */
+        EvaluationStatus: "EVALUATED" | "NOT_EVALUATED";
+        /** @enum {string} */
+        NotEvaluatedReason: "NO_WATERMARK" | "DEMO" | "REPLAY" | "OVERFLOW" | "EVENTS_DROPPED" | "HISTORY_TRIMMED";
+        PossiblyBlockedEvaluation: {
+            status: components["schemas"]["EvaluationStatus"];
+            /** @description Set if and only if NOT_EVALUATED; the highest-precedence reason */
+            reason: components["schemas"]["NotEvaluatedReason"] | null;
+        };
+        /**
+         * @description The health strip's state (spec 'Health strip states')
+         * @enum {string}
+         */
+        HealthState: "AWAITING_FIRST_DATA" | "PROBLEMS" | "NO_PROBLEMS" | "NO_FAILURES_PARTIAL" | "NO_APP_COROUTINES";
+        /** @enum {string} */
+        IncidentKind: "FAILED" | "POSSIBLY_BLOCKED";
+        /** @enum {string} */
+        TransitionKind: "CREATED" | "STARTED" | "SUSPENDED" | "RESUMED" | "BODY_COMPLETED" | "COMPLETED" | "CANCELLED" | "FAILED";
+        Transition: {
+            kind: components["schemas"]["TransitionKind"];
+            /** Format: int64 */
+            appNanos: number;
+            /** Format: int64 */
+            seq: number;
+        };
+        ThreadObservation: {
+            /** Format: int64 */
+            threadId: number;
+            threadName: string;
+            /** Format: int64 */
+            seq: number;
+        };
+        FailureEntry: {
+            coroutineId: string;
+            name: string | null;
+            exceptionType: string | null;
+            message: string | null;
+            /** Format: int64 */
+            failedAtSeq: number;
+            /** @description The summary was reduced: type and message are no longer known */
+            detailsDropped: boolean;
+        };
+        /** @description Failures, newest first, capped at 50 */
+        CappedFailureEntries: {
+            items: components["schemas"]["FailureEntry"][];
+            /** @description Entries before the cap of 50 */
+            total: number;
+        };
+        /** @description Coroutine ids, newest first, capped at 50 */
+        CappedStrings: {
+            items: string[];
+            /** @description Entries before the cap of 50 */
+            total: number;
+        };
+        /** @description All failed coroutines of one round (spec 'Incidents'); cancellations after the first failure are context */
+        FailedRoundIncident: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "FAILED_ROUND";
+            id: string;
+            roundId: string;
+            anchorId: string;
+            failures: components["schemas"]["CappedFailureEntries"];
+            cancelledAfter: components["schemas"]["CappedStrings"];
+            /** Format: int64 */
+            firstFailureSeq: number;
+            /** Format: int64 */
+            sortSeq: number;
+        };
+        /** @description A failed coroutine whose round cannot be determined */
+        UngroupedFailureIncident: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "UNGROUPED_FAILURE";
+            id: string;
+            failure: components["schemas"]["FailureEntry"];
+            /** Format: int64 */
+            sortSeq: number;
+        };
+        /** @description A coroutine observed running past the threshold up to the latest watermark */
+        PossiblyBlockedIncident: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "POSSIBLY_BLOCKED";
+            id: string;
+            coroutineId: string;
+            name: string | null;
+            roundId: string | null;
+            anchorId: string | null;
+            /** @description The thread assigned in the current run, null when none was observed */
+            lastThread: components["schemas"]["ThreadObservation"] | null;
+            dispatcher: string | null;
+            lastSuspension: components["schemas"]["SuspensionPoint"] | null;
+            /** @enum {string|null} */
+            lastSuspensionProvenance: "REAL_FRAME" | "CREATION_FALLBACK" | "STALE" | null;
+            lastRunStart: components["schemas"]["Transition"];
+            /**
+             * Format: int64
+             * @description From the latest start/resume to the watermark (app clock)
+             */
+            runningForNanos: number;
+            /** @description Up to the 20 most recent retained transitions */
+            transitions: components["schemas"]["Transition"][];
+            /** @description The retained transitions do not start with the creation */
+            transitionsGap: boolean;
+            /** @description No suspension was ever observed */
+            firstObservedRunning: boolean;
+            /** @description The matched event-loop thread prefix (a clue, never a verdict) */
+            eventLoopClue: string | null;
+            /** Format: int64 */
+            sortSeq: number;
+        };
+        Incident: components["schemas"]["FailedRoundIncident"] | components["schemas"]["UngroupedFailureIncident"] | components["schemas"]["PossiblyBlockedIncident"];
+        /** @description Incidents by kind (failures first), newest first, capped at 50 */
+        CappedIncidents: {
+            items: components["schemas"]["Incident"][];
+            /** @description Entries before the cap of 50 */
+            total: number;
+        };
+        ObservedAge: {
+            coroutineId: string;
+            name: string | null;
+            /**
+             * Format: int64
+             * @description Frozen at the last observation
+             */
+            ageNanos: number;
+        };
+        /** @description Newest first, capped at 50 */
+        CappedObservedAges: {
+            items: components["schemas"]["ObservedAge"][];
+            /** @description Entries before the cap of 50 */
+            total: number;
+        };
+        /** @description Shown, never counted as problems */
+        Observations: {
+            longLived: components["schemas"]["CappedObservedAges"];
+            longSuspended: components["schemas"]["CappedObservedAges"];
+        };
+        OriginCounts: {
+            app: number;
+            vizcore: number;
+            unknown: number;
+            /**
+             * Format: int64
+             * @description Coroutines beyond capacity, only counted
+             */
+            untracked: number;
+        };
+        VizcoreConnectionHealth: {
+            captured: number;
+            failed: number;
+            failures: components["schemas"]["CappedFailureEntries"];
+        };
+        /** @description Sticky for the session across reconnects */
+        TransportStatus: {
+            /**
+             * Format: int64
+             * @description Largest cumulative loss count an SDK watermark reported
+             */
+            lostEvents: number;
+            /** @description An ingest connection ended without a final watermark, a frame could not be read, or the events came through a connection this backend did not watch */
+            deliveryUncertain: boolean;
+            /**
+             * Format: int64
+             * @description First seq that may be incomplete
+             */
+            sinceSeq: number | null;
+        };
+        ProblemRound: {
+            roundId: string;
+            anchorId: string;
+            /** Format: int64 */
+            anchorCreatedNanos: number;
+            kinds: components["schemas"]["IncidentKind"][];
+        };
+        /** @description Capped at 50 */
+        CappedProblemRounds: {
+            items: components["schemas"]["ProblemRound"][];
+            /** @description Entries before the cap of 50 */
+            total: number;
+        };
+        RetentionInfo: {
+            /** Format: int64 */
+            oldestRetainedSeq: number | null;
+            /** Format: int64 */
+            oldestRetainedAppNanos: number | null;
+            /** @description Events before the oldest retained one were dropped */
+            trimmed: boolean;
+        };
+        /** @description A session's derived health (spec 2026-10-21, C-3) */
+        SessionHealth: {
+            state: components["schemas"]["HealthState"];
+            /** @description Null before the first observation */
+            asOf: components["schemas"]["AsOf"] | null;
+            /**
+             * Format: int64
+             * @description The last event seq the health reflects (the cursor in replay)
+             */
+            asOfSeq: number;
+            sessionOrigin: components["schemas"]["SessionOrigin"];
+            /** @description Failed rounds + ungrouped failures + possibly blocked */
+            problemCount: number;
+            failedRoundCount: number;
+            ungroupedFailureCount: number;
+            possiblyBlockedCount: number;
+            incidents: components["schemas"]["CappedIncidents"];
+            possiblyBlocked: components["schemas"]["PossiblyBlockedEvaluation"];
+            observations: components["schemas"]["Observations"];
+            counts: components["schemas"]["OriginCounts"];
+            /** @description Counts may be low (overflow, lost or possibly lost events) */
+            failuresAtLeast: boolean;
+            vizcoreConnection: components["schemas"]["VizcoreConnectionHealth"];
+            transport: components["schemas"]["TransportStatus"];
+            roundCount: number;
+            problemRoundCount: number;
+            problemRounds: components["schemas"]["CappedProblemRounds"];
+            /** @description The watermark the health used (live attached sessions only) */
+            asOfWatermark: components["schemas"]["WatermarkObservation"] | null;
+            retention: components["schemas"]["RetentionInfo"] | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -900,6 +1236,60 @@ export interface operations {
             };
             /** @description Session not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSessionHealth: {
+        parameters: {
+            query?: {
+                /** @description Replay cursor (event seq). Omit for live health. */
+                atSeq?: number;
+                /** @description Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000) */
+                leakThresholdMs?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session's health */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionHealth"];
+                };
+            };
+            /** @description atSeq is not a non-negative integer */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable: code summaries-unavailable, or history-trimmed for a database session whose early events were trimmed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

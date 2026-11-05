@@ -28,6 +28,12 @@ data class AsOf(
     val appEpochMs: Long? = null,
     val receivedEpochMs: Long? = null,
     val seq: Long,
+    /**
+     * A replay of trimmed history: [appNanos] is the latest time known at or before the cursor, a lower bound. Inside the
+     * trimmed range only what the durable summaries keep (creations and terminals) is known, and appends are not in
+     * app-time order, so a trimmed event may be later in app time than every retained one.
+     */
+    val lowerBound: Boolean = false,
 )
 
 /** A list capped at [HealthThresholds.LIST_CAP] entries, with the total before the cap. */
@@ -49,11 +55,12 @@ data class Capped<T>(
 enum class EvaluationStatus { EVALUATED, NOT_EVALUATED }
 
 @Serializable
-enum class NotEvaluatedReason { NO_WATERMARK, DEMO, REPLAY, OVERFLOW, EVENTS_DROPPED }
+enum class NotEvaluatedReason { NO_WATERMARK, DEMO, REPLAY, OVERFLOW, EVENTS_DROPPED, HISTORY_TRIMMED }
 
 /**
  * Whether possibly blocked was evaluated. [reason] is set if and only if [status] is NOT_EVALUATED, and only the
- * highest-precedence reason is kept: REPLAY, DEMO, EVENTS_DROPPED, OVERFLOW, NO_WATERMARK (in that order).
+ * highest-precedence reason is kept: REPLAY, DEMO, EVENTS_DROPPED, HISTORY_TRIMMED, OVERFLOW, NO_WATERMARK (in that
+ * order).
  */
 @Serializable
 data class PossiblyBlockedEvaluation(
@@ -207,6 +214,17 @@ data class TransportStatus(
     val sinceSeq: Long? = null,
 )
 
+/**
+ * What the session still holds of its events (spec C-3 `retention`): the oldest retained event's seq and app time, and
+ * whether events before it were dropped. The backend supplies it; the health echoes it.
+ */
+@Serializable
+data class RetentionInfo(
+    val oldestRetainedSeq: Long?,
+    val oldestRetainedAppNanos: Long?,
+    val trimmed: Boolean,
+)
+
 @Serializable
 data class ProblemRound(
     val roundId: String,
@@ -240,6 +258,10 @@ data class SessionHealth(
     val roundCount: Int,
     val problemRoundCount: Int,
     val problemRounds: Capped<ProblemRound>,
+    /** The watermark the health was derived with (spec C-3 `asOfWatermark`): live attached sessions only, else `null`. */
+    val asOfWatermark: WatermarkObservation? = null,
+    /** Echo of [HealthInput.retention]. */
+    val retention: RetentionInfo? = null,
 )
 
 @Serializable
@@ -281,4 +303,12 @@ data class HealthInput(
     val longSuspendedThresholdNanos: Long = HealthThresholds.LONG_SUSPENDED_NANOS,
     /** Retained transitions of one coroutine, oldest first; used for possibly blocked coroutines only. */
     val transitionsFor: (String) -> List<Transition> = { emptyList() },
+    /**
+     * The summaries may miss failures the session had, though every incident they show is real: a replay seed cannot
+     * tell which coroutines beyond capacity existed at the cursor. Failures then read "at least" and possibly blocked is
+     * not evaluated (HISTORY_TRIMMED). Never set it when incidents could be overcounted (a lost ancestry splits a round).
+     */
+    val historyIncomplete: Boolean = false,
+    /** The backend's retention facts, echoed in [SessionHealth.retention]. */
+    val retention: RetentionInfo? = null,
 )

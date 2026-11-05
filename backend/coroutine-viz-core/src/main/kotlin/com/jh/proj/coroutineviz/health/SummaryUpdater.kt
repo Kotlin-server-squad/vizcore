@@ -26,6 +26,39 @@ internal object SummaryUpdater {
         )
     }
 
+    /** The summary right after [s]'s creation, from what a durable summary (or stub) keeps of it (replay seed). */
+    fun createdFrom(s: CoroutineSummary): CoroutineSummary =
+        CoroutineSummary(
+            id = s.id,
+            parentId = s.parentId,
+            origin = s.origin,
+            name = s.name,
+            creationLocation = s.creationLocation,
+            createdAtEpochMs = s.createdAtEpochMs,
+            firstObserved = s.firstObserved,
+            lastTransition = s.firstObserved,
+            lastObservedNanos = s.firstObserved.appNanos,
+            lastModifiedSeq = s.firstObserved.seq,
+        )
+
+    /** [current] finished as [durable] did (replay seed); a stub's failure keeps no details, and says so. */
+    fun finishedAs(
+        current: CoroutineSummary,
+        durable: CoroutineSummary,
+    ): CoroutineSummary {
+        val terminal = checkNotNull(durable.terminal) { "${durable.id} has no terminal transition" }
+        return current.copy(
+            lastTransition = terminal,
+            terminal = terminal,
+            lastObservedNanos = maxOf(current.lastObservedNanos, terminal.appNanos),
+            failed = durable.failed,
+            cancelled = durable.cancelled,
+            failure = durable.failure,
+            reduced = durable.reduced,
+            lastModifiedSeq = terminal.seq,
+        )
+    }
+
     /** [s] after [e]; [s] itself only when [s] is terminal (a terminal summary never changes) or [e] is a re-creation. */
     fun update(
         s: CoroutineSummary,

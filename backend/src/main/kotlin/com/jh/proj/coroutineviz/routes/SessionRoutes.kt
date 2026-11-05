@@ -5,6 +5,8 @@ import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.SessionKind
+import com.jh.proj.coroutineviz.health.WatermarkObservation
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
@@ -24,6 +26,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
@@ -171,27 +174,7 @@ fun Route.registerSessionRoutes() {
             return@get
         }
 
-        // One point-in-time copy so the count and the list agree while events keep arriving.
-        val nodes = session.snapshot.nodes()
-        val snapshot =
-            SessionSnapshotResponse(
-                sessionId = session.sessionId,
-                coroutineCount = nodes.size,
-                eventCount = session.store.all().size,
-                coroutines =
-                    nodes.map { node ->
-                        CoroutineNodeDto(
-                            id = node.id,
-                            jobId = node.jobId,
-                            parentId = node.parentId,
-                            scopeId = node.scopeId,
-                            label = node.label,
-                            state = node.state.toString(),
-                        )
-                    },
-            )
-
-        call.respond(HttpStatusCode.OK, snapshot)
+        call.respond(HttpStatusCode.OK, snapshotResponseOf(session))
     }
 
     delete("/api/sessions/{id}") {
@@ -271,11 +254,7 @@ fun Route.registerSessionRoutes() {
 
         // Validate + clamp the leak threshold (T-08-05/V5): an unparseable/absent value
         // falls back to the server default; negative/absurd values are clamped to bounds.
-        val leakThresholdMs =
-            call.request.queryParameters["leakThresholdMs"]
-                ?.toLongOrNull()
-                ?.coerceIn(MIN_LEAK_MS, MAX_LEAK_MS)
-                ?: DEFAULT_LEAK_MS
+        val leakThresholdMs = call.leakThresholdMs()
 
         // Wall-clock read basis (CR-01): leak age must subtract a fixed-origin epoch-millis
         // clock so it stays well-defined on the DB-rehydrated path across a restart.
@@ -340,7 +319,7 @@ fun Route.registerSessionRoutes() {
         // app session only a still-streaming app vouches that the coroutine is still running:
         // once its ingest socket is gone, its fate is unknown, so stop the clock. vizcore's own
         // runs execute in this JVM and need no socket.
-        val live = IngestConnections.isConnected(sessionId) || VIZCORE_OWNED_SESSION_ID.containsMatchIn(sessionId)
+        val live = IngestConnections.isConnected(sessionId) || sessionKindOf(sessionId) == SessionKind.DEMO
         call.respond(HttpStatusCode.OK, if (live) timeline else timeline.copy(openPhase = null, openPhaseSinceNanos = null))
     }
 
@@ -406,6 +385,7 @@ fun Route.registerSessionRoutes() {
                                 config = call.application.egressConfig(),
                                 heartbeatMillis = call.application.sseHeartbeatSeconds() * SECOND_MILLIS,
                                 onShedDelta = { delta -> sseSamplingDroppedGauge.addAndGet(delta) },
+                                watermarks = IngestStates.watermarks(sessionId),
                             ).collect { frame -> send(frame) }
                         }
                     // Without this the stream would keep sending heartbeats into a session that
@@ -434,9 +414,51 @@ fun Route.registerSessionRoutes() {
             } finally {
                 sseClientsGauge.decrementAndGet()
                 logger.info("SSE stream ended for session: $sessionId")
+                // Subscribing allocated ingest state; a stream set up during a delete may have done so after the delete
+                // dropped it. Checked on every exit, a client's disconnect included.
+                runCatching { if (!sessionStillExists(sessionId)) IngestStates.forget(sessionId) }
+                    .onFailure { e -> logger.warn("Could not check session {} after its stream ended", sessionId, e) }
             }
         }
     }
+}
+
+/**
+ * The body of `GET /api/sessions/{id}`, also the `session` of a share payload: the current coroutines plus the
+ * C-3 session facts (spec 2026-10-21: kind, start, capture start, origin, app connection, retention).
+ */
+internal fun snapshotResponseOf(
+    session: VizSession,
+    events: List<VizEvent> = session.store.all(),
+): SessionSnapshotResponse {
+    // One point-in-time copy so the count and the list agree while events keep arriving.
+    val nodes = session.snapshot.nodes()
+    val facts = readSessionFacts(session, events)
+    return SessionSnapshotResponse(
+        sessionId = session.sessionId,
+        coroutineCount = nodes.size,
+        eventCount = events.size,
+        coroutines =
+            nodes.map { node ->
+                CoroutineNodeDto(
+                    id = node.id,
+                    jobId = node.jobId,
+                    parentId = node.parentId,
+                    scopeId = node.scopeId,
+                    label = node.label,
+                    state = node.state.toString(),
+                )
+            },
+        kind = facts.kind,
+        startedAtEpochMs = session.createdAtMs,
+        captureStartAppNanos = facts.captureStartAppNanos,
+        origin = facts.origin,
+        appConnected = facts.appConnected,
+        lastIngestEpochMs = facts.lastIngestEpochMs,
+        lastWatermark = facts.lastWatermark,
+        oldestRetainedSeq = facts.retention.oldestRetainedSeq,
+        trimmed = facts.retention.trimmed,
+    )
 }
 
 /**
@@ -464,12 +486,18 @@ fun Route.registerSessionRoutes() {
  * heartbeat could interleave with a frame mid-write. Replay and live frames come from one
  * producer, so the heartbeats are the only other writer on [out] and their presence changes
  * neither replay order nor the exactly-once watermark.
+ *
+ * The app's poll [watermarks] become `event: watermark` frames (spec 2026-10-21, C-3), merged the
+ * same way. They carry no id, so `Last-Event-ID` and the replay watermark above are unaffected; the
+ * page treats them as a signal to refetch health, which the backend derives from events it already
+ * applied, so their position among the event frames does not matter.
  */
 internal fun sessionSseFrames(
     session: VizSession,
     config: EgressConfig,
     heartbeatMillis: Long = DEFAULT_SSE_HEARTBEAT_SECONDS * SECOND_MILLIS,
     onShedDelta: (Long) -> Unit = {},
+    watermarks: Flow<WatermarkObservation> = emptyFlow(),
 ): Flow<ServerSentEvent> =
     flow {
         coroutineScope {
@@ -504,6 +532,7 @@ internal fun sessionSseFrames(
                                     out.send(heartbeatFrame())
                                 }
                             }
+                        val watermarkFrames = launch { watermarks.collect { out.send(it.toSse()) } }
                         subscribed.await()
                         val storedEvents = session.store.all()
                         watermark.complete(storedEvents.maxOfOrNull { it.seq } ?: 0L)
@@ -518,9 +547,10 @@ internal fun sessionSseFrames(
                         for (frame in liveFrames) {
                             out.send(frame)
                         }
-                        // Stop the only other writer and let this scope join it, so `out` is
+                        // Stop the other writers and let this scope join them, so `out` is
                         // closed below with no send in flight.
                         heartbeats.cancel()
+                        watermarkFrames.cancel()
                     }
                 } finally {
                     out.close()
@@ -533,17 +563,12 @@ internal fun sessionSseFrames(
         }
     }
 
+internal fun WatermarkObservation.toSse(): ServerSentEvent =
+    ServerSentEvent(data = appJson.encodeToString(WatermarkObservation.serializer(), this), event = "watermark")
+
 internal fun VizEvent.toSse(): ServerSentEvent =
     ServerSentEvent(
         data = appJson.encodeToString(PolymorphicSerializer(VizEvent::class), this),
         event = kind,
         id = "$sessionId-$seq",
     )
-
-/**
- * Ids vizcore mints for its own runs (demo scenarios, the scenario runner and API), whose
- * coroutines run in this JVM rather than in a connected app. Mirrors
- * `frontend/src/lib/session-kind.ts`. An app that names itself `scenario-…` is taken for a demo
- * here too; then its timeline keeps an open phase after the app disconnects.
- */
-private val VIZCORE_OWNED_SESSION_ID = Regex("^(scenario-|auto-\\d+(-\\d+)?$|api-session-\\d+$)")
