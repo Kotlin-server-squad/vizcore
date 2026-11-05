@@ -49,16 +49,21 @@ export function ScenarioControls({
   const navigate = useNavigate()
   const [actionError, setActionError] = useState<{ action: string; error: unknown } | null>(null)
 
-  // Three-state scenario derivation:
-  //   notStarted — coroutineCount === 0 (no coroutines seen yet)
-  //   running    — coroutines exist but at least one is non-terminal
-  //   completed  — coroutines exist and ALL are in a terminal state
-  const scenarioState: 'notStarted' | 'running' | 'completed' = useMemo(() => {
+  // Run outcome (spec S-3):
+  //   notStarted — no coroutines seen yet
+  //   failed     — at least one coroutine FAILED, whether or not others still
+  //                run. Never green "completed": a run that failed something did
+  //                not succeed, and a supervisor's surviving children do not undo it.
+  //   running    — none failed, at least one is not terminal
+  //   finished   — all terminal, none failed
+  const { scenarioState, failedCount } = useMemo(() => {
     if (!session || session.coroutineCount === 0 || session.coroutines.length === 0) {
-      return 'notStarted'
+      return { scenarioState: 'notStarted' as const, failedCount: 0 }
     }
+    const failed = session.coroutines.filter(c => c.state === CoroutineState.FAILED).length
+    if (failed > 0) return { scenarioState: 'failed' as const, failedCount: failed }
     const allTerminal = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
-    return allTerminal ? 'completed' : 'running'
+    return { scenarioState: allTerminal ? ('finished' as const) : ('running' as const), failedCount: 0 }
   }, [session])
 
   const handleRunScenario = async () => {
@@ -115,22 +120,24 @@ export function ScenarioControls({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="mb-1 text-lg font-semibold">Scenario Controls</h3>
-            <p className="text-sm text-default-500">
+            <p className={scenarioState === 'failed' ? 'text-sm text-danger' : 'text-sm text-default-500'}>
               {scenarioState === 'notStarted' && 'Ready to run the scenario'}
               {scenarioState === 'running' && 'Scenario is running'}
-              {scenarioState === 'completed' && 'Scenario completed'}
+              {scenarioState === 'finished' && 'Scenario finished'}
+              {scenarioState === 'failed' &&
+                `Scenario failed: ${failedCount} ${failedCount === 1 ? 'coroutine' : 'coroutines'} failed`}
             </p>
           </div>
           <div className="flex gap-2">
-            {scenarioState === 'completed' ? (
+            {scenarioState === 'finished' || scenarioState === 'failed' ? (
               <Button
-                color="success"
+                color={scenarioState === 'failed' ? 'danger' : 'success'}
                 size="lg"
                 variant="flat"
                 startContent={<FiPlay />}
                 isDisabled
               >
-                Scenario Completed
+                {scenarioState === 'failed' ? 'Scenario Failed' : 'Scenario Finished'}
               </Button>
             ) : (
             <Button
