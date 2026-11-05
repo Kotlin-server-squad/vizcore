@@ -5,6 +5,7 @@ import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.SessionKind
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
@@ -271,11 +272,7 @@ fun Route.registerSessionRoutes() {
 
         // Validate + clamp the leak threshold (T-08-05/V5): an unparseable/absent value
         // falls back to the server default; negative/absurd values are clamped to bounds.
-        val leakThresholdMs =
-            call.request.queryParameters["leakThresholdMs"]
-                ?.toLongOrNull()
-                ?.coerceIn(MIN_LEAK_MS, MAX_LEAK_MS)
-                ?: DEFAULT_LEAK_MS
+        val leakThresholdMs = call.leakThresholdMs()
 
         // Wall-clock read basis (CR-01): leak age must subtract a fixed-origin epoch-millis
         // clock so it stays well-defined on the DB-rehydrated path across a restart.
@@ -340,7 +337,7 @@ fun Route.registerSessionRoutes() {
         // app session only a still-streaming app vouches that the coroutine is still running:
         // once its ingest socket is gone, its fate is unknown, so stop the clock. vizcore's own
         // runs execute in this JVM and need no socket.
-        val live = IngestConnections.isConnected(sessionId) || VIZCORE_OWNED_SESSION_ID.containsMatchIn(sessionId)
+        val live = IngestConnections.isConnected(sessionId) || sessionKindOf(sessionId) == SessionKind.DEMO
         call.respond(HttpStatusCode.OK, if (live) timeline else timeline.copy(openPhase = null, openPhaseSinceNanos = null))
     }
 
@@ -539,11 +536,3 @@ internal fun VizEvent.toSse(): ServerSentEvent =
         event = kind,
         id = "$sessionId-$seq",
     )
-
-/**
- * Ids vizcore mints for its own runs (demo scenarios, the scenario runner and API), whose
- * coroutines run in this JVM rather than in a connected app. Mirrors
- * `frontend/src/lib/session-kind.ts`. An app that names itself `scenario-…` is taken for a demo
- * here too; then its timeline keeps an open phase after the app disconnects.
- */
-private val VIZCORE_OWNED_SESSION_ID = Regex("^(scenario-|auto-\\d+(-\\d+)?$|api-session-\\d+$)")
