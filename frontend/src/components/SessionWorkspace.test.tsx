@@ -971,7 +971,7 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
       coro('d-failed', 'FAILED'),
     ])
     // Counts cover every coroutine, not just the ones the canvas renders.
-    expect(screen.getByRole('button', { name: 'Running 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Active 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Suspended 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Completed 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Failed 1' })).toBeInTheDocument()

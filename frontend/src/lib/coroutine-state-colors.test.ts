@@ -74,14 +74,15 @@ describe('the canvas agrees with the state bar', () => {
     const counts = deriveStateCounts([
       { id: 'c', jobId: 'j', parentId: null, scopeId: 's', label: null, state } as never,
     ])
-    return (['running', 'suspended', 'completed', 'cancelled', 'failed'] as const).find(
+    return (['active', 'waiting', 'suspended', 'completed', 'cancelled', 'failed'] as const).find(
       b => counts[b] === 1,
     )!
   }
 
   /** The chip colour StateBar draws for each bucket. */
   const BUCKET_HUE: Record<string, string> = {
-    running: palette.primary,
+    active: palette.primary,
+    waiting: palette.primary,
     suspended: palette.warning,
     completed: palette.success,
     cancelled: palette.warning,
@@ -93,7 +94,7 @@ describe('the canvas agrees with the state bar', () => {
     // drift apart again. They did: the amber Cancelled chip used to filter the
     // canvas to coroutines the canvas then drew grey.
     for (const state of ALL_STATES) {
-      // CREATED is the one exception: it is counted as running (so the buckets
+      // CREATED is the one exception: it is counted as active (so the buckets
       // sum to the total) but drawn neutral, because nothing has started yet.
       if (state === CoroutineState.CREATED) continue
       expect(stateColor(state), `${state}`).toBe(BUCKET_HUE[bucketOf(state)])
