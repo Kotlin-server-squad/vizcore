@@ -61,20 +61,30 @@ describe('SessionHeader', () => {
     })
 
     it('reads Finished with how long the run took', () => {
-      renderHeader({ outcome: { outcome: 'finished', failedCount: 0 }, runSpanNanos: 12e9 })
+      renderHeader({ outcome: { outcome: 'finished', failedCount: 0, ended: true }, runSpanNanos: 12e9 })
       expect(screen.getByTestId('run-outcome')).toHaveTextContent('Finished · 12.0 s')
     })
 
     it('reads Failed in red with how many failed — never green Completed (S-3)', () => {
-      renderHeader({ outcome: { outcome: 'failed', failedCount: 2 }, runSpanNanos: 3e9 })
+      renderHeader({ outcome: { outcome: 'failed', failedCount: 2, ended: true }, runSpanNanos: 3e9 })
       const pill = screen.getByTestId('run-outcome')
       expect(pill).toHaveTextContent('Failed · 2 coroutines failed · 3.0 s')
       expect(pill.className).toContain('danger')
     })
 
-    it('reads Running and Not run yet', () => {
-      renderHeader({ outcome: { outcome: 'running', failedCount: 0 } })
-      expect(screen.getByTestId('run-outcome')).toHaveTextContent('Running')
+    it('reads Running', () => {
+      renderHeader({ outcome: { outcome: 'running', failedCount: 0, ended: false }, runSpanNanos: 4e9 })
+      expect(screen.getByTestId('run-outcome')).toHaveTextContent(/^Running$/)
+    })
+
+    it('gives a failed run no duration while some of it still runs', () => {
+      renderHeader({ outcome: { outcome: 'failed', failedCount: 1, ended: false }, runSpanNanos: 3e9 })
+      expect(screen.getByTestId('run-outcome')).toHaveTextContent(/^Failed · 1 coroutine failed$/)
+    })
+
+    it('says "at least" when the backend dropped events', () => {
+      renderHeader({ outcome: { outcome: 'finished', failedCount: 0, ended: true }, runSpanNanos: 12e9, droppedCount: 2 })
+      expect(screen.getByTestId('run-outcome')).toHaveTextContent('Finished · at least 12.0 s')
     })
   })
 
@@ -139,7 +149,7 @@ describe('SessionHeader', () => {
 
     it('adds Reset session and Clear events to "⋯" for a demo, and the Run button', async () => {
       const scenario = { run: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isResetPending: false, errorText: null }
-      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0 } })
+      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
       expect(screen.getByRole('button', { name: 'Run Scenario' })).toBeEnabled()
       await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
       await userEvent.click(await screen.findByRole('menuitem', { name: /clear events/i }))
@@ -151,7 +161,7 @@ describe('SessionHeader', () => {
         run: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isResetPending: false,
         errorText: 'Could not run the scenario: Server busy',
       }
-      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0 } })
+      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
       expect(screen.getByRole('alert')).toHaveTextContent('Could not run the scenario: Server busy')
     })
 

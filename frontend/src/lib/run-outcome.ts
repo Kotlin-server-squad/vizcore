@@ -18,29 +18,38 @@ const TERMINAL_STATES = new Set<string>([
  */
 export type RunOutcome = 'notStarted' | 'running' | 'finished' | 'failed'
 
-export function deriveRunOutcome(session: SessionSnapshot): { outcome: RunOutcome; failedCount: number } {
+export interface RunOutcomeFacts {
+  outcome: RunOutcome
+  failedCount: number
+  /** Every coroutine is terminal: nothing more will happen in this run. */
+  ended: boolean
+}
+
+export function deriveRunOutcome(session: SessionSnapshot): RunOutcomeFacts {
   if (session.coroutineCount === 0 || session.coroutines.length === 0) {
-    return { outcome: 'notStarted', failedCount: 0 }
+    return { outcome: 'notStarted', failedCount: 0, ended: false }
   }
   const failedCount = session.coroutines.filter(c => c.state === CoroutineState.FAILED).length
-  if (failedCount > 0) return { outcome: 'failed', failedCount }
-  const allTerminal = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
-  return { outcome: allTerminal ? 'finished' : 'running', failedCount: 0 }
+  const ended = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
+  if (failedCount > 0) return { outcome: 'failed', failedCount, ended }
+  return { outcome: ended ? 'finished' : 'running', failedCount: 0, ended }
 }
 
 /**
- * From the first to the last recorded event, on the app's own clock. Null when
- * there is nothing to measure. Event timestamps are compared with each other
- * only, never with the browser's clock.
+ * From the first to the last event the page holds, across every list given
+ * (the history loaded with the page and the events streamed since), on the
+ * app's own clock. Null when there is nothing to measure. Event timestamps are
+ * compared with each other only, never with the browser's clock.
  */
-export function recordedSpanNanos(events: readonly VizEvent[]): number | null {
-  if (events.length < 2) return null
+export function recordedSpanNanos(...lists: ReadonlyArray<readonly VizEvent[]>): number | null {
   let first = Infinity
   let last = -Infinity
-  for (const e of events) {
-    if (!Number.isFinite(e.tsNanos)) continue
-    if (e.tsNanos < first) first = e.tsNanos
-    if (e.tsNanos > last) last = e.tsNanos
+  for (const events of lists) {
+    for (const e of events) {
+      if (!Number.isFinite(e.tsNanos)) continue
+      if (e.tsNanos < first) first = e.tsNanos
+      if (e.tsNanos > last) last = e.tsNanos
+    }
   }
   return last > first ? last - first : null
 }

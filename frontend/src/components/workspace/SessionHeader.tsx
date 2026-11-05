@@ -4,7 +4,7 @@ import { FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
 import { formatDuration } from '@/lib/format-duration'
-import type { RunOutcome } from '@/lib/run-outcome'
+import type { RunOutcome, RunOutcomeFacts } from '@/lib/run-outcome'
 import { ExportMenu } from '../export/ExportMenu'
 import { RunScenarioButton } from './RunScenarioButton'
 import type { ScenarioActions } from './use-scenario-actions'
@@ -19,8 +19,8 @@ interface SessionHeaderProps {
   rung: Rung
   readOnly: boolean
   /** A demo run's outcome (S-3); null for an attached app. */
-  outcome: { outcome: RunOutcome; failedCount: number } | null
-  /** From the first to the last recorded event, for a run that has ended. */
+  outcome: RunOutcomeFacts | null
+  /** From the first to the last event the page holds; shown once the run has ended. */
   runSpanNanos: number | null
   /** Live SSE stream state + toggle. */
   streamEnabled: boolean
@@ -108,7 +108,14 @@ export function SessionHeader({
         <Chip size="sm" variant="flat" color={rung === 'demo' ? 'default' : 'primary'} data-testid="rung-badge">
           {RUNG_LABEL[rung]}
         </Chip>
-        {outcome && <OutcomePill outcome={outcome.outcome} failedCount={outcome.failedCount} spanNanos={runSpanNanos} />}
+        {outcome && (
+          <OutcomePill
+            facts={outcome}
+            spanNanos={runSpanNanos}
+            // Events the backend shed may have been the first or the last.
+            spanIsFloor={droppedCount > 0}
+          />
+        )}
         <ViewPill
           readOnly={readOnly}
           replayActive={replayActive}
@@ -239,31 +246,34 @@ export function SessionHeader({
 }
 
 function OutcomePill({
-  outcome,
-  failedCount,
+  facts: { outcome, failedCount, ended },
   spanNanos,
+  spanIsFloor,
 }: {
-  outcome: RunOutcome
-  failedCount: number
+  facts: RunOutcomeFacts
   spanNanos: number | null
+  spanIsFloor: boolean
 }) {
-  const span = spanNanos !== null && (outcome === 'finished' || outcome === 'failed') ? ` · ${formatDuration(spanNanos)}` : ''
+  // A duration only once nothing runs any more: a failed run whose other
+  // coroutines still run has no length yet.
+  const span = ended && spanNanos !== null ? ` · ${formatDuration(spanNanos, { atLeast: spanIsFloor })}` : ''
   const failed = `${failedCount} ${failedCount === 1 ? 'coroutine' : 'coroutines'} failed`
-  const text = {
+  const text: Record<RunOutcome, string> = {
     notStarted: 'Not run yet',
     running: 'Running',
     finished: `Finished${span}`,
     failed: `Failed · ${failed}${span}`,
-  }[outcome]
+  }
   return (
     <Chip
       size="sm"
       variant="dot"
       color={outcome === 'failed' ? 'danger' : outcome === 'running' ? 'primary' : 'default'}
       data-testid="run-outcome"
+      title={span ? 'From the first to the last event this page holds' : undefined}
       className={outcome === 'failed' ? 'border-danger text-danger' : undefined}
     >
-      {text}
+      {text[outcome]}
     </Chip>
   )
 }
