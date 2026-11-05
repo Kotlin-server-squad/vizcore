@@ -162,6 +162,24 @@ describe('ReplayController — keys owned by the dock', () => {
     expect(replay.stepBack).not.toHaveBeenCalled()
     expect(replay.seekTo).not.toHaveBeenCalled()
   })
+
+  it('leaves Space to a focused button, so a disclosure opens instead of playback starting', async () => {
+    const replay = makeReplay()
+    const onToggle = vi.fn()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <button type="button" aria-expanded={false} onClick={onToggle}>Threads</button>
+      </>,
+    )
+    screen.getByRole('button', { name: 'Threads' }).focus()
+    await userEvent.keyboard(' ')
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    expect(replay.play).not.toHaveBeenCalled()
+    // Arrows still step the replay from a button.
+    await userEvent.keyboard('{ArrowRight}')
+    expect(replay.stepForward).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('ReplayController — recording state', () => {
