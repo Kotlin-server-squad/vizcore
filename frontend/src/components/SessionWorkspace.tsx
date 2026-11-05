@@ -206,7 +206,7 @@ export function SessionWorkspace({
   const pendingChildCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const c of panelCoroutines) {
-      if (c.parentId && c.state !== CoroutineState.COMPLETED) {
+      if (c.parentId && !TERMINAL_STATES.has(c.state as CoroutineState)) {
         counts.set(c.parentId, (counts.get(c.parentId) ?? 0) + 1)
       }
     }

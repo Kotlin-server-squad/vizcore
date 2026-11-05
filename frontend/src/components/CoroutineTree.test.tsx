@@ -107,6 +107,18 @@ describe('CoroutineTree', () => {
     expect(screen.getByText(/Waiting for 2 child coroutine/)).toBeInTheDocument()
   })
 
+  it('counts only unfinished rendered children when no snapshot counts are given', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'p', label: 'WaitingParent', state: CoroutineState.WAITING_FOR_CHILDREN }),
+      makeCoroutine({ id: 'a', label: 'Running', parentId: 'p', state: CoroutineState.ACTIVE }),
+      makeCoroutine({ id: 'x', label: 'Stopped', parentId: 'p', state: CoroutineState.CANCELLED }),
+    ]
+
+    render(<CoroutineTree coroutines={coroutines} />)
+
+    expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
+  })
+
   it('shows failure indicator for FAILED state', () => {
     const coroutines: CoroutineNode[] = [
       makeCoroutine({

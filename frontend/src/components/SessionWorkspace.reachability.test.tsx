@@ -282,6 +282,27 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
   })
 
+  it('counts only unfinished children as pending — cancelled and failed ones are done', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({
+        coroutineCount: 4,
+        coroutines: [
+          { id: 'p', jobId: 'j-p', parentId: null, scopeId: 'scope-1', label: 'Parent', state: 'WAITING_FOR_CHILDREN' as CoroutineState },
+          { id: 'a', jobId: 'j-a', parentId: 'p', scopeId: 'scope-1', label: 'Running', state: 'ACTIVE' as CoroutineState },
+          { id: 'x', jobId: 'j-x', parentId: 'p', scopeId: 'scope-1', label: 'Stopped', state: 'CANCELLED' as CoroutineState },
+          { id: 'f', jobId: 'j-f', parentId: 'p', scopeId: 'scope-1', label: 'Broken', state: 'FAILED' as CoroutineState },
+        ],
+      }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+
+    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 1' }))
+    expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
+  })
+
   it('shows the placeholder + does not fetch the timeline until a node is clicked (no eager fetch)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
