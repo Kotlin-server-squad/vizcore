@@ -35,6 +35,7 @@ internal object HealthEvents {
         at: Long,
         parent: String? = null,
         origin: CoroutineOrigin? = CoroutineOrigin.APP,
+        creationPoint: SuspensionPoint? = null,
     ) = CoroutineCreated(
         sessionId = sessionId,
         seq = 0,
@@ -45,6 +46,7 @@ internal object HealthEvents {
         scopeId = "scope",
         label = id,
         origin = origin,
+        creationPoint = creationPoint,
     )
 
     fun started(
