@@ -2,7 +2,7 @@
 
 package com.jh.proj.coroutineviz.wrappers
 
-import com.jh.proj.coroutineviz.events.channel.ChannelReceiveCompleted
+import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.session.ChannelEventContext
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.session.channelBufferStateChanged
@@ -16,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ChannelIterator
 import kotlinx.coroutines.channels.ChannelResult
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.selects.SelectClause1
@@ -31,6 +32,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * - Tracks all receive operations with suspension detection
  * - Monitors buffer state changes
  * - Tracks channel close
+ * - Records a send or receive that has to wait as a suspension (spec 2026-11-05, S-7); select clauses are not recorded
+ *
+ * [send] tries `trySend` first and calls the delegate's `send` only when it must wait. That is the delegate's own
+ * behaviour for the overflow policies [VizScope.vizChannel] creates (`SUSPEND`, and `DROP_OLDEST` for
+ * [Channel.CONFLATED]). A delegate built with `BufferOverflow.DROP_LATEST` and an `onUndeliveredElement` callback
+ * differs: its `trySend` drops an element that finds the buffer full without calling the callback, where its
+ * `send` would call it.
  *
  * @param T The type of values transmitted through the channel
  * @param delegate The underlying Channel
@@ -101,7 +109,14 @@ class InstrumentedChannel<T>(
 
         session.send(ctx.channelSendStarted(coroutineId, valueDesc))
 
-        delegate.send(element)
+        // Try first: only a send that no buffer slot or receiver can take now makes this coroutine wait.
+        val attempt = delegate.trySend(element)
+        when {
+            attempt.isSuccess -> Unit
+            // A closed channel fails at once, with the channel's own exception and no recorded wait.
+            attempt.isClosed -> delegate.send(element)
+            else -> session.recordWait(WaitKind.CHANNEL_SEND, channelId) { delegate.send(element) }
+        }
 
         val currentSize = reportedSize(bufferCount.incrementAndGet())
         session.send(ctx.channelBufferStateChanged(currentSize))
@@ -160,7 +175,15 @@ class InstrumentedChannel<T>(
 
         session.send(ctx.channelReceiveStarted(coroutineId))
 
-        val value = delegate.receive()
+        // Try first: only an empty channel makes this coroutine wait.
+        val attempt = delegate.tryReceive()
+        val value =
+            when {
+                attempt.isSuccess -> attempt.getOrThrow()
+                // A closed channel fails at once, with the channel's own exception and no recorded wait.
+                attempt.isClosed -> delegate.receive()
+                else -> session.recordWait(WaitKind.CHANNEL_RECEIVE, channelId) { delegate.receive() }
+            }
 
         val currentSize = reportedSize(bufferCount.decrementAndGet())
         session.send(ctx.channelBufferStateChanged(currentSize))
@@ -217,38 +240,43 @@ class InstrumentedChannel<T>(
     override val onReceiveCatching: SelectClause1<ChannelResult<T>>
         get() = delegate.onReceiveCatching
 
-    override fun iterator(): ChannelIterator<T> {
-        val delegateIterator = delegate.iterator()
-        return object : ChannelIterator<T> {
+    /** Iterates by [receiveOrClose], so a wait for the next element is recorded like a receive. */
+    override fun iterator(): ChannelIterator<T> =
+        object : ChannelIterator<T> {
+            // What hasNext() fetched for next(), and the coroutine that fetched it.
+            private var fetched: ChannelResult<T>? = null
+            private var receiverId = "unknown"
+
             override suspend fun hasNext(): Boolean {
-                return delegateIterator.hasNext()
+                val result =
+                    fetched ?: run {
+                        receiverId = currentCoroutineContext()[VizCoroutineElement]?.coroutineId ?: "unknown"
+                        receiveOrClose().also { fetched = it }
+                    }
+                // A channel closed with a cause fails the iteration with it, as the delegate's iterator does.
+                result.exceptionOrNull()?.let { throw it }
+                return result.isSuccess
             }
 
             override fun next(): T {
-                val value = delegateIterator.next()
+                val result = fetched ?: error("`hasNext` must be called before `next`")
+                // After the end, fail as the delegate's iterator does: with the close cause, or ClosedReceiveChannelException.
+                if (!result.isSuccess) throw result.exceptionOrNull() ?: ClosedReceiveChannelException("Channel was closed")
+                fetched = null
+                val value = result.getOrThrow()
                 val currentSize = reportedSize(bufferCount.decrementAndGet())
                 session.send(ctx.channelBufferStateChanged(currentSize))
                 val valueDesc = value?.toString()?.take(200) ?: "null"
-                session.send(
-                    ChannelReceiveCompleted(
-                        sessionId = session.sessionId,
-                        seq = session.nextSeq(),
-                        tsNanos = System.nanoTime(),
-                        channelId = channelId,
-                        coroutineId = "iterator",
-                        valueDescription = valueDesc,
-                    ),
-                )
+                session.send(ctx.channelReceiveCompleted(receiverId, valueDesc))
                 return value
             }
         }
-    }
 
     override suspend fun receiveCatching(): ChannelResult<T> {
         val coroutineId = currentCoroutineContext()[VizCoroutineElement]?.coroutineId ?: "unknown"
         session.send(ctx.channelReceiveStarted(coroutineId))
 
-        val result = delegate.receiveCatching()
+        val result = receiveOrClose()
 
         if (result.isSuccess) {
             val currentSize = reportedSize(bufferCount.decrementAndGet())
@@ -260,6 +288,16 @@ class InstrumentedChannel<T>(
         }
 
         return result
+    }
+
+    /** An element, or the close, at once when there is one; otherwise waits for either, recorded as a suspension. */
+    private suspend fun receiveOrClose(): ChannelResult<T> {
+        val attempt = delegate.tryReceive()
+        return if (attempt.isSuccess || attempt.isClosed) {
+            attempt
+        } else {
+            session.recordWait(WaitKind.CHANNEL_RECEIVE, channelId) { delegate.receiveCatching() }
+        }
     }
 
     companion object {

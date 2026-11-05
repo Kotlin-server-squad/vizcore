@@ -185,10 +185,18 @@ class SemaphoreValidator(private val recorder: EventRecorder) {
                 .filter { it.semaphoreId == semaphoreId }
 
         for (state in stateChanges) {
-            if (state.activeHolders.size > maxPermits) {
+            // Holders are listed once with their permit counts, and some counted permits may have been released by
+            // a coroutine that held none (unknownHolderPermits). Older events carry no counts: one permit each.
+            val held =
+                if (state.activeHolderPermits.isEmpty()) {
+                    state.activeHolders.size
+                } else {
+                    state.activeHolderPermits.sum() - state.unknownHolderPermits
+                }
+            if (held > maxPermits) {
                 throw AssertionError(
                     "Semaphore $semaphoreId permit limit exceeded: " +
-                        "${state.activeHolders.size} holders but only $maxPermits permits",
+                        "$held permits held by ${state.activeHolders.size} holders but only $maxPermits permits",
                 )
             }
             if (state.availablePermits < 0) {

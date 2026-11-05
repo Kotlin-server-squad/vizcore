@@ -57,11 +57,18 @@ export interface CoroutineBodyCompleted extends BaseCoroutineEvent {
   kind: "CoroutineBodyCompleted";
 }
 
+/** What a coroutine waited for when a mutex, semaphore or channel wrapper recorded the wait (spec 2026-11-05, S-7). */
+export type WaitKind = "MUTEX" | "SEMAPHORE" | "CHANNEL_SEND" | "CHANNEL_RECEIVE";
+
 export interface CoroutineSuspended extends BaseCoroutineEvent {
   kind: "CoroutineSuspended";
   reason: string;
   durationMillis: number | null;
   suspensionPoint: SuspensionPoint | null;
+  /** Absent on other suspensions and on events from older producers. */
+  waitKind?: WaitKind | null;
+  /** The mutexId, semaphoreId or channelId waited for. */
+  resourceId?: string | null;
 }
 
 export interface CoroutineResumed extends BaseCoroutineEvent {
@@ -466,6 +473,8 @@ export interface SemaphorePermitReleased extends BaseVizEvent {
   releaserLabel: string | null;
   newAvailablePermits: number;
   holdDurationNanos: number;
+  /** True when the releasing coroutine held no permit: whose permit came back is unknown. Absent on older events. */
+  holderUnknown?: boolean;
 }
 
 export interface SemaphoreTryAcquireFailed extends BaseVizEvent {
@@ -488,6 +497,10 @@ export interface SemaphoreStateChanged extends BaseVizEvent {
   activeHolderLabels: (string | null)[];
   waitingCoroutines: string[];
   waitingLabels: (string | null)[];
+  /** Permits each of `activeHolders` holds; absent on older events. */
+  activeHolderPermits?: number[];
+  /** Listed permits that other coroutines released: their holder is unknown. */
+  unknownHolderPermits?: number;
 }
 
 // ---------------------------------------------------------------------------

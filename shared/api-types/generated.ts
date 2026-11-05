@@ -524,6 +524,13 @@ export interface components {
             /** @description For suspension events */
             reason?: string | null;
             suspensionPoint?: components["schemas"]["SuspensionPoint"];
+            /**
+             * @description On a suspension recorded by a mutex, semaphore or channel wrapper: what the coroutine waited for.
+             * @enum {string|null}
+             */
+            waitKind?: "MUTEX" | "SEMAPHORE" | "CHANNEL_SEND" | "CHANNEL_RECEIVE" | null;
+            /** @description On such a suspension: the mutexId, semaphoreId or channelId waited for. */
+            resourceId?: string | null;
         };
         ThreadEvent: {
             coroutineId: string;

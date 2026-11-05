@@ -412,6 +412,8 @@ class ProjectionService(
                     kind = "coroutine.suspended",
                     reason = event.reason,
                     suspensionPoint = event.suspensionPoint,
+                    waitKind = event.waitKind,
+                    resourceId = event.resourceId,
                 )
 
             is CoroutineCreated ->

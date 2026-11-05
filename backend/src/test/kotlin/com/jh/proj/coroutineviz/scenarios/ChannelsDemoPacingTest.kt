@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.scenarios
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.events.channel.ChannelBufferStateChanged
 import com.jh.proj.coroutineviz.events.channel.ChannelReceiveCompleted
 import com.jh.proj.coroutineviz.events.channel.ChannelReceiveStarted
@@ -11,6 +12,7 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.Job
@@ -183,6 +185,27 @@ class ChannelsDemoPacingTest {
     @MethodSource("channelIds")
     fun `the coroutines of a Channels demo are named after its story`(id: String) {
         assertEquals(storyLabels.getValue(id), run(id).labels)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("channelIds")
+    fun `a coroutine waiting at a channel is shown suspended until it goes on`(id: String) {
+        val events = run(id).events
+        val waits =
+            events.filterIsInstance<CoroutineSuspended>().filter {
+                it.waitKind == WaitKind.CHANNEL_SEND || it.waitKind == WaitKind.CHANNEL_RECEIVE
+            }
+
+        assertTrue(waits.isNotEmpty(), "$id records no wait at a channel")
+        for (wait in waits) {
+            val next =
+                events.firstOrNull {
+                    it.seq > wait.seq &&
+                        (it is CoroutineResumed || it is CoroutineCompleted || it is CoroutineCancelled || it is CoroutineFailed) &&
+                        (it as CoroutineEvent).coroutineId == wait.coroutineId
+                }
+            assertTrue(next is CoroutineResumed || next is CoroutineCancelled, "$id: ${wait.label} stays suspended at the channel")
+        }
     }
 
     @Test
