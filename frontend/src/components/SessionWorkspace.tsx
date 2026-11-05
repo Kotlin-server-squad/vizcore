@@ -174,26 +174,32 @@ export function SessionWorkspace({
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
-  const { completedCount, shownCoroutines, moreCount } = useMemo(() => {
+  // When nothing is live any more the run is over, and hiding its coroutines
+  // would leave an empty tree: a finished run shows all of them (spec Part 1).
+  const { completedCount, activeCoroutines, allFinished } = useMemo(() => {
     const active = panelCoroutines.filter(c => !TERMINAL_STATES.has(c.state as CoroutineState))
-    const shown = active.slice(0, NODE_CAP)
     return {
       completedCount: panelCoroutines.length - active.length,
-      shownCoroutines: shown,
-      moreCount: active.length - shown.length,
+      activeCoroutines: active,
+      allFinished: active.length === 0 && panelCoroutines.length > 0,
     }
   }, [panelCoroutines])
-  // What the tree/graph render: the capped active set, or — when the user expands
-  // the completed aggregate — the full set (active + completed) up to the cap.
-  const renderedCoroutines = useMemo(() => {
+  // What the tree/graph render, and how many the cap leaves out — both from the
+  // same pool, so "N more" always counts what this view would have shown.
+  const { renderedCoroutines, moreCount } = useMemo(() => {
     // A named chip selects that state explicitly across the whole snapshot, and
     // bypasses the active-only default — you asked for completed, you get
-    // completed. With no chip active, behaviour is exactly as before the bar.
-    if (stateFilter !== 'all') {
-      return selectCoroutines(panelCoroutines, stateFilter, leakIds).slice(0, NODE_CAP)
-    }
-    return showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines
-  }, [stateFilter, showCompleted, panelCoroutines, shownCoroutines, leakIds])
+    // completed. With no chip, the active set; everything when the user expands
+    // the completed aggregate or when the run is over.
+    const pool =
+      stateFilter !== 'all'
+        ? selectCoroutines(panelCoroutines, stateFilter, leakIds)
+        : showCompleted || allFinished
+          ? panelCoroutines
+          : activeCoroutines
+    const shown = pool.slice(0, NODE_CAP)
+    return { renderedCoroutines: shown, moreCount: pool.length - shown.length }
+  }, [stateFilter, showCompleted, allFinished, panelCoroutines, activeCoroutines, leakIds])
 
   /** Counts for the state bar — the whole snapshot, never the capped subset. */
   const stateCounts = useMemo(
@@ -409,6 +415,7 @@ export function SessionWorkspace({
               coroutines={renderedCoroutines}
               viewMode={viewMode}
               completedCount={completedCount}
+              allFinished={allFinished}
               showCompleted={showCompleted}
               onToggleCompleted={() => setShowCompleted(prev => !prev)}
               moreCount={moreCount}
