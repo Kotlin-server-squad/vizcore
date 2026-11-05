@@ -123,9 +123,16 @@ fun EventContext.coroutineCancelled(cause: String?): CoroutineCancelled =
         cause = cause,
     )
 
+/** At most this many frames of a failure's stack trace are sent with [CoroutineFailed]. */
+internal const val MAX_STACK_TRACE_FRAMES = 50
+
+/** The innermost [MAX_STACK_TRACE_FRAMES] frames of this throwable, one `StackTraceElement.toString()` each. */
+internal fun Throwable.stackTraceLines(): List<String> = stackTrace.take(MAX_STACK_TRACE_FRAMES).map { it.toString() }
+
 fun EventContext.coroutineFailed(
     exceptionType: String?,
     message: String?,
+    stackTrace: List<String> = emptyList(),
 ): CoroutineFailed =
     CoroutineFailed(
         sessionId = sessionId,
@@ -137,9 +144,16 @@ fun EventContext.coroutineFailed(
         scopeId = scopeId,
         label = label,
         exceptionType = exceptionType,
-        stackTrace = emptyList(),
+        stackTrace = stackTrace,
         message = message,
     )
+
+/** Kept so code compiled against 0.3.x still links (its JVM signature has no `stackTrace`). */
+@Deprecated("binary compatibility with 0.3.x", level = DeprecationLevel.HIDDEN)
+fun EventContext.coroutineFailed(
+    exceptionType: String?,
+    message: String?,
+): CoroutineFailed = coroutineFailed(exceptionType, message, emptyList())
 
 // ============================================================================
 // Suspension & Resumption Events

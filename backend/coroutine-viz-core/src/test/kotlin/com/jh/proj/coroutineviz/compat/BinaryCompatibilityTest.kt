@@ -172,4 +172,10 @@ class BinaryCompatibilityTest {
         SemaphorePermitReleased::class.java.getDeclaredConstructor(str, long, long, str, str, str, str, int, long)
         SemaphoreStateChanged::class.java.getDeclaredConstructor(str, long, long, str, str, int, int, list, list, list, list)
     }
+
+    @Test
+    fun `EventContext coroutineFailed keeps its 0_3_x JVM method`() {
+        val helpers = Class.forName("com.jh.proj.coroutineviz.session.EventContextKt")
+        assertNotNull(helpers.getDeclaredMethod("coroutineFailed", EventContext::class.java, String::class.java, String::class.java))
+    }
 }
