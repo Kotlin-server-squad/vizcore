@@ -81,7 +81,7 @@ export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
           onSelectionChange={(key) => onGroupChange(String(key))}
           color="primary"
           variant="bordered"
-          classNames={{ tabList: 'mb-4 flex-wrap' }}
+          classNames={{ tabList: 'mb-4 flex-wrap', tab: 'w-auto' }}
         >
           {[
             ...groups.map((g) => (
