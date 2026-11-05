@@ -51,9 +51,13 @@ export function ThreadTable({
                 <td className="py-1 pr-4 text-right tabular-nums">{g.coroutinesSeen}</td>
                 <td className="py-1 pr-4 text-right tabular-nums">{g.assignments}</td>
                 <td className="py-1 text-right tabular-nums">
-                  {g.lastAssignedNanos !== null && start !== null
-                    ? `${formatDuration(g.lastAssignedNanos - start)} in`
-                    : 'none observed'}
+                  {g.lastAssignedNanos === null || start === null
+                    ? 'none observed'
+                    : // Thread activity outlives a trimmed event history: an
+                      // assignment older than the first retained event is not "0 ms in".
+                      g.lastAssignedNanos < start
+                      ? 'before the retained events'
+                      : `${formatDuration(g.lastAssignedNanos - start)} in`}
                 </td>
               </tr>
             ))}

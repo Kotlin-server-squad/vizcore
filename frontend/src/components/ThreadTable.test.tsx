@@ -38,6 +38,11 @@ describe('ThreadTable', () => {
     expect(screen.getByRole('row', { name: /worker-1/ })).toHaveTextContent('1.0 s in')
   })
 
+  it('says an assignment came before the retained history rather than "0 ms in"', () => {
+    render(<ThreadTable threadActivity={activityWith(1)} captureStartNanos={5 * S} />)
+    expect(screen.getByRole('row', { name: /worker-0/ })).toHaveTextContent('before the retained events')
+  })
+
   it('says so when no thread activity was captured', () => {
     render(<ThreadTable threadActivity={{}} captureStartNanos={null} />)
     expect(screen.getByText('No thread activity captured yet.')).toBeInTheDocument()
