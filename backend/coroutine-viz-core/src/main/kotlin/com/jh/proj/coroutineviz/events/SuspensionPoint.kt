@@ -27,6 +27,11 @@ data class SuspensionPoint(
                 SuspensionPoint::class.java.name,
                 "com.jh.proj.coroutineviz.wrappers.VizScope",
                 "com.jh.proj.coroutineviz.wrappers.InstrumentedDeferred",
+                // The wrappers that record a wait (spec 2026-11-05, S-7) and the helper they share.
+                "com.jh.proj.coroutineviz.wrappers.VizMutex",
+                "com.jh.proj.coroutineviz.wrappers.VizSemaphore",
+                "com.jh.proj.coroutineviz.wrappers.InstrumentedChannel",
+                "com.jh.proj.coroutineviz.wrappers.WaitSuspension",
             )
         private val INFRASTRUCTURE_PREFIXES = listOf("kotlinx.coroutines", "kotlin.coroutines")
 
