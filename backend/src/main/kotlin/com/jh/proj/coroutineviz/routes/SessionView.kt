@@ -9,6 +9,7 @@ import com.jh.proj.coroutineviz.health.RebuildLevel
 import com.jh.proj.coroutineviz.health.SessionHealthDerivation
 import com.jh.proj.coroutineviz.health.SummaryBinding
 import com.jh.proj.coroutineviz.health.SummaryView
+import com.jh.proj.coroutineviz.health.Transition
 import com.jh.proj.coroutineviz.health.WatermarkObservation
 import com.jh.proj.coroutineviz.health.snapshot
 import com.jh.proj.coroutineviz.session.VizSession
@@ -44,8 +45,11 @@ internal class SessionView(
     /** Replay only: [id]'s state at the cursor is not known (E-3). */
     fun isPartial(id: String): Boolean = binding is ViewBinding.Replay && bound.levelOf(id) == RebuildLevel.UNKNOWN
 
-    /** The cut this view's health is derived from, for its follow-up reads (E-17). Current views only. */
-    fun cut(nowMs: Long): HealthCut {
+    /**
+     * The cut this view's health is derived from, for its follow-up reads (E-17): [transitions] are the retained
+     * transitions the derivation read. Current views only.
+     */
+    fun cut(transitions: Map<String, List<Transition>>): HealthCut {
         check(binding == ViewBinding.Current) { "only the current view is a health cut" }
         return HealthCut(
             sessionId = session.sessionId,
@@ -53,7 +57,7 @@ internal class SessionView(
             summaries = input.summaries,
             ingest = IngestSnapshot(input.watermark, input.lastIngestEpochMs, input.transport),
             retention = checkNotNull(input.retention),
-            createdAtMs = nowMs,
+            transitions = transitions,
         )
     }
 }
@@ -76,7 +80,7 @@ internal fun readView(
     val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = ingestCut.watermark)
     val allEvents = session.store.all()
     val last = durable.lastEventSeq
-    val kept = (binding as? ViewBinding.Bound)?.let { HealthCuts.find(session.sessionId, minOf(it.asOfSeq, last)) }
+    val kept = (binding as? ViewBinding.Bound)?.let { keptCut(session, it, last) }
     val everyEvent = summariesSeeEveryEvent()
     val retention = retentionOf(allEvents, firstSeqEver = durable.firstSeqEver(everyEvent))
     if (kept == null && retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
@@ -132,7 +136,7 @@ private fun boundView(
     val s = minOf(binding.asOfSeq, durable.lastEventSeq)
     val events = allEvents.filter { it.seq <= s }
     val transitions = RetainedTransitions(allEvents, upToSeq = s)::of
-    val kept = HealthCuts.find(session.sessionId, s)
+    val kept = keptCut(session, binding, durable.lastEventSeq)
     if (kept != null) {
         val input =
             base.copy(
@@ -141,7 +145,7 @@ private fun boundView(
                 lastIngestEpochMs = kept.ingest.lastIngestEpochMs,
                 transport = kept.ingest.transport,
                 retention = kept.retention,
-                transitionsFor = transitions,
+                transitionsFor = { id -> kept.transitions[id].orEmpty() },
             )
         return SessionView(session, events, binding, s, BoundSummaries.exact(kept.summaries), input)
     }
@@ -163,3 +167,9 @@ private fun boundView(
         )
     return SessionView(session, events, binding, s, bound, input)
 }
+
+private fun keptCut(
+    session: VizSession,
+    binding: ViewBinding.Bound,
+    last: Long,
+): HealthCut? = HealthCuts.find(session.sessionId, minOf(binding.asOfSeq, last), binding.watermarkNanos, binding.transportRevision)

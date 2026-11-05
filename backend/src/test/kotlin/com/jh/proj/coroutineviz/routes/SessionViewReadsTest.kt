@@ -88,7 +88,7 @@ class SessionViewReadsTest {
     fun `a bound view answers from its kept cut after more events and a trim`() {
         val session = trimmedSession()
         val current = view(session, ViewBinding.Current)
-        HealthCuts.remember(current.cut(System.currentTimeMillis()))
+        HealthCuts.remember(current.cut(emptyMap()))
         val id = session.sessionId
         session.send(HealthEvents.started(id, "root", sec(7))) // root changes after the cut
         session.send(HealthEvents.created(id, "fourth", sec(8)))
@@ -144,7 +144,7 @@ class SessionViewReadsTest {
             val id = client.createSessionNamed("app-cut")
             SessionManager.getSession(id)!!.send(HealthEvents.created(id, "a", sec(1)))
             val health = appJson.decodeFromString(SessionHealth.serializer(), client.get("/api/sessions/$id/health").bodyAsText())
-            val cut = assertNotNull(HealthCuts.find(id, health.asOfSeq))
+            val cut = assertNotNull(HealthCuts.find(id, health.asOfSeq, health.asOfWatermark?.appNanos, health.transport.revision))
             assertEquals(health.transport, cut.ingest.transport)
         }
 }

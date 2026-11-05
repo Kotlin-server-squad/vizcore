@@ -87,8 +87,17 @@ internal fun readSessionHealth(
 ): SessionHealth {
     val binding = atSeq?.let { ViewBinding.Replay(it) } ?: ViewBinding.Current
     val view = readView(session, watermarkCut, binding, leakThresholdMs)
-    if (binding == ViewBinding.Current) HealthCuts.remember(view.cut(System.currentTimeMillis()))
-    return SessionHealthDerivation.derive(view.input)
+    if (binding != ViewBinding.Current) return SessionHealthDerivation.derive(view.input)
+    // Record the retained transitions the derivation reads, so the cut's follow-ups show the same evidence after a trim.
+    val read = HashMap<String, List<Transition>>()
+    val health =
+        SessionHealthDerivation.derive(
+            view.input.copy(transitionsFor = { id ->
+                view.input.transitionsFor(id).also { read[id] = it }
+            }),
+        )
+    HealthCuts.remember(view.cut(read))
+    return health
 }
 
 /** Retained lifecycle transitions per coroutine up to [upToSeq], indexed on first use (`HealthInput.transitionsFor`). */
