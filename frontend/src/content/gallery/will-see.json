@@ -212,5 +212,51 @@
       { "label": "charge-3", "state": "FAILED", "depth": 2 },
       { "label": "order-4", "state": "FAILED", "depth": 1 }
     ]
+  },
+  "sync/mutex/counter": {
+    "atSeconds": 12,
+    "moment": "About 12 s in: gate-1 has counted its three visitors; gate-2 holds the lock and updates the board; gate-3 waits for the lock. Both show as suspended",
+    "coroutines": [
+      { "label": "count-visitors", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "gate-1", "state": "COMPLETED", "depth": 1 },
+      { "label": "gate-2", "state": "SUSPENDED", "depth": 1 },
+      { "label": "gate-3", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/mutex/bank-transfer": {
+    "atSeconds": 6,
+    "moment": "About 6 s in: the rent is paid; pay-back-dinner holds both accounts and moves the money; split-groceries and book-holiday wait for Anna's account, suspended",
+    "coroutines": [
+      { "label": "transfers", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "pay-rent", "state": "COMPLETED", "depth": 1 },
+      { "label": "pay-back-dinner", "state": "SUSPENDED", "depth": 1 },
+      { "label": "split-groceries", "state": "SUSPENDED", "depth": 1 },
+      { "label": "book-holiday", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/mutex/cache": {
+    "atSeconds": 7.5,
+    "moment": "About 7.5 s in: requests 1 to 4 are answered, with one load of the espresso price; request-5 waits for load-grinder while it holds the lock; request-6 got the espresso price from the cache without the lock and renders its page",
+    "coroutines": [
+      { "label": "shop-server", "state": "SUSPENDED", "depth": 0 },
+      { "label": "request-1", "state": "COMPLETED", "depth": 1 },
+      { "label": "load-espresso", "state": "COMPLETED", "depth": 2 },
+      { "label": "request-2", "state": "COMPLETED", "depth": 1 },
+      { "label": "request-3", "state": "COMPLETED", "depth": 1 },
+      { "label": "request-4", "state": "COMPLETED", "depth": 1 },
+      { "label": "request-5", "state": "SUSPENDED", "depth": 1 },
+      { "label": "load-grinder", "state": "SUSPENDED", "depth": 2 },
+      { "label": "request-6", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/mutex/deadlock-demo": {
+    "atSeconds": 6,
+    "moment": "About 6 s in: the deadlock. Each transfer holds its payer's account and waits for the other's; both are suspended, and the watchdog keeps checking",
+    "coroutines": [
+      { "label": "month-end", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "anna-pays-ben", "state": "SUSPENDED", "depth": 1 },
+      { "label": "ben-pays-anna", "state": "SUSPENDED", "depth": 1 },
+      { "label": "watchdog", "state": "SUSPENDED", "depth": 1 }
+    ]
   }
 }

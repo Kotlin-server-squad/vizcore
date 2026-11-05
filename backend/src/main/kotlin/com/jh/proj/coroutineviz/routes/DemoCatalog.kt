@@ -251,10 +251,36 @@ val demoCatalog: List<DemoCatalogEntry> =
             "sync-mutex",
             "Sync: Mutex",
             "sync",
-            Demo("sync/mutex/counter", "Thread-Safe Counter", "Using mutex for atomic counter increments", "~3-4 seconds"),
-            Demo("sync/mutex/bank-transfer", "Bank Account Transfer", "Safe money transfer with consistent lock ordering", "~1 second"),
-            Demo("sync/mutex/cache", "Cache Read-Through", "Thread-safe lazy initialization pattern", "~1 second"),
-            Demo("sync/mutex/deadlock-demo", "Deadlock Demo", "Intentional deadlock for detection demonstration", "~2 seconds"),
+            Demo(
+                "sync/mutex/counter",
+                "Thread-Safe Counter: Festival Gates",
+                "Three gates count festival visitors into one shared count. Each update holds a lock while it " +
+                    "reads, shows and writes the count, so the other gates wait for it, suspended, and no visitor is " +
+                    "lost.",
+                "~14 seconds",
+            ),
+            Demo(
+                "sync/mutex/bank-transfer",
+                "Bank Account Transfer: Household Bills",
+                "Anna and Ben send each other money. Each transfer locks both accounts, always Anna's first, so " +
+                    "the transfers queue instead of deadlocking; the one Ben cannot afford is declined.",
+                "~12 seconds",
+            ),
+            Demo(
+                "sync/mutex/cache",
+                "Cache Read-Through: Product Prices",
+                "Eight requests for two prices meet an empty cache. The first miss loads a price under the lock; " +
+                    "the others wait, check again and find it cached; later requests read the cache without the " +
+                    "lock. Two loads in all.",
+                "~12 seconds",
+            ),
+            Demo(
+                "sync/mutex/deadlock-demo",
+                "Deadlock Demo: Two Transfers at Month End",
+                "Anna pays Ben and Ben pays Anna, each locking the payer's account first. Each holds one account " +
+                    "and waits, suspended, for the other's. After 10 s a watchdog cancels both.",
+                "~11 seconds",
+            ),
         ) +
         group(
             "sync-semaphore",

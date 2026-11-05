@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.events.MutexLockAcquired
 import com.jh.proj.coroutineviz.events.MutexQueueChanged
+import com.jh.proj.coroutineviz.events.MutexUnlocked
 import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.session.VizSession
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -119,5 +121,60 @@ class MutexWaitTest {
             }
             assertEquals(0, mutex.getWaitQueueSize())
             assertTrue(!mutex.isLocked)
+        }
+
+    /**
+     * The Lock contention panel follows the events in order: an unlock clears the holder, an acquire sets the next.
+     * The next holder can only get the lock once it is released, so its acquire must come after that unlock.
+     */
+    @Test
+    fun `the lock is reported released before the next holder reports it acquired`() =
+        runBlocking {
+            val mutex = VizMutex(session, "hot-lock")
+            val holder = holding(mutex)
+            val workers = (1..8).map { n -> viz.vizLaunch("worker-$n") { repeat(400) { mutex.withLock { } } } }
+            for (n in 1..8) session.awaitSuspension("worker-$n")
+            release.complete(Unit)
+            withTimeout(20.seconds) { (workers + holder).joinAll() }
+
+            var held: String? = null
+            for (event in session.store.all().sortedBy { it.seq }) {
+                when (event) {
+                    is MutexLockAcquired -> {
+                        assertNull(held, "${event.acquirerLabel} reported the lock acquired while $held still held it")
+                        held = event.acquirerLabel
+                    }
+                    is MutexUnlocked -> held = null
+                    else -> Unit
+                }
+            }
+        }
+
+    @Test
+    fun `the lock is released even when reporting the release fails`() =
+        runBlocking {
+            val mutex = VizMutex(session, "fragile-lock")
+            assertTrue(mutex.tryLock())
+            session.onEventEmitted = { throw IllegalStateException("the event sink is down") }
+
+            assertFailsWith<IllegalStateException> { mutex.unlock() }
+
+            session.onEventEmitted = null
+            assertTrue(!mutex.isLocked, "the mutex is free although its release could not be reported")
+        }
+
+    @Test
+    fun `an unlock with the wrong owner fails without reporting a release`() =
+        runBlocking {
+            val mutex = VizMutex(session, "owned-lock")
+            val ownerA = Any()
+            assertTrue(mutex.tryLock(ownerA))
+
+            assertFailsWith<IllegalStateException> { mutex.unlock(Any()) }
+
+            assertTrue(mutex.isLocked, "ownerA still holds it")
+            assertEquals(emptyList(), session.store.all().filterIsInstance<MutexUnlocked>(), "no release was reported")
+            mutex.unlock(ownerA)
+            assertEquals(1, session.store.all().filterIsInstance<MutexUnlocked>().size)
         }
 }
