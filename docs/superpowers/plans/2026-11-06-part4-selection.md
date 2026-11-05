@@ -41,10 +41,14 @@ One PR. It is about half of Part 3b's size and every task leaves a working page,
   A wait comes from the suspension the wrapper recorded (`waitKind`, Part 2), until the coroutine's next resume, suspension or end. **A queue alone is not taken for a wait**: a waiter that has resumed stays listed until the next queue event, and an older producer records no wait kind — no line is better than a wrong one (its queue still shows in Evidence). A resource is named by its label, else its id. A wait line uses the Suspended colour (`text-warning`, readable in both themes); a hold alone is neutral (`text-default-600`): a held lock is normal work (S-6).
 - **"holder unknown"** (S-6/S-7). `unknownHolderPermits` counts *listed* permits beyond those in use: a permit came back from a coroutine that held none, so one of the listed holders no longer holds one, and which is unknown. Then Locks and permits reads "Held by holder unknown — 1 of 3 permits in use; last recorded holders order-3, order-4. A permit came back from a coroutine that held none.", and each listed holder's second line reads "may hold a payment-gateway permit · holder unknown". Otherwise the holders are listed with their counts ("order-3 (2 permits), order-4").
 - **The projections read events in seq order** (`inSeqOrder`), not arrival order: the live stream accepts an event whose seq is lower than one it holds, and a suspension that arrives after its own resume must not read as a wait. Already-ordered input (the usual case) is not copied.
-- **A late release keeps the new holder.** `VizMutex.unlock` releases the lock before it records `MutexUnlocked`, so the waiter it woke can record `MutexLockAcquired` first. The previous holder's release recorded after the next acquisition does not free the lock; a release by any other coroutine does.
-- **Permit operations count between snapshots.** A semaphore's `SemaphoreStateChanged` follows each acquire and release, but a stream flush or a replay cursor can fall between the two: `SemaphorePermitAcquired` adds a permit to its acquirer (and takes it out of the queue), an attributed release takes one back, an unattributed one (`holderUnknown`, or a releaser holding none) adds to `unknownHolderPermits`; the next snapshot replaces all of it.
+- **A late release keeps the new holder.** `VizMutex.unlock` releases the lock before it records `MutexUnlocked`, so the waiter it woke can record `MutexLockAcquired` first — possibly several handovers in a row. Each holder displaced by an acquisition joins a per-lock multiset of pending releases; a release found there is consumed and frees nothing; any other release frees the lock. A coroutine that acquires again leaves the multiset (it records its release before it can acquire again), so a lost release cannot swallow a later real one.
+- **Permit operations count between snapshots, without counting twice.** A semaphore's `SemaphoreStateChanged` follows each acquire and release, but a stream flush or a replay cursor can fall between the two, and VizSemaphore records a holder before the acquisition event (and drops it before the release event), so another coroutine's snapshot may already reflect the operation. So `SemaphorePermitAcquired` lists an unlisted acquirer, and gives a listed one another permit only while fewer permits are listed than are in use; an attributed release takes one back only while more are listed than are in use. After each operation, `unknownHolderPermits` is the listed permits beyond those in use (the producer's definition), and with every permit free nobody holds one. The next snapshot replaces all of it. Without the total (its `SemaphoreCreated` trimmed away) the counts are left to the next snapshot.
+- **Permits in use with no recorded holder** (taken at creation, `acquiredPermits`, or before the retained history) read "holder unknown — 3 of 3 permits in use; no holder was recorded", or "order-3, and 1 permit with no recorded holder"; "Held by none" only when no permit is in use.
+- **Every reducer reads in seq order:** locks and permits, waits, channels, flows and jobs.
+- **In replay, Evidence reads the cursor:** which sections have anything (`categorizeEvents` over the cursor's events) as well as their contents; the rung keeps the whole session's categories.
+- **Selecting a resource reveals it every time:** the section unfolds, and the lock, semaphore or channel is ringed and scrolled into view — again when the same resource is selected again (a reveal key that changes with every selection).
 - **One selection, also for channels.** The Channels section's own channel picker selects the channel on the page (Events then shows its events); the page's selection decides which channel the section shows.
-- **A selection that is gone is cleared:** a coroutine no longer in the snapshot (as before), and a resource no longer named by the page's events (Clear events, a history trimmed past it). Clear events also clears the selection.
+- **A selection that is gone is cleared:** a coroutine no longer in the snapshot (as before), and a resource no longer named by the page's events, a retained suspension waiting for it included (Clear events, a history trimmed past it). Clear events also clears the selection.
 - **Only what the page can select is a button.** Holder and waiter names in Locks and permits are buttons only for coroutines in the snapshot (a `CoroutinePicker` with `canSelect`), like event rows; a wrapper used outside any coroutine records "unknown…", which reads "outside any coroutine", in rows and in Evidence. Channel rows are named by the channel's name.
 - **Evidence follows the page's events.** `useSyncEvents`, `useChannelEvents`, `useFlowEvents` and `useJobEvents` take the events the workspace passes (`panelEvents`), falling back to the stored history when none are passed; they still subscribe to it, so the request profile (#124) is unchanged. In replay these sections therefore follow the cursor, like Threads, and lose their "showing current data" notice; Dispatchers, still a server read, keeps it.
 - **The graph card grows 16 px** (224 → 240) to hold the second line under the state; the list view adds it under the id line.
@@ -58,6 +62,7 @@ One PR. It is about half of Part 3b's size and every task leaves a working page,
 ## Review history
 
 - **Codex plan review R1 — request changes** (8 P1, 2 P2), all taken: unknown-holder permits read the wrong way round; a queue alone resurrected ended waits; a late `MutexUnlocked` freed a lock already handed over; arrival order was trusted; permit operations did not move holders between snapshots; the Channels picker kept a second selection; a resource selection never went stale; an optional `selection` did not type-check in `useState`; channel rows had empty titles; Evidence names offered unselectable coroutines. The decisions above and Tasks 3, 5, 6, 8, 9, 10, 11 and 13 carry the fixes; Tasks 1–13 are already built on `feat/session-selection`, so this plan shows the code as built.
+- **Codex plan review R2 — request changes** (2 P1, 5 P2, 1 P3), all taken: one remembered previous holder was not enough for several handovers; a snapshot that already counted an acquisition was counted again; channel, flow and job reducers still read arrival order; "may hold" with every permit free, and "Held by none" with permits in use; a resource selected again was not revealed again, and the focused channel was not marked; a resource a retained suspension waits for was cleared as gone; in replay, Evidence presence read events beyond the cursor; the `unknownHolderPermits` comment had the old meaning.
 
 ## File structure
 
@@ -275,6 +280,18 @@ describe('projectSync', () => {
       expect(mutex).toMatchObject({ isLocked: true, currentHolder: 'c-2' })
     })
 
+    it('several handovers recorded before their releases leave the last holder holding', () => {
+      const events = [acquired('c-1'), acquired('c-2'), acquired('c-3'), unlocked('c-1'), unlocked('c-2')]
+      expect(projectSync(events).mutexes[0]).toMatchObject({ isLocked: true, currentHolder: 'c-3' })
+      expect(projectSync([...events, unlocked('c-3')]).mutexes[0]).toMatchObject({ isLocked: false })
+    })
+
+    it('a coroutine that acquires again is no longer waiting to record an old release', () => {
+      // c-1's release after the handover was never recorded; when c-1 holds the lock again, its release frees it.
+      const events = [acquired('c-1'), acquired('c-2'), unlocked('c-2'), acquired('c-1'), unlocked('c-1')]
+      expect(projectSync(events).mutexes[0]).toMatchObject({ isLocked: false, currentHolder: null })
+    })
+
     it('a release by some other coroutine frees it', () => {
       const [mutex] = projectSync([acquired('c-1'), unlocked('c-9')]).mutexes
       expect(mutex).toMatchObject({ isLocked: false, currentHolder: null })
@@ -292,9 +309,10 @@ describe('projectSync', () => {
 
   describe('permits between two state snapshots', () => {
     const s = { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway' }
-    const acquired = (who: string) => event('SemaphorePermitAcquired', { ...s, acquirerId: who, acquirerLabel: who, remainingPermits: 1, waitDurationNanos: 0 })
-    const released = (who: string, holderUnknown = false) =>
-      event('SemaphorePermitReleased', { ...s, releaserId: who, releaserLabel: who, newAvailablePermits: 2, holdDurationNanos: 0, holderUnknown })
+    const acquired = (who: string, remainingPermits = 1) =>
+      event('SemaphorePermitAcquired', { ...s, acquirerId: who, acquirerLabel: who, remainingPermits, waitDurationNanos: 0 })
+    const released = (who: string, holderUnknown = false, newAvailablePermits = 2) =>
+      event('SemaphorePermitReleased', { ...s, releaserId: who, releaserLabel: who, newAvailablePermits, holdDurationNanos: 0, holderUnknown })
 
     it('an acquisition counts before its snapshot arrives, and leaves the queue', () => {
       const queued = stateChanged({ activeHolders: [], activeHolderLabels: [], waitingCoroutines: ['c-1'], waitingLabels: ['c-1'] })
@@ -318,6 +336,46 @@ describe('projectSync', () => {
       const [sem] = projectSync([created, acquired('c-1'), acquired('c-2'), released('c-9', true)]).semaphores
       expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-1', 'c-2'])
       expect(sem!.unknownHolderPermits).toBe(1)
+    })
+
+    it('an acquisition a snapshot already counted is not counted twice', () => {
+      // VizSemaphore records a holder before it records the acquisition, so another coroutine's snapshot can
+      // list it first.
+      const two = event('SemaphoreCreated', { ...s, totalPermits: 2 })
+      const [sem] = projectSync([
+        two,
+        acquired('c-1', 1),
+        stateChanged({ totalPermits: 2, availablePermits: 0, activeHolders: ['c-1', 'c-2'], activeHolderLabels: ['c-1', 'c-2'], activeHolderPermits: [1, 1] }),
+        acquired('c-2', 0),
+      ]).semaphores
+      expect(sem!.activeHolders).toEqual([
+        { id: 'c-1', label: 'c-1', permits: 1 },
+        { id: 'c-2', label: 'c-2', permits: 1 },
+      ])
+    })
+
+    it('a release a snapshot already took back is not taken back again', () => {
+      const two = event('SemaphoreCreated', { ...s, totalPermits: 2 })
+      const [sem] = projectSync([
+        two,
+        acquired('c-1', 1),
+        acquired('c-2', 0),
+        stateChanged({ totalPermits: 2, availablePermits: 1, activeHolders: ['c-2'], activeHolderLabels: ['c-2'], activeHolderPermits: [1] }),
+        released('c-1', false, 1),
+      ]).semaphores
+      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-2'])
+      expect(sem!.unknownHolderPermits).toBe(0)
+    })
+
+    it('when every permit is free, nobody holds one, whatever was listed', () => {
+      const two = event('SemaphoreCreated', { ...s, totalPermits: 2 })
+      const [sem] = projectSync([
+        two,
+        acquired('c-1', 1),
+        released('c-9', true, 2),
+      ]).semaphores
+      expect(sem!.activeHolders).toEqual([])
+      expect(sem!.unknownHolderPermits).toBe(0)
     })
 
     it('the next snapshot replaces what the operations implied', () => {
@@ -441,7 +499,10 @@ export interface SemaphoreState {
   totalPermits: number
   availablePermits: number
   activeHolders: SemaphoreHolder[]
-  /** Permits in use whose holder is unknown: released by a coroutine that held none (S-7). */
+  /**
+   * Listed permits beyond those in use (S-7): a permit came back from a coroutine that held none, so some
+   * listed holder no longer holds one, and which is unknown. Not permits held by nobody known.
+   */
   unknownHolderPermits: number
   waitQueue: Holder[]
 }
@@ -473,8 +534,9 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
     }
   }
 
-  // The holder each lock had before its current one: its release may be recorded after the handover.
-  const previousHolders = new Map<string, string | null>()
+  // Per lock, holders displaced by a later acquisition whose own release is still to be recorded: VizMutex
+  // records a release after the lock has passed on. A multiset, as several handovers can come first.
+  const pendingReleases = new Map<string, string[]>()
 
   for (const event of inSeqOrder(events)) {
     if (!SYNC_EVENT_KINDS.has(event.kind)) continue
@@ -510,7 +572,10 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const e = syncEvent as MutexLockAcquired
         ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
         const state = mutexStates.get(e.mutexId)!
-        previousHolders.set(e.mutexId, state.currentHolder)
+        // A coroutine records its release before it can acquire again: none of its own is pending any more.
+        const pending = (pendingReleases.get(e.mutexId) ?? []).filter(id => id !== e.acquirerId)
+        if (state.isLocked && state.currentHolder && state.currentHolder !== e.acquirerId) pending.push(state.currentHolder)
+        pendingReleases.set(e.mutexId, pending)
         state.isLocked = true
         state.currentHolder = e.acquirerId
         state.currentHolderLabel = e.acquirerLabel
@@ -523,13 +588,11 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const e = syncEvent as MutexUnlocked
         ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
         const state = mutexStates.get(e.mutexId)!
-        // The previous holder's release, recorded after the next holder's acquisition: the lock is not free.
-        const lateRelease =
-          state.currentHolder !== null &&
-          e.releaserId !== state.currentHolder &&
-          e.releaserId === previousHolders.get(e.mutexId)
-        if (lateRelease) {
-          previousHolders.set(e.mutexId, null)
+        // A displaced holder's release, recorded after the next acquisition: the lock is not free.
+        const pending = pendingReleases.get(e.mutexId) ?? []
+        const late = pending.indexOf(e.releaserId)
+        if (late >= 0) {
+          pendingReleases.set(e.mutexId, pending.filter((_, i) => i !== late))
           break
         }
         state.isLocked = false
@@ -577,11 +640,16 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.remainingPermits
         // Counted now; the snapshot that follows replaces the list (a flush or a cursor can fall between).
+        // VizSemaphore records the holder before the event, so a snapshot may already list this permit: a
+        // listed acquirer gains one only while fewer permits are listed than are in use.
         const held = state.activeHolders.find(h => h.id === e.acquirerId)
-        state.activeHolders = held
-          ? state.activeHolders.map(h => (h === held ? { ...h, permits: h.permits + 1 } : h))
-          : [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
+        if (!held) {
+          state.activeHolders = [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
+        } else if (state.totalPermits === 0 || listedPermits(state) < permitsInUse(state)) {
+          state.activeHolders = state.activeHolders.map(h => (h === held ? { ...h, permits: h.permits + 1 } : h))
+        }
         state.waitQueue = state.waitQueue.filter(w => w.id !== e.acquirerId)
+        reconcilePermits(state)
         break
       }
       case 'SemaphorePermitReleased': {
@@ -589,16 +657,18 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.newAvailablePermits
+        // Its own release takes one back, unless a snapshot already did (the wrapper drops the record first).
+        // A release by a coroutine that held none (S-7) frees a listed permit whose holder is unknown: the
+        // listed permits beyond those in use say how many.
         const held = e.holderUnknown ? undefined : state.activeHolders.find(h => h.id === e.releaserId)
-        if (held) {
+        if (held && (state.totalPermits === 0 || listedPermits(state) > permitsInUse(state))) {
           state.activeHolders = state.activeHolders
             .map(h => (h === held ? { ...h, permits: h.permits - 1 } : h))
             .filter(h => h.permits > 0)
-        } else {
-          // Released by a coroutine that held none (S-7): one of the listed permits is free, whose is unknown.
-          const listed = state.activeHolders.reduce((sum, h) => sum + h.permits, 0)
-          state.unknownHolderPermits = Math.min(state.unknownHolderPermits + 1, listed)
+        } else if (!held && state.totalPermits === 0) {
+          state.unknownHolderPermits = Math.min(state.unknownHolderPermits + 1, listedPermits(state))
         }
+        reconcilePermits(state)
         break
       }
       case 'SemaphoreTryAcquireFailed': {
@@ -644,6 +714,31 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
     warnings,
     hasDeadlock: deadlocks.length > 0,
   }
+}
+
+/** Permits the holders are listed with. */
+function listedPermits(state: SemaphoreState): number {
+  return state.activeHolders.reduce((sum, h) => sum + h.permits, 0)
+}
+
+function permitsInUse(state: SemaphoreState): number {
+  return state.totalPermits - state.availablePermits
+}
+
+/**
+ * After an acquire or release: the listed permits beyond those in use have an unknown holder (the producer's
+ * own definition), and with every permit free nobody holds one. Needs the total, which a trimmed history may
+ * lack (`SemaphoreCreated` gone): then the counts are left as they are until the next snapshot.
+ */
+function reconcilePermits(state: SemaphoreState) {
+  if (state.totalPermits === 0) return
+  const inUse = permitsInUse(state)
+  if (inUse <= 0) {
+    state.activeHolders = []
+    state.unknownHolderPermits = 0
+    return
+  }
+  state.unknownHolderPermits = Math.max(0, listedPermits(state) - inUse)
 }
 
 function ensureMutex(map: Map<string, MutexState>, id: string, label: string | null) {
@@ -795,19 +890,209 @@ describe('useJobEvents', () => {
 Run: `pnpm exec vitest run src/hooks/use-channel-events.test.ts src/hooks/use-flow-events.test.ts src/hooks/use-job-events.test.ts`
 Expected: FAIL — the second argument is ignored (empty results), and TypeScript-in-vitest does not stop the run.
 
-- [ ] **Step 3: Implement** — in each hook, the same three-line change (shown for channels):
+- [ ] **Step 3: Implement** — each hook reads `given ?? stored`, in seq order; `useEventCategories` gains the pure `categorizeEvents` (Task 13 uses it in replay). Each test file also gains a "reduces in seq order, whatever order the events arrived in" test.
 
-```ts
-/**
- * … (existing doc) Reads `events` when given — the events the page shows —
- * else the stored history; it subscribes to that history either way (#124).
- */
-export function useChannelEvents(sessionId: string, given?: readonly VizEvent[]): UseChannelEventsResult {
-  const { data: stored } = useSessionEvents(sessionId)
-  const events = given ?? stored
+```diff
+diff --git a/frontend/src/hooks/use-channel-events.ts b/frontend/src/hooks/use-channel-events.ts
+index 06c92475..c9d7e8b7 100644
+--- a/frontend/src/hooks/use-channel-events.ts
++++ b/frontend/src/hooks/use-channel-events.ts
+@@ -1,5 +1,7 @@
+ import { useMemo } from 'react'
+ import { useSessionEvents } from '@/hooks/use-sessions'
++import { inSeqOrder } from '@/lib/projections/in-seq-order'
++import type { VizEvent } from '@/types/api'
+ import { CHANNEL_EVENT_KINDS } from '@/types/api'
+ import type {
+   ChannelCreated,
+@@ -43,9 +45,14 @@ export interface UseChannelEventsResult {
+ /**
+  * Filters session events to only channel events,
+  * groups by channelId, and tracks per-channel state.
++ *
++ * Reads `given` when passed — the events the page shows, so the facts follow
++ * the live stream and the replay cursor — else the stored history, which live
++ * updates never invalidate. It subscribes to that history either way (#124).
+  */
+-export function useChannelEvents(sessionId: string): UseChannelEventsResult {
+-  const { data: events } = useSessionEvents(sessionId)
++export function useChannelEvents(sessionId: string, given?: readonly VizEvent[]): UseChannelEventsResult {
++  const { data: stored } = useSessionEvents(sessionId)
++  const events = given ?? stored
+ 
+   return useMemo(() => {
+     const channelEvents: ChannelEvent[] = []
+@@ -62,7 +69,8 @@ export function useChannelEvents(sessionId: string): UseChannelEventsResult {
+       }
+     }
+ 
+-    for (const event of events) {
++    // In seq order: the live stream can deliver an earlier event late (inSeqOrder).
++    for (const event of inSeqOrder(events)) {
+       if (!CHANNEL_EVENT_KINDS.has(event.kind)) continue
+ 
+       const channelEvent = event as unknown as ChannelEvent
+diff --git a/frontend/src/hooks/use-event-categories.ts b/frontend/src/hooks/use-event-categories.ts
+index c2724301..467b3a5d 100644
+--- a/frontend/src/hooks/use-event-categories.ts
++++ b/frontend/src/hooks/use-event-categories.ts
+@@ -32,43 +32,42 @@ export function useEventCategories(
+ ): EventCategories {
+   const { data: stored } = useSessionEvents(sessionId)
+ 
+-  return useMemo(() => {
+-    const result: EventCategories = {
+-      hasChannels: false,
+-      hasFlowOps: false,
+-      hasSyncPrimitives: false,
+-      hasJobs: false,
+-      hasValidation: true, // Validation tab is always available
+-    }
++  return useMemo(() => categorizeEvents(stored, liveEvents), [stored, liveEvents])
++}
+ 
+-    for (const event of eventsOf(stored, liveEvents)) {
+-      const kind = event.kind
+-      if (!result.hasChannels && CHANNEL_EVENT_KINDS.has(kind)) {
+-        result.hasChannels = true
+-      }
+-      if (!result.hasFlowOps && FLOW_EVENT_KINDS.has(kind)) {
+-        result.hasFlowOps = true
+-      }
+-      if (!result.hasSyncPrimitives && SYNC_EVENT_KINDS.has(kind)) {
+-        result.hasSyncPrimitives = true
+-      }
+-      if (!result.hasJobs && JOB_EVENT_KINDS.has(kind)) {
+-        result.hasJobs = true
+-      }
+-      // Early exit if all categories found
+-      if (result.hasChannels && result.hasFlowOps && result.hasSyncPrimitives && result.hasJobs) {
+-        break
+-      }
+-    }
++/**
++ * Which event categories the given lists hold. Pure: the replay view runs it
++ * over the cursor's events, so Evidence never reports what the cursor has not
++ * reached yet.
++ */
++export function categorizeEvents(...lists: ReadonlyArray<readonly VizEvent[] | undefined>): EventCategories {
++  const result: EventCategories = {
++    hasChannels: false,
++    hasFlowOps: false,
++    hasSyncPrimitives: false,
++    hasJobs: false,
++    hasValidation: true, // Validation tab is always available
++  }
+ 
+-    return result
+-  }, [stored, liveEvents])
+-}
++  for (const list of lists) for (const event of list ?? []) {
++    const kind = event.kind
++    if (!result.hasChannels && CHANNEL_EVENT_KINDS.has(kind)) {
++      result.hasChannels = true
++    }
++    if (!result.hasFlowOps && FLOW_EVENT_KINDS.has(kind)) {
++      result.hasFlowOps = true
++    }
++    if (!result.hasSyncPrimitives && SYNC_EVENT_KINDS.has(kind)) {
++      result.hasSyncPrimitives = true
++    }
++    if (!result.hasJobs && JOB_EVENT_KINDS.has(kind)) {
++      result.hasJobs = true
++    }
++    // Early exit if all categories found
++    if (result.hasChannels && result.hasFlowOps && result.hasSyncPrimitives && result.hasJobs) {
++      return result
++    }
++  }
+ 
+-function* eventsOf(
+-  stored: readonly VizEvent[] | undefined,
+-  live: readonly VizEvent[] | undefined,
+-): Generator<VizEvent> {
+-  if (stored) yield* stored
+-  if (live) yield* live
++  return result
+ }
+diff --git a/frontend/src/hooks/use-flow-events.ts b/frontend/src/hooks/use-flow-events.ts
+index 18248100..e2d202b9 100644
+--- a/frontend/src/hooks/use-flow-events.ts
++++ b/frontend/src/hooks/use-flow-events.ts
+@@ -1,5 +1,7 @@
+ import { useMemo } from 'react'
+ import { useSessionEvents } from '@/hooks/use-sessions'
++import { inSeqOrder } from '@/lib/projections/in-seq-order'
++import type { VizEvent } from '@/types/api'
+ import { FLOW_EVENT_KINDS } from '@/types/api'
+ import type {
+   FlowCreated,
+@@ -60,9 +62,14 @@ export interface UseFlowEventsResult {
+ /**
+  * Filters session events to flow events, groups by flowId,
+  * and tracks operator chains, backpressure, and value traces.
++ *
++ * Reads `given` when passed — the events the page shows, so the facts follow
++ * the live stream and the replay cursor — else the stored history, which live
++ * updates never invalidate. It subscribes to that history either way (#124).
+  */
+-export function useFlowEvents(sessionId: string): UseFlowEventsResult {
+-  const { data: events } = useSessionEvents(sessionId)
++export function useFlowEvents(sessionId: string, given?: readonly VizEvent[]): UseFlowEventsResult {
++  const { data: stored } = useSessionEvents(sessionId)
++  const events = given ?? stored
+ 
+   return useMemo(() => {
+     const flowEvents: FlowOperatorEvent[] = []
+@@ -79,7 +86,8 @@ export function useFlowEvents(sessionId: string): UseFlowEventsResult {
+       }
+     }
+ 
+-    for (const event of events) {
++    // In seq order: the live stream can deliver an earlier event late (inSeqOrder).
++    for (const event of inSeqOrder(events)) {
+       if (!FLOW_EVENT_KINDS.has(event.kind)) continue
+ 
+       const flowEvent = event as unknown as FlowOperatorEvent
+diff --git a/frontend/src/hooks/use-job-events.ts b/frontend/src/hooks/use-job-events.ts
+index 863cd042..69bfca1c 100644
+--- a/frontend/src/hooks/use-job-events.ts
++++ b/frontend/src/hooks/use-job-events.ts
+@@ -1,5 +1,6 @@
+ import { useMemo } from 'react'
+ import { useSessionEvents } from '@/hooks/use-sessions'
++import { inSeqOrder } from '@/lib/projections/in-seq-order'
+ import { JOB_EVENT_KINDS } from '@/types/api'
+ import type {
+   JobStateChangedEvent,
+@@ -52,9 +53,14 @@ function deriveStatus(isActive: boolean, isCompleted: boolean, isCancelled: bool
+ /**
+  * Filters session events to job events, tracks job states,
+  * parent-child relationships, and waiting-for-children blocking.
++ *
++ * Reads `given` when passed — the events the page shows, so the facts follow
++ * the live stream and the replay cursor — else the stored history, which live
++ * updates never invalidate. It subscribes to that history either way (#124).
+  */
+-export function useJobEvents(sessionId: string): UseJobEventsResult {
+-  const { data: events } = useSessionEvents(sessionId)
++export function useJobEvents(sessionId: string, given?: readonly VizEvent[]): UseJobEventsResult {
++  const { data: stored } = useSessionEvents(sessionId)
++  const events = given ?? stored
+ 
+   return useMemo(() => {
+     const jobEvents: VizEvent[] = []
+@@ -71,7 +77,8 @@ export function useJobEvents(sessionId: string): UseJobEventsResult {
+       }
+     }
+ 
+-    for (const event of events) {
++    // In seq order: the live stream can deliver an earlier event late (inSeqOrder).
++    for (const event of inSeqOrder(events)) {
+       if (!JOB_EVENT_KINDS.has(event.kind)) continue
+ 
+       jobEvents.push(event)
 ```
-
-Import `VizEvent` as a type where the file does not yet. The rest of each hook reads `events` already and is unchanged.
 
 - [ ] **Step 4: Run the tests**
 
@@ -955,6 +1240,11 @@ describe('resourceIds', () => {
     ])
     expect([...ids].sort()).toEqual(['ch-1', 'm-2', 'sem-1'])
   })
+
+  it('counts a resource a retained suspension still waits for', () => {
+    const ids = resourceIds([ev('coroutine.suspended', { coroutineId: 'c-1', waitKind: 'MUTEX', resourceId: 'm-9' })])
+    expect([...ids]).toEqual(['m-9'])
+  })
 })
 ```
 
@@ -1048,12 +1338,15 @@ export function resourceNames(events: readonly VizEvent[]): Map<string, string> 
   return names
 }
 
-/** Every lock, semaphore and channel the events name: a selected resource no longer among them is gone. */
+/**
+ * Every lock, semaphore and channel the events name, a suspension waiting for one included (as
+ * `eventConcerns` counts it): a selected resource no longer among them is gone.
+ */
 export function resourceIds(events: readonly VizEvent[]): Set<string> {
   const ids = new Set<string>()
   for (const event of events) {
     const f = fieldsOf(event)
-    const id = f.mutexId ?? f.semaphoreId ?? f.channelId
+    const id = f.mutexId ?? f.semaphoreId ?? f.channelId ?? f.resourceId
     if (id) ids.add(id)
   }
   return ids
@@ -1564,6 +1857,26 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(held).toHaveTextContent('last recorded holders order-3, order-4')
   })
 
+  it('says the holder is unknown when permits are in use with no holder recorded', () => {
+    // A semaphore created with permits already taken (acquiredPermits) lists no holder for them.
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 0, activeHolders: [], activeHolderLabels: [] })} />,
+      { wrapper: createWrapper() },
+    )
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown')
+    expect(held).toHaveTextContent('3 of 3 permits in use; no holder was recorded')
+    expect(held).not.toHaveTextContent('none')
+  })
+
+  it('names the recorded holders and counts the permits no holder was recorded for', () => {
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 1, activeHolders: ['c-3'], activeHolderLabels: ['order-3'], activeHolderPermits: [1] })} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3, and 1 permit with no recorded holder')
+  })
+
   it('selects a holder or a waiter by name', async () => {
     const select = vi.fn()
     render(<SyncPanel sessionId="session-1" events={lockEvents} picker={anyone(select)} />, { wrapper: createWrapper() })
@@ -1585,6 +1898,20 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(screen.getByTestId('mutex-state')).toHaveTextContent('outside any coroutine')
     expect(screen.getByText('gone')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'gone' })).toBeNull()
+  })
+
+  it('scrolls the selected resource into view, again when it is selected again', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    const wrapper = createWrapper()
+    const { rerender } = render(
+      <SyncPanel sessionId="session-1" events={lockEvents} selectedResourceId="m-1" revealKey={{}} />,
+      { wrapper },
+    )
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByTestId('resource-m-1'))
+    rerender(<SyncPanel sessionId="session-1" events={lockEvents} selectedResourceId="m-1" revealKey={{}} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
   })
 
   it('marks the selected coroutine and rings the selected resource', () => {
@@ -1722,7 +2049,7 @@ index 08b432b2..754bb3de 100644
              </div>
              <div>
 diff --git a/frontend/src/components/sync/SemaphoreGauge.tsx b/frontend/src/components/sync/SemaphoreGauge.tsx
-index 017dabec..18e265aa 100644
+index 017dabec..27992052 100644
 --- a/frontend/src/components/sync/SemaphoreGauge.tsx
 +++ b/frontend/src/components/sync/SemaphoreGauge.tsx
 @@ -1,9 +1,16 @@
@@ -1742,7 +2069,7 @@ index 017dabec..18e265aa 100644
  }
  
  function getGaugeColor(available: number, total: number): 'success' | 'warning' | 'danger' {
-@@ -14,11 +21,14 @@ function getGaugeColor(available: number, total: number): 'success' | 'warning'
+@@ -14,11 +21,17 @@ function getGaugeColor(available: number, total: number): 'success' | 'warning'
    return 'success'
  }
  
@@ -1758,10 +2085,13 @@ index 017dabec..18e265aa 100644
 -    ? (usedPermits / semaphore.totalPermits) * 100
 -    : 0
 +  const percent = semaphore.totalPermits > 0 ? (usedPermits / semaphore.totalPermits) * 100 : 0
++  const listed = semaphore.activeHolders.reduce((sum, h) => sum + h.permits, 0)
++  // Permits in use that no listed holder accounts for (taken at creation, or before the retained history).
++  const unrecorded = Math.max(0, usedPermits - listed)
    const color = getGaugeColor(semaphore.availablePermits, semaphore.totalPermits)
  
    // SVG arc calculation
-@@ -27,80 +37,133 @@ export function SemaphoreGauge({ semaphore }: SemaphoreGaugeProps) {
+@@ -27,80 +40,149 @@ export function SemaphoreGauge({ semaphore }: SemaphoreGaugeProps) {
    const dashOffset = circumference - dashArray
  
    return (
@@ -1903,10 +2233,13 @@ index 017dabec..18e265aa 100644
 -            </Chip>
 +          {/* Who holds the permits (S-6): counted, never numbered. When a permit came back from a
 +              coroutine that held none (S-7), more permits are listed than are in use, and which listed
-+              holder still holds one is unknown: the line says "holder unknown", not a guess. */}
++              holder still holds one is unknown; when fewer are listed (permits taken at creation), the
++              rest have no recorded holder. Either way the line says so rather than guess. */}
 +          <div data-testid="semaphore-holders" className="text-xs">
 +            <span className="text-default-500">Held by </span>
-+            {semaphore.unknownHolderPermits > 0 ? (
++            {usedPermits <= 0 ? (
++              <span>none</span>
++            ) : semaphore.unknownHolderPermits > 0 ? (
 +              <>
 +                <span className="font-semibold">holder unknown</span>
 +                <span className="text-default-500">
@@ -1917,9 +2250,22 @@ index 017dabec..18e265aa 100644
 +                <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
 +              </>
 +            ) : semaphore.activeHolders.length === 0 ? (
-+              <span>none</span>
++              <>
++                <span className="font-semibold">holder unknown</span>
++                <span className="text-default-500">
++                  {' '}
++                  — {usedPermits} of {semaphore.totalPermits} permits in use; no holder was recorded
++                </span>
++              </>
 +            ) : (
-+              <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} counts />
++              <>
++                <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} counts />
++                {unrecorded > 0 && (
++                  <span className="text-default-500">
++                    , and {unrecorded === 1 ? '1 permit' : `${unrecorded} permits`} with no recorded holder
++                  </span>
++                )}
++              </>
 +            )}
            </div>
 -        )}
@@ -1965,7 +2311,7 @@ index 017dabec..18e265aa 100644
    )
  }
 diff --git a/frontend/src/components/sync/SyncPanel.tsx b/frontend/src/components/sync/SyncPanel.tsx
-index 10d5c6a1..09fdfe5e 100644
+index 10d5c6a1..541d039a 100644
 --- a/frontend/src/components/sync/SyncPanel.tsx
 +++ b/frontend/src/components/sync/SyncPanel.tsx
 @@ -1,3 +1,4 @@
@@ -1973,7 +2319,7 @@ index 10d5c6a1..09fdfe5e 100644
  import { Card, CardBody, Divider } from '@heroui/react'
  import { motion } from 'framer-motion'
  import { useSyncEvents } from '@/hooks/use-sync-events'
-@@ -5,13 +6,36 @@ import { MutexStateIndicator } from './MutexStateIndicator'
+@@ -5,13 +6,39 @@ import { MutexStateIndicator } from './MutexStateIndicator'
  import { SemaphoreGauge } from './SemaphoreGauge'
  import { WaitQueueList } from './WaitQueueList'
  import { DeadlockWarning } from './DeadlockWarning'
@@ -1990,6 +2336,8 @@ index 10d5c6a1..09fdfe5e 100644
 +  selectedCoroutineId?: string | null
 +  /** Selects a coroutine by its name, when the page can (S-2). */
 +  picker?: CoroutinePicker
++  /** Changes with every selection, so selecting the same resource again scrolls to it again. */
++  revealKey?: unknown
  }
  
 -export function SyncPanel({ sessionId }: SyncPanelProps) {
@@ -2000,6 +2348,7 @@ index 10d5c6a1..09fdfe5e 100644
 +  selectedResourceId = null,
 +  selectedCoroutineId = null,
 +  picker,
++  revealKey,
 +}: SyncPanelProps) {
 +  const { mutexes, semaphores, deadlocks, warnings } = useSyncEvents(sessionId, events)
 +  // Bring a selected resource into view; its section was unfolded in the same render.
@@ -2008,11 +2357,11 @@ index 10d5c6a1..09fdfe5e 100644
 +    if (!selectedResourceId) return
 +    const el = panelRef.current?.querySelector(`[data-testid="resource-${CSS.escape(selectedResourceId)}"]`)
 +    el?.scrollIntoView?.({ block: 'nearest' })
-+  }, [selectedResourceId])
++  }, [selectedResourceId, revealKey])
  
    if (mutexes.length === 0 && semaphores.length === 0 && deadlocks.length === 0 && warnings.length === 0) {
      return (
-@@ -36,6 +60,7 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
+@@ -36,6 +63,7 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
  
    return (
      <motion.div
@@ -2020,7 +2369,7 @@ index 10d5c6a1..09fdfe5e 100644
        className="space-y-4 mt-2"
        data-testid="sync-panel"
        initial={{ opacity: 0 }}
-@@ -64,10 +89,20 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
+@@ -64,10 +92,20 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
                animate={{ opacity: 1, y: 0 }}
                transition={{ duration: 0.3, delay: index * 0.05 }}
              >
@@ -2043,7 +2392,7 @@ index 10d5c6a1..09fdfe5e 100644
                  </div>
                )}
              </motion.div>
-@@ -97,10 +132,20 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
+@@ -97,10 +135,20 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
                  animate={{ opacity: 1, y: 0 }}
                  transition={{ duration: 0.3, delay: index * 0.05 }}
                >
@@ -2143,14 +2492,20 @@ git commit -m "feat(frontend): locks and permits follow the page's events; names
 Run: `pnpm exec vitest run src/components/channels src/components/flow src/components/jobs`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement.** The page's selection decides which channel is shown; a pick in the panel goes to the page (`onSelectChannel`), so there is one selection; without it (replay, shared view) the pick stays local:
+- [ ] **Step 3: Implement.** The page's selection decides which channel is shown, ringed and scrolled to; a pick in the panel goes to the page (`onSelectChannel`), so there is one selection; without it (replay, shared view) the pick stays local:
 
 ```diff
 diff --git a/frontend/src/components/channels/ChannelPanel.tsx b/frontend/src/components/channels/ChannelPanel.tsx
-index 44c357fa..9dae97dd 100644
+index 44c357fa..20260719 100644
 --- a/frontend/src/components/channels/ChannelPanel.tsx
 +++ b/frontend/src/components/channels/ChannelPanel.tsx
-@@ -6,19 +6,34 @@ import { useChannelEvents } from '@/hooks/use-channel-events'
+@@ -1,4 +1,4 @@
+-import { useState } from 'react'
++import { useEffect, useRef, useState } from 'react'
+ import { Card, CardBody, CardHeader, Chip, Divider } from '@heroui/react'
+ import { motion, AnimatePresence } from 'framer-motion'
+ import { FiRadio, FiHash } from 'react-icons/fi'
+@@ -6,19 +6,50 @@ import { useChannelEvents } from '@/hooks/use-channel-events'
  import { ChannelBufferGauge } from './ChannelBufferGauge'
  import { ChannelTimeline } from './ChannelTimeline'
  import { ChannelProducerConsumer } from './ChannelProducerConsumer'
@@ -2167,18 +2522,34 @@ index 44c357fa..9dae97dd 100644
 +   * the shared view) the pick stays local to this panel.
 +   */
 +  onSelectChannel?: (channelId: string) => void
++  /** Changes with every selection, so selecting the same channel again scrolls to it again. */
++  revealKey?: unknown
  }
  
 -export function ChannelPanel({ sessionId }: ChannelPanelProps) {
 -  const { channels, eventsByChannel, bufferStates } = useChannelEvents(sessionId)
 -  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
-+export function ChannelPanel({ sessionId, events, focusChannelId = null, onSelectChannel }: ChannelPanelProps) {
++export function ChannelPanel({
++  sessionId,
++  events,
++  focusChannelId = null,
++  onSelectChannel,
++  revealKey,
++}: ChannelPanelProps) {
 +  const { channels, eventsByChannel, bufferStates } = useChannelEvents(sessionId, events)
 +  const [pickedChannelId, setPickedChannelId] = useState<string | null>(null)
 +  const pick = (channelId: string) => {
 +    setPickedChannelId(channelId)
 +    onSelectChannel?.(channelId)
 +  }
++
++  // Bring the page's channel into view; its section was unfolded in the same render.
++  const listRef = useRef<HTMLDivElement>(null)
++  useEffect(() => {
++    if (!focusChannelId) return
++    const el = listRef.current?.querySelector(`[data-testid="channel-selector-${CSS.escape(focusChannelId)}"]`)
++    el?.scrollIntoView?.({ block: 'nearest' })
++  }, [focusChannelId, revealKey])
  
 -  // Auto-select first channel when data arrives
 +  // The page's selection wins; then the last pick here; then the first channel.
@@ -2191,7 +2562,15 @@ index 44c357fa..9dae97dd 100644
        : channels.length > 0
          ? channels[0]!.channelId
          : null
-@@ -77,7 +92,7 @@ export function ChannelPanel({ sessionId }: ChannelPanelProps) {
+@@ -70,20 +101,22 @@ export function ChannelPanel({ sessionId }: ChannelPanelProps) {
+           </div>
+         </CardHeader>
+         <CardBody>
+-          <div className="flex flex-wrap gap-2" data-testid="channel-list">
++          <div ref={listRef} className="flex flex-wrap gap-2" data-testid="channel-list">
+             {channels.map((ch, index) => {
+               const isSelected = ch.channelId === effectiveSelectedId
+               const evtCount = eventsByChannel.get(ch.channelId)?.length ?? 0
                return (
                  <motion.button
                    key={ch.channelId}
@@ -2200,6 +2579,15 @@ index 44c357fa..9dae97dd 100644
                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
                      isSelected
                        ? 'border-primary bg-primary/10'
+                       : 'border-default-200 hover:bg-default-100'
+-                  }`}
++                  }${ch.channelId === focusChannelId ? ' ring-2 ring-primary' : ''}`}
+                   data-testid={`channel-selector-${ch.channelId}`}
++                  // The page's selection (S-2), ringed like a selected lock.
++                  data-focused={ch.channelId === focusChannelId ? 'true' : 'false'}
+                   initial={{ opacity: 0, y: 10 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ duration: 0.3, delay: index * 0.05 }}
 diff --git a/frontend/src/components/flow/FlowPanel.tsx b/frontend/src/components/flow/FlowPanel.tsx
 index 401cf95d..d77ec28e 100644
 --- a/frontend/src/components/flow/FlowPanel.tsx
@@ -2253,7 +2641,7 @@ index 3d1230f5..0aa067a8 100644
      return (
 ```
 
-(The channel tests wait with `findByText` for the detail to swap: it animates out first, `AnimatePresence mode="wait"`. A third channel test checks that a pick calls `onSelectChannel` and that the shown channel follows `focusChannelId`.)
+(The channel tests wait with `findByText` for the detail to swap: it animates out first, `AnimatePresence mode="wait"`.)
 
 - [ ] **Step 4: Run the tests**
 
@@ -2368,7 +2756,7 @@ describe('EvidencePanels — the page\'s events and selection (S-2)', () => {
     expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('follows the replay cursor, so Locks and permits carries no live-data warning in replay', async () => {
+  it('reads the events it is given in replay too, so Locks and permits carries no live-data warning', async () => {
     renderPanels({ ...synced, events, replayActive: true })
     await userEvent.click(screen.getByRole('button', { name: /Locks and permits/ }))
     expect(within(screen.getByTestId('evidence-section-Locks and permits')).queryByTestId('live-data-notice')).toBeNull()
@@ -2387,7 +2775,7 @@ Expected: FAIL — `data-events` reads `stored`; sections stay folded; the notic
 
 ```diff
 diff --git a/frontend/src/components/workspace/EvidencePanels.tsx b/frontend/src/components/workspace/EvidencePanels.tsx
-index 587a5f94..1bb2b6d2 100644
+index 587a5f94..8d24b09e 100644
 --- a/frontend/src/components/workspace/EvidencePanels.tsx
 +++ b/frontend/src/components/workspace/EvidencePanels.tsx
 @@ -12,7 +12,9 @@ import { plural, resourceSummary, type EvidenceCounts } from '@/lib/evidence-sum
@@ -2474,7 +2862,7 @@ index 587a5f94..1bb2b6d2 100644
    const groups = useMemo(() => groupThreadsByName(threadActivity), [threadActivity])
    const dispatchers = useMemo(() => {
      const names = new Set<string>()
-@@ -98,7 +140,15 @@ export function EvidencePanels({
+@@ -98,7 +140,16 @@ export function EvidencePanels({
        summary: resourceSummary([plural(counts.locks, 'lock'), plural(counts.semaphores, 'semaphore')]) ?? 'captured',
        whatYouWouldSee: 'Who holds each mutex and semaphore, who is queued behind it, and for how long.',
        unlockWith: 'Swap Mutex() for VizMutex() in the code you want to watch.',
@@ -2486,12 +2874,13 @@ index 587a5f94..1bb2b6d2 100644
 +          selectedResourceId={selectedResource && selectedResource.resource !== 'channel' ? selectedResource.id : null}
 +          selectedCoroutineId={selectedCoroutineId}
 +          picker={picker}
++          revealKey={selection}
 +        />
 +      ),
      },
      {
        title: 'Channels',
-@@ -106,7 +156,16 @@ export function EvidencePanels({
+@@ -106,7 +157,17 @@ export function EvidencePanels({
        summary: resourceSummary([plural(counts.channels, 'channel')]) ?? 'captured',
        whatYouWouldSee: 'Send and receive pairs, buffer occupancy, and which side is waiting.',
        unlockWith: 'Create the channel with InstrumentedChannel(...).',
@@ -2501,6 +2890,7 @@ index 587a5f94..1bb2b6d2 100644
 +          sessionId={sessionId}
 +          events={events}
 +          focusChannelId={selectedResource?.resource === 'channel' ? selectedResource.id : null}
++          revealKey={selection}
 +          onSelectChannel={
 +            onSelectResource ? id => onSelectResource({ kind: 'resource', resource: 'channel', id }) : undefined
 +          }
@@ -2509,7 +2899,7 @@ index 587a5f94..1bb2b6d2 100644
      },
      {
        title: 'Flows',
-@@ -114,7 +173,7 @@ export function EvidencePanels({
+@@ -114,7 +175,7 @@ export function EvidencePanels({
        summary: resourceSummary([plural(counts.flows, 'flow')]) ?? 'captured',
        whatYouWouldSee: 'Emissions, operator stages, and where a slow collector is stalling the producer.',
        unlockWith: 'Wrap the flow you care about with .instrumented().',
@@ -2518,7 +2908,7 @@ index 587a5f94..1bb2b6d2 100644
      },
      {
        title: 'Jobs',
-@@ -125,7 +184,7 @@ export function EvidencePanels({
+@@ -125,7 +186,7 @@ export function EvidencePanels({
        // does not promote a session to instrumented), so there is no honest
        // one-line unlock to offer for them.
        unlockWith: '',
@@ -2527,7 +2917,7 @@ index 587a5f94..1bb2b6d2 100644
      },
    ]
  
-@@ -168,7 +227,8 @@ export function EvidencePanels({
+@@ -168,7 +229,8 @@ export function EvidencePanels({
              summary={c.summary}
              open={open.has(c.title)}
              onToggle={() => toggle(c.title)}
@@ -2992,6 +3382,14 @@ vi.mock('./DispatcherOverview', () => ({ DispatcherOverview: () => null }))
 vi.mock('./SessionMetrics', () => ({ SessionMetrics: () => null }))
 vi.mock('./export/ExportMenu', () => ({ ExportMenu: () => null }))
 vi.mock('./replay/RecordConfirmModal', () => ({ RecordConfirmModal: () => null }))
+// A thin controller: replay's cursor is moved by the real useReplay, through this button.
+vi.mock('./replay/ReplayController', () => ({
+  ReplayController: ({ replay }: { replay: { seekTo: (i: number) => void } }) => (
+    <button type="button" onClick={() => replay.seekTo(0)}>
+      Seek to the first event
+    </button>
+  ),
+}))
 vi.mock('@tanstack/react-router', () => ({ useNavigate: vi.fn(() => vi.fn()) }))
 vi.mock('@/lib/animation-throttle', () => ({ useAnimationSlot: () => false }))
 vi.mock('framer-motion', async () => {
@@ -3147,6 +3545,15 @@ describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Events' }))
     expect(screen.getByTestId('events-scope')).toHaveTextContent('Events about invoices · 2')
   })
+
+  it('in replay, Evidence says what was captured by the cursor, not later', async () => {
+    stream([co('coroutine.started', 'c-1'), ...contended])
+    render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Seek to the first event' }))
+    await userEvent.click(screen.getByRole('tab', { name: /Evidence/ }))
+    expect(screen.getByTestId('evidence-section-Locks and permits')).toHaveTextContent('none captured')
+  })
 })
 ```
 
@@ -3161,7 +3568,7 @@ Expected: FAIL — no second lines, no selectable rows, Evidence reads the (empt
 
 ```diff
 diff --git a/frontend/src/components/SessionWorkspace.tsx b/frontend/src/components/SessionWorkspace.tsx
-index 6c9dbeb7..7b47621f 100644
+index 6c9dbeb7..0e73760d 100644
 --- a/frontend/src/components/SessionWorkspace.tsx
 +++ b/frontend/src/components/SessionWorkspace.tsx
 @@ -1,4 +1,4 @@
@@ -3170,6 +3577,15 @@ index 6c9dbeb7..7b47621f 100644
  import {
    Card,
    CardBody,
+@@ -10,7 +10,7 @@ import {
+ } from '@heroui/react'
+ import { useSession, useSessionEvents } from '@/hooks/use-sessions'
+ import { useThreadActivity } from '@/hooks/use-thread-activity'
+-import { useEventCategories } from '@/hooks/use-event-categories'
++import { categorizeEvents, useEventCategories } from '@/hooks/use-event-categories'
+ import { useWorkspaceReplay } from '@/hooks/use-workspace-replay'
+ import { useValidation } from '@/hooks/use-validation'
+ import { SSE_FALLBACK_POLL_MS } from '@/lib/poll-interval'
 @@ -38,7 +38,7 @@ import { RecordConfirmModal } from './replay/RecordConfirmModal'
  import { ManageShares } from './share/ManageShares'
  import { OrderProcessingView } from './scenarios/OrderProcessingView'
@@ -3218,10 +3634,17 @@ index 6c9dbeb7..7b47621f 100644
      onRefetch: () => void refetch(),
    })
    const hasScenario = !!scenarioId
-@@ -282,6 +288,41 @@ export function SessionWorkspace({
+@@ -282,6 +288,48 @@ export function SessionWorkspace({
  
    // What the Evidence tab holds, named on its label (S-4).
    const evidenceCounts = useMemo(() => countEvidence(panelEvents), [panelEvents])
++  // Which Evidence sections have anything, from the same events: in replay,
++  // the cursor's, so a resource created later is not reported yet. The rung
++  // keeps the whole session's categories.
++  const evidenceCategories = useMemo(
++    () => (replayActive ? categorizeEvents(panelEvents) : eventCategories),
++    [replayActive, panelEvents, eventCategories],
++  )
 +  // What each coroutine waits for or holds (S-6), and the resources' names,
 +  // from the same events as the rest of the page: live, paused or at the
 +  // replay cursor — so they refresh with every new event.
@@ -3260,7 +3683,7 @@ index 6c9dbeb7..7b47621f 100644
    // "Time into the capture" for the thread table: the first retained event.
    const captureStartNanos = useMemo(() => {
      let first: number | null = null
-@@ -294,11 +335,14 @@ export function SessionWorkspace({
+@@ -294,11 +342,14 @@ export function SessionWorkspace({
    // capped-out coroutine still exists in panelCoroutines, so it keeps its drawer +
    // resolved label (WR-04); only a truly-absent id clears the selection so we stop
    // fetching a coroutine that no longer exists.
@@ -3279,7 +3702,7 @@ index 6c9dbeb7..7b47621f 100644
  
    const panelThreadActivity: ThreadActivity | undefined = useMemo(() => {
      if (replayActive) return projectThreadActivity(replay.visibleEvents)
-@@ -469,12 +513,13 @@ export function SessionWorkspace({
+@@ -469,12 +520,13 @@ export function SessionWorkspace({
            }
            isDemo={isDemo}
            selectedCoroutineId={selectedCoroutineId}
@@ -3294,7 +3717,7 @@ index 6c9dbeb7..7b47621f 100644
                    // A selection is read in the Inspector: show it (S-4).
                    selectDockTab('inspector')
                  }
-@@ -540,7 +585,8 @@ export function SessionWorkspace({
+@@ -540,7 +592,8 @@ export function SessionWorkspace({
                }
                threadActivity={panelThreadActivity}
                // Back to the session summary (T-3) from a selection.
@@ -3304,7 +3727,15 @@ index 6c9dbeb7..7b47621f 100644
              />
            </DockTabPanel>
            <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
-@@ -556,6 +602,10 @@ export function SessionWorkspace({
+@@ -549,13 +602,17 @@ export function SessionWorkspace({
+             <EvidencePanels
+               sessionId={sessionId}
+               rung={rung}
+-              categories={eventCategories}
++              categories={evidenceCategories}
+               counts={evidenceCounts}
+               replayActive={replayActive}
+               readOnly={readOnly}
                threadActivity={panelThreadActivity}
                captureStartNanos={captureStartNanos}
                history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
@@ -3315,7 +3746,7 @@ index 6c9dbeb7..7b47621f 100644
              />
            </DockTabPanel>
            <DockTabPanel id="events" selected={dockTab === 'events'}>
-@@ -564,7 +614,15 @@ export function SessionWorkspace({
+@@ -564,7 +621,15 @@ export function SessionWorkspace({
                  live flush. It fetches nothing, so mounting later costs no
                  request. Every other panel stays mounted and is hidden. */}
              {dockTab === 'events' && (
@@ -3334,7 +3765,7 @@ index 6c9dbeb7..7b47621f 100644
            <DockTabPanel id="learn" selected={dockTab === 'learn'}>
 ```
 
-(Task 11 left an interim `EventsPanel` wiring so its commit compiles; this replaces it.)
+(Task 11 left an interim `EventsPanel` wiring so its commit compiles; this replaces it. The three workspace test files that mock `use-event-categories` also export the real `categorizeEvents`.)
 
 - [ ] **Step 4: Run the workspace tests**
 
