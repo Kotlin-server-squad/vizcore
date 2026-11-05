@@ -56,7 +56,8 @@ export function DemoCard({ scenario, groupLabel, guide, isStarting, isDisabled =
               to="/gallery/$slug"
               params={{ slug: demoSlug(scenario.id) }}
               aria-label={`How it works: ${scenario.name}`}
-              className={button({ variant: 'bordered', fullWidth: true })}
+              // HeroUI shows focus through data-focus-visible, which a router Link never sets.
+              className={`${button({ variant: 'bordered', fullWidth: true })} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
             >
               <FiBookOpen className="h-4 w-4" aria-hidden />
               How it works

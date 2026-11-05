@@ -231,6 +231,13 @@ describe('GalleryPage', () => {
     }
   })
 
+  it('shows keyboard focus on a How it works link', () => {
+    renderPage('basics')
+    const link = screen.getByRole('link', { name: /^How it works: Nested/ })
+    // HeroUI's button classes hide the outline and expect data-focus-visible, which a router Link never sets.
+    expect(link.className).toMatch(/focus-visible:outline-/)
+  })
+
   it('has no How it works link for a demo without a guide', () => {
     renderPage('flow')
     expect(screen.queryByRole('link', { name: /how it works/i })).toBeNull()

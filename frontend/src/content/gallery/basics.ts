@@ -201,7 +201,7 @@ suspend fun loadReviews() = coroutineScope {        // load-reviews
     ],
     keyIdea:
       'Use join() when the next step needs the result of this one. Start independent steps together, and wait for all of them before you go on.',
-    mistakeId: 'SHARED_MUTABLE_STATE',
+    mistakeId: 'UNNECESSARY_ASYNC_AWAIT',
   },
   {
     demoId: 'exception',
@@ -264,15 +264,15 @@ suspend fun loadReviews() = coroutineScope {        // load-reviews
       },
       {
         title: 'Download on IO',
-        text: 'download-photo-N runs on Dispatchers.IO (3 s). IO has many threads, because work that waits for the network or the disk does not keep a CPU busy.',
+        text: 'download-photo-N runs on Dispatchers.IO (3 s). IO lets many coroutines block at once (at least 64), because work that waits for the network or the disk does not keep a CPU busy.',
       },
       {
         title: 'Resize on Default',
-        text: 'resize-photo-N runs on Dispatchers.Default (4 s). Default has about one thread per CPU core, the right size for work that computes.',
+        text: 'resize-photo-N runs on Dispatchers.Default (4 s). Default runs about one coroutine per CPU core at a time, the right number for work that computes.',
       },
       {
         title: 'Upload on IO again',
-        text: 'upload-thumbnail-N goes back to IO (1.5 s). While photo 1 is resized on Default, photos 2 and 3 download on IO: different thread pools at the same moment. The demo takes about 13 s.',
+        text: 'upload-thumbnail-N goes back to IO (1.5 s). While photo 1 is resized on Default, photos 2 and 3 download on IO: two dispatchers at work at the same moment. The two share one pool of threads underneath, but each keeps its own limit. The demo takes about 13 s.',
       },
     ],
     keyIdea:

@@ -44,6 +44,7 @@ describe('gallery guides', () => {
       const picture = willSeeFor(id)
       expect(picture, id).toBeDefined()
       expect(picture!.moment.length, id).toBeGreaterThan(0)
+      expect(picture!.atSeconds, id).toBeGreaterThan(0)
       expect(picture!.coroutines.length, id).toBeGreaterThan(0)
       expect(picture!.coroutines[0]!.depth, id).toBe(0)
       picture!.coroutines.forEach((c, i) => {

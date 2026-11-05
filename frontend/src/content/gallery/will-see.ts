@@ -10,7 +10,9 @@ export interface WillSeeCoroutine {
 
 /** "What you will see" for one demo: the tree at one telling moment. */
 export interface WillSee {
-  /** When the picture is taken, e.g. "About 10 s in: …". */
+  /** When the picture is taken, in seconds from the start; GuideLabelsTest checks it. */
+  atSeconds: number
+  /** That moment in words, for the caption, e.g. "About 10 s in: …". */
   moment: string
   coroutines: WillSeeCoroutine[]
 }

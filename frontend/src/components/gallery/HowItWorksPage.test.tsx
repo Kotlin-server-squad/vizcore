@@ -107,6 +107,15 @@ describe('HowItWorksPage', () => {
     })
   })
 
+  it('nests each pictured coroutine inside its parent, so the tree is not flat for screen readers', () => {
+    renderPage('nested')
+    const row = (label: string) => screen.getByText(label, { selector: 'span' }).closest('li')!
+    expect(row('fetch-review-photos').parentElement!.closest('li')).toBe(row('fetch-reviews'))
+    expect(row('fetch-reviews').parentElement!.closest('li')).toBe(row('load-reviews'))
+    expect(row('load-reviews').parentElement!.closest('li')).toBe(row('load-product-page'))
+    expect(row('load-product-page').parentElement!.closest('li')).toBeNull()
+  })
+
   it('links the common mistake to its card in the Gallery', () => {
     renderPage('nested')
     expect(screen.getByRole('link', { name: /launching in globalscope/i })).toHaveAttribute(
