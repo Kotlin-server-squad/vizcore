@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   Button,
   Modal,
@@ -8,22 +8,19 @@ import {
   Spinner,
 } from '@heroui/react'
 import { FiClock, FiPlay } from 'react-icons/fi'
-import { useNavigate } from '@tanstack/react-router'
 import { useScenarios } from '@/hooks/use-scenarios'
 import { groupDemos } from '@/lib/demo-groups'
-import { useCreateSession } from '@/hooks/use-sessions'
+import { useStartDemo } from '@/hooks/use-start-demo'
 import type { Scenario } from '@/types/api'
-import { describeApiError } from '@/lib/api-errors'
+import { DemoStartAlert } from '../demos/DemoStartAlert'
 import { ErrorState } from '../ErrorState'
 
 /**
  * "New demo session" — the re-hosted scenario picker (D-2).
  *
  * Scenarios stopped being a destination, but starting a demo session is still a
- * real action, so the picker moves into the sessions home as a modal. The
- * create-and-navigate behaviour is lifted verbatim from the retired
- * `/scenarios` route: mint a `scenario-`-prefixed session (which is what
- * `deriveSessionKind` keys the DEMO badge off) then open it.
+ * real action, so the picker moves into the sessions home as a modal. Starting
+ * one is `useStartDemo`, shared with the Gallery.
  */
 export function NewDemoSessionModal({
   isOpen,
@@ -33,33 +30,9 @@ export function NewDemoSessionModal({
   onClose: () => void
 }) {
   const { data, isLoading, isPending, error: scenariosError, refetch: refetchScenarios } = useScenarios()
-  const createSession = useCreateSession()
-  const navigate = useNavigate()
-  const [preparing, setPreparing] = useState<string | null>(null)
+  const { start, preparing, startError } = useStartDemo(onClose)
 
   const groups = useMemo(() => groupDemos(data?.scenarios ?? []), [data?.scenarios])
-
-  const [startError, setStartError] = useState<{ scenario: string; error: unknown } | null>(null)
-
-  // Never rejects: a failed create (e.g. the session-create rate limit) is
-  // shown in the modal instead of becoming an unhandled rejection (#139).
-  const start = async (scenario: Scenario) => {
-    setPreparing(scenario.id)
-    setStartError(null)
-    try {
-      const result = await createSession.mutateAsync(`scenario-${scenario.name}`)
-      onClose()
-      navigate({
-        to: '/sessions/$sessionId',
-        params: { sessionId: result.sessionId },
-        search: { scenarioId: scenario.id, scenarioName: scenario.name },
-      })
-    } catch (error) {
-      setStartError({ scenario: scenario.name, error })
-    } finally {
-      setPreparing(null)
-    }
-  }
 
   // No per-row group chip — the section heading already says it, and
   // repeating it on every row in the group is noise.
@@ -106,12 +79,7 @@ export function NewDemoSessionModal({
           </span>
         </ModalHeader>
         <ModalBody className="pb-6">
-          {startError && (
-            <div role="alert" className="rounded-medium border border-danger-200 bg-danger-50 p-3 text-sm text-danger">
-              Could not start “{startError.scenario}”:{' '}
-              {describeApiError(startError.error, 'The scenario').message}
-            </div>
-          )}
+          <DemoStartAlert startError={startError} />
           {isLoading || isPending === true ? (
             <div className="flex justify-center py-12">
               <Spinner size="sm" />
