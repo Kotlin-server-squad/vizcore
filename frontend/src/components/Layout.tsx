@@ -10,11 +10,10 @@ interface LayoutProps {
 /**
  * The app shell.
  *
- * The navbar is brand-only (D-1/D-2/D-3). It previously advertised five
- * destinations — Home, Sessions, Scenarios, Gallery, Compare — of which Home
- * and Sessions were the same page, and Scenarios, Gallery and Compare were
- * actions wearing the costume of places. Per-page actions now live on the pages
- * that own them; the brand returns you to the sessions home.
+ * The navbar carries the two places: Sessions (the sessions home) and the
+ * Gallery (G-1 of the 2026-11-05 Gallery spec, which supersedes D-2 for the
+ * Gallery only). Scenarios and Compare stay actions on the pages that own them
+ * (D-2/D-3). The theme switch sits on the right.
  */
 export function Layout({ children }: LayoutProps) {
   return (
@@ -26,6 +25,27 @@ export function Layout({ children }: LayoutProps) {
             <span>Coroutine Visualizer</span>
           </Link>
         </NavbarBrand>
+        <NavbarContent className="gap-6" justify="start">
+          <NavbarItem>
+            <Link
+              to="/"
+              activeOptions={{ exact: true }}
+              activeProps={{ className: 'font-semibold text-foreground' }}
+              inactiveProps={{ className: 'text-default-500' }}
+            >
+              Sessions
+            </Link>
+          </NavbarItem>
+          <NavbarItem>
+            <Link
+              to="/gallery"
+              activeProps={{ className: 'font-semibold text-foreground' }}
+              inactiveProps={{ className: 'text-default-500' }}
+            >
+              Gallery
+            </Link>
+          </NavbarItem>
+        </NavbarContent>
         <NavbarContent justify="end">
           <NavbarItem>
             <ThemeSwitch />

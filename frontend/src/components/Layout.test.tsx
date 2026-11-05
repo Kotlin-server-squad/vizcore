@@ -16,9 +16,15 @@ import { Layout } from './Layout'
 const renderLayout = () => render(<Layout>content</Layout>)
 
 describe('Layout nav', () => {
-  it('no longer advertises retired destinations', () => {
+  it('links the two places: Sessions and the Gallery', () => {
     renderLayout()
-    for (const gone of ['Scenarios', 'Gallery', 'Compare', 'Home']) {
+    expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: 'Gallery' })).toHaveAttribute('href', '/gallery')
+  })
+
+  it('does not advertise the actions that stay on their pages', () => {
+    renderLayout()
+    for (const gone of ['Scenarios', 'Compare', 'Home']) {
       expect(screen.queryByRole('link', { name: gone })).toBeNull()
     }
   })
