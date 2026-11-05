@@ -164,7 +164,7 @@ checkout                       supervisorScope: order-1 … order-8, one at a ti
 - **Behaviour test:**
   - orders 1–3 and their charges failed;
   - orders 4 and 5 failed within 1 s of starting, with no charge;
-  - order 6 started at least 5.5 s after `charge-3` failed, and order 5 at least 1.2 s before that;
+  - order 6 started at least 5.5 s after `charge-3` failed; on the script, order 5 has at least 1.5 s of room before the breaker half-opens;
   - orders 6–8 and their charges completed;
   - the root completed.
 
