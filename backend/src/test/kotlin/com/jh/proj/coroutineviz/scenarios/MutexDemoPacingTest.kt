@@ -182,17 +182,16 @@ class MutexDemoPacingTest {
     }
 
     @Test
-    fun `the gates count every visitor, and a gate that finds the lock taken is suspended until it gets it`() {
+    fun `the gates count every visitor, and a gate that waits for the lock resumes once it has it`() {
         val run = run("sync/mutex/counter")
 
         assertEquals(9, runBlocking { withTimeout(5.seconds) { counted.await() } }, "no visitor is lost")
-        assertTrue(run.lockWaits.isNotEmpty(), "a gate waits for the lock")
         run.lockWaits.forEach { assertTrue(run.resumedAfter(it), "${it.label} resumes once it has the lock") }
         assertTrue(run.labels.all { run.completed(it) })
     }
 
     @Test
-    fun `the transfers keep the household's money, and the holiday is declined`() {
+    fun `the transfers keep the household's money, the holiday is declined, and a transfer that waits resumes`() {
         val run = run("sync/mutex/bank-transfer")
 
         assertEquals(
@@ -200,7 +199,6 @@ class MutexDemoPacingTest {
             runBlocking { withTimeout(5.seconds) { balances.await() } },
             "in any order: Ben never has 1200 for the holiday",
         )
-        assertTrue(run.lockWaits.isNotEmpty(), "a transfer waits for an account")
         run.lockWaits.forEach { assertTrue(run.resumedAfter(it), "${it.label} resumes once it has the account") }
         assertTrue(run.labels.all { run.completed(it) })
     }

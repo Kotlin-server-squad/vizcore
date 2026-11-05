@@ -35,6 +35,10 @@
 - **Real-time checks:** the pictures of the four Mutex demos, the 30 s ceiling and the moments ran on real time, where a slow scheduler could change who leads or stretch a run past 3 real seconds. They now run on virtual time through `runOnVirtualTime`, which records the virtual time each event was sent. Real time keeps a 10 s floor (a delay never ends early), the steps, the names and the order-free outcomes.
 - **The plan's spacing claim** is corrected (above).
 
+**Codex code review, round 2:** no P1/P2. Two P3s:
+- the real-time tests still required a gate and a transfer to wait for a lock, which a slow dispatch could avoid; they now only check that any wait they see resumes. The virtual-time story tests keep the exact waits;
+- `runOnVirtualTime` reads the clock outside the session's send lock, so an event from another thread could be stamped late. Not changed: in these demos only the root's terminal events come from another thread, once the clock has stopped. The helper's KDoc says so.
+
 **Model:** #287 (Channels) and #289 (Patterns). Follow their patterns, test style and wording.
 
 **Working directory:** worktree `/Users/jirihermann/Documents/workspace-vizcore/vizcore-mutex`, branch `feat/mutex-stories-pacing`.

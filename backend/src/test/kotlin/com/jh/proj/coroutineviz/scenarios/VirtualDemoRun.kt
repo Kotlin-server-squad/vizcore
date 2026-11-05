@@ -22,6 +22,11 @@ import kotlin.time.Duration.Companion.seconds
  * One run of a demo on virtual time: its events in order, the scripted millisecond at which each
  * was sent, and how long the whole run took. An event's own `tsNanos` is real time, which on
  * virtual time says nothing, so the time each event was sent is read from the test's clock.
+ *
+ * The clock is read when the session reports an event emitted, outside its send lock. An event
+ * sent from another thread while the test clock moves could be stamped a little later than it was
+ * sent. In the demos run here every step runs on the test dispatcher; only the root's terminal
+ * events may come from elsewhere, and they come once the clock has stopped.
  */
 internal class VirtualDemoRun(
     val events: List<VizEvent>,
