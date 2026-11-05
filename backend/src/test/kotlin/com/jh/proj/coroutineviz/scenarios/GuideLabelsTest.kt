@@ -200,6 +200,11 @@ class GuideLabelsTest {
             "flow/operators" -> FlowScenarios.flowOperators(session)
             "flow/stateflow" -> FlowScenarios.stateFlowDemo(session)
             "flow/sharedflow" -> FlowScenarios.sharedFlowDemo(session)
+            "patterns/retry" -> PatternScenarios.runRetry(session)
+            "patterns/producer-consumer" -> PatternScenarios.runProducerConsumer(session)
+            "patterns/fan-out-fan-in" -> PatternScenarios.runFanOutFanIn(session)
+            "patterns/supervisor" -> PatternScenarios.runSupervisor(session)
+            "patterns/circuit-breaker" -> PatternScenarios.runCircuitBreaker(session)
             else -> error("will-see.json pictures '$demoId'; add it to GuideLabelsTest.start")
         }
 
