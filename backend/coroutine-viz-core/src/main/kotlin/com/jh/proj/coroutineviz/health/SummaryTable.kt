@@ -30,6 +30,15 @@ interface SummaryView {
      * an attached session's table.
      */
     val latestEventAppNanos: Long?
+
+    /**
+     * Sequence of the first event applied, 0 before any. A table that saw every event of its session (the in-memory
+     * table of a live session) tells a trimmed store apart from one that never held more.
+     */
+    val firstEventSeq: Long
+
+    /** Smallest app-clock time of any event applied, `null` before any: the capture's start (spec C-3 `captureStartAppNanos`). */
+    val earliestEventAppNanos: Long?
 }
 
 /**
@@ -70,15 +79,30 @@ class SummaryTable(
     override var latestEventAppNanos: Long? = null
         private set
 
+    override var firstEventSeq: Long = 0L
+        private set
+
+    override var earliestEventAppNanos: Long? = null
+        private set
+
     override fun get(id: String): CoroutineSummary? = summaries[id]
 
     override val all: Collection<CoroutineSummary> get() = summaries.values
 
     fun apply(event: VizEvent) {
-        lastEventSeq = event.seq
-        latestEventAppNanos = maxOf(latestEventAppNanos ?: Long.MIN_VALUE, event.tsNanos)
+        observe(event.seq, event.tsNanos)
         if (event !is CoroutineEvent) return
         if (event is CoroutineCreated) onCreated(event) else onUpdate(event)
+    }
+
+    private fun observe(
+        seq: Long,
+        appNanos: Long,
+    ) {
+        if (firstEventSeq == 0L) firstEventSeq = seq
+        lastEventSeq = seq
+        latestEventAppNanos = maxOf(latestEventAppNanos ?: Long.MIN_VALUE, appNanos)
+        earliestEventAppNanos = minOf(earliestEventAppNanos ?: Long.MAX_VALUE, appNanos)
     }
 
     private fun onCreated(e: CoroutineCreated) {

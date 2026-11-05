@@ -208,6 +208,12 @@ class VizSession(
     fun nextSeq(): Long = seqGenerator.incrementAndGet()
 
     /**
+     * The seq of the last event appended (0 before any). The ingest route reads it when a socket opens: that
+     * socket's events get later seqs.
+     */
+    val lastSeq: Long get() = synchronized(sendLock) { lastSentSeq }
+
+    /**
      * Read the session's summaries under the send lock, so a read never sees a half-applied event.
      * Keep [block] short: it holds up event ingestion while it runs. The view is live and only safe under
      * the lock, so [block] must copy what it returns (e.g. `it.all.toList()`), never the view itself.
