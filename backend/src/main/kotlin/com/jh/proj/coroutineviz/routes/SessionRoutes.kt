@@ -401,6 +401,9 @@ fun Route.registerSessionRoutes() {
                     frames.join()
                     sessionRemoved.cancel()
                     if (removed.get()) {
+                        // Subscribing allocated ingest state; a stream set up during the delete may have done so after
+                        // the delete dropped it.
+                        IngestStates.forget(sessionId)
                         send(ServerSentEvent(data = """{"error": "Session not found"}""", event = "error"))
                     }
                 }

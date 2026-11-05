@@ -438,6 +438,11 @@ export interface components {
         };
         ErrorResponse: {
             error: string;
+            /**
+             * @description Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s)
+             * @enum {string}
+             */
+            code?: "demo-limit" | "demo-time-limit" | "summaries-unavailable" | "history-trimmed";
         };
         /** @enum {string} */
         CoroutineState: "CREATED" | "ACTIVE" | "SUSPENDED" | "WAITING_FOR_CHILDREN" | "COMPLETED" | "CANCELLED" | "FAILED";

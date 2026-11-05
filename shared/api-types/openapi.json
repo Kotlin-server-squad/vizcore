@@ -1218,6 +1218,16 @@
         "properties": {
           "error": {
             "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "demo-limit",
+              "demo-time-limit",
+              "summaries-unavailable",
+              "history-trimmed"
+            ],
+            "description": "Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s)"
           }
         }
       },

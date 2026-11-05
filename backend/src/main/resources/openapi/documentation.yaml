@@ -1667,11 +1667,12 @@ components:
           description: Human-readable error message
         code:
           type: string
-          enum: [demo-limit, demo-time-limit]
+          enum: [demo-limit, demo-time-limit, summaries-unavailable, history-trimmed]
           description: >
-            Machine-readable reason, present only on the demo limit's 503s:
+            Machine-readable reason, present only where a client acts on it:
             demo-limit (every MAX_CONCURRENT_DEMOS slot is taken) and
-            demo-time-limit (the demo ran past MAX_DEMO_RUN_SECONDS)
+            demo-time-limit (the demo ran past MAX_DEMO_RUN_SECONDS) on the demo limit's 503s;
+            summaries-unavailable and history-trimmed on the session health's 503
 
     # -----------------------------------------------------------------------
     # Health

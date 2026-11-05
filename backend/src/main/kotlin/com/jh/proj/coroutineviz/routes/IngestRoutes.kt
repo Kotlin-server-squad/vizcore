@@ -87,7 +87,7 @@ fun Route.registerIngestRoutes() {
                 removed.set(true)
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
             }
-        // Registered right before the try and released first in the finally, so nothing between
+        // Registered right before the try and released in the finally before anything that can fail, so nothing between
         // the two can leave the session marked connected (which would hide Checks failures). A
         // retention decision may have deleted the session while this socket waited to register;
         // then no frame may be stored into it, and the client must learn to recreate it (#261).
@@ -112,10 +112,15 @@ fun Route.registerIngestRoutes() {
                 }
             }
         } finally {
-            IngestConnections.closed(sessionId)
+            // Transport facts first (in memory, cannot fail): once the session reads as disconnected,
+            // how the connection ended is already known.
             IngestStates.connectionClosed(connection)
+            IngestConnections.closed(sessionId)
             sessionRemoved.cancel()
             session.ingestSocketClosed()
+            // A socket set up while its session was being deleted may have allocated ingest state after
+            // the delete dropped it.
+            if (removed.get() || !sessionStillExists(sessionId)) IngestStates.forget(sessionId)
         }
     }
 }
