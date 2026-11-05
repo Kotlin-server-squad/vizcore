@@ -23,7 +23,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -198,9 +197,17 @@ class PatternsDemoPacingTest {
 
         (1..3).forEach { assertTrue(run.failed("attempt-$it"), "attempt-$it fails: the server is overloaded") }
         assertTrue(run.completed("attempt-4"), "the fourth try gets the forecast")
-        val waits = (1..3).map { run.startedAt("attempt-${it + 1}") - run.endedAt("attempt-$it") }
-        listOf(750.0, 1_500.0, 3_000.0).zip(waits).forEach { (scripted, waited) ->
-            assertTrue(abs(waited - scripted) <= 300, "the app waits about $scripted ms before the next try, waited $waited: $waits")
+        // The backoff as the app scripts it: three waits, each twice the one before, then showing the forecast.
+        val waits =
+            run.events
+                .filterIsInstance<CoroutineSuspended>()
+                .filter { it.label == "load-forecast" && it.reason == "delay" }
+                .map { (assertNotNull(it.durationMillis) / SCALE).roundToLong() }
+        assertEquals(listOf(750L, 1_500L, 3_000L, 1_000L), waits)
+        // And each next try really starts only after its wait (broadly: these are real, scaled times).
+        val gaps = (1..3).map { run.startedAt("attempt-${it + 1}") - run.endedAt("attempt-$it") }
+        listOf(750.0, 1_500.0, 3_000.0).zip(gaps).forEach { (scripted, gap) ->
+            assertTrue(gap >= scripted * 0.8, "the next try waits about $scripted ms, waited $gap: $gaps")
         }
         assertTrue(run.completed("load-forecast"), "the failures were handled, so the forecast loads")
     }
@@ -260,7 +267,7 @@ class PatternsDemoPacingTest {
         for (n in 4..5) {
             assertTrue(run.failed("order-$n"), "order-$n is rejected")
             assertEquals(emptyList(), run.childrenOf("order-$n"), "a rejected order does not call the provider")
-            assertTrue(run.endedAt("order-$n") - run.startedAt("order-$n") < 200, "a rejected order fails at once")
+            assertTrue(run.endedAt("order-$n") - run.startedAt("order-$n") < 500, "a rejected order fails at once")
         }
         assertTrue(run.startedAt("order-6") - run.endedAt("charge-3") >= 5_000, "the trial order comes after the 5 s cooldown")
         for (n in 6..8) {

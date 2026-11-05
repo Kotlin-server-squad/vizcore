@@ -1,14 +1,14 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.scenarios.PatternScenarios
-import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.VizSession
-import com.jh.proj.coroutineviz.wrappers.VizScope
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
 
@@ -36,58 +36,33 @@ fun Route.registerPatternRoutes() {
     // ========================================================================
 
     demoPost("/api/scenarios/patterns/retry") {
-        val sessionId = call.request.queryParameters["sessionId"]
-        val session = call.getOrCreateSession(sessionId, "pattern")
-
-        logger.info("Running retry with exponential backoff scenario in session: ${session.sessionId}")
-
-        call.runPatternScenario(session, "Retry with Exponential Backoff") { scope ->
-            PatternScenarios.retryWithExponentialBackoff(scope)
-        }
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "pattern")
+        logger.info("Running retry with backoff scenario in session: ${session.sessionId}")
+        call.runPatternScenario(session, "Retry with Backoff: Weather Forecast") { PatternScenarios.runRetry(session) }
     }
 
     demoPost("/api/scenarios/patterns/producer-consumer") {
-        val sessionId = call.request.queryParameters["sessionId"]
-        val session = call.getOrCreateSession(sessionId, "pattern")
-
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "pattern")
         logger.info("Running producer-consumer scenario in session: ${session.sessionId}")
-
-        call.runPatternScenario(session, "Producer-Consumer") { scope ->
-            PatternScenarios.producerConsumer(scope)
-        }
+        call.runPatternScenario(session, "Producer-Consumer: Coffee Bar") { PatternScenarios.runProducerConsumer(session) }
     }
 
     demoPost("/api/scenarios/patterns/fan-out-fan-in") {
-        val sessionId = call.request.queryParameters["sessionId"]
-        val session = call.getOrCreateSession(sessionId, "pattern")
-
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "pattern")
         logger.info("Running fan-out/fan-in scenario in session: ${session.sessionId}")
-
-        call.runPatternScenario(session, "Fan-Out / Fan-In") { scope ->
-            PatternScenarios.fanOutFanIn(scope)
-        }
+        call.runPatternScenario(session, "Fan-Out / Fan-In: Holiday Album") { PatternScenarios.runFanOutFanIn(session) }
     }
 
     demoPost("/api/scenarios/patterns/supervisor") {
-        val sessionId = call.request.queryParameters["sessionId"]
-        val session = call.getOrCreateSession(sessionId, "pattern")
-
-        logger.info("Running supervisor pattern scenario in session: ${session.sessionId}")
-
-        call.runPatternScenario(session, "Supervisor Pattern") { scope ->
-            PatternScenarios.supervisorPattern(scope)
-        }
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "pattern")
+        logger.info("Running supervisor scenario in session: ${session.sessionId}")
+        call.runPatternScenario(session, "Supervisor: Nightly Backup") { PatternScenarios.runSupervisor(session) }
     }
 
     demoPost("/api/scenarios/patterns/circuit-breaker") {
-        val sessionId = call.request.queryParameters["sessionId"]
-        val session = call.getOrCreateSession(sessionId, "pattern")
-
+        val session = call.getOrCreateSession(call.request.queryParameters["sessionId"], "pattern")
         logger.info("Running circuit breaker scenario in session: ${session.sessionId}")
-
-        call.runPatternScenario(session, "Circuit Breaker") { scope ->
-            PatternScenarios.circuitBreaker(scope)
-        }
+        call.runPatternScenario(session, "Circuit Breaker: Payment Provider") { PatternScenarios.runCircuitBreaker(session) }
     }
 
     // ========================================================================
@@ -155,15 +130,20 @@ fun Route.registerPatternRoutes() {
 // HELPER FUNCTIONS
 // ============================================================================
 
+/**
+ * Runs a pattern demo and answers once it has ended, as the pattern routes always have; the demo
+ * itself returns its root coroutine at once (see [PatternScenarios]).
+ */
 private suspend fun ApplicationCall.runPatternScenario(
     session: VizSession,
     scenarioName: String,
-    scenario: suspend (VizScope) -> Unit,
+    start: suspend () -> Job,
 ) {
     try {
-        val scope = session.demoScope()
-        scenario(scope)
+        start().join()
         respond(HttpStatusCode.OK, session.toCompletionResponse("$scenarioName completed"))
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         logger.error("Error running pattern scenario '$scenarioName'", e)
         respond(

@@ -1,355 +1,316 @@
 package com.jh.proj.coroutineviz.scenarios
 
+import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.supervisorScope
 import org.slf4j.LoggerFactory
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Real-world coroutine pattern scenarios for visualization.
+ * The Patterns demos: common ways to combine coroutines, told as everyday work. Like the Basics
+ * ([BasicScenarios]) and the Channels ([ChannelScenarios]) their steps are paced with [pause] so a
+ * person can watch them: 0.5-3 s a step, 10-30 s a demo, at the configured `scenarios.timeScale`.
+ * Each returns the demo's root coroutine, which keeps running after the call returns.
  *
- * These scenarios demonstrate common concurrency patterns used in
- * production Kotlin applications, including retry logic, producer-consumer,
- * fan-out/fan-in, supervisor patterns, and circuit breakers.
+ * Where a story has work that fails, the failure stays where the story says: a try that fails is
+ * caught by its caller (`coroutineScope` rethrows a child's failure instead of cancelling the
+ * caller), and independent work runs under `supervisorScope`, where one child's failure does not
+ * cancel the others.
  */
 object PatternScenarios {
     private val logger = LoggerFactory.getLogger(PatternScenarios::class.java)
 
-    // ========================================================================
-    // RETRY WITH EXPONENTIAL BACKOFF
-    // ========================================================================
+    /** How long the barista of the Producer-Consumer demo needs for each drink, by order number (1-based). */
+    private val DRINK_MILLIS = listOf(2000L, 2000, 1500, 1500, 1500, 1500, 1000, 1000, 1000, 1000)
+
+    /** How long the cashier of the Producer-Consumer demo takes for each order: the morning rush, then a quiet spell. */
+    private val ORDER_TAKING_MILLIS = listOf(700L, 600, 600, 600, 600, 600, 3000, 3000, 3000, 3000)
+
+    /** How long resizing takes for each photo of the Fan-Out / Fan-In demo, by photo number (1-based). */
+    private val RESIZE_MILLIS = listOf(2500L, 1500, 2000, 3000, 1000, 2000, 2500, 1500, 2000)
+
+    /** A server's error answer, e.g. HTTP 503. Thrown on purpose by the demos ([intendedByDemo]). */
+    private class HttpError(
+        val status: Int,
+        reason: String,
+    ) : RuntimeException("HTTP $status: $reason")
 
     /**
-     * Retry a failing operation 3 times with exponential backoff (100ms, 200ms, 400ms).
+     * Retry with exponential backoff, as a weather app loading today's forecast. The weather server
+     * is overloaded and answers HTTP 503 to the first three tries; each try takes 1.5 s (0.5 s to
+     * connect, 1 s to wait for the answer). After each failed try the app waits, twice as long each
+     * time: 0.75 s, 1.5 s, 3 s. The fourth try, at 9.75 s, gets the forecast, and the app shows it
+     * until about 12.3 s.
      *
-     * Demonstrates the structured retry pattern commonly used for transient failures
-     * such as network timeouts, temporary service unavailability, or rate limiting.
+     * Each try runs in its own coroutine (`attempt-1` ... `attempt-4`) so it shows in the session;
+     * `coroutineScope` hands its failure to the retry loop instead of cancelling `load-forecast`.
      */
-    suspend fun retryWithExponentialBackoff(scope: VizScope) {
-        val attemptCounter = AtomicInteger(0)
+    suspend fun runRetry(session: VizSession): Job =
+        coroutineScope {
+            logger.info("Starting retry with backoff scenario in session: ${session.sessionId}")
 
-        scope
-            .vizLaunch("retry-controller") {
-                var lastException: Exception? = null
-                val maxRetries = 3
-                var delayMs = 100L
+            val viz = session.demoScope()
+            var answered = 0
 
-                for (attempt in 1..maxRetries) {
-                    val currentAttempt = attempt
-                    val currentDelay = delayMs
-
-                    val job =
-                        vizLaunch("attempt-$currentAttempt") {
-                            logger.debug("Attempt $currentAttempt: calling unreliable service...")
-                            vizDelay(80)
-
-                            val count = attemptCounter.incrementAndGet()
-                            if (count < maxRetries) {
-                                throw demoFailure("Service unavailable (attempt $currentAttempt)")
-                            }
-                            logger.debug("Attempt $currentAttempt: service responded successfully")
-                        }
-
-                    try {
-                        job.join()
-                        if (job.isCancelled) {
-                            throw lastException ?: demoFailure("Attempt $currentAttempt failed")
-                        }
-                        logger.debug("Operation succeeded on attempt $currentAttempt")
-                        return@vizLaunch
-                    } catch (e: Exception) {
-                        if (e is CancellationException) {
-                            lastException = demoFailure("Attempt $currentAttempt failed")
-                        } else {
-                            lastException = e
-                        }
-                        logger.debug("Attempt $currentAttempt failed: ${lastException?.message}")
-
-                        if (currentAttempt < maxRetries) {
-                            vizLaunch("backoff-${currentDelay}ms") {
-                                logger.debug("Waiting ${currentDelay}ms before retry...")
-                                vizDelay(currentDelay)
-                            }.join()
-                            delayMs *= 2
-                        }
-                    }
-                }
-
-                if (lastException != null) {
-                    logger.debug("All $maxRetries attempts exhausted")
-                }
-            }.join()
-    }
-
-    // ========================================================================
-    // PRODUCER-CONSUMER
-    // ========================================================================
-
-    /**
-     * Producer sends items to a buffered channel (capacity 5), consumer processes
-     * them with delay.
-     *
-     * Demonstrates channel-based communication between coroutines, which is the
-     * recommended way to share data between coroutines instead of shared mutable state.
-     */
-    suspend fun producerConsumer(scope: VizScope) {
-        val channel = scope.vizChannel<String>(5, "task-queue")
-
-        scope
-            .vizLaunch("producer-consumer") {
-                val producer =
-                    vizLaunch("producer") {
-                        val items = listOf("order-1", "order-2", "order-3", "order-4", "order-5", "order-6", "order-7")
-                        for (item in items) {
-                            logger.debug("Producer sending $item")
-                            channel.send(item)
-                            vizDelay(50)
-                        }
-                        channel.close()
-                        logger.debug("Producer finished, channel closed")
-                    }
-
-                val consumer =
-                    vizLaunch("consumer") {
-                        vizDelay(100) // Let buffer fill a bit
-                        try {
-                            while (true) {
-                                val item = channel.receive()
-                                logger.debug("Consumer processing $item")
-                                vizDelay(150) // Slower consumer to show backpressure
-                                logger.debug("Consumer finished $item")
-                            }
-                        } catch (_: kotlinx.coroutines.channels.ClosedReceiveChannelException) {
-                            logger.debug("Consumer: channel closed, done")
-                        }
-                    }
-
-                producer.join()
-                consumer.join()
-                logger.debug("Producer-consumer pattern completed")
-            }.join()
-    }
-
-    // ========================================================================
-    // FAN-OUT / FAN-IN
-    // ========================================================================
-
-    /**
-     * One producer, 3 worker coroutines that process in parallel, results collected
-     * via channel.
-     *
-     * Demonstrates the fan-out/fan-in pattern for distributing work across multiple
-     * workers and collecting results. Common in data processing pipelines.
-     */
-    suspend fun fanOutFanIn(scope: VizScope) {
-        val taskChannel = scope.vizChannel<Int>(Channel.BUFFERED, "tasks")
-        val resultChannel = scope.vizChannel<String>(Channel.BUFFERED, "results")
-
-        scope
-            .vizLaunch("fan-out-fan-in") {
-                // Producer: generates tasks
-                val producer =
-                    vizLaunch("task-producer") {
-                        for (taskId in 1..9) {
-                            logger.debug("Dispatching task $taskId")
-                            taskChannel.send(taskId)
-                            vizDelay(30)
-                        }
-                        taskChannel.close()
-                        logger.debug("All tasks dispatched")
-                    }
-
-                // Fan-out: 3 workers process tasks in parallel
-                val workers =
-                    (1..3).map { workerId ->
-                        vizLaunch("worker-$workerId") {
-                            try {
-                                while (true) {
-                                    val taskId = taskChannel.receive()
-                                    logger.debug("Worker $workerId processing task $taskId")
-                                    vizDelay((80..200).random().toLong())
-                                    resultChannel.send("task-$taskId-by-worker-$workerId")
-                                    logger.debug("Worker $workerId completed task $taskId")
+            viz.vizLaunch("load-forecast") {
+                val forecast =
+                    retry(times = RETRY_TIMES, initialDelayMillis = 750, factor = 2) { attempt ->
+                        coroutineScope {
+                            vizAsync("attempt-$attempt") {
+                                pause(500) // connect
+                                pause(1000) // wait for the answer
+                                answered++
+                                if (answered <= OVERLOADED_ANSWERS) {
+                                    throw HttpError(503, "the weather server is overloaded").intendedByDemo()
                                 }
-                            } catch (_: kotlinx.coroutines.channels.ClosedReceiveChannelException) {
-                                logger.debug("Worker $workerId: no more tasks")
-                            }
+                                "sunny, 21 °C"
+                            }.await()
                         }
                     }
-
-                // Fan-in: collector gathers results
-                val collector =
-                    vizLaunch("result-collector") {
-                        var count = 0
-                        try {
-                            while (count < 9) {
-                                val result = resultChannel.receive()
-                                count++
-                                logger.debug("Collected result $count: $result")
-                            }
-                        } catch (_: kotlinx.coroutines.channels.ClosedReceiveChannelException) {
-                            logger.debug("Result collector: channel closed")
-                        }
-                        logger.debug("Collected all $count results")
-                    }
-
-                producer.join()
-                workers.forEach { it.join() }
-                resultChannel.close()
-                collector.join()
-                logger.debug("Fan-out/fan-in pattern completed")
-            }.join()
-    }
-
-    // ========================================================================
-    // SUPERVISOR PATTERN
-    // ========================================================================
+                logger.debug("Forecast: $forecast")
+                pause(1000) // show it
+            }
+        }
 
     /**
-     * Launch with SupervisorJob where one child fails but siblings continue.
-     *
-     * Demonstrates error isolation in structured concurrency. With a SupervisorJob,
-     * a failing child does not cancel its siblings, which is essential for services
-     * that must remain partially available.
+     * Tries [block] up to [times] times. After a try that fails with an [HttpError] it waits
+     * [initialDelayMillis], then [factor] times longer after each next failure. Any other failure,
+     * and cancellation, ends the retry at once.
      */
-    suspend fun supervisorPattern(scope: VizScope) {
-        scope
-            .vizLaunch("supervisor") {
-                // Launch children — one will fail
-                val stableChild1 =
-                    vizLaunch("stable-service-A") {
-                        logger.debug("Service A: starting")
-                        vizDelay(200)
-                        logger.debug("Service A: processing...")
-                        vizDelay(400)
-                        logger.debug("Service A: completed successfully")
-                    }
+    private suspend fun <T> VizScope.retry(
+        times: Int,
+        initialDelayMillis: Long,
+        factor: Int,
+        block: suspend (attempt: Int) -> T,
+    ): T {
+        var backoff = initialDelayMillis
+        for (attempt in 1 until times) {
+            try {
+                return block(attempt)
+            } catch (e: HttpError) {
+                logger.debug("Try $attempt failed (${e.message}); next try in $backoff ms")
+            }
+            pause(backoff)
+            backoff *= factor
+        }
+        return block(times)
+    }
 
-                val failingChild =
-                    vizLaunch("failing-service-B") {
-                        logger.debug("Service B: starting")
-                        vizDelay(150)
-                        logger.debug("Service B: about to fail!")
-                        throw demoFailure("Service B encountered a fatal error")
-                    }
+    /**
+     * Producer-consumer, as a coffee bar: the cashier takes orders and puts them on the order rail,
+     * a channel with room for 3; the barista takes the next order from the rail and makes the drink.
+     * The barista waits for the first order (0-0.7 s). In the morning rush six orders come in within
+     * 4 s, faster than the barista makes drinks: the rail holds 3 orders at 2.5 s, and with order 6
+     * the cashier waits for a free place (3.7-4.7 s). In the quiet spell an order comes every 3 s,
+     * the barista catches up and waits for the next one (12.7-13.7 s and 14.7-16.7 s). The cashier
+     * closes the rail after order 10, and the barista is done at about 17.7 s.
+     */
+    suspend fun runProducerConsumer(session: VizSession): Job =
+        coroutineScope {
+            logger.info("Starting producer-consumer scenario in session: ${session.sessionId}")
 
-                val stableChild2 =
-                    vizLaunch("stable-service-C") {
-                        logger.debug("Service C: starting")
-                        vizDelay(300)
-                        logger.debug("Service C: processing...")
-                        vizDelay(300)
-                        logger.debug("Service C: completed successfully")
-                    }
+            val viz = session.demoScope()
+            val orders = viz.vizChannel<String>(ORDER_RAIL_PLACES, "orders")
 
-                // Wait for stable children; handle failing child gracefully
-                try {
-                    failingChild.join()
-                } catch (e: Exception) {
-                    logger.debug("Supervisor caught failure from Service B: ${e.message}")
+            viz.vizLaunch("coffee-bar") {
+                vizLaunch("cashier") {
+                    ORDER_TAKING_MILLIS.forEachIndexed { i, millis ->
+                        pause(millis) // take the order
+                        orders.send("order-${i + 1}") // waits only while the rail is full
+                    }
+                    orders.close()
+                    logger.debug("Cashier: all orders taken")
                 }
-
-                stableChild1.join()
-                stableChild2.join()
-
-                vizLaunch("health-reporter") {
-                    logger.debug("Health report: Service A OK, Service B FAILED, Service C OK")
-                    vizDelay(50)
-                }.join()
-
-                logger.debug("Supervisor pattern completed — partial failure handled")
-            }.join()
-    }
-
-    // ========================================================================
-    // CIRCUIT BREAKER
-    // ========================================================================
+                vizLaunch("barista") {
+                    while (true) {
+                        val order = orders.receiveCatching().getOrNull() ?: break // waits while the rail is empty
+                        pause(DRINK_MILLIS[order.removePrefix("order-").toInt() - 1]) // make the drink
+                    }
+                    logger.debug("Barista: the rail is closed and empty")
+                }
+            }
+        }
 
     /**
-     * Simple circuit breaker: after N failures, stop trying for a cooldown period.
-     *
-     * Demonstrates the circuit breaker resilience pattern. After consecutive failures
-     * exceed a threshold, the circuit opens and subsequent calls fail fast without
-     * hitting the downstream service, giving it time to recover.
+     * Fan-out / fan-in, as a phone making a holiday album: `pick-photos` sends 9 photos, one every
+     * 0.6 s, into a channel that three resizers read (fan-out). Each photo goes to exactly one free
+     * resizer, who needs 1-3 s for it and sends the result into a second channel. The album reads
+     * that one (fan-in) and adds each photo in 1 s, in the order the photos are finished (2, 1, 3,
+     * 5, 4, …), not the order they were picked. The resizers are done at about 7.8 s; `make-album`
+     * then closes the results, so the album knows it has every photo, and is done at about 11.7 s.
      */
-    suspend fun circuitBreaker(scope: VizScope) {
-        val failureThreshold = 3
-        val cooldownMs = 300L
-        val failureCount = AtomicInteger(0)
-        val circuitOpen = AtomicBoolean(false)
-        val lastFailureTime = AtomicLong(0L)
+    suspend fun runFanOutFanIn(session: VizSession): Job =
+        coroutineScope {
+            logger.info("Starting fan-out/fan-in scenario in session: ${session.sessionId}")
 
-        scope
-            .vizLaunch("circuit-breaker") {
-                // Simulate a series of calls through the circuit breaker
-                for (requestId in 1..8) {
-                    vizLaunch("request-$requestId") {
-                        // Check circuit state
-                        if (circuitOpen.get()) {
-                            val elapsed = System.currentTimeMillis() - lastFailureTime.get()
-                            if (elapsed < cooldownMs) {
-                                logger.debug("Request $requestId: REJECTED (circuit open, cooldown ${cooldownMs - elapsed}ms remaining)")
-                                vizDelay(30) // Small delay to visualize the fast-fail
-                                return@vizLaunch
-                            } else {
-                                logger.debug("Request $requestId: circuit half-open, attempting probe...")
-                                circuitOpen.set(false)
-                                failureCount.set(0)
+            val viz = session.demoScope()
+            val photos = viz.vizChannel<String>(Channel.BUFFERED, "photos")
+            val resized = viz.vizChannel<String>(Channel.BUFFERED, "resized")
+
+            viz.vizLaunch("make-album") {
+                vizLaunch("pick-photos") {
+                    for (photo in 1..RESIZE_MILLIS.size) {
+                        pause(600) // pick the next photo
+                        photos.send("photo-$photo")
+                    }
+                    photos.close()
+                    logger.debug("All photos picked")
+                }
+                val resizers =
+                    (1..RESIZERS).map { resizer ->
+                        vizLaunch("resizer-$resizer") {
+                            while (true) {
+                                val photo = photos.receiveCatching().getOrNull() ?: break // waits for a photo
+                                pause(RESIZE_MILLIS[photo.removePrefix("photo-").toInt() - 1]) // resize it
+                                resized.send(photo)
                             }
                         }
+                    }
+                vizLaunch("album") {
+                    while (true) {
+                        val photo = resized.receiveCatching().getOrNull() ?: break // waits for a finished photo
+                        logger.debug("Album: adding $photo")
+                        pause(1000) // add it to the album
+                    }
+                    logger.debug("Album: complete")
+                }
+                resizers.joinAll()
+                resized.close()
+            }
+        }
 
-                        // Attempt the call — first 4 requests fail, rest succeed
-                        vizLaunch("downstream-call-$requestId") {
-                            vizDelay(80)
-                            if (requestId <= 4) {
-                                throw demoFailure("Downstream service error")
-                            }
-                            logger.debug("Request $requestId: downstream call succeeded")
-                        }.also { job ->
-                            try {
-                                job.join()
-                                if (!job.isCancelled) {
-                                    failureCount.set(0)
-                                    logger.debug("Request $requestId: SUCCESS (circuit closed)")
-                                } else {
-                                    handleFailure(requestId, failureCount, failureThreshold, cooldownMs) {
-                                        circuitOpen.set(true)
-                                        lastFailureTime.set(System.currentTimeMillis())
+    /**
+     * The supervisor pattern, as a phone's nightly backup: photos (5 x 2.5 s), contacts (4 x 2 s)
+     * and messages back up side by side under `supervisorScope`. The message backup fails at 4 s:
+     * the server is out of space (HTTP 507). Under a supervisor that failure does not cancel the
+     * others: contacts finish at 8 s and photos at 12.5 s. Then the phone sends a report (1 s),
+     * "2 of 3 backed up", and `nightly-backup` completes, at about 13.5 s.
+     */
+    suspend fun runSupervisor(session: VizSession): Job =
+        coroutineScope {
+            logger.info("Starting supervisor scenario in session: ${session.sessionId}")
+
+            val viz = session.demoScope()
+
+            viz.vizLaunch("nightly-backup") {
+                val backups =
+                    supervisorScope {
+                        listOf(
+                            vizLaunch("backup-photos") { repeat(5) { pause(2500) } },
+                            vizLaunch("backup-contacts") { repeat(4) { pause(2000) } },
+                            vizLaunch("backup-messages") {
+                                pause(2000)
+                                pause(2000)
+                                throw HttpError(507, "the backup server is out of space").intendedByDemo()
+                            },
+                        )
+                    }
+                // supervisorScope returns once all three have ended; a failed one is cancelled.
+                val done = backups.count { !it.isCancelled }
+                vizLaunch("send-report") {
+                    pause(1000)
+                    logger.debug("Backup report: $done of ${backups.size} backed up")
+                }
+            }
+        }
+
+    /**
+     * A circuit breaker, as a shop charging orders through a payment provider that is down until
+     * 12 s. A charge to the down provider takes 1.5 s and fails (HTTP 503); to the working one it
+     * takes 1 s. Orders come one at a time, the next 2 s after the last is done.
+     *
+     * Orders 1-3 fail; after the third failure in a row (8.5 s) the breaker opens for 5 s. Orders 4
+     * (10.5 s) and 5 (12.5 s) are rejected at once, without calling the provider. At 14.5 s the
+     * breaker is half-open: it lets order 6 through as a trial. The provider is back, the trial
+     * succeeds and the breaker closes; orders 7 and 8 are paid too, the last at about 21.5 s. Each
+     * order runs under `supervisorScope`, so a failed order does not stop the checkout.
+     */
+    suspend fun runCircuitBreaker(session: VizSession): Job =
+        coroutineScope {
+            logger.info("Starting circuit breaker scenario in session: ${session.sessionId}")
+
+            val viz = session.demoScope()
+            val start = System.nanoTime()
+            val providerBackAt = start + viz.scaled(12_000) * NANOS_PER_MILLI
+            val breaker = CircuitBreaker(failureThreshold = 3, openNanos = viz.scaled(5_000) * NANOS_PER_MILLI)
+
+            viz.vizLaunch("checkout") {
+                supervisorScope {
+                    for (order in 1..ORDERS) {
+                        vizLaunch("order-$order") {
+                            breaker.call {
+                                coroutineScope {
+                                    vizLaunch("charge-$order") {
+                                        if (System.nanoTime() < providerBackAt) {
+                                            pause(1500) // no answer for a while
+                                            throw HttpError(503, "the payment provider is down").intendedByDemo()
+                                        }
+                                        pause(1000)
                                     }
                                 }
-                            } catch (e: Exception) {
-                                handleFailure(requestId, failureCount, failureThreshold, cooldownMs) {
-                                    circuitOpen.set(true)
-                                    lastFailureTime.set(System.currentTimeMillis())
-                                }
                             }
-                        }
-                    }.join()
-
-                    // Small gap between requests
-                    vizDelay(50)
+                        }.join()
+                        if (order < ORDERS) pause(2000) // the next customer pays
+                    }
                 }
+            }
+        }
 
-                logger.debug("Circuit breaker demo completed")
-            }.join()
+    private const val RETRY_TIMES = 4
+    private const val OVERLOADED_ANSWERS = 3
+    private const val ORDER_RAIL_PLACES = 3
+    private const val RESIZERS = 3
+    private const val ORDERS = 8
+    private const val NANOS_PER_MILLI = 1_000_000L
+}
+
+/** A circuit breaker's answer while it is open: the call is not made at all. */
+internal class CircuitOpen(
+    remainingMillis: Long,
+) : RuntimeException("Circuit open: calls paused for another $remainingMillis ms")
+
+/**
+ * The Circuit Breaker demo's breaker. Closed: calls go through. After [failureThreshold] failures
+ * in a row it opens: for [openNanos] every call fails at once with [CircuitOpen], without running.
+ * Then it is half-open: the next call is a trial; if it succeeds the breaker closes, if it fails the
+ * breaker opens again. Cancellation is not a failure. Meant for one call at a time, as the demo's
+ * orders come; [clock] (nanoseconds) is replaceable for tests.
+ */
+internal class CircuitBreaker(
+    private val failureThreshold: Int,
+    private val openNanos: Long,
+    private val clock: () -> Long = System::nanoTime,
+) {
+    @Volatile private var failures = 0
+
+    @Volatile private var openedAt: Long? = null
+
+    // A breaker counts every failure of the call it guards, whatever its type; cancellation is not one.
+    @Suppress("TooGenericExceptionCaught")
+    suspend fun <T> call(block: suspend () -> T): T {
+        val opened = openedAt
+        if (opened != null) rejectWhileOpen(opened)
+        try {
+            return block().also {
+                failures = 0
+                openedAt = null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failures++
+            // A failed trial (half-open) opens it again at once.
+            if (opened != null || failures >= failureThreshold) openedAt = clock()
+            throw e
+        }
     }
 
-    private fun handleFailure(
-        requestId: Int,
-        failureCount: AtomicInteger,
-        failureThreshold: Int,
-        cooldownMs: Long,
-        openCircuit: () -> Unit,
-    ) {
-        val count = failureCount.incrementAndGet()
-        if (count >= failureThreshold) {
-            logger.debug("Request $requestId: FAILED — circuit OPENED (threshold $failureThreshold reached, cooldown ${cooldownMs}ms)")
-            openCircuit()
-        } else {
-            logger.debug("Request $requestId: FAILED ($count/$failureThreshold)")
-        }
+    private fun rejectWhileOpen(openedAt: Long) {
+        val open = clock() - openedAt
+        if (open < openNanos) throw CircuitOpen((openNanos - open) / 1_000_000).intendedByDemo()
     }
 }
