@@ -220,6 +220,49 @@ class InstrumentedChannelTest {
             assertTrue(senderCompleted, "Sender should complete after receive")
         }
 
+    /**
+     * A rendezvous channel holds nothing: a value goes from the sender straight to the receiver.
+     * Before, a send that met a waiting receiver reported one element in the buffer, which the
+     * Channels panel drew as a filled slot of a channel that has none.
+     */
+    @Test
+    @DisplayName("a rendezvous channel never reports a buffered element")
+    fun `rendezvous reports an empty buffer`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<Int>(Channel.RENDEZVOUS, "rendezvous-size")
+
+            // The receiver waits first, so each send hands its value straight over.
+            val receiver = launch { repeat(3) { channel.receive() } }
+            delay(20)
+            repeat(3) { channel.send(it) }
+            receiver.join()
+
+            val sizes = session.store.all().filterIsInstance<ChannelBufferStateChanged>().map { it.currentSize }
+            assertEquals(6, sizes.size, "a size after each send and each receive")
+            assertEquals(listOf(0), sizes.distinct(), "got $sizes")
+        }
+
+    /**
+     * When a receive frees a slot of a full channel, the sender waiting for that slot can count its
+     * element before the receiver counts its own; the reported size must still stay within the
+     * channel's capacity.
+     */
+    @Test
+    @DisplayName("a buffered channel never reports more elements than its capacity")
+    fun `buffered size stays within capacity`() =
+        runBlocking(kotlinx.coroutines.Dispatchers.Default) {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<Int>(2, "bounded-size")
+
+            val senders = (1..4).map { s -> launch { repeat(250) { channel.send(s * 1000 + it) } } }
+            val receivers = (1..4).map { launch { repeat(250) { channel.receive() } } }
+            (senders + receivers).forEach { it.join() }
+
+            val sizes = session.store.all().filterIsInstance<ChannelBufferStateChanged>().map { it.currentSize }
+            assertTrue(sizes.all { it in 0..2 }, "sizes outside 0..2: ${sizes.filterNot { it in 0..2 }.distinct()}")
+        }
+
     // ========================================================================
     // MULTIPLE SENDER/RECEIVER TESTS
     // ========================================================================

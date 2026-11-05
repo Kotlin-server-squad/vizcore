@@ -50,6 +50,22 @@ class InstrumentedChannel<T>(
 ) : Channel<T> {
     private val bufferCount = AtomicInteger(0)
 
+    /**
+     * The buffer size to report for a [bufferCount] reading. The counter is updated after the
+     * delegate's send or receive returns, so where a send meets a receive (a hand-over, or a
+     * receive freeing a slot a waiting sender takes) the two updates can land in either order and
+     * the counter runs a step ahead or behind for a moment. What is reported stays within what the
+     * channel can hold: nothing for a rendezvous channel, at most one for a conflated one, at most
+     * its capacity for a sized buffer, and never less than zero.
+     */
+    private fun reportedSize(count: Int): Int =
+        when (capacity) {
+            Channel.RENDEZVOUS -> 0
+            Channel.CONFLATED -> count.coerceIn(0, 1)
+            Channel.BUFFERED, Channel.UNLIMITED -> count.coerceAtLeast(0)
+            else -> count.coerceIn(0, capacity.coerceAtLeast(0))
+        }
+
     private val ctx: ChannelEventContext by lazy {
         ChannelEventContext(
             session = session,
@@ -82,7 +98,7 @@ class InstrumentedChannel<T>(
 
         delegate.send(element)
 
-        val currentSize = bufferCount.incrementAndGet()
+        val currentSize = reportedSize(bufferCount.incrementAndGet())
         session.send(ctx.channelBufferStateChanged(currentSize))
         session.send(ctx.channelSendCompleted(coroutineId, valueDesc))
 
@@ -92,7 +108,7 @@ class InstrumentedChannel<T>(
     override fun trySend(element: T): ChannelResult<Unit> {
         val result = delegate.trySend(element)
         if (result.isSuccess) {
-            val currentSize = bufferCount.incrementAndGet()
+            val currentSize = reportedSize(bufferCount.incrementAndGet())
             val coroutineId =
                 runCatching {
                     kotlinx.coroutines.runBlocking {
@@ -141,7 +157,7 @@ class InstrumentedChannel<T>(
 
         val value = delegate.receive()
 
-        val currentSize = bufferCount.decrementAndGet().coerceAtLeast(0)
+        val currentSize = reportedSize(bufferCount.decrementAndGet())
         session.send(ctx.channelBufferStateChanged(currentSize))
 
         val valueDesc = value?.toString()?.take(200) ?: "null"
@@ -154,7 +170,7 @@ class InstrumentedChannel<T>(
     override fun tryReceive(): ChannelResult<T> {
         val result = delegate.tryReceive()
         if (result.isSuccess) {
-            val currentSize = bufferCount.decrementAndGet().coerceAtLeast(0)
+            val currentSize = reportedSize(bufferCount.decrementAndGet())
             val coroutineId =
                 runCatching {
                     kotlinx.coroutines.runBlocking {
@@ -205,7 +221,7 @@ class InstrumentedChannel<T>(
 
             override fun next(): T {
                 val value = delegateIterator.next()
-                val currentSize = bufferCount.decrementAndGet().coerceAtLeast(0)
+                val currentSize = reportedSize(bufferCount.decrementAndGet())
                 session.send(ctx.channelBufferStateChanged(currentSize))
                 val valueDesc = value?.toString()?.take(200) ?: "null"
                 session.send(
@@ -230,7 +246,7 @@ class InstrumentedChannel<T>(
         val result = delegate.receiveCatching()
 
         if (result.isSuccess) {
-            val currentSize = bufferCount.decrementAndGet().coerceAtLeast(0)
+            val currentSize = reportedSize(bufferCount.decrementAndGet())
             session.send(ctx.channelBufferStateChanged(currentSize))
             val valueDesc = result.getOrNull()?.toString()?.take(200) ?: "null"
             session.send(ctx.channelReceiveCompleted(coroutineId, valueDesc))
