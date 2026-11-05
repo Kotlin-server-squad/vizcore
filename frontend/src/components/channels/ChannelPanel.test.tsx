@@ -83,6 +83,19 @@ describe('ChannelPanel', () => {
     expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByTestId('channel-selector-ch-2'))
   })
 
+  it('tells assistive technology which channel is selected and which is shown', () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const events = [
+      makeChannelEvent('ChannelCreated', 1, { channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' }),
+      makeChannelEvent('ChannelCreated', 2, { channelId: 'ch-2', name: 'invoices', capacity: 0, channelType: 'RENDEZVOUS' }),
+    ]
+    render(<ChannelPanel sessionId="session-1" events={events} focusChannelId="ch-2" />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('channel-selector-ch-2')).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByTestId('channel-selector-ch-2')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('channel-selector-ch-1')).not.toHaveAttribute('aria-current')
+    expect(screen.getByTestId('channel-selector-ch-1')).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('picking a channel selects it on the page, which then shows it (one selection, S-2)', async () => {
     mockedApiClient.getSessionEvents.mockResolvedValue([])
     const events = [

@@ -37,12 +37,14 @@ export function ChannelPanel({
     onSelectChannel?.(channelId)
   }
 
-  // Bring the page's channel into view; its section was unfolded in the same render.
+  // Bring the page's channel into view and focus it (a keyboard user lands on it); its section was unfolded
+  // in the same render.
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!focusChannelId) return
     const el = listRef.current?.querySelector(`[data-testid="channel-selector-${CSS.escape(focusChannelId)}"]`)
     el?.scrollIntoView?.({ block: 'nearest' })
+    if (el instanceof HTMLElement) el.focus({ preventScroll: true })
   }, [focusChannelId, revealKey])
 
   // The page's selection wins; then the last pick here; then the first channel.
@@ -117,6 +119,8 @@ export function ChannelPanel({
                   data-testid={`channel-selector-${ch.channelId}`}
                   // The page's selection (S-2), ringed like a selected lock.
                   data-focused={ch.channelId === focusChannelId ? 'true' : 'false'}
+                  aria-current={ch.channelId === focusChannelId ? 'true' : undefined}
+                  aria-pressed={isSelected}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}

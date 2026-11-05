@@ -170,5 +170,29 @@ describe('projectActivity', () => {
     ])
     expect(lines.has('c-1')).toBe(false)
   })
-})
 
+  it('an unsettled holder listed with several permits gets no count: "may hold a … permit"', () => {
+    const lines = projectActivity([
+      ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
+      ev('SemaphoreStateChanged', {
+        ...sem, availablePermits: 1, totalPermits: 3, activeHolders: ['c-1'], activeHolderLabels: ['c-1'],
+        activeHolderPermits: [2], waitingCoroutines: [], waitingLabels: [],
+      }),
+      ev('SemaphorePermitReleased', { ...sem, releaserId: 'c-1', releaserLabel: 'c-1', newAvailablePermits: 2, holdDurationNanos: 0 }),
+    ])
+    expect(lines.get('c-1')?.text).toBe('may hold a payment-gateway permit · holder unknown')
+  })
+
+  it('finds queue places without searching each queue per waiter (a long queue stays fast)', () => {
+    const waiting = Array.from({ length: 5000 }, (_, i) => `w-${i}`)
+    const events = [
+      ev('MutexCreated', lock),
+      ev('MutexQueueChanged', { ...lock, waitingCoroutineIds: waiting, waitingLabels: waiting }),
+      ...waiting.map(id => waitFor(id, 'MUTEX', 'm-1')),
+    ]
+    const started = performance.now()
+    const lines = projectActivity(events)
+    expect(performance.now() - started).toBeLessThan(150)
+    expect(lines.get('w-4999')?.text).toBe('waits for inventory-lock · 5000th')
+  })
+})

@@ -198,5 +198,13 @@ describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Evidence/ }))
     expect(screen.getByTestId('evidence-section-Locks and permits')).toHaveTextContent('none captured')
   })
-})
 
+  it('a resource chosen from the keyboard takes focus to that resource in Evidence', async () => {
+    stream(contended)
+    render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Events' }))
+    screen.getByRole('button', { name: /Select inventory-lock \(event #1\)/ }).focus()
+    await userEvent.keyboard('{Enter}')
+    expect(document.activeElement).toBe(screen.getByTestId('resource-m-1'))
+  })
+})

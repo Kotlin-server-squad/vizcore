@@ -43,10 +43,19 @@ function aPermit(name: string): string {
   return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name} permit`
 }
 
+/** Coroutine id -> its 1-based place, per queue: built once, so a long queue is not searched per waiter. */
+function places(queue: readonly Holder[]): Map<string, number> {
+  const at = new Map<string, number>()
+  queue.forEach((w, i) => {
+    if (!at.has(w.id)) at.set(w.id, i + 1)
+  })
+  return at
+}
+
 /** " · 2nd" when the coroutine is in the queue, else nothing. */
-function place(coroutineId: string, queue: readonly Holder[] | undefined): string {
-  const index = queue?.findIndex(w => w.id === coroutineId) ?? -1
-  return index >= 0 ? ` · ${ordinal(index + 1)}` : ''
+function place(coroutineId: string, queue: ReadonlyMap<string, number> | undefined): string {
+  const at = queue?.get(coroutineId)
+  return at !== undefined ? ` · ${ordinal(at)}` : ''
 }
 
 /** Coroutine id -> its second line, for every coroutine that waits for or holds something. */
@@ -54,8 +63,8 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   const sync = projectSync(events)
   const names = resourceNames(events)
   const nameOf = (id: string) => names.get(id) ?? id
-  const lockQueues = new Map(sync.mutexes.map(m => [m.mutexId, m.waitQueue]))
-  const permitQueues = new Map(sync.semaphores.map(s => [s.semaphoreId, s.waitQueue]))
+  const lockQueues = new Map(sync.mutexes.map(m => [m.mutexId, places(m.waitQueue)]))
+  const permitQueues = new Map(sync.semaphores.map(s => [s.semaphoreId, places(s.waitQueue)]))
 
   const describeWait = (coroutineId: string, kind: WaitKind, resourceId: string | null): string => {
     const name = resourceId ? nameOf(resourceId) : null
@@ -89,8 +98,9 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
     // snapshot left the list unsettled: which listed holder holds what is unknown, so none is named for certain.
     const ambiguous = s.unknownHolderPermits > 0 || s.unsettled
     for (const h of s.activeHolders) {
-      const permits = h.permits === 1 ? aPermit(name) : `${h.permits} ${name} permits`
-      hold(h.id, ambiguous ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
+      // While ambiguous, no count is claimed: a listed count may be stale.
+      if (ambiguous) hold(h.id, `may hold ${aPermit(name)} · holder unknown`)
+      else hold(h.id, h.permits === 1 ? `holds ${aPermit(name)}` : `holds ${h.permits} ${name} permits`)
     }
   }
 

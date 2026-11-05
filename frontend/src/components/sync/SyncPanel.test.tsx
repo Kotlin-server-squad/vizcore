@@ -334,6 +334,34 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(held).not.toHaveTextContent('permits)')
   })
 
+  it('with no total in the retained events, says the permits in use are unknown rather than "none"', () => {
+    const events = [
+      makeSyncEvent('SemaphorePermitAcquired', 1, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits: 1, waitDurationNanos: 0,
+      }),
+    ]
+    render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    const gauge = screen.getByTestId('semaphore-gauge')
+    expect(gauge).toHaveTextContent('total unknown')
+    // No negative count: the used figure is unknown.
+    expect(gauge).toHaveTextContent('?used')
+    expect(gauge).not.toHaveTextContent(/-\d+used/)
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('holder unknown')
+    expect(screen.getByTestId('semaphore-holders')).not.toHaveTextContent('none')
+  })
+
+  it('keeps focus on a waiter\'s name when the waiter ahead of it leaves the queue', async () => {
+    const queue = (ids: string[], seq: number) =>
+      makeSyncEvent('MutexQueueChanged', seq, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ids, waitingLabels: ids })
+    const base = lockEvents.slice(0, 2)
+    const wrapper = createWrapper()
+    const picker = anyone()
+    const { rerender } = render(<SyncPanel sessionId="session-1" events={[...base, queue(['c-2', 'c-3'], 3)]} picker={picker} />, { wrapper })
+    screen.getByRole('button', { name: 'c-3' }).focus()
+    rerender(<SyncPanel sessionId="session-1" events={[...base, queue(['c-3'], 4)]} picker={picker} />)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'c-3' }))
+  })
+
   it('selects a holder or a waiter by name', async () => {
     const select = vi.fn()
     render(<SyncPanel sessionId="session-1" events={lockEvents} picker={anyone(select)} />, { wrapper: createWrapper() })

@@ -32,12 +32,14 @@ export function SyncPanel({
   revealKey,
 }: SyncPanelProps) {
   const { mutexes, semaphores, deadlocks, warnings } = useSyncEvents(sessionId, events)
-  // Bring a selected resource into view; its section was unfolded in the same render.
+  // Bring a selected resource into view and focus it (a keyboard user lands on it); its section was
+  // unfolded in the same render.
   const panelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!selectedResourceId) return
     const el = panelRef.current?.querySelector(`[data-testid="resource-${CSS.escape(selectedResourceId)}"]`)
     el?.scrollIntoView?.({ block: 'nearest' })
+    if (el instanceof HTMLElement) el.focus({ preventScroll: true })
   }, [selectedResourceId, revealKey])
 
   if (mutexes.length === 0 && semaphores.length === 0 && deadlocks.length === 0 && warnings.length === 0) {

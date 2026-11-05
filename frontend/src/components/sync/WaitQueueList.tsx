@@ -32,7 +32,7 @@ export function WaitQueueList({ queue, title = 'Wait Queue', picker, selectedId 
         <AnimatePresence mode="popLayout">
           {queue.map((entry, idx) => (
             <motion.div
-              key={`${entry.id}-${idx}`}
+              key={entry.id}
               className="flex items-center gap-2 rounded bg-default-50 px-2 py-1 text-xs"
               data-testid="wait-queue-entry"
               initial={{ opacity: 0, y: -10 }}

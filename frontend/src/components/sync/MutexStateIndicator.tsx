@@ -41,6 +41,8 @@ export function MutexStateIndicator({
       }
       transition={{ duration: 2, repeat: Infinity }}
       data-testid={`resource-${mutex.mutexId}`}
+      // Focusable from script only: a selected resource takes focus when it is revealed (S-2).
+      tabIndex={-1}
       data-selected={selected ? 'true' : 'false'}
       className={selected ? 'rounded-xl ring-2 ring-primary' : 'rounded-xl'}
     >
