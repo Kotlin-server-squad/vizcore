@@ -198,7 +198,7 @@ export const willSeeFor = (demoId: string): WillSee | undefined => WILL_SEE[demo
 | `dispatcher` | photos 2 s apart; download on IO (3 s), resize on Default (4 s), upload on IO (1.5 s); different pools at the same moment; ~13 s | ~4.5 s: make-thumbnails WAITING 0; process-photo-1 ACTIVE 1; download-photo-1 COMPLETED 2; resize-photo-1 SUSPENDED 2; process-photo-2 ACTIVE 1; download-photo-2 SUSPENDED 2; process-photo-3 ACTIVE 1; download-photo-3 SUSPENDED 2 | WRONG_DISPATCHER |
 
   - **States and `join()`:** a coroutine waiting in `join()`/`joinAll()` is shown as ACTIVE, because only `delay` (and `await`) emit `CoroutineSuspended`. A coroutine whose body has ended while children run is WAITING_FOR_CHILDREN.
-  - **Checking the picture:** check each one in the browser (Task 6) and adjust it if the real tree differs. For example, the exception page's final state may be CANCELLED rather than FAILED.
+  - **Checking the picture:** check each one in the browser (Task 6) and adjust it if the real tree differs. The exception page is FAILED: the loyalty exception fails its parent with the original cause, and `VizScope` emits `CoroutineFailed`.
   - **Wording:**
     - plain, short sentences;
     - Kotlin snippets simplified to `launch`/`coroutineScope`, with the same structure as the demo;
@@ -282,7 +282,11 @@ function HowItWorksRoute() {
 }
 ```
 
-- [ ] **Step 4: Regenerate the route tree and run the checks.** Run `pnpm build`, which regenerates `routeTree.gen.ts`, then `pnpm vitest run src/components/gallery src/routes && pnpm exec tsc --noEmit`. All should PASS.
+- [ ] **Step 4: Regenerate the route tree and run the checks.** `pnpm build` runs `tsc` before Vite, and `tsc` fails on the new route until `routeTree.gen.ts` knows it. So regenerate the tree through Vite first:
+  - run `pnpm exec vite build`, whose router plugin writes `routeTree.gen.ts`;
+  - then run `pnpm vitest run src/components/gallery src/routes && pnpm exec tsc --noEmit`.
+
+  All should PASS.
 - [ ] **Step 5: Commit:** `feat(frontend): How-it-works page at /gallery/$slug`
 
 ---
@@ -299,7 +303,10 @@ function HowItWorksRoute() {
     - Every Basics card has a "How it works" link to `/gallery/<slug>`, with an accessible name `How it works: <name>`. It also shows its guide's level.
     - A Flow card has no link and no level.
 - [ ] **Step 2: Run the tests; they should fail** (no link yet).
-- [ ] **Step 3: Implement.** When `guide` is set, `DemoCard` shows a bordered "How it works" button next to Run. It uses HeroUI `Button as={Link} to="/gallery/$slug" params={{ slug: demoSlug(scenario.id) }}`, with the `aria-label` from Step 1. Lay it out like the sketch, with the two buttons side by side.
+- [ ] **Step 3: Implement.** When `guide` is set, `DemoCard` shows a "How it works" link next to Run, laid out like the sketch with the two side by side.
+  - Use TanStack `Link` directly, not HeroUI `Button as={Link}`. That wrapper loses the router's typed `params` (TS2353), and HeroUI gives the anchor `role="button"`, which breaks the link-role assertions.
+  - Style it as a button: `className={button({ variant: 'bordered', fullWidth: true })}` from `@heroui/theme`.
+  - Write it as `<Link to="/gallery/$slug" params={{ slug: demoSlug(scenario.id) }} aria-label={…}>`. The anchor keeps its link role.
 - [ ] **Step 4: Run the tests; they should pass.** Run: `pnpm vitest run src/components/gallery`
 - [ ] **Step 5: Commit:** `feat(frontend): Gallery cards link to their How-it-works page`
 
