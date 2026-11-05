@@ -28,41 +28,6 @@
     }
   ],
   "boards": {
-    "Main.dc.html": {
-      "x": 0,
-      "y": 0,
-      "w": 620,
-      "h": 1060,
-      "title": "Today: the page to scale (2,646 px)",
-      "page": "explore"
-    },
-    "OptionA.dc.html": {
-      "x": 700,
-      "y": 0,
-      "w": 1440,
-      "h": 800,
-      "expand": "fill",
-      "title": "A · Canvas first, side panel",
-      "page": "explore"
-    },
-    "OptionB.dc.html": {
-      "x": 2220,
-      "y": 0,
-      "w": 1440,
-      "h": 800,
-      "expand": "fill",
-      "title": "B · IDE dock (Codex + my recommendation)",
-      "page": "explore"
-    },
-    "OptionC.dc.html": {
-      "x": 3740,
-      "y": 0,
-      "w": 1440,
-      "h": 800,
-      "expand": "fill",
-      "title": "C · Keep the page, fold everything (quick wins)",
-      "page": "explore"
-    },
     "S1-Finished.dc.html": {
       "x": 0,
       "y": 0,
@@ -183,10 +148,6 @@
   },
   "order": [
     "D0-Deliver.dc.html",
-    "Main.dc.html",
-    "OptionA.dc.html",
-    "OptionB.dc.html",
-    "OptionC.dc.html",
     "S1-Finished.dc.html",
     "S1-Live.dc.html",
     "S2-Live.dc.html",

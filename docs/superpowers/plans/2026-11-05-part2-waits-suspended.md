@@ -25,6 +25,15 @@ common lock. This is how they work today; the S-7 contract does not promise atom
 follow-up issue. The tests below do not assert snapshot atomicity; the suspension facts they assert (Suspended,
 then Resumed, per coroutine) are recorded by the waiting coroutine itself and are ordered.
 
+**Amended after Codex's pre-merge review (PR #291):**
+- The `holders.clear()` when every permit is free (Task 6) is not safe as written: between reading
+  `availablePermits == totalPermits` and the clear, another coroutine can acquire and register a permit, and the
+  clear would erase that valid holder, so its later release would read "holder unknown". That is new behaviour,
+  not the known limitation above. Build it so a newer acquisition can never be dropped (or drop the clear if the
+  per-holder counts stay correct without it), with a deterministic regression test for that interleaving.
+- The pacing re-measurement (Task 10, Step 4) must not depend on a private temporary folder: commit the audit
+  script to the repo (`scripts/demo-pacing-audit.py`) with the baseline it compares against, and run that copy.
+
 **Tech Stack:** Kotlin 2.3 / kotlinx.coroutines 1.10.2 / kotlinx.serialization (core module
 `:coroutine-viz-core`), Ktor server (root project `:`), JUnit 5 + kotlin.test, React/TypeScript + vitest
 (frontend), OpenAPI (`documentation.yaml`, `shared/api-types`).

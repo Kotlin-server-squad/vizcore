@@ -21,7 +21,7 @@ history stay with the code.
 | `canvas.json` | | The canvas layout, pages and notes (Codex's reviews, the roadmap) |
 
 The four earliest boards (today's page to scale, options A, B and C) were drawn in an earlier session and
-are kept on the canvas, page 3.
+are kept on the canvas, page 3; they are not saved here, so this copy of `canvas.json` leaves them out.
 
 All numbers on the boards are illustrative. The E-commerce boards assume the paced Combined demo (lock held
 1.5 s, payment 3 s, done at 12.0 s); `shop-api` is an invented example app.
