@@ -26,6 +26,12 @@ interface EvidencePanelsProps {
   threadActivity: ThreadActivity | undefined
   /** The first retained event's timestamp, for "time into the capture". */
   captureStartNanos: number | null
+  /**
+   * Whether the session's event history has been read. "None captured" is a
+   * claim only a successful read can make (H-3); before it, a section says
+   * loading, and after a failed read, unavailable.
+   */
+  history?: 'ready' | 'loading' | 'unavailable'
 }
 
 /**
@@ -65,6 +71,7 @@ export function EvidencePanels({
   readOnly,
   threadActivity,
   captureStartNanos,
+  history = 'ready',
 }: EvidencePanelsProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   const toggle = (title: string) =>
@@ -172,9 +179,16 @@ export function EvidencePanels({
             className="rounded-medium border border-dashed border-default-200 px-3 py-2 text-sm"
           >
             <span className="font-semibold">{c.title}</span>
-            <span className="text-default-500"> · none captured</span>
-            {/* Only a real session can be told what to change. */}
-            {rung !== 'demo' && c.unlockWith !== '' && (
+            <span className="text-default-500">
+              {history === 'ready'
+                ? ' · none captured'
+                : history === 'loading'
+                  ? ' · loading'
+                  : " · unavailable: the session's events could not be read"}
+            </span>
+            {/* Only a real session can be told what to change, and only once
+                we know nothing was captured. */}
+            {history === 'ready' && rung !== 'demo' && c.unlockWith !== '' && (
               <>
                 <p className="mt-1 text-default-500">{c.whatYouWouldSee}</p>
                 <p className="mt-1 flex items-start gap-2 text-primary">

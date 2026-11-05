@@ -69,6 +69,22 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
     expect(screen.getByTestId('evidence-section-Channels')).toHaveTextContent('InstrumentedChannel(...)')
   })
 
+  it('says loading, not "none captured", while the session history is still loading', () => {
+    renderPanels({ history: 'loading' })
+    const locks = screen.getByTestId('evidence-section-Locks and permits')
+    expect(locks).toHaveTextContent('loading')
+    expect(locks).not.toHaveTextContent('none captured')
+    expect(locks).not.toHaveTextContent('VizMutex')
+  })
+
+  it('says unavailable when the session history could not be read (H-3)', () => {
+    renderPanels({ history: 'unavailable' })
+    const channels = screen.getByTestId('evidence-section-Channels')
+    expect(channels).toHaveTextContent('unavailable')
+    expect(channels).not.toHaveTextContent('none captured')
+    expect(channels).not.toHaveTextContent('InstrumentedChannel')
+  })
+
   it('names no code change on a demo, which has full fidelity already', () => {
     renderPanels({ rung: 'demo' })
     const locks = screen.getByTestId('evidence-section-Locks and permits')
