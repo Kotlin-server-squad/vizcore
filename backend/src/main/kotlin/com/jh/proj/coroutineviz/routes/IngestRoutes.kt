@@ -129,7 +129,7 @@ fun Route.registerIngestRoutes() {
  * Whether [sessionId] still exists, without rebuilding the session: a row lookup in database mode,
  * the in-memory map otherwise.
  */
-private fun sessionStillExists(sessionId: String): Boolean =
+internal fun sessionStillExists(sessionId: String): Boolean =
     (SessionManager.backingStore() as? ExposedSessionStore)?.sessionExists(sessionId)
         ?: (SessionManager.getSession(sessionId) != null)
 

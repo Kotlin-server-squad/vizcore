@@ -3106,8 +3106,10 @@ internal fun WatermarkObservation.toSse(): ServerSentEvent =
 ```
 
 4. In the SSE route's call to `sessionSseFrames(...)`, add `watermarks = IngestStates.watermarks(sessionId),`, and when
-   the stream ends because its session was deleted (`if (removed.get())`), call `IngestStates.forget(sessionId)` first:
-   subscribing allocates ingest state, and a stream set up during the delete may have done so after the delete dropped it.
+   the stream ends, in the route's outer `finally` (so a client's disconnect is covered too), forget the session's ingest
+   state when the session no longer exists (`sessionStillExists`, now `internal` in `IngestRoutes.kt`, guarded with
+   `runCatching`): subscribing allocates ingest state, and a stream set up during a delete may have done so after the
+   delete dropped it.
 
 5. `ErrorResponse.code` in both schemas lists `summaries-unavailable` and `history-trimmed` (Task 11).
 

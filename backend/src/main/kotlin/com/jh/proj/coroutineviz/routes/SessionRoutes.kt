@@ -401,9 +401,6 @@ fun Route.registerSessionRoutes() {
                     frames.join()
                     sessionRemoved.cancel()
                     if (removed.get()) {
-                        // Subscribing allocated ingest state; a stream set up during the delete may have done so after
-                        // the delete dropped it.
-                        IngestStates.forget(sessionId)
                         send(ServerSentEvent(data = """{"error": "Session not found"}""", event = "error"))
                     }
                 }
@@ -417,6 +414,10 @@ fun Route.registerSessionRoutes() {
             } finally {
                 sseClientsGauge.decrementAndGet()
                 logger.info("SSE stream ended for session: $sessionId")
+                // Subscribing allocated ingest state; a stream set up during a delete may have done so after the delete
+                // dropped it. Checked on every exit, a client's disconnect included.
+                runCatching { if (!sessionStillExists(sessionId)) IngestStates.forget(sessionId) }
+                    .onFailure { e -> logger.warn("Could not check session {} after its stream ended", sessionId, e) }
             }
         }
     }
