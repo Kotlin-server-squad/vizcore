@@ -42,7 +42,7 @@ One PR. It is about half of Part 3b's size and every task leaves a working page,
 - **"holder unknown"** (S-6/S-7). `unknownHolderPermits` counts *listed* permits beyond those in use: a permit came back from a coroutine that held none, so one of the listed holders no longer holds one, and which is unknown. Then Locks and permits reads "Held by holder unknown — 1 of 3 permits in use; last recorded holders order-3, order-4. A permit came back from a coroutine that held none.", and each listed holder's second line reads "may hold a payment-gateway permit · holder unknown". Otherwise the holders are listed with their counts ("order-3 (2 permits), order-4").
 - **The projections read events in seq order** (`inSeqOrder`), not arrival order: the live stream accepts an event whose seq is lower than one it holds, and a suspension that arrives after its own resume must not read as a wait. Already-ordered input (the usual case) is not copied.
 - **A late release keeps the new holder.** `VizMutex.unlock` releases the lock before it records `MutexUnlocked`, so the waiter it woke can record `MutexLockAcquired` first — possibly several handovers in a row. Each holder displaced by an acquisition joins a per-lock multiset of pending releases; a release found there is consumed and frees nothing; any other release frees the lock. A coroutine that acquires again leaves the multiset (it records its release before it can acquire again), so a lost release cannot swallow a later real one.
-- **Permit counts come from state snapshots only.** A semaphore's `SemaphoreStateChanged` follows each acquire and release, but a stream flush or a replay cursor can fall between the two, and whether a snapshot already counted an operation cannot be told from the totals: VizSemaphore records a holder before the acquisition event and drops it before the release event, and a semaphore can start with permits taken (`acquiredPermits`). So an acquire or release between two snapshots only lists an acquirer not listed yet, as **unconfirmed** — its node reads "may hold a … permit · holder unknown", and Evidence adds "(may hold · holder unknown)" to its name — and changes no count. The next snapshot replaces the list. A snapshot or release with every permit free means nobody holds one, whatever was listed (a snapshot copies its holders before it reads the free permits).
+- **Permit counts come from state snapshots only; between snapshots the holders are unsettled.** A semaphore's `SemaphoreStateChanged` follows each acquire and release, but a stream flush or a replay cursor can fall between the two, and whether a snapshot already counted an operation cannot be told from the totals: VizSemaphore records a holder before the acquisition event and drops it before the release event, and a semaphore can start with permits taken (`acquiredPermits`). So any acquire or release since the last snapshot marks that semaphore's holder list **unsettled** until the next snapshot (an acquirer not listed yet is added to the list; no count changes). While unsettled, every listed holder's node reads "may hold a … permit · holder unknown", and Evidence reads "holder unknown — N of M permits in use; last recorded holders …" with no per-holder counts. A snapshot or release with every permit free means nobody holds one (a snapshot copies its holders before it reads the free permits). Exact attribution between snapshots is not attempted.
 - **Permits in use with no recorded holder** (taken at creation, `acquiredPermits`, or before the retained history) read "holder unknown — 3 of 3 permits in use; no holder was recorded", or "order-3, and 1 permit with no recorded holder"; "Held by none" only when no permit is in use.
 - **Every reducer reads in seq order:** locks and permits, waits, channels, flows and jobs.
 - **In replay, Evidence reads the cursor:** which sections have anything (`categorizeEvents` over the cursor's events) as well as their contents; the rung keeps the whole session's categories.
@@ -63,7 +63,7 @@ One PR. It is about half of Part 3b's size and every task leaves a working page,
 
 - **Codex plan review R1 — request changes** (8 P1, 2 P2), all taken: unknown-holder permits read the wrong way round; a queue alone resurrected ended waits; a late `MutexUnlocked` freed a lock already handed over; arrival order was trusted; permit operations did not move holders between snapshots; the Channels picker kept a second selection; a resource selection never went stale; an optional `selection` did not type-check in `useState`; channel rows had empty titles; Evidence names offered unselectable coroutines. The decisions above and Tasks 3, 5, 6, 8, 9, 10, 11 and 13 carry the fixes; Tasks 1–13 are already built on `feat/session-selection`, so this plan shows the code as built.
 - **Codex plan review R2 — request changes** (2 P1, 5 P2, 1 P3), all taken: one remembered previous holder was not enough for several handovers; a snapshot that already counted an acquisition was counted again; channel, flow and job reducers still read arrival order; "may hold" with every permit free, and "Held by none" with permits in use; a resource selected again was not revealed again, and the focused channel was not marked; a resource a retained suspension waits for was cleared as gone; in replay, Evidence presence read events beyond the cursor; the `unknownHolderPermits` comment had the old meaning.
-- **Codex plan review R3 — request changes** (1 P1, 1 P2): reconciling operations with permit totals still misattributed permits (a semaphore created with a permit taken; excess ambiguous holders), and a snapshot with every permit free could still yield "may hold". Fixed as above (approved by the coordinator): counts from snapshots only, operations list unconfirmed acquirers, every-permit-free clears holders after snapshots too. One confirmation review follows; no further plan rounds.
+- **Codex plan review R3 — request changes** (1 P1, 1 P2): reconciling operations with permit totals still misattributed permits (a semaphore created with a permit taken; excess ambiguous holders), and a snapshot with every permit free could still yield "may hold". Fixed as above (approved by the coordinator): counts from snapshots only, operations list unconfirmed acquirers, every-permit-free clears holders after snapshots too. The confirmation review found one more P1/P2 of the same kind (kept counts after a release still said "holds"; a second acquisition by a listed holder produced a "no recorded holder" count); fixed by the "unsettled until the next snapshot" rule above, approved by the coordinator as honest by construction, with no further plan rounds.
 
 ## File structure
 
@@ -310,7 +310,7 @@ describe('projectSync', () => {
 
   describe('permits between two state snapshots', () => {
     // A snapshot is the only source of permit counts. An acquire or release between two snapshots only lists
-    // an acquirer not listed yet, as unconfirmed: whether a snapshot already counted an operation cannot be told
+    // an acquirer not listed yet and unsettles the list: whether a snapshot already counted an operation cannot be told
     // from the totals (VizSemaphore records a holder before the acquisition event, and drops it before the
     // release event; a semaphore can start with permits taken).
     const s = { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway' }
@@ -319,11 +319,27 @@ describe('projectSync', () => {
     const released = (who: string, holderUnknown = false, newAvailablePermits = 2) =>
       event('SemaphorePermitReleased', { ...s, releaserId: who, releaserLabel: who, newAvailablePermits, holdDurationNanos: 0, holderUnknown })
 
-    it('an acquirer not listed yet is listed, unconfirmed, and leaves the queue', () => {
+    it('an acquirer not listed yet is listed, the list is unsettled, and it leaves the queue', () => {
       const queued = stateChanged({ activeHolders: [], activeHolderLabels: [], waitingCoroutines: ['c-1'], waitingLabels: ['c-1'] })
       const [sem] = projectSync([created, queued, acquired('c-1')]).semaphores
-      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1, unconfirmed: true }])
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
+      expect(sem!.unsettled).toBe(true)
       expect(sem!.waitQueue).toEqual([])
+    })
+
+    it('a release while A and B are listed unsettles the list: who still holds is unknown', () => {
+      const [sem] = projectSync([
+        created,
+        stateChanged({ availablePermits: 1, activeHolderPermits: [1, 1] }),
+        released('c-1', false, 2),
+      ]).semaphores
+      expect(sem!.unsettled).toBe(true)
+    })
+
+    it('a snapshot settles the list again', () => {
+      expect(projectSync([created]).semaphores[0]!.unsettled).toBe(false)
+      const [sem] = projectSync([created, acquired('c-1'), stateChanged({ availablePermits: 1, activeHolderPermits: [1, 1] })]).semaphores
+      expect(sem!.unsettled).toBe(false)
     })
 
     it('a listed acquirer keeps its count: the snapshot may have counted this permit already', () => {
@@ -384,6 +400,7 @@ describe('projectSync', () => {
         stateChanged({ availablePermits: 2, activeHolders: ['c-1'], activeHolderLabels: ['c-1'], activeHolderPermits: [1] }),
       ]).semaphores
       expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
+      expect(sem!.unsettled).toBe(false)
     })
   })
 })
@@ -447,8 +464,9 @@ export function inSeqOrder(events: readonly VizEvent[]): readonly VizEvent[] {
  * VizSemaphore records a holder before the acquisition event and drops it before the release event, and a
  * semaphore can start with permits taken, so whether a snapshot already counted an operation cannot be told
  * from the totals. An acquire or release between two snapshots (a stream flush or a replay cursor can fall
- * there) therefore only lists an acquirer not listed yet, as unconfirmed, and changes no count; the next
- * snapshot replaces the list. With every permit free, nobody holds one.
+ * there) therefore only lists an acquirer not listed yet and changes no count, and marks the list unsettled:
+ * no holder is named for certain until the next snapshot replaces the list. With every permit free, nobody
+ * holds one.
  */
 import { SYNC_EVENT_KINDS } from '@/types/api'
 import { inSeqOrder } from './in-seq-order'
@@ -480,11 +498,6 @@ export interface Holder {
 /** A semaphore holder and how many permits it holds. */
 export interface SemaphoreHolder extends Holder {
   permits: number
-  /**
-   * Listed by its acquisition event, not yet by a state snapshot: it may hold a permit, but whether a snapshot
-   * already counted it cannot be told, so its count is not trusted until the next snapshot.
-   */
-  unconfirmed?: true
 }
 
 /** Tracked state for a single mutex. */
@@ -511,6 +524,12 @@ export interface SemaphoreState {
    * listed holder no longer holds one, and which is unknown. Not permits held by nobody known.
    */
   unknownHolderPermits: number
+  /**
+   * An acquire or release was recorded since the last state snapshot: who holds what is not settled (whether
+   * that snapshot already counted the operation cannot be told), so no holder is named for certain and no
+   * count is trusted until the next snapshot.
+   */
+  unsettled: boolean
   waitQueue: Holder[]
 }
 
@@ -632,6 +651,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
           availablePermits: e.totalPermits,
           activeHolders: [],
           unknownHolderPermits: 0,
+          unsettled: false,
           waitQueue: [],
         })
         break
@@ -646,14 +666,12 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.remainingPermits
-        // Only an acquirer not listed yet is listed, unconfirmed; a listed one keeps its count (a snapshot may
-        // already have counted this permit). The next snapshot replaces the list.
+        // An acquirer not listed yet is listed; no count changes (a snapshot may already have counted this
+        // permit), and the list is unsettled until the next snapshot replaces it.
         if (!state.activeHolders.some(h => h.id === e.acquirerId)) {
-          state.activeHolders = [
-            ...state.activeHolders,
-            { id: e.acquirerId, label: e.acquirerLabel, permits: 1, unconfirmed: true },
-          ]
+          state.activeHolders = [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
         }
+        state.unsettled = true
         state.waitQueue = state.waitQueue.filter(w => w.id !== e.acquirerId)
         clearWhenAllFree(state)
         break
@@ -663,8 +681,9 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.newAvailablePermits
-        // No count changes until the next snapshot (a snapshot may already have taken this permit back);
-        // only a release that frees every permit is certain: then nobody holds one.
+        // No count changes (a snapshot may already have taken this permit back): the list is unsettled until
+        // the next snapshot. Only a release that frees every permit is certain: then nobody holds one.
+        state.unsettled = true
         clearWhenAllFree(state)
         break
       }
@@ -686,6 +705,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
           permits: e.activeHolderPermits?.[i] ?? 1,
         }))
         state.unknownHolderPermits = e.unknownHolderPermits ?? 0
+        state.unsettled = false
         clearWhenAllFree(state)
         state.waitQueue = e.waitingCoroutines.map((id, i) => ({
           id,
@@ -723,6 +743,7 @@ function clearWhenAllFree(state: SemaphoreState) {
   if (state.totalPermits > 0 && state.availablePermits >= state.totalPermits) {
     state.activeHolders = []
     state.unknownHolderPermits = 0
+    state.unsettled = false
   }
 }
 
@@ -750,6 +771,7 @@ function ensureSemaphore(map: Map<string, SemaphoreState>, id: string, label: st
       availablePermits: 0,
       activeHolders: [],
       unknownHolderPermits: 0,
+      unsettled: false,
       waitQueue: [],
     })
   }
@@ -1517,6 +1539,19 @@ describe('projectActivity', () => {
     expect(lines.get('c-2')?.text).toBe('may hold a payment-gateway permit · holder unknown')
   })
 
+  it('a release since the last snapshot leaves every listed holder "may hold": who released is not settled', () => {
+    const lines = projectActivity([
+      ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
+      ev('SemaphoreStateChanged', {
+        ...sem, availablePermits: 1, totalPermits: 3, activeHolders: ['c-1', 'c-2'], activeHolderLabels: ['c-1', 'c-2'],
+        activeHolderPermits: [1, 1], waitingCoroutines: [], waitingLabels: [],
+      }),
+      ev('SemaphorePermitReleased', { ...sem, releaserId: 'c-1', releaserLabel: 'c-1', newAvailablePermits: 2, holdDurationNanos: 0 }),
+    ])
+    expect(lines.get('c-1')?.text).toBe('may hold a payment-gateway permit · holder unknown')
+    expect(lines.get('c-2')?.text).toBe('may hold a payment-gateway permit · holder unknown')
+  })
+
   it('a holder listed only by its acquisition, before a snapshot confirms it, may hold the permit', () => {
     const lines = projectActivity([
       ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
@@ -1554,8 +1589,8 @@ Expected: FAIL — `Failed to resolve import "./activity"`.
  * coroutine's next resume, suspension or end. A queue alone is not taken for a wait: a waiter that has resumed
  * stays listed until the next queue event, and an older producer records no wait kind — no line is better
  * than a wrong one. The place in the queue is the latest observed one. Permits are counted, never numbered;
- * when a permit came back from a coroutine that held none, which listed holder still holds one is unknown,
- * and the line says so. A wait is drawn in the Suspended colour; a hold alone is neutral, because a held
+ * when a permit came back from a coroutine that held none, or an acquire or release since the last state
+ * snapshot left the holders unsettled, which listed holder holds what is unknown, and the line says so. A wait is drawn in the Suspended colour; a hold alone is neutral, because a held
  * lock is normal work.
  */
 import type { VizEvent, WaitKind } from '@/types/api'
@@ -1633,12 +1668,12 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   }
   for (const s of sync.semaphores) {
     const name = nameOf(s.semaphoreId)
-    // A permit came back from a coroutine that held none (S-7): which listed holder still holds one is unknown.
-    // A holder listed only by its acquisition is unknown too until a snapshot confirms it.
-    const ambiguous = s.unknownHolderPermits > 0
+    // A permit came back from a coroutine that held none (S-7), or an acquire or release since the last
+    // snapshot left the list unsettled: which listed holder holds what is unknown, so none is named for certain.
+    const ambiguous = s.unknownHolderPermits > 0 || s.unsettled
     for (const h of s.activeHolders) {
       const permits = h.permits === 1 ? aPermit(name) : `${h.permits} ${name} permits`
-      hold(h.id, ambiguous || h.unconfirmed ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
+      hold(h.id, ambiguous ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
     }
   }
 
@@ -1882,15 +1917,27 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3, and 1 permit with no recorded holder')
   })
 
-  it('marks a holder listed only by its acquisition as unconfirmed until the next snapshot', () => {
+  it('after an acquire or release since the last snapshot, says "holder unknown" and counts nothing per holder', () => {
+    // A acquires twice between snapshots: two permits in use, both acquisitions name order-3; no
+    // "no recorded holder" count is guessed.
+    const acquire = (seq: number, remainingPermits: number) =>
+      makeSyncEvent('SemaphorePermitAcquired', seq, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits, waitDurationNanos: 0,
+      })
     const events = [
       makeSyncEvent('SemaphoreCreated', 1, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
-      makeSyncEvent('SemaphorePermitAcquired', 2, {
-        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits: 2, waitDurationNanos: 0,
+      makeSyncEvent('SemaphoreStateChanged', 2, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3, availablePermits: 3,
+        activeHolders: [], activeHolderLabels: [], waitingCoroutines: [], waitingLabels: [],
       }),
+      acquire(3, 2),
+      acquire(4, 1),
     ]
     render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
-    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3 (may hold · holder unknown)')
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown — 2 of 3 permits in use; last recorded holders order-3')
+    expect(held).not.toHaveTextContent('no recorded holder')
+    expect(held).not.toHaveTextContent('permits)')
   })
 
   it('selects a holder or a waiter by name', async () => {
@@ -2065,7 +2112,7 @@ index 08b432b2..754bb3de 100644
              </div>
              <div>
 diff --git a/frontend/src/components/sync/SemaphoreGauge.tsx b/frontend/src/components/sync/SemaphoreGauge.tsx
-index 017dabec..862181c9 100644
+index 017dabec..8cfe8b21 100644
 --- a/frontend/src/components/sync/SemaphoreGauge.tsx
 +++ b/frontend/src/components/sync/SemaphoreGauge.tsx
 @@ -1,9 +1,16 @@
@@ -2107,7 +2154,7 @@ index 017dabec..862181c9 100644
    const color = getGaugeColor(semaphore.availablePermits, semaphore.totalPermits)
  
    // SVG arc calculation
-@@ -27,80 +40,151 @@ export function SemaphoreGauge({ semaphore }: SemaphoreGaugeProps) {
+@@ -27,80 +40,152 @@ export function SemaphoreGauge({ semaphore }: SemaphoreGaugeProps) {
    const dashOffset = circumference - dashArray
  
    return (
@@ -2255,15 +2302,18 @@ index 017dabec..862181c9 100644
 +            <span className="text-default-500">Held by </span>
 +            {usedPermits <= 0 ? (
 +              <span>none</span>
-+            ) : semaphore.unknownHolderPermits > 0 ? (
++            ) : semaphore.unknownHolderPermits > 0 || semaphore.unsettled ? (
 +              <>
 +                <span className="font-semibold">holder unknown</span>
 +                <span className="text-default-500">
 +                  {' '}
-+                  — {usedPermits} of {semaphore.totalPermits} permits in use; last recorded holders{' '}
++                  — {usedPermits} of {semaphore.totalPermits} permits in use;{' '}
++                  {semaphore.activeHolders.length > 0 ? 'last recorded holders ' : 'no holder recorded yet'}
 +                </span>
 +                <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} />
-+                <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
++                {semaphore.unknownHolderPermits > 0 && (
++                  <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
++                )}
 +              </>
 +            ) : semaphore.activeHolders.length === 0 ? (
 +              <>
@@ -2321,8 +2371,6 @@ index 017dabec..862181c9 100644
 +          {i > 0 && ', '}
 +          <CoroutineName id={h.id} label={h.label} picker={picker} selected={h.id === selectedCoroutineId} />
 +          {counts && h.permits > 1 && <span className="text-default-500"> ({h.permits} permits)</span>}
-+          {/* Listed by its acquisition only: a snapshot has not confirmed it yet. */}
-+          {h.unconfirmed && <span className="text-default-500"> (may hold · holder unknown)</span>}
 +        </span>
 +      ))}
 +    </>
