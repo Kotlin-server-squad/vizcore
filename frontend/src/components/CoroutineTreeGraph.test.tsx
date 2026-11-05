@@ -102,6 +102,14 @@ function makeCoroutine(overrides: Partial<CoroutineNode> = {}): CoroutineNode {
 }
 
 describe('CoroutineTreeGraph', () => {
+  it('fills the box it is given instead of a fixed share of the window (S-1)', () => {
+    render(<CoroutineTreeGraph coroutines={[makeCoroutine()]} />)
+    const canvas = screen.getByTestId('graph-canvas')
+    expect(canvas.className).toContain('h-full')
+    expect(canvas.className).not.toContain('70vh')
+    expect(canvas.className).not.toContain('min-h-')
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     zoom.state = { positionX: 0, positionY: 0, scale: 1 }
@@ -139,7 +147,16 @@ describe('CoroutineTreeGraph', () => {
 
     render(<CoroutineTreeGraph coroutines={coroutines} />)
 
-    expect(screen.getByText('2 coroutines actively running')).toBeInTheDocument()
+    expect(screen.getByText('2 active')).toBeInTheDocument()
+  })
+
+  it('does not count a parent waiting for its children as active', () => {
+    const coroutines: CoroutineNode[] = [
+      makeCoroutine({ id: 'p', label: 'Parent', state: CoroutineState.WAITING_FOR_CHILDREN }),
+      makeCoroutine({ id: 'c', label: 'Child', parentId: 'p', state: CoroutineState.ACTIVE }),
+    ]
+    render(<CoroutineTreeGraph coroutines={coroutines} />)
+    expect(screen.getByText('1 active')).toBeInTheDocument()
   })
 
   it('renders SVG elements for connections', () => {

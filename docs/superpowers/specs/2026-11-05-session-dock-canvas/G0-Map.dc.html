@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Combined: how the parts fit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; display: flex; flex-direction: column; font-family: Inter, system-ui, sans-serif; background: {{t.bg}}; color: {{t.text}}">
+  <nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 0 24px; min-height: 52px; border-bottom: 1px solid {{t.border}}; background: {{t.surface}}">
+    <span style="font-weight: 700; font-size: 15px">Coroutine Visualizer</span>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Sessions</a>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Gallery</a>
+  </nav>
+
+  <div style="flex: 1; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 24px; padding: 24px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <h1 style="margin: 0 0 4px; font-size: 22px; font-weight: 700">One page, three layers</h1>
+      <div style="padding: 12px 16px; border: 1px solid {{t.border}}; border-radius: 10px; background: {{t.surface}}">
+        <span style="font-size: 13px; font-weight: 600">1 · Header</span>
+        <span style="font-size: 13px; color: {{t.muted}}"> name; three separate facts: the run outcome (Running, Finished, Failed), the app connection, the view (updating, paused, replay, story); main actions</span>
+      </div>
+      <div style="padding: 14px 16px; border: 2px solid {{t.sel}}; border-radius: 10px; background: {{t.surface}}; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 13px; font-weight: 600">2 · Main view: switch, or maximise</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+          <sc-for list="{{views}}" as="v" hint-placeholder-count="2">
+            <div style="padding: 12px; border-radius: 8px; background: {{t.surface2}}; display: flex; flex-direction: column; gap: 4px">
+              <span style="font-size: 14px; font-weight: 600">{{v.name}}</span>
+              <span style="font-size: 12px; color: {{t.muted}}">{{v.what}}</span>
+              <span style="font-size: 11px; color: {{t.sel}}">{{v.from}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="padding: 14px 16px; border: 2px solid {{t.border}}; border-radius: 10px; background: {{t.surface}}; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 13px; font-weight: 600">3 · Dock: five tabs, one per question; resizable, foldable</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{tabsMap}}" as="d" hint-placeholder-count="6">
+            <div style="padding: 10px; border-radius: 8px; background: {{t.surface2}}; display: flex; flex-direction: column; gap: 3px">
+              <span style="font-size: 13px; font-weight: 600">{{d.name}}</span>
+              <span style="font-size: 11px; color: {{t.muted}}">{{d.what}}</span>
+              <span style="font-size: 11px; color: {{t.sel}}">{{d.from}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="padding: 12px 16px; border-radius: 10px; background: {{t.hl}}; font-size: 13px; line-height: 1.55">
+        <span style="font-weight: 600">Shared by every part:</span> one selected coroutine, and one moment in time. Click a problem and its coroutines light up in the tree or timeline. A story step moves the replay to its event. Click a timeline bar and the Inspector shows it.
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0 0 4px; font-size: 18px; font-weight: 700">What opens first</h2>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px">
+        <thead><tr style="text-align: left; color: {{t.muted}}"><th scope="col" style="padding: 8px; font-weight: 500">The session is</th><th scope="col" style="padding: 8px; font-weight: 500">Main view</th><th scope="col" style="padding: 8px; font-weight: 500">Dock tab</th></tr></thead>
+        <tbody>
+          <sc-for list="{{opens}}" as="o" hint-placeholder-count="5">
+            <tr style="border-top: 1px solid {{t.border}}"><td style="padding: 9px 8px">{{o.a}}</td><td style="padding: 9px 8px">{{o.b}}</td><td style="padding: 9px 8px">{{o.c}}</td></tr>
+          </sc-for>
+        </tbody>
+      </table>
+      <h2 style="margin: 16px 0 4px; font-size: 18px; font-weight: 700">Built in this order</h2>
+      <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45">
+        <sc-for list="{{order}}" as="x" hint-placeholder-count="6">
+          <li>{{x}}</li>
+        </sc-for>
+      </ol>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const isLight = (this.props.theme ?? 'dark') === 'light';
+    const t = isLight
+      ? { bg: '#fafafa', surface: '#ffffff', surface2: '#f4f4f5', surface3: '#e4e4e7', border: '#e4e4e7', text: '#18181b', muted: '#52525b', primary: '#006fee', sel: '#005bc4', hl: 'rgba(0,111,238,0.10)', line: '#a1a1aa', link: '#005bc4' }
+      : { bg: '#0a0a0b', surface: '#131316', surface2: '#18181b', surface3: '#27272a', border: '#27272a', text: '#fafafa', muted: '#a1a1aa', primary: '#006fee', sel: '#4da3ff', hl: 'rgba(77,163,255,0.14)', line: '#52525b', link: '#4da3ff' };
+    const pal = isLight
+      ? { ACTIVE: ['#006fee', '#005bc4'], SUSPENDED: ['#f5a524', '#936316'], WAITING: ['#9353d3', '#6020a0'], COMPLETED: ['#17c964', '#0e793c'], FAILED: ['#f31260', '#c20e4d'], CANCELLED: ['#a1a1aa', '#52525b'] }
+      : { ACTIVE: ['#006fee', '#4da3ff'], SUSPENDED: ['#f5a524', '#f5a524'], WAITING: ['#9353d3', '#b47cff'], COMPLETED: ['#17c964', '#17c964'], FAILED: ['#f31260', '#ff6b95'], CANCELLED: ['#71717a', '#a1a1aa'] };
+    const names = { ACTIVE: 'Active', SUSPENDED: 'Suspended', WAITING: 'Waiting for children', COMPLETED: 'Completed', FAILED: 'Failed', CANCELLED: 'Cancelled' };
+    const s = {};
+    for (const k of Object.keys(pal)) s[k] = { dot: pal[k][0], text: pal[k][1], tint: pal[k][0] + '26', label: names[k] };
+    const node = (name, st, o) => {
+      o = o || {};
+      const noteColors = { wait: s.SUSPENDED.text, hold: t.sel, fail: s.FAILED.text, muted: t.muted };
+      return {
+        name, dot: s[st].dot, color: s[st].text, label: o.detail ? s[st].label + ' · ' + o.detail : s[st].label,
+        note: o.note || '', noteColor: noteColors[o.kind || 'muted'], pressed: o.selected ? 'true' : 'false',
+        border: o.selected ? '2px solid ' + t.sel : o.actor ? '2px solid ' + s[st].dot : '1px solid ' + t.border,
+        stub: o.child ? '14px' : '0px', opacity: o.dim ? 0.45 : 1
+      };
+    };
+    const chip = (label, on) => ({ label, pressed: on ? 'true' : 'false', border: on ? t.sel : t.border, bg: on ? t.hl : 'transparent', color: on ? t.text : t.muted });
+    const view = (label, on) => ({ label, pressed: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? t.surface : 'transparent', color: on ? t.text : t.muted });
+    const tab = (label, on, badge, alert) => ({ label, selected: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? t.surface3 : 'transparent', color: on ? t.text : t.muted,
+      badge: badge || '', badgePad: badge ? '1px 7px' : '0', badgeBg: alert ? s.SUSPENDED.dot : t.surface3, badgeColor: alert ? '#18181b' : t.muted });
+    const btn = (label, primary, aria) => ({ label, aria: aria || label, weight: primary ? 600 : 400, border: primary ? '0' : '1px solid ' + t.border, bg: primary ? t.primary : 'transparent', color: primary ? '#ffffff' : t.text });
+    return {
+      t, s,
+      views: [
+        { name: 'Tree', what: 'Who started whom, with each state and what it waits for or holds. Group by name for big apps.', from: 'today\'s tree, improved' },
+        { name: 'Timeline', what: 'One row per coroutine over time: its state, and a band for what it holds.', from: 'direction E' }
+      ],
+      tabsMap: [
+        { name: 'Problems', what: 'Failures, and coroutines running over 10 s without suspending, each with why and as of when.', from: 'direction F + the triage design' },
+        { name: 'Inspector', what: 'The selected coroutine: facts, example code, its own events.', from: 'today\'s inspector' },
+        { name: 'Evidence', what: 'Folding sections: Threads, Dispatchers, Locks and permits, Channels, Flows, Jobs. Empty ones say what would capture them.', from: 'today\'s evidence panels' },
+        { name: 'Events', what: 'Everything recorded, filterable.', from: 'today\'s events' },
+        { name: 'Learn', what: 'Story mode: predict, then reveal. Plus the legend.', from: 'direction D + Codex' }
+      ],
+      opens: [
+        { a: 'A demo started from the Gallery', b: 'Tree', c: 'Learn: the story' },
+        { a: 'A finished demo', b: 'Tree', c: 'Inspector' },
+        { a: 'A run that failed', b: 'Tree', c: 'Problems' },
+        { a: 'Your app, live', b: 'Tree, grouped by name', c: 'Problems' },
+        { a: 'A replay', b: 'as you left it', c: 'as you left it' }
+      ],
+      order: [
+        'Quick wins in today\'s page',
+        'Core fix: waiting for a lock, permit or channel records Suspended',
+        'The dock: shell, shared selection, big apps',
+        'Health API, then the Problems tab',
+        'Every part shows the same moment (replay)',
+        'Learn: story mode, starting with the 7 Basics',
+        'Timeline view',
+        'Later: who waits on what, compare two runs'
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

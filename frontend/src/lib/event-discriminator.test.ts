@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { normalizeEvent, normalizeEvents, eventTypeToKind } from './utils'
 import { JOB_EVENT_KINDS } from '@/types/api'
+import type { CoroutineSuspendedEvent } from '@/types/api'
 
 // All 17 backend event type values (from the backend kotlinx-serialization discriminator)
 // These are the PascalCase type names the backend emits via JSON `type` field
@@ -51,6 +52,27 @@ function rawBackendEvent(type: BackendType, seq = 1) {
 }
 
 describe('normalizeEvent — raw backend {type} payload', () => {
+  it('keeps what a recorded wait waited for (S-7)', () => {
+    const event = normalizeEvent({
+      type: 'CoroutineSuspended',
+      sessionId: 's',
+      seq: 3,
+      tsNanos: 3,
+      coroutineId: 'c',
+      jobId: 'j',
+      parentCoroutineId: null,
+      scopeId: 'sc',
+      label: 'order-7',
+      reason: 'mutex',
+      waitKind: 'MUTEX',
+      resourceId: 'mutex-4',
+    }) as CoroutineSuspendedEvent
+
+    expect(event.kind).toBe('coroutine.suspended')
+    expect(event.waitKind).toBe('MUTEX')
+    expect(event.resourceId).toBe('mutex-4')
+  })
+
   it('maps JobStateChanged type to kind === "JobStateChanged"', () => {
     const raw = rawBackendEvent('JobStateChanged')
     const result = normalizeEvent(raw)

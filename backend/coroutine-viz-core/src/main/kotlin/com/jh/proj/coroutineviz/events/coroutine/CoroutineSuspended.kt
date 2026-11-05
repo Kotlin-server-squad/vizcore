@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.events.coroutine
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
+import com.jh.proj.coroutineviz.events.WaitKind
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -16,6 +17,7 @@ import kotlinx.serialization.Serializable
  * @property reason Why the coroutine suspended (e.g., "delay", "await", "join")
  * @property durationMillis Expected duration if known (e.g., for delay)
  * @property suspensionPoint Source code location where suspension occurred
+ * @property waitKind What a wrapper waited for (spec 2026-11-05, S-7); null otherwise
  *
  * Lifecycle: ACTIVE → SUSPENDED → [CoroutineResumed]
  */
@@ -35,6 +37,10 @@ data class CoroutineSuspended(
     val suspensionPoint: SuspensionPoint? = null,
     /** Where [suspensionPoint] came from; `null` when the producer did not say. */
     val provenance: SuspensionProvenance? = null,
+    /** What a mutex, semaphore or channel wrapper waited for; `null` for other suspensions and older producers. */
+    val waitKind: WaitKind? = null,
+    /** The `mutexId`, `semaphoreId` or `channelId` waited for, with [waitKind]. */
+    val resourceId: String? = null,
 ) : CoroutineEvent {
     /**
      * The 0.2.1 JVM constructor, kept for binary compatibility (prebuilt jars, Java callers). Hidden from
@@ -56,6 +62,28 @@ data class CoroutineSuspended(
     ) : this(
         sessionId, seq, tsNanos, coroutineId, jobId, parentCoroutineId, scopeId, label,
         reason, durationMillis, suspensionPoint, null,
+    )
+
+    /**
+     * The 0.3.x JVM constructor (no [waitKind] / [resourceId]), kept for binary compatibility like the one above.
+     */
+    @Deprecated("binary compatibility with 0.3.x", level = DeprecationLevel.HIDDEN)
+    constructor(
+        sessionId: String,
+        seq: Long,
+        tsNanos: Long,
+        coroutineId: String,
+        jobId: String,
+        parentCoroutineId: String?,
+        scopeId: String,
+        label: String?,
+        reason: String,
+        durationMillis: Long? = null,
+        suspensionPoint: SuspensionPoint? = null,
+        provenance: SuspensionProvenance? = null,
+    ) : this(
+        sessionId, seq, tsNanos, coroutineId, jobId, parentCoroutineId, scopeId, label,
+        reason, durationMillis, suspensionPoint, provenance, null, null,
     )
 
     override val kind: String get() = "CoroutineSuspended"

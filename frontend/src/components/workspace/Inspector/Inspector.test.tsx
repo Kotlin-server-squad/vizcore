@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import {
@@ -115,11 +116,45 @@ describe('Inspector', () => {
     })
 
     const inspector = await screen.findByTestId('inspector')
+    // The cards' own headings; the h2 above them names the coroutine.
     const headings = within(inspector)
-      .getAllByRole('heading')
+      .getAllByRole('heading', { level: 4 })
       .map(h => h.textContent)
 
     expect(headings).toEqual(['Timing', 'Suspended at', 'Runs on', 'Identity', 'Events'])
+  })
+
+  it("heads the inspector with the coroutine's name and state", () => {
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, { wrapper: createWrapper() })
+    const heading = screen.getByRole('heading', { level: 2 })
+    expect(heading).toHaveTextContent('UserService.register')
+    expect(heading).toHaveTextContent('Suspended')
+  })
+
+  it('shows the empty state it is given when nothing is selected', () => {
+    render(<Inspector sessionId="s-1" coroutine={null} readOnly={false} emptyState={<p>summary</p>} />, {
+      wrapper: createWrapper(),
+    })
+    expect(screen.getByText('summary')).toBeInTheDocument()
+    expect(screen.queryByText(/Select a coroutine to inspect it/)).toBeNull()
+  })
+
+  it('keeps the session summary mounted under a selection, and offers to return to it', async () => {
+    const onClearSelection = vi.fn()
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine()}
+        readOnly={false}
+        emptyState={<p>summary</p>}
+        onClearSelection={onClearSelection}
+      />,
+      { wrapper: createWrapper() },
+    )
+    // Hidden, not unmounted: its metrics query stays subscribed (#124).
+    expect(screen.getByText('summary')).not.toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Session summary' }))
+    expect(onClearSelection).toHaveBeenCalledTimes(1)
   })
 
   it('marks durations as poll-bounded with a ~ prefix', async () => {
@@ -129,9 +164,9 @@ describe('Inspector', () => {
 
     // 4.2s total, 200ms active, 4s suspended — sampling is poll-bounded, so
     // every duration is approximate and says so (validated sketch 001-C).
-    expect(await screen.findByText('~4.20s')).toBeInTheDocument()
-    expect(screen.getByText('~200.00ms')).toBeInTheDocument()
-    expect(screen.getByText('~4.00s')).toBeInTheDocument()
+    expect(await screen.findByText('~4.2 s')).toBeInTheDocument()
+    expect(screen.getByText('~200 ms')).toBeInTheDocument()
+    expect(screen.getByText('~4.0 s')).toBeInTheDocument()
   })
 
   it('says "not reported" rather than 0 when the backend sends no duration', async () => {
@@ -169,7 +204,7 @@ describe('Inspector', () => {
     const timing = await screen.findByTestId('timing-card')
     // The event span (3s) is longer than the closed intervals (1.2s) — the
     // larger figure is the honest lower bound.
-    expect(await within(timing).findByText('~3.00s so far')).toBeInTheDocument()
+    expect(await within(timing).findByText('~3.0 s so far')).toBeInTheDocument()
   })
 
   it('counts a running coroutine up to now and flags a long run without suspending (#218)', async () => {
@@ -197,7 +232,7 @@ describe('Inspector', () => {
     })
 
     const timing = await screen.findByTestId('timing-card')
-    expect(await within(timing).findByText(/^~60\.\d{2}s so far$/)).toBeInTheDocument()
+    expect(await within(timing).findByText(/^~(59\.\d s|1 m 0 s) so far$/)).toBeInTheDocument()
     expect(within(timing).getByTestId('possibly-blocked')).toHaveTextContent('without suspending')
   })
 

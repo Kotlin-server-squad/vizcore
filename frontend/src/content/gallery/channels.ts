@@ -36,7 +36,7 @@ export const CHANNELS_GUIDES: DemoGuide[] = [
       },
       {
         title: 'Then the chef waits for the waiter',
-        text: 'From the second plate on, the chef is ready 1.5 s before the waiter is back. send() suspends the chef at the pass until the waiter takes the plate. In the tree the chef shows as active while he waits; the Channels panel shows his send waiting.',
+        text: 'From the second plate on, the chef is ready 1.5 s before the waiter is back. send() suspends the chef at the pass until the waiter takes the plate. In the tree the chef shows as suspended while he waits (the wait at the pass is recorded); the Channels panel shows his send waiting.',
       },
       {
         title: 'Both are there: the plate changes hands',
@@ -78,7 +78,7 @@ export const CHANNELS_GUIDES: DemoGuide[] = [
       },
       {
         title: 'The queue is full: the office waits',
-        text: 'At 3.6 s all five slots are taken. send() now suspends the office: job 7 waits from 4.2 s to 5.5 s, job 8 from 6.1 s to 8 s. In the tree the office shows as active while it waits; the Channels panel shows the full queue.',
+        text: 'At 3.6 s all five slots are taken. send() now suspends the office: job 7 waits from 4.2 s to 5.5 s, job 8 from 6.1 s to 8 s. In the tree the office shows as suspended while it waits (the wait for a free slot is recorded); the Channels panel shows the full queue.',
       },
       {
         title: 'The printer drains the queue',

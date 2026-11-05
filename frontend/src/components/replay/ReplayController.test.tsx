@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { ReplayController } from './ReplayController'
 import { LiveDataNotice } from './LiveDataNotice'
 import type { UseReplayReturn } from '@/hooks/use-replay'
+import type { VizEvent } from '@/types/api'
 
 // framer-motion stubbed to plain DOM so MotionValues do not need a real
 // animation loop in jsdom (mirrors SessionWorkspace.test.tsx).
@@ -29,6 +30,7 @@ function makeReplay(overrides: Partial<UseReplayReturn> = {}): UseReplayReturn {
     speed: 1,
     progress: 0.2,
     visibleEvents: [],
+    events: [],
     totalEvents: 10,
     play: vi.fn(),
     pause: vi.fn(),
@@ -144,6 +146,76 @@ describe('ReplayController — ADR-017 keyboard shortcuts', () => {
   })
 })
 
+describe('ReplayController — keys owned by the dock', () => {
+  it('leaves the arrow keys to a focused separator or tab', async () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <div role="separator" tabIndex={0} aria-label="Resize the dock" />
+        <button role="tab" type="button">Inspector</button>
+      </>,
+    )
+    screen.getByRole('separator').focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowLeft}{Home}{End}')
+    screen.getByRole('tab').focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowLeft}{Home}{End}')
+    expect(replay.stepForward).not.toHaveBeenCalled()
+    expect(replay.stepBack).not.toHaveBeenCalled()
+    expect(replay.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('leaves Home and End to an open menu', async () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <ul role="menu" aria-label="More actions">
+          <li role="menuitem" tabIndex={-1}>Share</li>
+        </ul>
+      </>,
+    )
+    screen.getByRole('menuitem').focus()
+    await userEvent.keyboard('{End}{Home}{ArrowLeft}')
+    screen.getByRole('menu').focus()
+    await userEvent.keyboard('{End}')
+    expect(replay.seekTo).not.toHaveBeenCalled()
+    expect(replay.stepBack).not.toHaveBeenCalled()
+  })
+
+  it('leaves a key alone that a focused control has already handled', () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <div data-testid="widget" tabIndex={0} onKeyDown={e => e.preventDefault()} />
+      </>,
+    )
+    const widget = screen.getByTestId('widget')
+    widget.focus()
+    fireEvent.keyDown(widget, { key: 'End' })
+    expect(replay.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('leaves Space to a focused button, so a disclosure opens instead of playback starting', async () => {
+    const replay = makeReplay()
+    const onToggle = vi.fn()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <button type="button" aria-expanded={false} onClick={onToggle}>Threads</button>
+      </>,
+    )
+    screen.getByRole('button', { name: 'Threads' }).focus()
+    await userEvent.keyboard(' ')
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    expect(replay.play).not.toHaveBeenCalled()
+    // Arrows still step the replay from a button.
+    await userEvent.keyboard('{ArrowRight}')
+    expect(replay.stepForward).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('ReplayController — recording state', () => {
   it('renders the recording cluster and disables playback when isRecording', () => {
     const onStopRecording = vi.fn()
@@ -183,5 +255,14 @@ describe('LiveDataNotice', () => {
         'Live data — this tab shows the current session state and is not affected by replay.',
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('ReplayController — the slider says where in time it is (S-14)', () => {
+  const at = (tsNanos: number) => ({ seq: 1, tsNanos, sessionId: 's', kind: 'CoroutineCreated' }) as unknown as VizEvent
+
+  it('announces the cursor as seconds of the whole replay', () => {
+    render(<ReplayController replay={makeReplay({ events: [at(0), at(4.2e9), at(12e9)], currentIndex: 1, totalEvents: 3 })} />)
+    expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '4.2 seconds of 12.0')
   })
 })

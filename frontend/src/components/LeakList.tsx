@@ -1,5 +1,6 @@
 import { Tooltip } from '@heroui/react'
 import { FiAlertCircle } from 'react-icons/fi'
+import { formatDurationMs } from '@/lib/format-duration'
 import type { LeakDto } from '@/types/api'
 
 interface LeakListProps {
@@ -21,7 +22,7 @@ export function LeakList({ leaks, leakThresholdMs }: LeakListProps) {
     return null
   }
 
-  const tooltipCopy = `Active longer than the leak threshold (${formatMs(leakThresholdMs)}). May be a stuck or never-completing coroutine.`
+  const tooltipCopy = `Active longer than the leak threshold (${formatDurationMs(leakThresholdMs)}). May be a stuck or never-completing coroutine.`
 
   return (
     <div className="space-y-2">
@@ -45,19 +46,11 @@ export function LeakList({ leaks, leakThresholdMs }: LeakListProps) {
           >
             <FiAlertCircle className="h-4 w-4 text-warning" />
             <span className="text-sm">
-              {leak.label ?? leak.coroutineId} · alive {formatMs(leak.aliveMs)}
+              {leak.label ?? leak.coroutineId} · alive {formatDurationMs(leak.aliveMs)}
             </span>
           </li>
         ))}
       </ul>
     </div>
   )
-}
-
-/** Human-readable duration: sub-second as "Nms", otherwise whole "Ns". */
-function formatMs(ms: number): string {
-  if (ms < 1000) {
-    return `${Math.round(ms)}ms`
-  }
-  return `${Math.round(ms / 1000)}s`
 }

@@ -16,6 +16,7 @@ import com.jh.proj.coroutineviz.session.coroutineResumed
 import com.jh.proj.coroutineviz.session.coroutineStarted
 import com.jh.proj.coroutineviz.session.coroutineSuspended
 import com.jh.proj.coroutineviz.session.jobStateChanged
+import com.jh.proj.coroutineviz.session.stackTraceLines
 import com.jh.proj.coroutineviz.session.waitingForChildren
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -282,7 +283,7 @@ class VizScope(
                         childrenCount = job.children.count(),
                     ),
                 )
-                session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
+                session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message, cause.stackTraceLines()))
             }
 
             else -> {
@@ -433,7 +434,7 @@ class VizScope(
                             childrenCount = deferred.children.count(),
                         ),
                     )
-                    session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message))
+                    session.send(ctx.coroutineFailed(cause::class.simpleName, cause.message, cause.stackTraceLines()))
                 }
 
                 else -> {

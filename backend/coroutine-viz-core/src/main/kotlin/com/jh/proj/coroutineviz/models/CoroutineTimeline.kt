@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.models
 
 import com.jh.proj.coroutineviz.events.SuspensionPoint
+import com.jh.proj.coroutineviz.events.WaitKind
 import kotlinx.serialization.Serializable
 
 /**
@@ -47,4 +48,19 @@ data class TimelineEventSummary(
     val reason: String? = null,
     // Source code location where a coroutine suspended (only populated for suspend rows)
     val suspensionPoint: SuspensionPoint? = null,
-)
+    // What a mutex, semaphore or channel wrapper waited for, and which one (suspend rows only; spec 2026-11-05, S-7)
+    val waitKind: WaitKind? = null,
+    val resourceId: String? = null,
+) {
+    /** The 0.3.x JVM constructor (no [waitKind] / [resourceId]), kept for binary compatibility. `copy` is source-compatible only. */
+    @Deprecated("binary compatibility with 0.3.x", level = DeprecationLevel.HIDDEN)
+    constructor(
+        seq: Long,
+        tsNanos: Long,
+        kind: String,
+        threadName: String? = null,
+        dispatcherName: String? = null,
+        reason: String? = null,
+        suspensionPoint: SuspensionPoint? = null,
+    ) : this(seq, tsNanos, kind, threadName, dispatcherName, reason, suspensionPoint, null, null)
+}

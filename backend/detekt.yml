@@ -48,6 +48,8 @@ style:
       - '**/scenarios/ChannelScenarios.kt'
       # The Flow demos' scripts, the same way.
       - '**/scenarios/FlowScenarios.kt'
+      # The Patterns demos' scripts, the same way.
+      - '**/scenarios/PatternScenarios.kt'
     ignorePropertyDeclaration: true
     ignoreCompanionObjectPropertyDeclaration: true
     ignoreAnnotation: true

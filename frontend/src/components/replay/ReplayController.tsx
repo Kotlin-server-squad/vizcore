@@ -11,12 +11,13 @@
  * drives playback, so the playback controls are disabled in that mode.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button, Slider, ButtonGroup, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@heroui/react'
 import { motion } from 'framer-motion'
 import { FiPlay, FiPause, FiSkipBack, FiSkipForward, FiRotateCcw, FiSquare, FiFastForward } from 'react-icons/fi'
 import { useReplayMotion } from '@/hooks/use-replay-motion'
 import type { UseReplayReturn } from '@/hooks/use-replay'
+import { replayTimeText } from '@/lib/replay-time'
 
 interface ReplayControllerProps {
   replay: UseReplayReturn
@@ -52,16 +53,23 @@ function formatElapsed(ms: number): string {
 }
 
 /**
- * True when the currently focused element is a text-entry surface, so replay
- * shortcuts must be suppressed (T-02-13). Mirrors standard log-viewer behavior.
+ * True when the focused element handles this key itself, so the replay
+ * shortcut must be suppressed: a text-entry surface (T-02-13, mirrors
+ * standard log-viewer behavior), the dock's separator (arrows resize it), a
+ * tab (arrows move between tabs), a menu or list box (its keys move within
+ * it), or — for Space and Enter — a button or link, which those keys press.
  */
-function isFormFieldFocused(): boolean {
+function focusOwnsKey(key: string): boolean {
   const el = document.activeElement
   if (!el) return false
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if ((el as HTMLElement).isContentEditable) return true
-  return false
+  const role = el.getAttribute('role')
+  if (role === 'separator' || role === 'tab') return true
+  if (el.closest('[role="menu"], [role="listbox"]')) return true
+  const pressable = tag === 'BUTTON' || tag === 'A' || role === 'button'
+  return pressable && (key === ' ' || key === 'Enter')
 }
 
 export function ReplayController({
@@ -89,6 +97,18 @@ export function ReplayController({
   const controlsDisabled = isEmpty || isRecording
   const { progressWidth } = useReplayMotion({ currentIndex, totalEvents })
 
+  // The slider steps by event, and says where in time each step is (S-14):
+  // "4.2 seconds of 12.0". HeroUI's Slider forwards no aria-valuetext to its
+  // range input, so it is set on the input after each render.
+  const sliderBox = useRef<HTMLDivElement | null>(null)
+  const timeText = replayTimeText(replay.events, currentIndex)
+  useEffect(() => {
+    const input = sliderBox.current?.querySelector('input[type="range"]')
+    if (!input) return
+    if (timeText) input.setAttribute('aria-valuetext', timeText)
+    else input.removeAttribute('aria-valuetext')
+  })
+
   const stop = () => {
     seekTo(0)
     pause()
@@ -98,13 +118,14 @@ export function ReplayController({
   // ADR-017 keyboard shortcuts — active only while the controller is mounted
   // (i.e. replay is active). Suppressed inside form fields; Space prevents
   // page scroll. When the Slider itself has focus its native key handling wins
-  // (the Slider is an input-range, caught by isFormFieldFocused's INPUT guard).
+  // (the Slider is an input-range, caught by focusOwnsKey's INPUT guard).
   useEffect(() => {
     // The scripted recording pipeline owns playback; do not bind shortcuts.
     if (isRecording) return
 
     const handler = (e: KeyboardEvent) => {
-      if (isFormFieldFocused()) return
+      // A control that handled the key itself has already prevented its default.
+      if (e.defaultPrevented || focusOwnsKey(e.key)) return
       if (isEmpty) return
 
       switch (e.key) {
@@ -165,7 +186,7 @@ export function ReplayController({
       transition={{ duration: 0.3 }}
     >
       {/* Progress slider */}
-      <div className="flex items-center gap-3">
+      <div ref={sliderBox} className="flex items-center gap-3">
         <Slider
           aria-label="Replay progress"
           size="sm"

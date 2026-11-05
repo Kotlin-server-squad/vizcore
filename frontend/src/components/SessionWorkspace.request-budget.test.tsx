@@ -177,7 +177,7 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     renderWorkspace()
     await advance(MINUTE)
     const afterLoad = requestCount()
-    expect(screen.getByText('Enable Live Stream')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resume view' })).toBeInTheDocument()
 
     await advance(5 * MINUTE)
 
@@ -185,10 +185,27 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     expect(requestCount() - afterLoad).toBe(0)
   })
 
+  it('folding, unfolding, maximising and restoring the dock long after load refetch nothing', async () => {
+    renderWorkspace()
+    await advance(MINUTE)
+    const afterLoad = requestCount()
+
+    // Past every query's stale time: a panel that re-subscribed now would refetch.
+    fireEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
+    await advance(5_000)
+    fireEvent.click(screen.getByRole('button', { name: 'Unfold the dock' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Maximise' }))
+    await advance(5_000)
+    fireEvent.click(screen.getByRole('button', { name: 'Restore dock' }))
+    await advance(5_000)
+
+    expect(requestCount() - afterLoad).toBe(0)
+  })
+
   it('stream ON with a busy stream: stays well under 60 requests a minute', async () => {
     renderWorkspace()
     await advance(1000)
-    fireEvent.click(screen.getByText('Enable Live Stream'))
+    fireEvent.click(screen.getByRole('button', { name: 'Resume view' }))
     await advance(1000)
     const es = FakeEventSource.instances[0]!
     act(() => es.open())
@@ -221,7 +238,7 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
   it('stream ON but SSE down: falls back to a slow poll, still well under the limit', async () => {
     renderWorkspace()
     await advance(1000)
-    fireEvent.click(screen.getByText('Enable Live Stream'))
+    fireEvent.click(screen.getByRole('button', { name: 'Resume view' }))
     await advance(1000)
 
     // Every connection attempt fails; the hook's bounded retries run out.
@@ -237,13 +254,13 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     // snapshot + metrics + threads every 10 s = 18/min.
     expect(perMinute).toBeLessThanOrEqual(18)
     expect(perMinute).toBeGreaterThan(0)
-    expect(screen.getByTestId('stream-status')).toHaveTextContent(/connection lost/i)
+    expect(screen.getByTestId('view-status')).toHaveTextContent(/connection lost/i)
   })
 
   it('a 429 is honoured: no request is sent again before Retry-After elapses', async () => {
     renderWorkspace()
     await advance(1000)
-    fireEvent.click(screen.getByText('Enable Live Stream'))
+    fireEvent.click(screen.getByRole('button', { name: 'Resume view' }))
     await advance(1000)
     await advance(MINUTE, 500, () => {
       for (const es of FakeEventSource.instances) if (es.readyState !== 2) es.fail()

@@ -6,7 +6,8 @@ import { CoroutineState, type CoroutineNode } from '@/types/api'
  */
 export type StateFilter =
   | 'all'
-  | 'running'
+  | 'active'
+  | 'waiting'
   | 'suspended'
   | 'completed'
   | 'cancelled'
@@ -15,17 +16,19 @@ export type StateFilter =
   | 'leaks'
 
 export interface StateCounts {
-  running: number
+  active: number
+  /** WAITING_FOR_CHILDREN: the body finished, the scope has not. */
+  waiting: number
   suspended: number
   completed: number
   cancelled: number
   failed: number
-  /** Every coroutine in the snapshot. The five state buckets always sum to this. */
+  /** Every coroutine in the snapshot. The six state buckets always sum to this. */
   total: number
   /**
-   * Potential leaks. NOT one of the five buckets and not part of `total` — a
+   * Potential leaks. NOT one of the six buckets and not part of `total` — a
    * leak is a heuristic flag on a still-active coroutine, so a leaked coroutine
-   * is also counted under `running`.
+   * is also counted under its state.
    */
   leaks: number
 }
@@ -35,18 +38,19 @@ export interface StateCounts {
  *
  * Two calls worth stating out loud:
  *
- * `WAITING_FOR_CHILDREN` is **running**. Structurally the parent is still live
- * work — it has finished its own body but its scope is not done. Filing it
- * anywhere else makes a healthy structured-concurrency tree look half-dead.
+ * `WAITING_FOR_CHILDREN` gets its **own** bucket. It is still live work, but a
+ * parent whose body has finished is a different fact from one that is running
+ * its body, and the structured-concurrency demos are about exactly that
+ * difference (spec S-6).
  *
  * `CANCELLED` gets its **own** bucket. Folding it into completed would report a
  * cancellation as success; folding it into failed would report it as an error.
  * It is neither.
  */
 const STATE_BUCKET = {
-  [CoroutineState.CREATED]: 'running',
-  [CoroutineState.ACTIVE]: 'running',
-  [CoroutineState.WAITING_FOR_CHILDREN]: 'running',
+  [CoroutineState.CREATED]: 'active',
+  [CoroutineState.ACTIVE]: 'active',
+  [CoroutineState.WAITING_FOR_CHILDREN]: 'waiting',
   [CoroutineState.SUSPENDED]: 'suspended',
   [CoroutineState.COMPLETED]: 'completed',
   [CoroutineState.CANCELLED]: 'cancelled',
@@ -59,7 +63,8 @@ export function deriveStateCounts(
   leakIds?: ReadonlySet<string>,
 ): StateCounts {
   const counts: StateCounts = {
-    running: 0,
+    active: 0,
+    waiting: 0,
     suspended: 0,
     completed: 0,
     cancelled: 0,
@@ -69,9 +74,9 @@ export function deriveStateCounts(
   }
   for (const c of coroutines) {
     const bucket = STATE_BUCKET[c.state as CoroutineState]
-    // An unrecognised state must not vanish from the bar; count it as running
+    // An unrecognised state must not vanish from the bar; count it as active
     // so the buckets still sum to the total.
-    counts[bucket ?? 'running'] += 1
+    counts[bucket ?? 'active'] += 1
     counts.total += 1
   }
   return counts
@@ -79,14 +84,14 @@ export function deriveStateCounts(
 
 /**
  * The single definition of what a chip selects, shared by the bar and the
- * canvas so the two cannot disagree about what "Running" means.
+ * canvas so the two cannot disagree about what "Active" means.
  */
 export function matchesFilter(state: CoroutineState, filter: StateFilter): boolean {
   if (filter === 'all') return true
   // A leak is a property of the coroutine, not of its state — `selectCoroutines`
   // resolves it against the leak id set instead.
   if (filter === 'leaks') return false
-  return (STATE_BUCKET[state] ?? 'running') === filter
+  return (STATE_BUCKET[state] ?? 'active') === filter
 }
 
 /**

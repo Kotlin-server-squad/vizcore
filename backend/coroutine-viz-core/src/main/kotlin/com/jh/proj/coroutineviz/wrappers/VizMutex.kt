@@ -6,8 +6,8 @@ import com.jh.proj.coroutineviz.events.MutexLockRequested
 import com.jh.proj.coroutineviz.events.MutexQueueChanged
 import com.jh.proj.coroutineviz.events.MutexTryLockFailed
 import com.jh.proj.coroutineviz.events.MutexUnlocked
+import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.session.VizSession
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.ConcurrentHashMap
@@ -84,17 +84,17 @@ class VizMutex(
     fun getWaitQueueSize(): Int = waitQueue.size
 
     /**
-     * Acquire the mutex lock (suspends if already held)
+     * Acquire the mutex lock. Tries first; only when the lock is held does the coroutine queue and wait, and that
+     * wait is recorded as a suspension (spec 2026-11-05, S-7).
      */
     suspend fun lock(owner: Any? = null) {
         val coroutineElement = currentCoroutineContext()[VizCoroutineElement]
         val coroutineId = coroutineElement?.coroutineId ?: "unknown-${System.nanoTime()}"
         val coroutineLabel = coroutineElement?.label
 
-        val wasLocked = delegate.isLocked
-        val position = if (wasLocked) waitQueue.size + 1 else 0
+        // Try first, so whether to wait is never decided from `isLocked`, which another coroutine can change.
+        val acquiredAtOnce = delegate.tryLock(owner)
 
-        // Emit lock requested
         session.send(
             MutexLockRequested(
                 sessionId = session.sessionId,
@@ -104,37 +104,19 @@ class VizMutex(
                 mutexLabel = label,
                 requesterId = coroutineId,
                 requesterLabel = coroutineLabel,
-                isLocked = wasLocked,
-                queuePosition = position,
+                isLocked = !acquiredAtOnce,
+                queuePosition = if (acquiredAtOnce) 0 else waitQueue.size + 1,
             ),
         )
 
-        // Add to wait queue if locked
-        val waiterInfo = WaiterInfo(coroutineId, coroutineLabel, System.nanoTime())
-        if (wasLocked) {
-            waitQueue.add(waiterInfo)
-            emitQueueChanged()
-        }
-
-        // Actually acquire the lock (may suspend)
         val startWait = System.nanoTime()
-        try {
-            delegate.lock(owner)
-        } catch (e: CancellationException) {
-            // A waiter cancelled in the queue (e.g. a deadlocked worker being stopped) no longer
-            // waits; leaving it in the queue would show it waiting for ever.
-            if (waitQueue.remove(waiterInfo)) emitQueueChanged()
-            throw e
-        }
+        if (!acquiredAtOnce) waitInQueue(WaiterInfo(coroutineId, coroutineLabel, startWait), owner)
         val waitDuration = System.nanoTime() - startWait
 
-        // Remove from wait queue and update owner
-        waitQueue.remove(waiterInfo)
         currentOwnerId = coroutineId
         currentOwnerLabel = coroutineLabel
         holdStartTimes[coroutineId] = System.nanoTime()
 
-        // Emit lock acquired
         session.send(
             MutexLockAcquired(
                 sessionId = session.sessionId,
@@ -148,8 +130,24 @@ class VizMutex(
             ),
         )
 
-        if (wasLocked) {
-            emitQueueChanged()
+        if (!acquiredAtOnce) emitQueueChanged()
+    }
+
+    /** Queues [waiter] and waits for the lock, recorded as a suspension; the waiter leaves the queue however the wait ends. */
+    private suspend fun waitInQueue(
+        waiter: WaiterInfo,
+        owner: Any?,
+    ) {
+        waitQueue.add(waiter)
+        emitQueueChanged()
+        var acquired = false
+        try {
+            session.recordWait(WaitKind.MUTEX, mutexId) { delegate.lock(owner) }
+            acquired = true
+        } finally {
+            // Without the lock (cancelled, or a timeout around the wait) the waiter no longer waits; left in the
+            // queue it would show waiting for ever. With the lock, `lock` reports the new queue after Acquired.
+            if (waitQueue.remove(waiter) && !acquired) emitQueueChanged()
         }
     }
 

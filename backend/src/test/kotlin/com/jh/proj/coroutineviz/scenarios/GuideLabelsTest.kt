@@ -37,6 +37,8 @@ import kotlin.time.Duration.Companion.seconds
  * tree must be exactly the picture (the same coroutines, each at its depth and in its state), and
  * that point must lie within [TOLERANCE_SECONDS] of the pictured moment (`atSeconds`, scripted
  * time). So renaming, moving or retiming a coroutine in a demo fails here until its guide follows.
+ * A coroutine waiting at a channel, a mutex or a semaphore is recorded as suspended, so a picture
+ * may show one waiting: it is checked like any other state.
  *
  * Matching a point of the event sequence, rather than the tree at one timestamp, keeps the test
  * steady: at test speed a long chain of steps drifts a few tenths of a second behind its script.
@@ -167,6 +169,19 @@ class GuideLabelsTest {
             "flow/operators" -> FlowScenarios.flowOperators(session)
             "flow/stateflow" -> FlowScenarios.stateFlowDemo(session)
             "flow/sharedflow" -> FlowScenarios.sharedFlowDemo(session)
+            else -> startPattern(demoId, session)
+        }
+
+    private suspend fun startPattern(
+        demoId: String,
+        session: VizSession,
+    ): Job =
+        when (demoId) {
+            "patterns/retry" -> PatternScenarios.runRetry(session)
+            "patterns/producer-consumer" -> PatternScenarios.runProducerConsumer(session)
+            "patterns/fan-out-fan-in" -> PatternScenarios.runFanOutFanIn(session)
+            "patterns/supervisor" -> PatternScenarios.runSupervisor(session)
+            "patterns/circuit-breaker" -> PatternScenarios.runCircuitBreaker(session)
             else -> error("will-see.json pictures '$demoId'; add it to GuideLabelsTest.start")
         }
 

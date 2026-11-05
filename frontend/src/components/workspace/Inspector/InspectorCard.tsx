@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
  * The shared frame for one inspector card.
  *
  * A heading and a body, nothing else — the cards are read top-to-bottom in a
- * ~320px column, so anything decorative competes with the thing being read.
+ * narrow column, so anything decorative competes with the thing being read.
  */
 export function InspectorCard({
   title,

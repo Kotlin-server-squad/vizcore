@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { CoroutineState } from '@/types/api'
 import { palette } from '@/styles/palette'
 import { deriveStateCounts } from './state-counts'
-import { stateColor, getStateColors } from './coroutine-state-colors'
+import { stateColor, getStateColors, stateLabel } from './coroutine-state-colors'
 
 const ALL_STATES = Object.values(CoroutineState)
 
@@ -74,14 +74,15 @@ describe('the canvas agrees with the state bar', () => {
     const counts = deriveStateCounts([
       { id: 'c', jobId: 'j', parentId: null, scopeId: 's', label: null, state } as never,
     ])
-    return (['running', 'suspended', 'completed', 'cancelled', 'failed'] as const).find(
+    return (['active', 'waiting', 'suspended', 'completed', 'cancelled', 'failed'] as const).find(
       b => counts[b] === 1,
     )!
   }
 
   /** The chip colour StateBar draws for each bucket. */
   const BUCKET_HUE: Record<string, string> = {
-    running: palette.primary,
+    active: palette.primary,
+    waiting: palette.primary,
     suspended: palette.warning,
     completed: palette.success,
     cancelled: palette.warning,
@@ -93,7 +94,7 @@ describe('the canvas agrees with the state bar', () => {
     // drift apart again. They did: the amber Cancelled chip used to filter the
     // canvas to coroutines the canvas then drew grey.
     for (const state of ALL_STATES) {
-      // CREATED is the one exception: it is counted as running (so the buckets
+      // CREATED is the one exception: it is counted as active (so the buckets
       // sum to the total) but drawn neutral, because nothing has started yet.
       if (state === CoroutineState.CREATED) continue
       expect(stateColor(state), `${state}`).toBe(BUCKET_HUE[bucketOf(state)])
@@ -114,5 +115,21 @@ describe('the canvas agrees with the state bar', () => {
     for (const state of ALL_STATES) {
       expect(getStateColors(state).chipColor, `${state}`).not.toBe('secondary')
     }
+  })
+})
+
+describe('stateLabel', () => {
+  it('names every state in plain words, never "Running"', () => {
+    expect(stateLabel(CoroutineState.CREATED)).toBe('Created')
+    expect(stateLabel(CoroutineState.ACTIVE)).toBe('Active')
+    expect(stateLabel(CoroutineState.SUSPENDED)).toBe('Suspended')
+    expect(stateLabel(CoroutineState.WAITING_FOR_CHILDREN)).toBe('Waiting for children')
+    expect(stateLabel(CoroutineState.COMPLETED)).toBe('Completed')
+    expect(stateLabel(CoroutineState.CANCELLED)).toBe('Cancelled')
+    expect(stateLabel(CoroutineState.FAILED)).toBe('Failed')
+  })
+
+  it('shows an unknown state as recorded rather than hiding it', () => {
+    expect(stateLabel('SOMETHING_NEW')).toBe('SOMETHING_NEW')
   })
 })
