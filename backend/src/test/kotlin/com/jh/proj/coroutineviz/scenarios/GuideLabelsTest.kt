@@ -160,6 +160,9 @@ class GuideLabelsTest {
             "mixed" -> BasicScenarios.runMixedScenario(session)
             "exception" -> BasicScenarios.runExceptionScenario(session)
             "dispatcher" -> BasicScenarios.runDispatcherScenario(session)
+            "channel-rendezvous" -> ChannelScenarios.runRendezvous(session)
+            "channel-buffered" -> ChannelScenarios.runBuffered(session)
+            "channel-fan-out" -> ChannelScenarios.runFanOut(session)
             else -> error("will-see.json pictures '$demoId'; add it to GuideLabelsTest.start")
         }
 
