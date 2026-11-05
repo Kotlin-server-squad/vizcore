@@ -50,16 +50,17 @@ What the server expects (from #295 and its plan `2026-11-06-part5-health-api.md`
 | P-3 | Wrapper coroutines captured once | Verified: today the DebugProbes path does **not** skip `VizCoroutineElement` coroutines (only `VizcoreInternal` and the transport dispatcher), so a `VizScope(client.session).vizLaunch { }` coroutine would also appear as `dp-…`. `VizCoroutineElement` gains two internal fields, `owner` (the `VizSession` of the `VizScope` that launched it) and `ownerJob` (the coroutine it was created for). The DebugProbes source of session S drops a coroutine whose element's `owner === S` and whose `ownerJob` is its own Job (or not yet set: the wrapper itself, before its body runs). A coroutine that inherits the element (launched from the wrapper's body via `coroutineScope { launch { } }` or `CoroutineScope(currentCoroutineContext())`) has another Job and stays captured. (A bare `launch` in a `vizLaunch` block runs on the `VizScope` receiver and carries no element at all.) A `VizScope` of another session is not skipped. Wrapper `CoroutineCreated` events carry `origin = APP`. |
 | P-4 | Poll time | Taken right before the dump (`System.nanoTime()` and `System.currentTimeMillis()`). The dump observed the app no earlier than that, so "running until the watermark" never overstates (H-1). Events of the same poll carry later timestamps, so a coroutine first seen running is never flagged by its own poll's watermark. |
 | P-5 | Watermark path and ordering | Core's `DebugProbesSource.onPollCompleted(pollNanos, pollEpochMs)` runs on the poll loop after every poll whose events were all sent (also when it found no change; never after a failed poll or once stopped). The client's callback calls `OutboundBuffer.poll(...)`, which puts a `PollWatermark` on the session's bus with `bus.send` (not `session.send`: one per poll would evict the local store's events). Bus order is send order and the feed is the bus's single outbound collector, so the watermark follows that poll's events into the buffer and onto the socket. The feed forwards at most one per second (by app clock; the first at once), stamped with the counts at that moment. A watermark that does not fit a full buffer is skipped, not counted: it is not an event, and the next one carries the counts. |
-| P-6 | `lostEvents` is exact | Cumulative per client: outbound-buffer overflow drops plus the **events** the session bus evicted for the feed while it lagged (new per-subscriber `EventBus.stream(onSubscribed, onMissed)`; the bus-wide `onEvicted` would also count other subscribers' lag). The bus also carries control items (watermarks, the cutoff marker), so each is numbered under one lock as it goes on the bus (`PollWatermark.seq`, which the server does not read; the stamped copy sends `seq = 0`). When the feed receives control item `n` after `p`, `n - p - 1` control items were among the evicted entries; evicted events = evicted entries − evicted control items, exact at every stamp because every stamp is taken on a received control item. Kept across a replacement session (#129): it can overstate for the new session, never understate. |
+| P-6 | `lostEvents` is exact | Cumulative per client: outbound-buffer overflow drops plus the **events** the session bus evicted for the feed while it lagged. The feed reads the bus through a new `EventBus.indexedStream` that hands it each entry's gap-free bus index (and the index it started after), so it sees exactly how many entries were evicted for it (the bus-wide `onEvicted` would also count other subscribers' lag). The bus also carries control items (watermarks, the cutoff marker), so each is numbered under one lock as it goes on the bus (`PollWatermark.seq`, which the server does not read; the stamped copy sends `seq = 0`); numbering order is bus order. When the feed receives control item `n` after `p`, `n - p - 1` control items were among the evicted entries; evicted events = evicted entries − evicted control items, exact at every stamp because every stamp is taken on a received control item. Kept across a replacement session (#129): it can overstate for the new session, never understate. |
 | P-7 | SDK `deliveryUncertain` | Sticky once a socket ended any way other than the buffer closing at `stop()` after it had taken at least one event (not counting watermarks): that event may not have arrived (no acknowledgement). The server already marks such a connection uncertain on its side; the flag keeps the SDK's own statement complete (C-7). |
-| P-8 | Capture cutoff | `OutboundBuffer.cutoff(session)` runs under the same control lock as `poll(...)`: after it, no watermark goes on the bus. If the feed has subscribed (recorded under that lock from the bus's `onSubscribed`, i.e. once its slot is allocated), a numbered cutoff marker goes on the bus: everything sent before it is handed to the buffer, everything after it is outside the capture, neither forwarded nor counted. If the feed has not subscribed yet, nothing was captured (the source starts only after the feed subscribed) and the buffer closes at once. If the bus evicts entries for the feed after the cutoff was requested, the marker may be among them: the feed then ends the capture without a final watermark (losses already happened, so the server's "delivery uncertain" is the honest reading). Producers are not rejected at `VizSession.send` (the local session still records them); the effect on what is sent is the spec's, without a new `VizSession` API. |
+| P-8 | Capture cutoff | `OutboundBuffer.cutoff(session)` runs under the same control lock as `poll(...)`: after it, no watermark goes on the bus. If the feed has subscribed (recorded under that lock from `indexedStream`'s `onSubscribed`, i.e. once its slot is allocated), a numbered cutoff marker goes on the bus with the new `EventBus.sendIndexed`, and its bus index is recorded under the same lock: everything before that index is handed to the buffer, everything after it is outside the capture, neither forwarded nor counted. A gap the feed sees before the cutoff only counts losses; if the bus evicted the marker itself, the feed sees an entry past the marker's index, counts the losses before the marker exactly (entries up to the marker's index, control items up to its number) and ends the capture there, still with a final watermark. If the feed has not subscribed yet, nothing was captured (see P-16) and the buffer closes at once. Producers are not rejected at `VizSession.send` (the local session still records them); the effect on what is sent is the spec's, without a new `VizSession` API. |
 | P-9 | Final watermark | When the feed reaches the marker it queues `final = true` carrying the newest completed poll it saw before the marker (also one the rate limit held back) and the final counts, then closes the buffer. No later producer can add to the counts. **If no poll completed, there is no final watermark** (a watermark is an observation, H-1/H-3): the buffer just closes and the server reads delivery uncertain. The drain sends the final watermark last; the socket then closes normally. |
-| P-10 | `stop()` | `stop()` = `stop(DEFAULT_STOP_TIMEOUT_MILLIS)` (5 s); new `stop(timeoutMillis)`. Order: take the deadline on entry; under the lifecycle lock mark the client **stopped for good** (`start()` never runs again: the scope is cancelled at the end anyway, so a client never restarted) and note whether a socket is open; set the cutoff; if a socket is open, wait for the reconnect loop to finish that socket (drain, final, close) with what is left of the deadline — it never reconnects, because the client is no longer running; then, in a `finally`, stop the source (cancel the poll loop, release DebugProbes — the release can take its own time, as before, and comes after the delivery wait), close the buffer and the HTTP client and cancel the scope. A missed deadline logs one WARN and closes without the final watermark (C-7: "the close reports delivery uncertain"). An interrupt during the wait ends the wait, keeps the thread's interrupt status, and still releases everything. Without an open socket `stop()` does not wait. |
+| P-10 | `stop()` | `stop()` = `stop(DEFAULT_STOP_TIMEOUT_MILLIS)` (5 s); new `stop(timeoutMillis)`, which returns within its deadline (plus the brief lifecycle lock). Order: take the deadline on entry; under the lifecycle lock mark the client **stopped for good** (`start()` never runs again: the scope is cancelled at the end anyway, so a client never restarted) and note whether a socket is open; set the cutoff; if a socket is open, wait for the reconnect loop to finish that socket (drain, final, close) with what is left of the deadline — it never reconnects, because the client is no longer running; then, in a `finally`, close the buffer and cancel the scope (cheap), and hand stopping the source (cancel the poll loop, release DebugProbes, which can retransform classes and take a while) and closing the HTTP client to a daemon thread of their own, joined with what is left of the deadline. With the default deadline that is the old synchronous teardown in practice; `stop(0)` never waits. A missed deadline logs one WARN and closes without the final watermark (C-7: "the close reports delivery uncertain"). An interrupt during a wait ends it, keeps the thread's interrupt status, and still releases everything. Without an open socket `stop()` does not wait for delivery. |
 | P-11 | Older servers (compatibility) | A 1.2.0 server registers `PollWatermark` as an event type (#248 is in rc3/rc4) but its ingest stores every decoded frame, so watermarks would fill its bounded store and show up as events. Before each connection the client asks `GET /api/sessions/{id}/health`: `200`, or `503` with a health code (`summaries-unavailable`, `history-trimmed`), means the server takes watermarks as transport state; `404` means an older server; anything else (no answer, an auth or proxy error) means "not known" and that connection sends none. Origin and provenance are new JSON keys: 1.1 servers ignore unknown keys (`ignoreUnknownKeys = true`), 1.2 servers know both fields and all their values. |
 | P-12 | Older SDKs with the new server | Unchanged (5a D-2): no watermark → "not evaluated (no poll data)" while connected, "events may have been lost" after. |
 | P-13 | Server code | None. One backend **test** runs the real SDK against the real backend module. |
 | P-14 | Version | The client stays `0.3.1`; the version bump and publication belong to the release PR. |
 | P-15 | Real-DebugProbes tests | They live in the client module (no JaCoCo agent there, and `SdkOwnCoroutinesTest` already runs real probes in its default `test`). Those that depend on process-wide state (which JVM-wide coroutines exist, the creation-stack flag) are tagged `fresh-jvm` and run in a new `freshJvmTest` task with `forkEvery = 1`, wired into `check`; the default `test` excludes them. |
+| P-16 | Capturing before `start` returns | `VizcoreClient.start(...)` (the factory) returns only once the outbound feed has subscribed to the session bus (bounded wait, 5 s). Before, the feed subscribed asynchronously: an app that launched `VizScope(client.session).vizLaunch` straight after `start` could lose its wrapper events, and with P-3 that coroutine would no longer be recovered as a `dp-` coroutine. DebugProbes coroutines were never at risk: the probes are installed before `start` returns and the first poll sees what exists. |
 
 ## File map
 
@@ -72,7 +73,7 @@ What the server expects (from #295 and its plan `2026-11-06-part5-health-api.md`
 - `session/source/debugprobes/DebugProbesSource.kt` — wrapper filter in the default dump; `onPollCompleted`.
 - `wrappers/VizCoroutineElement.kt` — `owner`, `ownerJob`.
 - `wrappers/VizScope.kt` — sets them; `origin = APP` on wrapper `CoroutineCreated`.
-- `session/EventBus.kt` — `stream(onSubscribed, onMissed)`.
+- `session/EventBus.kt` — `indexedStream` and `sendIndexed`.
 
 **Client (`backend/coroutine-viz-client/…`)**
 - `src/main/…/client/OutboundBuffer.kt` — numbered control items, watermark forwarding, exact loss counts, delivery uncertainty, cutoff and final.
@@ -589,11 +590,11 @@ into the existing per-tick catch, which logs and keeps `prev` — equal to `next
 
 ---
 
-### Task 5: Core — a bus subscriber can count its own evictions
+### Task 5: Core — an indexed bus stream and an indexed send
 
 **Files:**
 - Modify: `coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/session/EventBus.kt`
-- Test: new `coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/session/EventBusMissedTest.kt`
+- Test: new `coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/session/EventBusIndexedTest.kt`
 
 - [ ] **Step 1: Write the failing test**
 ```kotlin
@@ -607,77 +608,109 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
+/** The bus positions a subscriber can see (P-6, P-8): gap-free indices in send order, a jump being evicted entries. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class EventBusMissedTest {
+class EventBusIndexedTest {
     private fun event(n: Int) = CoroutineCreated("s", n.toLong(), n.toLong(), "c$n", "j$n", null, "sc", null)
 
     @Test
-    fun `onMissed reports the events evicted for that subscriber only`() =
+    fun `sendIndexed returns the index the subscriber sees, starting after the subscription point`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val bus = EventBus(capacity = 8)
+            bus.send(event(0)) // before the subscription: index 1
+            var start = -1L
+            val seen = mutableListOf<Long>()
+            val job = launch { bus.indexedStream { start = it }.collect { seen += it.index } }
+            val second = bus.sendIndexed(event(1))
+            val third = bus.sendIndexed(event(2))
+            assertEquals(1L, start)
+            assertEquals(listOf(2L, 3L), listOf(second, third))
+            assertEquals(listOf(2L, 3L), seen)
+            job.cancel()
+        }
+
+    @Test
+    fun `a lagging subscriber sees the jump where entries were evicted for it, a fast one sees none`() =
         runTest(UnconfinedTestDispatcher()) {
             val bus = EventBus(capacity = 4)
             val gate = CompletableDeferred<Unit>()
-            var slowMissed = 0L
-            var slowReceived = 0
-            var fastMissed = 0L
-            var fastReceived = 0
-            val slow = launch { bus.stream(null) { slowMissed += it }.collect { gate.await(); slowReceived++ } }
-            val fast = launch { bus.stream(null) { fastMissed += it }.collect { fastReceived++ } }
+            val slow = mutableListOf<Long>()
+            val fast = mutableListOf<Long>()
+            val slowJob = launch { bus.indexedStream().collect { gate.await(); slow += it.index } }
+            val fastJob = launch { bus.indexedStream().collect { fast += it.index } }
             repeat(10) { bus.send(event(it)) }
             gate.complete(Unit)
-            assertEquals(10, fastReceived)
-            assertEquals(0L, fastMissed)
-            assertEquals(10L, slowReceived + slowMissed, "every event is either received or reported missed")
-            assertTrue(slowMissed > 0)
-            slow.cancel()
-            fast.cancel()
+            assertEquals((1L..10L).toList(), fast)
+            assertEquals(1L, slow.first(), "the entry it was holding when it fell behind")
+            assertEquals((7L..10L).toList(), slow.drop(1), "entries 2..6 were evicted for it; the bus kept the newest 4")
+            slowJob.cancel()
+            fastJob.cancel()
         }
 }
 ```
 
-- [ ] **Step 2: Run** — `./gradlew :coroutine-viz-core:test --tests '*EventBusMissedTest*'`; expected: compilation fails.
+- [ ] **Step 2: Run** — `./gradlew :coroutine-viz-core:test --tests '*EventBusIndexedTest*'`; expected: compilation fails.
 
-- [ ] **Step 3: Implement** — both public `stream` overloads delegate to one private function:
+- [ ] **Step 3: Implement** (in `EventBus`):
 ```kotlin
-    /** (existing KDoc) */
-    fun stream(onSubscribed: (suspend () -> Unit)? = null): Flow<VizEvent> = indexedStream(onSubscribed, null)
+    /** An event with its bus-local index: gap-free in send order, so a jump means entries evicted for that subscriber. */
+    class IndexedEvent(
+        val index: Long,
+        val event: VizEvent,
+    )
 
     /**
-     * [stream] for a subscriber that must know what it missed: [onMissed] gets the number of entries evicted for THIS
-     * subscriber while it lagged, right before the next entry it receives ([onEvicted] still hears every subscriber's).
-     * The SDK's outbound feed counts its own losses with it (spec 2026-10-21, C-7).
+     * [send] that returns the index the event got on this bus, or 0 when it was rejected (not expected under
+     * `DROP_OLDEST`). The SDK records where its capture cutoff lies with it (spec 2026-10-21, C-7).
      */
-    fun stream(
-        onSubscribed: (suspend () -> Unit)?,
-        onMissed: (Long) -> Unit,
-    ): Flow<VizEvent> = indexedStream(onSubscribed, onMissed)
+    fun sendIndexed(event: VizEvent): Long {
+        val index =
+            synchronized(emitLock) {
+                if (shared.tryEmit(Indexed(lastIndex + 1, event))) ++lastIndex else 0L
+            }
+        if (index > 0) {
+            onEmit?.invoke()
+        } else {
+            logger.error("Event buffer full! Dropped event: ${event.kind} (seq=${event.seq})")
+            onDrop?.invoke()
+        }
+        return index
+    }
 
-    private fun indexedStream(
-        onSubscribed: (suspend () -> Unit)?,
-        onMissed: ((Long) -> Unit)?,
-    ): Flow<VizEvent> =
+    fun send(event: VizEvent): Boolean = sendIndexed(event) > 0
+
+    /**
+     * [stream] with each entry's bus index, for a subscriber that must know exactly what it missed (the SDK's outbound
+     * feed, spec C-7). [onSubscribed] gets the index the subscriber starts after: it receives every entry with a larger
+     * index, or sees a jump where entries were evicted for it while it lagged (also reported to [onEvicted]).
+     */
+    fun indexedStream(onSubscribed: (suspend (startIndex: Long) -> Unit)? = null): Flow<IndexedEvent> =
         flow {
             var seen = 0L
             shared
                 .onSubscription {
                     seen = synchronized(emitLock) { lastIndex }
-                    onSubscribed?.invoke()
+                    onSubscribed?.invoke(seen)
                 }.collect { indexed ->
-                    val missed = indexed.idx - seen - 1
-                    if (missed > 0) {
-                        logger.warn("Slow bus subscriber missed {} evicted events", missed)
-                        onEvicted?.invoke(missed)
-                        onMissed?.invoke(missed)
-                    }
+                    reportMissed(indexed.idx - seen - 1)
                     if (indexed.idx > seen) seen = indexed.idx
-                    emit(indexed.event)
+                    emit(IndexedEvent(indexed.idx, indexed.event))
                 }
         }
-```
 
-- [ ] **Step 4: Run** — same command plus `--tests '*BusSubscriptionRaceTest*'`; expected PASS.
-- [ ] **Step 5: Commit** — `git add` the test, `git commit -am "core: EventBus.stream can report one subscriber's evictions (triage PR 3)"`.
+    private fun reportMissed(missed: Long) {
+        if (missed <= 0) return
+        logger.warn("Slow bus subscriber missed {} evicted events", missed)
+        onEvicted?.invoke(missed)
+    }
+```
+`stream(onSubscribed)` keeps its signature and KDoc and becomes
+`indexedStream { onSubscribed?.invoke() }.map { it.event }` (import `kotlinx.coroutines.flow.map`); the private
+`Indexed` class stays as the shared flow's element.
+
+- [ ] **Step 4: Run** — `./gradlew :coroutine-viz-core:test --tests '*EventBus*' --tests '*BusSubscriptionRaceTest*' --tests '*BinaryCompatibilityTest*'`; expected PASS.
+- [ ] **Step 5: Commit** — `git add` the test, `git commit -am "core: EventBus gives a subscriber its entries' bus indices (triage PR 3)"`.
 
 ---
 
@@ -700,6 +733,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -710,13 +744,14 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The SDK's watermark and loss reporting through the outbound buffer (spec 2026-10-21, C-7). */
+/** The SDK's watermark and loss reporting through the outbound buffer (spec 2026-10-21, C-7; P-5..P-9). */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OutboundBufferWatermarkTest {
     private val second = 1_000_000_000L
@@ -727,6 +762,39 @@ class OutboundBufferWatermarkTest {
 
     private val VizEvent.label: String
         get() = if (this is PollWatermark) "wm@${tsNanos / second}${if (final) "!" else ""}" else (this as CoroutineCreated).coroutineId
+
+    /**
+     * Runs [body] with the feed on a single thread that is provably blocked while [body] produces (the blocker has
+     * started before [body] runs), then releases it and drains the buffer to its close (the body ends with a cutoff).
+     * Returns everything the drain sent, collected on the calling thread.
+     */
+    private fun withBlockedFeed(
+        buffer: OutboundBuffer,
+        session: VizSession,
+        body: () -> Unit,
+    ): List<VizEvent> {
+        val feedThread: ExecutorService = Executors.newSingleThreadExecutor()
+        val scope = CoroutineScope(feedThread.asCoroutineDispatcher() + Job())
+        try {
+            runBlocking { buffer.feed(session, scope) }
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            feedThread.execute {
+                entered.countDown()
+                release.await()
+            }
+            entered.await()
+            body()
+            release.countDown()
+            val sent = mutableListOf<VizEvent>()
+            runBlocking { withTimeout(10_000) { buffer.drain { sent += it } } }
+            return sent
+        } finally {
+            scope.cancel()
+            session.close()
+            feedThread.shutdownNow()
+        }
+    }
 
     @Test
     fun `a watermark follows the events its poll sent, even when the socket drains slowly`() =
@@ -742,8 +810,8 @@ class OutboundBufferWatermarkTest {
             val sent = mutableListOf<String>()
             val drain = scope.launch { buffer.drain { delay(10); sent += it.label } }
             withTimeout(5_000) { while (sent.size < 4) delay(5) }
+            drain.cancelAndJoin()
             assertEquals(listOf("c0", "c1", "wm@5", "c2"), sent)
-            drain.cancel()
             scope.cancel()
             session.close()
         }
@@ -758,9 +826,9 @@ class OutboundBufferWatermarkTest {
             listOf(0L, 500_000_000L, 1_000_000_000L, 1_600_000_000L, 2_100_000_000L).forEach { buffer.poll(session, it, 1) }
             val sent = mutableListOf<PollWatermark>()
             val drain = scope.launch { buffer.drain { sent += it as PollWatermark } }
+            drain.cancelAndJoin()
             assertEquals(listOf(0L, 1_000_000_000L, 2_100_000_000L), sent.map { it.tsNanos })
             assertTrue(sent.all { it.seq == 0L })
-            drain.cancel()
             scope.cancel()
             session.close()
         }
@@ -778,42 +846,80 @@ class OutboundBufferWatermarkTest {
             val sent = mutableListOf<VizEvent>()
             val drain = scope.launch { buffer.drain { sent += it } }
             buffer.poll(session, 2 * second, 1)
+            drain.cancelAndJoin()
             assertEquals(listOf("c0", "c1", "wm@2"), sent.map { it.label })
             assertEquals(1, (sent.last() as PollWatermark).lostEvents)
-            drain.cancel()
             scope.cancel()
             session.close()
         }
 
     @Test
     fun `evicted bus entries count as lost only when they were events`() {
-        val feedThread = Executors.newSingleThreadExecutor()
         val session = VizSession("s")
-        val scope = CoroutineScope(feedThread.asCoroutineDispatcher() + Job())
         val buffer = OutboundBuffer(20_000)
-        try {
-            runBlocking { buffer.feed(session, scope) }
-            val release = CountDownLatch(1)
-            feedThread.execute { release.await() } // the feed cannot run while the bus fills
-            repeat(20) { buffer.poll(session, it.toLong(), 1) } // the 20 oldest entries: watermarks
-            repeat(10_000) { session.send(event(it)) }
-            buffer.poll(session, 10 * second, 1) // 10,021 entries: the bus keeps 10,000, the 21 oldest are evicted
-            release.countDown()
-            val sent = mutableListOf<VizEvent>()
-            runBlocking {
-                val drain = scope.launch { buffer.drain { sent += it } }
-                withTimeout(10_000) { while (sent.lastOrNull() !is PollWatermark) delay(10) }
-                drain.cancel()
+        val sent =
+            withBlockedFeed(buffer, session) {
+                repeat(20) { buffer.poll(session, it.toLong(), 1) } // the 20 oldest entries: watermarks
+                repeat(10_000) { session.send(event(it)) }
+                buffer.poll(session, 10 * second, 1) // 10,021 entries: the bus keeps 10,000, the 21 oldest are evicted
+                buffer.cutoff(session) // evicts one more event: the bus keeps the newest 10,000
             }
-            assertEquals(9_999, sent.count { it !is PollWatermark })
-            assertEquals(1, (sent.last() as PollWatermark).lostEvents, "20 evicted watermarks and 1 evicted event")
-        } finally {
-            scope.cancel()
-            session.close()
-            feedThread.shutdownNow()
-        }
+        assertEquals(9_998, sent.count { it !is PollWatermark })
+        val final = sent.last() as PollWatermark
+        assertTrue(final.final)
+        assertEquals(2, final.lostEvents, "20 evicted watermarks are not events; 2 evicted events are")
     }
 
+    @Test
+    fun `watermarks evicted alone lose nothing`() {
+        val session = VizSession("s")
+        val buffer = OutboundBuffer(20_000)
+        val sent =
+            withBlockedFeed(buffer, session) {
+                repeat(10_005) { buffer.poll(session, it.toLong(), 1) }
+                buffer.cutoff(session)
+            }
+        val final = sent.last() as PollWatermark
+        assertTrue(final.final)
+        assertEquals(0, final.lostEvents)
+        assertFalse(final.deliveryUncertain)
+    }
+
+    @Test
+    fun `a gap before the cutoff still ends with a final watermark that counts it`() {
+        val session = VizSession("s")
+        val buffer = OutboundBuffer(20_000)
+        val sent =
+            withBlockedFeed(buffer, session) {
+                repeat(10_010) { session.send(event(it)) } // entries 1..10,010
+                buffer.poll(session, 1 * second, 1) // entry 10,011
+                buffer.cutoff(session) // entry 10,012: the bus keeps 13..10,012 for the feed; 12 events are evicted
+            }
+        assertEquals(9_998, sent.count { it !is PollWatermark })
+        val final = sent.last() as PollWatermark
+        assertTrue(final.final, "the marker survived: a clean close")
+        assertEquals(12, final.lostEvents)
+    }
+
+    @Test
+    fun `an evicted marker ends the capture at its index, with the losses before it counted`() {
+        val session = VizSession("s")
+        val buffer = OutboundBuffer(20_000)
+        val sent =
+            withBlockedFeed(buffer, session) {
+                buffer.poll(session, 1 * second, 1) // entry 1
+                session.send(event(0)) // entry 2
+                buffer.cutoff(session) // entry 3: the marker …
+                repeat(10_000) { session.send(event(it + 1)) } // … evicted with entries 1 and 2 by what follows
+            }
+        assertEquals(emptyList(), sent, "nothing after the cutoff is sent, and no poll was received: no final watermark (P-9)")
+        assertEquals(1, buffer.lost, "the one event before the marker; the evicted watermark is not one")
+    }
+```
+
+The remaining tests go in the same class:
+
+```kotlin
     @Test
     fun `a socket that ends after taking an event leaves delivery uncertain, sticky`() =
         runTest(UnconfinedTestDispatcher()) {
@@ -830,8 +936,8 @@ class OutboundBufferWatermarkTest {
             buffer.poll(session, 5 * second, 1)
             val sent = mutableListOf<VizEvent>()
             val drain = scope.launch { buffer.drain { sent += it } }
+            drain.cancelAndJoin()
             assertTrue((sent.last() as PollWatermark).deliveryUncertain)
-            drain.cancel()
             scope.cancel()
             session.close()
         }
@@ -885,37 +991,12 @@ class OutboundBufferWatermarkTest {
             withTimeout(1_000) { buffer.drain { error("nothing was captured") } }
             session.close()
         }
-
-    @Test
-    fun `entries evicted after the cutoff end the capture without a final watermark`() {
-        val feedThread = Executors.newSingleThreadExecutor()
-        val session = VizSession("s")
-        val scope = CoroutineScope(feedThread.asCoroutineDispatcher() + Job())
-        val buffer = OutboundBuffer(20_000)
-        try {
-            runBlocking { buffer.feed(session, scope) }
-            val release = CountDownLatch(1)
-            feedThread.execute { release.await() }
-            buffer.poll(session, 1, 1)
-            buffer.cutoff(session) // the marker is the 2nd entry …
-            repeat(10_000) { session.send(event(it)) } // … and is evicted by what follows it
-            release.countDown()
-            val sent = mutableListOf<VizEvent>()
-            runBlocking { withTimeout(10_000) { buffer.drain { sent += it } } }
-            assertTrue(sent.none { it is PollWatermark && it.final }, "no clean close after a loss: $sent")
-            assertTrue(sent.none { it is CoroutineCreated }, "nothing after the cutoff is sent")
-        } finally {
-            scope.cancel()
-            session.close()
-            feedThread.shutdownNow()
-        }
-    }
 }
 ```
 
 - [ ] **Step 2: Run** — `./gradlew :coroutine-viz-client:test --tests '*OutboundBufferWatermarkTest*'`; expected: compilation fails (`poll`, `lost`, `cutoff`, `deliveryUncertain`).
 
-- [ ] **Step 3: Implement** (in `OutboundBuffer`; imports `PollWatermark`, `kotlinx.coroutines.CompletableDeferred`, `kotlinx.coroutines.flow.takeWhile`):
+- [ ] **Step 3: Implement** (in `OutboundBuffer`; imports `PollWatermark`, `EventBus`, `kotlinx.coroutines.CompletableDeferred`, `kotlinx.coroutines.flow.takeWhile`):
 
 Primary constructor: `internal constructor(capacity: Int, reportIntervalMillis: Long, clock: () -> Long, watermarkIntervalNanos: Long = DEFAULT_WATERMARK_INTERVAL_NANOS)` (the public `@JvmOverloads constructor(capacity)` is unchanged).
 
@@ -927,11 +1008,13 @@ State:
     private var controlSeq = 0L // guarded by controlLock
     private var subscribed = false // guarded by controlLock
     private var cutoffRequested = false // guarded by controlLock
+    private var cutoffIndex = -1L // guarded by controlLock: the marker's bus index
+    private var cutoffSeq = 0L // guarded by controlLock: the marker's number
 
     @Volatile
     private var cutoffMarker: PollWatermark? = null
 
-    // Written by the feed, read when stamping and by tests.
+    // Written by the feed; read when stamping, and by tests.
     private val missedEntries = AtomicLong(0)
     private val missedControl = AtomicLong(0)
 
@@ -939,12 +1022,10 @@ State:
     private var uncertain = false
 
     // Feed-only state: one collector reads and writes it.
+    private var lastIndex = 0L
     private var lastControlSeq = 0L
     private var latestPoll: PollWatermark? = null
     private var lastForwardedNanos: Long? = null
-
-    @Volatile
-    private var abandoned = false
 
     /**
      * Events lost before sending, cumulative for the client (spec C-7): dropped because the buffer was full, or evicted
@@ -957,7 +1038,8 @@ State:
     internal val deliveryUncertain: Boolean get() = uncertain
 ```
 
-`feed` (replaces the `subscriptionCount` wait by the bus's own subscription callback):
+`feed` (its contract is unchanged: it returns once the feed's own collector is registered, now signalled by the bus's
+`onSubscribed`, which runs once the collector's slot exists):
 ```kotlin
     suspend fun feed(
         session: VizSession,
@@ -968,36 +1050,46 @@ State:
             scope.launch {
                 var reachedCutoff = false
                 session.bus
-                    .stream(
-                        onSubscribed = {
-                            synchronized(controlLock) { subscribed = true }
-                            subscription.complete(Unit)
-                        },
-                        onMissed = { missed ->
-                            missedEntries.addAndGet(missed)
-                            // The marker may be among them: end without a clean close (P-8).
-                            if (synchronized(controlLock) { cutoffRequested }) abandoned = true
-                        },
-                    ).takeWhile { entry ->
-                        if (abandoned) return@takeWhile false
-                        if (entry is PollWatermark) countControl(entry.seq)
-                        (entry !== cutoffMarker).also { if (!it) reachedCutoff = true }
-                    }.collect { offer(it) }
-                // The bus never completes: only the cutoff, or a loss after it, ends the collection.
-                if (reachedCutoff) finish() else close()
+                    .indexedStream { start ->
+                        lastIndex = start
+                        synchronized(controlLock) { subscribed = true }
+                        subscription.complete(Unit)
+                    }.takeWhile { entry -> accept(entry).also { if (!it) reachedCutoff = true } }
+                    .collect { offer(it.event) }
+                // The bus never completes: only the cutoff ends the collection.
+                if (reachedCutoff) finish()
             }
         subscription.await()
         return job
     }
 
+    /** Counts what the bus evicted before [entry]; `false` once the capture has reached the cutoff (P-6, P-8). */
+    private fun accept(entry: EventBus.IndexedEvent): Boolean {
+        if (entry.index - lastIndex > 1) {
+            val (markerIndex, markerSeq) = synchronized(controlLock) { cutoffIndex to cutoffSeq }
+            if (markerIndex in (lastIndex + 1) until entry.index) {
+                // The marker itself was evicted: count what was lost before it, nothing after it.
+                missedEntries.addAndGet(markerIndex - lastIndex - 1)
+                countControl(markerSeq)
+                return false
+            }
+            missedEntries.addAndGet(entry.index - lastIndex - 1)
+        }
+        lastIndex = entry.index
+        val event = entry.event
+        if (event is PollWatermark) countControl(event.seq)
+        return event !== cutoffMarker
+    }
+
+    // Control item [seq] arrived (or the marker was evicted): the numbers skipped since the last one were evicted.
     private fun countControl(seq: Long) {
         if (seq <= lastControlSeq) return
         missedControl.addAndGet(seq - lastControlSeq - 1)
         lastControlSeq = seq
     }
 ```
-(The KDoc of `feed` keeps its contract: it returns once the feed's own collector is registered; say it is now
-signalled by the bus's `onSubscribed`, which runs once the collector's slot exists.)
+(`markerIndex - lastIndex - 1` excludes the marker entry, and `countControl(markerSeq)` counts the control numbers
+below the marker's: the marker is neither an event nor a received control item.)
 
 `poll` and `cutoff`:
 ```kotlin
@@ -1031,7 +1123,9 @@ signalled by the bus's `onSubscribed`, which runs once the collector's slot exis
             }
             val marker = PollWatermark(session.sessionId, ++controlSeq, Long.MIN_VALUE, 0)
             cutoffMarker = marker
-            session.bus.send(marker)
+            cutoffSeq = marker.seq
+            cutoffIndex = session.bus.sendIndexed(marker)
+            if (cutoffIndex == 0L) close() // rejected by the bus (not expected): nothing can mark the end
         }
     }
 ```
@@ -1310,7 +1404,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.PolymorphicSerializer
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.asCoroutineDispatcher
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -1454,8 +1550,84 @@ class VizcoreClientStopTest {
         stopper.join(5_000)
         assertFalse(stopper.isAlive, "stop() returned")
         assertTrue(interruptKept)
-        assertFalse(source.isRunning)
         assertFalse(scopeJob.isActive)
+        val deadline = System.currentTimeMillis() + 5_000
+        while (source.isRunning && System.currentTimeMillis() < deadline) Thread.sleep(10)
+        assertFalse(source.isRunning, "released on its own thread")
+    }
+
+    @Test
+    fun `a source that takes long to stop does not hold stop past its deadline`() {
+        val stopping = CountDownLatch(1)
+        val slow =
+            object : InstrumentationSource {
+                override val sourceId = "slow"
+                @Volatile override var isRunning = false
+
+                override fun start() {
+                    isRunning = true
+                }
+
+                override fun stop() {
+                    stopping.countDown()
+                    Thread.sleep(3_000) // e.g. DebugProbes retransforming classes
+                    isRunning = false
+                }
+            }
+        fun client() =
+            VizcoreClient(
+                httpClient = HttpClient(),
+                backendUrl = "",
+                sessionId = "s",
+                token = "t",
+                session = VizSession("s"),
+                source = slow,
+                scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+                transport = { _, _ -> awaitCancellation() },
+            )
+        for (timeout in listOf(0L, 300L)) {
+            val c = client()
+            c.start()
+            val started = System.nanoTime()
+            c.stop(timeout)
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue(tookMs < timeout + 700, "stop($timeout) took $tookMs ms")
+        }
+        assertTrue(stopping.await(5, TimeUnit.SECONDS), "the source is still stopped, on its own thread")
+    }
+
+    @Test
+    fun `once the client is capturing, an event sent right away reaches the buffer`() {
+        // The feed's dispatcher is held back, as on a busy machine: start() alone would return before the feed subscribed.
+        val feedThread = Executors.newSingleThreadExecutor()
+        val release = CountDownLatch(1)
+        feedThread.execute { release.await() }
+        val local = VizSession("s")
+        val buffer = OutboundBuffer()
+        val client =
+            VizcoreClient(
+                httpClient = HttpClient(),
+                backendUrl = "",
+                sessionId = "s",
+                token = "t",
+                session = local,
+                source = FakeSource(),
+                scope = CoroutineScope(feedThread.asCoroutineDispatcher() + SupervisorJob()),
+                buffer = buffer,
+                transport = { _, _ -> awaitCancellation() },
+            )
+        try {
+            client.start()
+            thread { Thread.sleep(300); release.countDown() }
+            assertTrue(client.awaitCapture(5_000))
+            local.send(CoroutineCreated("s", 1, 1, "c1", "j1", null, "sc", "e1"))
+            val deadline = System.currentTimeMillis() + 5_000
+            while (buffer.offered < 1 && System.currentTimeMillis() < deadline) Thread.sleep(10)
+            assertEquals(1, buffer.offered)
+        } finally {
+            client.stop()
+            feedThread.shutdownNow()
+        }
     }
 
     @Test
@@ -1506,8 +1678,19 @@ Fields:
 
     // The current connection attempt's socket; stop() waits for delivery only through an open one.
     private val liveSocket = AtomicReference<SocketLifetime?>(null)
+
+    // Completed once the outbound feed has subscribed to the session bus (P-16).
+    private val capturing = CompletableDeferred<Unit>()
+
+    /**
+     * Wait up to [timeoutMillis] until the client takes the session's events (its outbound feed subscribed to the bus):
+     * an event the app sends from then on is sent, or counted as lost. The factory calls it before returning (P-16).
+     */
+    internal fun awaitCapture(timeoutMillis: Long): Boolean =
+        runBlocking { withTimeoutOrNull(timeoutMillis) { capturing.await() } } != null
 ```
-`start()`: `if (running || stopped) return` inside the lock; `loopJob = scope.launch { reconnectLoop() }`.
+`start()`: `if (running || stopped) return` inside the lock; in the launched block, `capturing.complete(Unit)` right
+after `buffer.feed(session, scope)` returns; `loopJob = scope.launch { reconnectLoop() }`.
 `streamOnce`: `liveSocket.set(lifetime)` before `transport(…)`, and `liveSocket.compareAndSet(lifetime, null)` in a
 `finally` around the `try`/`catch`.
 `createFirstSession`'s `LinkageError` branch: `stop(0)` (it runs on the loop itself, which must not wait for itself).
@@ -1543,10 +1726,29 @@ Fields:
             buffer.cutoff(session)
             if (socketOpen) awaitDelivery(deadline, timeoutMillis)
         } finally {
-            synchronized(lifecycleLock) { source.stop() }
             buffer.close()
-            httpClient.close()
             scope.cancel()
+            releaseWithin(deadline)
+        }
+    }
+
+    /**
+     * Stop the source and close the HTTP client on a daemon thread of their own, joined until [deadlineNanos]: releasing
+     * DebugProbes can retransform classes and take a while, and stop() returns by its deadline (P-10). An interrupted
+     * caller does not wait.
+     */
+    private fun releaseWithin(deadlineNanos: Long) {
+        val release =
+            thread(name = "vizcore-stop", isDaemon = true) {
+                synchronized(lifecycleLock) { source.stop() }
+                httpClient.close()
+            }
+        val remainingMillis = (deadlineNanos - System.nanoTime()) / NANOS_PER_MILLI
+        if (remainingMillis <= 0 || Thread.currentThread().isInterrupted) return
+        try {
+            release.join(remainingMillis)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
         }
     }
 
@@ -1578,7 +1780,11 @@ file-private `private const val NANOS_PER_MILLI = 1_000_000L`.
 
 Factory `start(…httpClient…)`: create `val outbound = OutboundBuffer()`, pass `buffer = outbound` to the constructor,
 and after `probes` is built: `probes.onPollCompleted = { nanos, epochMs -> outbound.poll(local, nanos, epochMs) }`
-(comment: "each completed poll's watermark, after that poll's events (spec C-7)").
+(comment: "each completed poll's watermark, after that poll's events (spec C-7)"). Replace `.also { it.start() }` by
+`.also { it.start(); it.awaitCapture(CAPTURE_START_TIMEOUT_MS) }` with a file-private
+`private const val CAPTURE_START_TIMEOUT_MS = 5_000L` (P-16: an app's wrapper events sent right after `start` returns
+are captured; the wait is a local subscription, normally under a millisecond). The `catch (failure: Throwable)`
+cleanup stays as it is.
 Update the class KDoc (stop drains; watermarks).
 
 - [ ] **Step 4: Run** — `./gradlew :coroutine-viz-client:test`; expected PASS. Where an existing test now waits for a
