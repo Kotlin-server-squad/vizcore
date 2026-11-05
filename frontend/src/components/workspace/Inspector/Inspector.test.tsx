@@ -333,3 +333,31 @@ describe('Inspector', () => {
     expect(screen.queryByTestId('suspended-at-card')).toBeNull()
   })
 })
+
+describe('Inspector — what the coroutine waits for or holds (S-6)', () => {
+  beforeEach(() => {
+    getCoroutineTimeline.mockReset()
+    getCoroutineTimeline.mockResolvedValue(timeline())
+  })
+
+  it('says it under the heading, a wait in the Suspended colour', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine()}
+        readOnly={false}
+        activity={{ text: 'waits for inventory-lock · 1st', waiting: true }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const line = screen.getByTestId('inspector-activity')
+    expect(line).toHaveTextContent('waits for inventory-lock · 1st')
+    expect(line.className).toContain('text-warning')
+  })
+
+  it('has no such line when the coroutine waits for and holds nothing', () => {
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, { wrapper: createWrapper() })
+    expect(screen.queryByTestId('inspector-activity')).toBeNull()
+  })
+})
+
