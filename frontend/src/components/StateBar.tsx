@@ -48,7 +48,8 @@ export function StateBar({
   action?: StateBarAction
 }) {
   const chips: Chip[] = [
-    { filter: 'running', label: 'Running', count: counts.running, color: 'var(--primary)', always: true },
+    { filter: 'active', label: 'Active', count: counts.active, color: 'var(--primary)', always: true },
+    { filter: 'waiting', label: 'Waiting for children', count: counts.waiting, color: 'var(--primary)' },
     { filter: 'suspended', label: 'Suspended', count: counts.suspended, color: 'var(--warning)' },
     { filter: 'completed', label: 'Completed', count: counts.completed, color: 'var(--success)' },
     { filter: 'cancelled', label: 'Cancelled', count: counts.cancelled, color: 'var(--warning)' },
@@ -74,7 +75,9 @@ export function StateBar({
       aria-label="Coroutine state"
     >
       {[...chips, ...leakChip]
-        .filter((chip) => chip.always || chip.count > 0)
+        // The selected chip stays at zero: a bucket can empty under its own
+        // filter (a parent stops waiting), and a hidden chip could not be cleared.
+        .filter((chip) => chip.always || chip.count > 0 || filter === chip.filter)
         .map((chip) => {
           const active = filter === chip.filter
           return (
@@ -83,7 +86,7 @@ export function StateBar({
               type="button"
               aria-pressed={active}
               // Explicit: the adjacent label/count spans would otherwise compute
-              // an accessible name of "Running47".
+              // an accessible name of "Active47".
               aria-label={`${chip.label} ${chip.count}`}
               // Clicking the active chip clears the filter, so the bar is a
               // toggle rather than a one-way trip that needs a separate reset.

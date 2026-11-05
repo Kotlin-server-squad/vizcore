@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Step 1: a finished demo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; display: flex; flex-direction: column; font-family: Inter, system-ui, sans-serif; background: {{t.bg}}; color: {{t.text}}">
+  <nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 0 24px; min-height: 52px; border-bottom: 1px solid {{t.border}}; background: {{t.surface}}">
+    <span style="font-weight: 700; font-size: 15px">Coroutine Visualizer</span>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Sessions</a>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Gallery</a>
+  </nav>
+  <div style="width: 100%; max-width: 1360px; margin: 0 auto; box-sizing: border-box; padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 12px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface}}">
+      <h1 style="margin: 0; font-size: 20px; font-weight: 700">E-commerce Orders</h1>
+      <span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: {{s.COMPLETED.tint}}; color: {{s.COMPLETED.text}}">Finished in 12.0 s</span>
+      <span style="font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid {{t.border}}; color: {{t.muted}}">Demo</span>
+      <span style="font-size: 13px; color: {{t.muted}}">7 coroutines · 1 mutex · 1 semaphore</span>
+      <div style="flex: 1"></div>
+      <button type="button" style="font: inherit; font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 0; background: {{t.primary}}; color: #ffffff">Run again</button>
+      <button type="button" style="font: inherit; font-size: 13px; padding: 9px 14px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Replay</button>
+      <button type="button" style="font: inherit; font-size: 13px; padding: 9px 14px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Share</button>
+      <button type="button" aria-label="More actions: Reset session, Clear events, Export, Checks" style="font: inherit; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">More</button>
+    </header>
+
+    <details style="border: 1px solid {{t.border}}; border-radius: 10px; background: {{t.surface}}; padding: 10px 16px">
+      <summary style="font-size: 13px; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 16px">
+        <span style="font-weight: 600">How to read the tree</span>
+        <sc-for list="{{legend}}" as="l" hint-placeholder-count="6">
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: {{t.muted}}"><span style="width: 9px; height: 9px; border-radius: 50%; background: {{l.dot}}"></span>{{l.label}}</span>
+        </sc-for>
+      </summary>
+    </details>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px">
+      <section aria-label="Coroutine tree" style="min-height: 460px; display: flex; flex-direction: column; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface2}}">
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid {{t.border}}">
+          <div role="group" aria-label="View" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: {{t.surface3}}">
+            <button type="button" aria-pressed="true" style="font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 0; background: {{t.surface}}; color: {{t.text}}">Tree</button>
+            <button type="button" aria-pressed="false" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 0; background: transparent; color: {{t.muted}}">Graph</button>
+          </div>
+          <span style="width: 8px"></span>
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+            <button type="button" aria-pressed="{{f.pressed}}" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid {{f.border}}; background: {{f.bg}}; color: {{f.color}}">{{f.label}}</button>
+          </sc-for>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px">
+          <sc-for list="{{rows}}" as="row" hint-placeholder-count="2">
+            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; border-top: {{row.top}}; padding: 0 8px">
+              <sc-for list="{{row.nodes}}" as="n" hint-placeholder-count="4">
+                <div style="display: flex; flex-direction: column; align-items: center">
+                  <span aria-hidden="true" style="width: 2px; height: {{n.stub}}; background: {{t.line}}"></span>
+                  <button type="button" aria-pressed="{{n.pressed}}" style="display: flex; flex-direction: column; gap: 3px; min-width: 124px; padding: 8px 12px; border-radius: 8px; border: {{n.border}}; background: {{n.bg}}; font: inherit; color: inherit; text-align: left">
+                    <span style="display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px"><span style="width: 9px; height: 9px; border-radius: 50%; background: {{n.dot}}"></span>{{n.name}}</span>
+                    <span style="font-size: 11px; color: {{n.color}}">{{n.label}}</span>
+                    <span style="font-size: 11px; color: {{n.noteColor}}">{{n.note}}</span>
+                  </button>
+                </div>
+              </sc-for>
+            </div>
+            <span aria-hidden="true" style="width: 2px; height: {{row.below}}; background: {{t.line}}"></span>
+          </sc-for>
+        </div>
+      </section>
+
+      <aside aria-label="Inspector" style="display: flex; flex-direction: column; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface}}">
+        <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid {{t.border}}">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 500">{{insp.name}}</span>
+          <span style="font-size: 12px; color: {{insp.color}}">{{insp.state}}</span>
+          <span style="font-size: 12px; color: {{insp.noteColor}}">{{insp.note}}</span>
+        </div>
+        <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; padding: 12px 14px; font-size: 12px; border-bottom: 1px solid {{t.border}}">
+          <sc-for list="{{insp.facts}}" as="f" hint-placeholder-count="4">
+            <dt style="color: {{t.muted}}">{{f.k}}</dt><dd style="margin: 0; font-family: {{f.font}}">{{f.v}}</dd>
+          </sc-for>
+        </dl>
+        <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px">
+          <span style="font-size: 11px; color: {{t.muted}}">Example code from the demo</span>
+          <pre style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; color: {{t.muted}}; white-space: pre-wrap">val reserved = inventoryLock.withLock {
+  val available = inventory[order.product] ?: 0
+  …
+}</pre>
+        </div>
+        <a href="#" style="margin: auto 14px 14px; font-size: 12px; color: {{t.link}}">Show this coroutine's events</a>
+      </aside>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{folds}}" as="d" hint-placeholder-count="4">
+        <details style="border: 1px solid {{t.border}}; border-radius: 10px; background: {{t.surface}}; padding: 10px 14px">
+          <summary style="font-size: 13px; cursor: pointer"><span style="font-weight: 600">{{d.title}}</span> <span style="color: {{t.muted}}">· {{d.hint}}</span></summary>
+        </details>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const isLight = (this.props.theme ?? 'dark') === 'light';
+    const t = isLight
+      ? { bg: '#fafafa', surface: '#ffffff', surface2: '#f4f4f5', surface3: '#e4e4e7', border: '#e4e4e7', text: '#18181b', muted: '#52525b', primary: '#006fee', sel: '#005bc4', hl: 'rgba(0,111,238,0.12)' }
+      : { bg: '#0a0a0b', surface: '#131316', surface2: '#18181b', surface3: '#27272a', border: '#27272a', text: '#fafafa', muted: '#a1a1aa', primary: '#006fee', sel: '#4da3ff', hl: 'rgba(77,163,255,0.16)' };
+    t.line = isLight ? '#a1a1aa' : '#52525b';
+    t.link = isLight ? '#005bc4' : '#4da3ff';
+    const pal = isLight
+      ? { ACTIVE: ['#006fee', '#005bc4'], SUSPENDED: ['#f5a524', '#936316'], WAITING: ['#9353d3', '#6020a0'], COMPLETED: ['#17c964', '#0e793c'], FAILED: ['#f31260', '#c20e4d'], CANCELLED: ['#a1a1aa', '#52525b'] }
+      : { ACTIVE: ['#006fee', '#4da3ff'], SUSPENDED: ['#f5a524', '#f5a524'], WAITING: ['#9353d3', '#b47cff'], COMPLETED: ['#17c964', '#17c964'], FAILED: ['#f31260', '#ff6b95'], CANCELLED: ['#71717a', '#a1a1aa'] };
+    const names = { ACTIVE: 'Active', SUSPENDED: 'Suspended', WAITING: 'Waiting for children', COMPLETED: 'Completed', FAILED: 'Failed', CANCELLED: 'Cancelled' };
+    const s = {};
+    for (const k of Object.keys(pal)) s[k] = { dot: pal[k][0], text: pal[k][1], tint: pal[k][0] + '26', label: names[k] };
+    const node = (name, st, o) => {
+      o = o || {};
+      const noteColors = { wait: s.SUSPENDED.text, hold: t.sel, fail: s.FAILED.text, muted: t.muted };
+      return {
+        name, dot: s[st].dot, color: s[st].text, label: o.detail ? s[st].label + ' · ' + o.detail : s[st].label,
+        note: o.note || '', noteColor: noteColors[o.kind || 'muted'], pressed: o.selected ? 'true' : 'false',
+        border: o.selected ? '2px solid ' + t.sel : '1px solid ' + t.border, bg: t.surface, stub: o.child ? '14px' : '0px'
+      };
+    };
+    const chip = (label, on) => ({ label, pressed: on ? 'true' : 'false', border: on ? t.sel : t.border, bg: on ? t.hl : 'transparent', color: on ? t.text : t.muted });
+    return {
+      t, s,
+      legend: ['ACTIVE', 'SUSPENDED', 'WAITING', 'COMPLETED', 'FAILED', 'CANCELLED'].map(k => ({ dot: s[k].dot, label: s[k].label })),
+      filters: [chip('All 7', true), chip('Active 0'), chip('Suspended 0'), chip('Completed 7'), chip('Failed 0'), chip('Cancelled 0')],
+      rows: [
+        { top: '0', below: '0px', nodes: [
+          node('order-1', 'COMPLETED', { note: 'got the lock at once' }), node('order-2', 'COMPLETED', { note: 'waited 1.5 s for the lock' }),
+          node('order-3', 'COMPLETED', { note: 'waited 3.0 s for the lock' }), node('order-4', 'COMPLETED', { note: 'waited 4.5 s for the lock' }),
+          node('order-5', 'COMPLETED', { note: 'waited 6.0 s for the lock' }), node('order-6', 'COMPLETED', { note: 'waited 7.5 s for the lock' }),
+          node('order-7', 'COMPLETED', { note: 'waited 9.0 s for the lock', kind: 'wait', selected: true })
+        ] }
+      ],
+      insp: { name: 'order-7', state: 'Completed at 9.6 s', color: s.COMPLETED.text, note: 'Waited 9.0 s for inventory-lock, the longest wait', noteColor: s.SUSPENDED.text,
+        facts: [
+          { k: 'Parent', v: 'none tracked', font: 'inherit' },
+          { k: 'Last thread', v: 'DefaultDispatcher-worker-3', font: "'JetBrains Mono', monospace" },
+          { k: 'Created at', v: 'SyncScenarios.kt:487', font: "'JetBrains Mono', monospace" }
+        ] },
+      folds: [
+        { title: 'Metrics', hint: 'peak 7 live coroutines' },
+        { title: 'Threads', hint: '3 observed' },
+        { title: 'Locks and permits', hint: '6 waits for inventory-lock, longest 9.0 s' },
+        { title: 'Events', hint: 'all, filterable' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

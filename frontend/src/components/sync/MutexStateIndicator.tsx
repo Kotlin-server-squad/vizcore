@@ -7,15 +7,16 @@ interface MutexStateIndicatorProps {
 }
 
 export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
+  // A held lock is normal work, not an error (spec S-6): neutral grey, never red.
   return (
     <motion.div
       animate={
         mutex.isLocked
           ? {
               boxShadow: [
-                '0 0 0 0 rgba(243, 18, 96, 0)',
-                '0 0 0 4px rgba(243, 18, 96, 0.15)',
-                '0 0 0 0 rgba(243, 18, 96, 0)',
+                '0 0 0 0 rgba(113, 113, 122, 0)',
+                '0 0 0 4px rgba(113, 113, 122, 0.15)',
+                '0 0 0 0 rgba(113, 113, 122, 0)',
               ],
             }
           : {
@@ -46,7 +47,7 @@ export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
               <Chip
                 size="sm"
                 variant="flat"
-                color={mutex.isLocked ? 'danger' : 'success'}
+                color={mutex.isLocked ? 'default' : 'success'}
                 data-testid="lock-status"
               >
                 {mutex.isLocked ? 'Locked' : 'Unlocked'}

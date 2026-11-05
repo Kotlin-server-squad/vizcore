@@ -174,26 +174,44 @@ export function SessionWorkspace({
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
-  const { completedCount, shownCoroutines, moreCount } = useMemo(() => {
+  // When nothing is live any more the run is over, and hiding its coroutines
+  // would leave an empty tree: a finished run shows all of them (spec Part 1).
+  const { completedCount, activeCoroutines, allFinished } = useMemo(() => {
     const active = panelCoroutines.filter(c => !TERMINAL_STATES.has(c.state as CoroutineState))
-    const shown = active.slice(0, NODE_CAP)
     return {
       completedCount: panelCoroutines.length - active.length,
-      shownCoroutines: shown,
-      moreCount: active.length - shown.length,
+      activeCoroutines: active,
+      allFinished: active.length === 0 && panelCoroutines.length > 0,
     }
   }, [panelCoroutines])
-  // What the tree/graph render: the capped active set, or — when the user expands
-  // the completed aggregate — the full set (active + completed) up to the cap.
-  const renderedCoroutines = useMemo(() => {
+  // What the tree/graph render, and how many the cap leaves out — both from the
+  // same pool, so "N more" always counts what this view would have shown.
+  const { renderedCoroutines, moreCount } = useMemo(() => {
     // A named chip selects that state explicitly across the whole snapshot, and
     // bypasses the active-only default — you asked for completed, you get
-    // completed. With no chip active, behaviour is exactly as before the bar.
-    if (stateFilter !== 'all') {
-      return selectCoroutines(panelCoroutines, stateFilter, leakIds).slice(0, NODE_CAP)
+    // completed. With no chip, the active set; everything when the user expands
+    // the completed aggregate or when the run is over.
+    const pool =
+      stateFilter !== 'all'
+        ? selectCoroutines(panelCoroutines, stateFilter, leakIds)
+        : showCompleted || allFinished
+          ? panelCoroutines
+          : activeCoroutines
+    const shown = pool.slice(0, NODE_CAP)
+    return { renderedCoroutines: shown, moreCount: pool.length - shown.length }
+  }, [stateFilter, showCompleted, allFinished, panelCoroutines, activeCoroutines, leakIds])
+
+  // Unfinished children per parent, over the whole snapshot: the "Waiting for N
+  // child coroutines" line must not shrink when a chip or the cap hides them.
+  const pendingChildCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const c of panelCoroutines) {
+      if (c.parentId && !TERMINAL_STATES.has(c.state as CoroutineState)) {
+        counts.set(c.parentId, (counts.get(c.parentId) ?? 0) + 1)
+      }
     }
-    return showCompleted ? panelCoroutines.slice(0, NODE_CAP) : shownCoroutines
-  }, [stateFilter, showCompleted, panelCoroutines, shownCoroutines, leakIds])
+    return counts
+  }, [panelCoroutines])
 
   /** Counts for the state bar — the whole snapshot, never the capped subset. */
   const stateCounts = useMemo(
@@ -366,17 +384,6 @@ export function SessionWorkspace({
         />
       )}
 
-      {/* Structured Concurrency Info - Show when session has coroutines */}
-      {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
-
-      {/* Scenario Pipeline View - shown for realistic scenarios */}
-      {scenarioId === 'order-processing' && allEvents.length > 0 && (
-        <OrderProcessingView events={allEvents} />
-      )}
-      {scenarioId === 'user-registration' && allEvents.length > 0 && (
-        <RegistrationFlowView events={allEvents} />
-      )}
-
       {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
       <StateBar
         counts={stateCounts}
@@ -396,8 +403,6 @@ export function SessionWorkspace({
           the replay cursor (D-17). */}
       <WorkspaceBody
         sessionId={sessionId}
-        streamEnabled={streamEnabled}
-        isConnected={isConnected}
         readOnly={readOnly}
         // The metric strip is live-only: in replay it would report current
         // numbers over a frozen view, and the shared shell has no Bearer for
@@ -409,9 +414,11 @@ export function SessionWorkspace({
               coroutines={renderedCoroutines}
               viewMode={viewMode}
               completedCount={completedCount}
+              allFinished={allFinished}
               showCompleted={showCompleted}
               onToggleCompleted={() => setShowCompleted(prev => !prev)}
               moreCount={moreCount}
+              pendingChildCounts={pendingChildCounts}
               stateFilter={stateFilter}
               isDemo={hasScenario || isDemoSessionId(sessionId)}
               selectedCoroutineId={selectedCoroutineId}
@@ -443,6 +450,17 @@ export function SessionWorkspace({
           />
         }
       />
+
+      {/* How to read the tree — folded, below the tree (spec Part 1). */}
+      {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
+
+      {/* Scenario Pipeline View - shown for realistic scenarios */}
+      {scenarioId === 'order-processing' && allEvents.length > 0 && (
+        <OrderProcessingView events={allEvents} />
+      )}
+      {scenarioId === 'user-registration' && allEvents.length > 0 && (
+        <RegistrationFlowView events={allEvents} />
+      )}
 
       {/* The evidence section (M-1/M-2): what this session can show beyond the
           tree, and — where the rung is the reason it cannot — what unlocks it. */}

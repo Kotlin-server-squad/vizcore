@@ -9,7 +9,8 @@ describe('deriveStateCounts', () => {
   it('returns all zeros for an empty session', () => {
     const c = deriveStateCounts([])
     expect(c).toEqual({
-      running: 0,
+      active: 0,
+      waiting: 0,
       suspended: 0,
       completed: 0,
       cancelled: 0,
@@ -19,16 +20,17 @@ describe('deriveStateCounts', () => {
     })
   })
 
-  it('counts WAITING_FOR_CHILDREN as running — the parent is still live work', () => {
+  it('gives WAITING_FOR_CHILDREN its own bucket — the body is done, the scope is not', () => {
     const c = deriveStateCounts([
       node(CoroutineState.ACTIVE),
       node(CoroutineState.WAITING_FOR_CHILDREN),
     ])
-    expect(c.running).toBe(2)
+    expect(c.active).toBe(1)
+    expect(c.waiting).toBe(1)
   })
 
-  it('counts CREATED as running — it is in flight, not finished', () => {
-    expect(deriveStateCounts([node(CoroutineState.CREATED)]).running).toBe(1)
+  it('counts CREATED as active — it is in flight, not finished', () => {
+    expect(deriveStateCounts([node(CoroutineState.CREATED)]).active).toBe(1)
   })
 
   it('gives CANCELLED its own bucket rather than folding it into completed or failed', () => {
@@ -53,7 +55,7 @@ describe('deriveStateCounts', () => {
     const all = Object.values(CoroutineState).map((s) => node(s))
     const c = deriveStateCounts(all)
     expect(c.total).toBe(all.length)
-    expect(c.running + c.suspended + c.completed + c.cancelled + c.failed).toBe(all.length)
+    expect(c.active + c.waiting + c.suspended + c.completed + c.cancelled + c.failed).toBe(all.length)
   })
 })
 
@@ -64,10 +66,12 @@ describe('matchesFilter', () => {
     }
   })
 
-  it('agrees with deriveStateCounts about what running means', () => {
-    expect(matchesFilter(CoroutineState.WAITING_FOR_CHILDREN, 'running')).toBe(true)
-    expect(matchesFilter(CoroutineState.CREATED, 'running')).toBe(true)
-    expect(matchesFilter(CoroutineState.SUSPENDED, 'running')).toBe(false)
+  it('agrees with deriveStateCounts about what active and waiting mean', () => {
+    expect(matchesFilter(CoroutineState.CREATED, 'active')).toBe(true)
+    expect(matchesFilter(CoroutineState.ACTIVE, 'active')).toBe(true)
+    expect(matchesFilter(CoroutineState.WAITING_FOR_CHILDREN, 'active')).toBe(false)
+    expect(matchesFilter(CoroutineState.WAITING_FOR_CHILDREN, 'waiting')).toBe(true)
+    expect(matchesFilter(CoroutineState.SUSPENDED, 'active')).toBe(false)
   })
 
   it('keeps cancelled out of the failed filter', () => {
@@ -106,8 +110,8 @@ describe('selectCoroutines', () => {
   it('counts leaks separately from the state buckets', () => {
     const counts = deriveStateCounts(nodes, new Set(['a']))
     expect(counts.leaks).toBe(1)
-    // The leaked coroutine is still ACTIVE, so it is also counted as running.
-    expect(counts.running).toBe(1)
+    // The leaked coroutine is still ACTIVE, so it is also counted as active.
+    expect(counts.active).toBe(1)
     expect(counts.total).toBe(3)
   })
 })

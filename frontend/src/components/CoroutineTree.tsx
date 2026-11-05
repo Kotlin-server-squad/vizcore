@@ -5,8 +5,11 @@ import type { CoroutineNode, CoroutineState } from '@/types/api'
 import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
 import { fadeSlideIn, getStateVariant, hoverGlow } from '@/lib/animation-variants'
-import { getStateColors, isActiveState } from '@/lib/coroutine-state-colors'
+import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state-colors'
 import { layoutSpring } from '@/lib/layout-transition'
+
+/** A child in one of these states is done: its parent no longer waits for it. */
+const TERMINAL_STATES = new Set<string>(['COMPLETED', 'CANCELLED', 'FAILED'])
 
 interface CoroutineTreeProps {
   coroutines: CoroutineNode[]
@@ -19,9 +22,16 @@ interface CoroutineTreeProps {
   onSelect?: (id: string) => void
   /** Id of the currently selected node; drives the `ring-2 ring-primary` highlight. */
   selectedNodeId?: string | null
+  /**
+   * Unfinished children per parent id, counted over the whole snapshot. The
+   * rendered set may be filtered or capped, and a waiting parent's children can
+   * be hidden by the very chip that selected it. Absent: counted from the
+   * rendered children.
+   */
+  pendingChildCounts?: ReadonlyMap<string, number>
 }
 
-export function CoroutineTree({ coroutines, onSelect, selectedNodeId }: CoroutineTreeProps) {
+export function CoroutineTree({ coroutines, onSelect, selectedNodeId, pendingChildCounts }: CoroutineTreeProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines), [coroutines])
 
   if (coroutines.length === 0) {
@@ -42,6 +52,7 @@ export function CoroutineTree({ coroutines, onSelect, selectedNodeId }: Coroutin
             depth={0}
             onSelect={onSelect}
             selectedNodeId={selectedNodeId}
+            pendingChildCounts={pendingChildCounts}
           />
         ))}
       </div>
@@ -56,9 +67,10 @@ interface TreeNodeProps {
   depth: number
   onSelect?: (id: string) => void
   selectedNodeId?: string | null
+  pendingChildCounts?: ReadonlyMap<string, number>
 }
 
-function TreeNode({ node, depth, onSelect, selectedNodeId }: TreeNodeProps) {
+function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts }: TreeNodeProps) {
   const isSelected = selectedNodeId === node.id
   const colors = getStateColors(node.state)
   const stateVariant = getStateVariant(node.state)
@@ -168,7 +180,7 @@ function TreeNode({ node, depth, onSelect, selectedNodeId }: TreeNodeProps) {
                     ) : undefined
                   }
                 >
-                  {node.state}
+                  {stateLabel(node.state)}
                 </Chip>
                 <Chip size="sm" variant="bordered">
                   Scope: {node.scopeId}
@@ -225,7 +237,7 @@ function TreeNode({ node, depth, onSelect, selectedNodeId }: TreeNodeProps) {
                 className="mt-2 rounded-md bg-secondary/10 px-3 py-2 text-xs text-secondary"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span>⏳ Waiting for {node.children.filter(c => c.state !== 'COMPLETED').length} child coroutine(s)</span>
+                  <span>⏳ Waiting for {pendingChildCounts?.get(node.id) ?? node.children.filter(c => !TERMINAL_STATES.has(c.state)).length} child coroutine(s)</span>
                   <span className="font-semibold">Job.isActive = true</span>
                 </div>
                 <div className="text-[10px] opacity-75">
@@ -292,6 +304,7 @@ function TreeNode({ node, depth, onSelect, selectedNodeId }: TreeNodeProps) {
           depth={depth + 1}
           onSelect={onSelect}
           selectedNodeId={selectedNodeId}
+          pendingChildCounts={pendingChildCounts}
         />
       ))}
     </OuterComponent>

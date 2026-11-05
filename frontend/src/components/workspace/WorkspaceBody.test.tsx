@@ -34,7 +34,6 @@ describe('WorkspaceBody', () => {
     const { container } = render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -46,27 +45,28 @@ describe('WorkspaceBody', () => {
     expect(container.querySelector('.min-h-\\[200px\\]')).not.toBeNull()
   })
 
-  it('renders the LIVE pill + the four metric-tile labels in the header strip', () => {
+  it('puts the canvas first and the metric tiles below it, with no second LIVE badge', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
       />,
     )
 
-    // LivePill (driven by streamEnabled) shows in the dock header, without the
-    // invented "~150ms poll" sub-label (#145).
-    expect(screen.getByText('LIVE')).toBeInTheDocument()
-    expect(screen.queryByText(/150ms/)).not.toBeInTheDocument()
+    // The header's stream chip is the one live indicator (spec Part 1).
+    expect(screen.queryByText('LIVE')).toBeNull()
 
-    // The reflowed SessionMetrics tiles (un-buried from the Threads tab).
     expect(screen.getByText('Active')).toBeInTheDocument()
     expect(screen.getByText('Peak')).toBeInTheDocument()
     expect(screen.getByText('Throughput')).toBeInTheDocument()
     expect(screen.getByText('Dispatcher utilization')).toBeInTheDocument()
+
+    // The tree is above the metrics in document order.
+    const canvas = screen.getByTestId('live-list')
+    const tiles = screen.getByText('Peak')
+    expect(canvas.compareDocumentPosition(tiles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('renders the metric strip tiles-only — NO leak Card in the header strip', () => {
@@ -83,7 +83,6 @@ describe('WorkspaceBody', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -98,7 +97,6 @@ describe('WorkspaceBody', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -114,7 +112,6 @@ describe('WorkspaceBody', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -138,7 +135,6 @@ describe('WorkspaceBody', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -161,7 +157,6 @@ describe('WorkspaceBody', () => {
     const { container } = render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -180,7 +175,6 @@ describe('WorkspaceBody', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -194,7 +188,6 @@ describe('WorkspaceBody', () => {
     const { container } = render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly={false}
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -210,7 +203,6 @@ describe('WorkspaceBody', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled
         readOnly
         showMetrics
         liveList={<div data-testid="live-list" />}
@@ -224,11 +216,10 @@ describe('WorkspaceBody', () => {
   // The body is now mounted in all three modes (M-4), so the metric strip has
   // to be suppressible: in replay it would report live numbers over a frozen
   // view, and in the read-only shared view the /metrics fetch has no Bearer.
-  it('renders no metric strip and no LIVE pill when showMetrics is false', () => {
+  it('renders no metric strip when showMetrics is false', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled={false}
         readOnly={false}
         showMetrics={false}
         liveList={<div data-testid="live-list" />}
@@ -239,15 +230,12 @@ describe('WorkspaceBody', () => {
     expect(screen.queryByText('Peak')).toBeNull()
     expect(screen.queryByText('Throughput')).toBeNull()
     expect(screen.queryByText('Dispatcher utilization')).toBeNull()
-    expect(screen.queryByText('LIVE')).toBeNull()
-    expect(screen.queryByText('NOT LIVE')).toBeNull()
   })
 
   it('still renders both columns with the strip hidden', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled={false}
         readOnly
         showMetrics={false}
         liveList={<div data-testid="live-list" />}
@@ -263,7 +251,6 @@ describe('WorkspaceBody', () => {
     render(
       <WorkspaceBody
         sessionId="s-1"
-        streamEnabled={false}
         readOnly
         showMetrics={false}
         liveList={<div data-testid="live-list" />}

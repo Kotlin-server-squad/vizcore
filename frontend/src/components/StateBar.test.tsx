@@ -8,12 +8,13 @@ import type { StateCounts } from '@/lib/state-counts'
 import { StateBar } from './StateBar'
 
 const counts: StateCounts = {
-  running: 47,
+  active: 47,
+  waiting: 2,
   suspended: 31,
   completed: 1200,
   cancelled: 0,
   failed: 2,
-  total: 1280,
+  total: 1282,
   leaks: 0,
 }
 
@@ -48,10 +49,33 @@ describe('StateBar leak chip', () => {
   })
 })
 
+describe('StateBar waiting chip', () => {
+  it('shows Waiting for children as its own chip when any parent waits', () => {
+    renderBar()
+    expect(screen.getByRole('button', { name: 'Waiting for children 2' })).toBeInTheDocument()
+  })
+
+  it('selects the waiting filter', async () => {
+    const { onFilterChange } = renderBar()
+    await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 2' }))
+    expect(onFilterChange).toHaveBeenCalledWith('waiting')
+  })
+
+  it('keeps the selected chip at zero, so the filter it applies can still be cleared', async () => {
+    // Parents stop waiting as their children finish: the bucket empties under
+    // an active filter, and a hidden chip would leave nothing to click.
+    const { onFilterChange } = renderBar({ counts: { ...counts, waiting: 0 }, filter: 'waiting' })
+    const chip = screen.getByRole('button', { name: 'Waiting for children 0' })
+    expect(chip).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(chip)
+    expect(onFilterChange).toHaveBeenCalledWith('all')
+  })
+})
+
 describe('StateBar', () => {
   it('shows a chip per non-zero state with its count', () => {
     renderBar()
-    expect(screen.getByRole('button', { name: /running 47/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /active 47/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /suspended 31/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /completed 1200/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /failed 2/i })).toBeInTheDocument()
@@ -62,10 +86,11 @@ describe('StateBar', () => {
     expect(screen.queryByRole('button', { name: /cancelled/i })).toBeNull()
   })
 
-  it('always shows Running so the bar never collapses to nothing', () => {
+  it('always shows Active so the bar never collapses to nothing', () => {
     renderBar({
       counts: {
-        running: 0,
+        active: 0,
+        waiting: 0,
         suspended: 0,
         completed: 0,
         cancelled: 0,
@@ -74,7 +99,7 @@ describe('StateBar', () => {
         leaks: 0,
       },
     })
-    expect(screen.getByRole('button', { name: /running 0/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /active 0/i })).toBeInTheDocument()
   })
 
   it('selects a state when its chip is clicked', async () => {
@@ -110,7 +135,7 @@ describe('StateBar', () => {
       'aria-pressed',
       'true'
     )
-    expect(screen.getByRole('button', { name: /running 47/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /active 47/i })).toHaveAttribute(
       'aria-pressed',
       'false'
     )
@@ -119,7 +144,8 @@ describe('StateBar', () => {
 
 describe('StateBar — the checks action (M-3)', () => {
   const calm: StateCounts = {
-    running: 3,
+    active: 3,
+    waiting: 0,
     suspended: 0,
     completed: 0,
     cancelled: 0,

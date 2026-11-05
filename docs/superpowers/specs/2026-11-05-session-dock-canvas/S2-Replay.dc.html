@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Step 2: IDE dock, replay</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; display: flex; flex-direction: column; font-family: Inter, system-ui, sans-serif; background: {{t.bg}}; color: {{t.text}}">
+  <nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 0 24px; min-height: 52px; border-bottom: 1px solid {{t.border}}; background: {{t.surface}}">
+    <span style="font-weight: 700; font-size: 15px">Coroutine Visualizer</span>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Sessions</a>
+    <a href="#" style="font-size: 14px; color: {{t.muted}}; text-decoration: none">Gallery</a>
+  </nav>
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 24px; border-bottom: 1px solid {{t.border}}">
+    <h1 style="margin: 0; font-size: 18px; font-weight: 700">{{title}}</h1>
+    <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: {{status.tint}}; color: {{status.text}}"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{status.dot}}"></span>{{status.label}}</span>
+    <span style="font-size: 13px; color: {{t.muted}}">{{meta}}</span>
+    <div style="flex: 1"></div>
+    <sc-for list="{{actions}}" as="b" hint-placeholder-count="4">
+      <button type="button" aria-label="{{b.aria}}" style="font: inherit; font-size: 13px; font-weight: {{b.weight}}; padding: 8px 14px; border-radius: 8px; border: {{b.border}}; background: {{b.bg}}; color: {{b.color}}">{{b.label}}</button>
+    </sc-for>
+  </header>
+
+  <div aria-label="Replay controls" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 24px; border-bottom: 1px solid {{t.border}}; background: {{t.surface}}">
+    <button type="button" aria-label="Step back one event" style="font: inherit; font-size: 13px; min-width: 44px; padding: 8px 10px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">◀︎</button>
+    <button type="button" aria-label="Play" style="font: inherit; font-size: 13px; font-weight: 600; min-width: 64px; padding: 8px 12px; border-radius: 8px; border: 0; background: {{t.primary}}; color: #ffffff">Play</button>
+    <button type="button" aria-label="Step forward one event" style="font: inherit; font-size: 13px; min-width: 44px; padding: 8px 10px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">▶︎</button>
+    <label for="replay-at" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Replay position </span>4.2 s</label>
+    <input id="replay-at" type="range" min="0" max="120" value="42" aria-valuetext="4.2 seconds of 12.0" style="flex: 1; min-width: 200px; accent-color: {{t.primary}}">
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}">12.0 s</span>
+    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: {{t.muted}}">Speed
+      <select style="font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 6px; border: 1px solid {{t.border}}; background: {{t.surface2}}; color: {{t.text}}"><option>1×</option><option>2×</option><option>0.5×</option></select>
+    </label>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Exit replay</button>
+  </div>
+
+  <section aria-label="Coroutine tree" style="flex: 1; min-height: 360px; margin: 12px 24px 0; display: flex; flex-direction: column; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface2}}">
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid {{t.border}}">
+      <div role="group" aria-label="View" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: {{t.surface3}}">
+        <button type="button" aria-pressed="true" style="font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 0; background: {{t.surface}}; color: {{t.text}}">Tree</button>
+        <button type="button" aria-pressed="false" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 0; background: transparent; color: {{t.muted}}">Graph</button>
+      </div>
+      <span style="width: 8px"></span>
+      <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+        <button type="button" aria-pressed="{{f.pressed}}" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid {{f.border}}; background: {{f.bg}}; color: {{f.color}}">{{f.label}}</button>
+      </sc-for>
+      <div style="flex: 1"></div>
+      <button type="button" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">How to read the tree</button>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px">
+          <sc-for list="{{rows}}" as="row" hint-placeholder-count="2">
+            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; border-top: {{row.top}}; padding: 0 8px">
+              <sc-for list="{{row.nodes}}" as="n" hint-placeholder-count="4">
+                <div style="display: flex; flex-direction: column; align-items: center">
+                  <span aria-hidden="true" style="width: 2px; height: {{n.stub}}; background: {{t.line}}"></span>
+                  <button type="button" aria-pressed="{{n.pressed}}" style="display: flex; flex-direction: column; gap: 3px; min-width: 124px; padding: 8px 12px; border-radius: 8px; border: {{n.border}}; background: {{n.bg}}; font: inherit; color: inherit; text-align: left">
+                    <span style="display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px"><span style="width: 9px; height: 9px; border-radius: 50%; background: {{n.dot}}"></span>{{n.name}}</span>
+                    <span style="font-size: 11px; color: {{n.color}}">{{n.label}}</span>
+                    <span style="font-size: 11px; color: {{n.noteColor}}">{{n.note}}</span>
+                  </button>
+                </div>
+              </sc-for>
+            </div>
+            <span aria-hidden="true" style="width: 2px; height: {{row.below}}; background: {{t.line}}"></span>
+          </sc-for>
+        </div>
+  </section>
+
+  <section aria-label="Details dock" style="margin: 12px 24px 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.surface}}; display: flex; flex-direction: column">
+    <div aria-hidden="true" style="align-self: center; width: 40px; height: 4px; margin-top: 6px; border-radius: 2px; background: {{t.surface3}}"></div>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 8px 16px 10px; border-bottom: 1px solid {{t.border}}">
+      <sc-for list="{{tiles}}" as="m" hint-placeholder-count="6">
+        <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; color: {{t.muted}}">{{m.label}}</span><span style="font-size: 18px; font-weight: 700; color: {{m.color}}">{{m.value}}</span></div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid {{t.border}}">
+      <div role="tablist" aria-label="Dock" style="display: flex; flex-wrap: wrap; gap: 4px">
+        <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="5">
+          <button type="button" role="tab" aria-selected="{{tab.selected}}" style="font: inherit; font-size: 12px; font-weight: {{tab.weight}}; padding: 6px 12px; border-radius: 6px; border: 0; background: {{tab.bg}}; color: {{tab.color}}">{{tab.label}}</button>
+        </sc-for>
+      </div>
+      <div style="flex: 1"></div>
+      <button type="button" aria-label="Fold the dock" style="font: inherit; font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 0; background: transparent; color: {{t.muted}}">Fold</button>
+    </div>
+
+    <div role="tabpanel" aria-label="Locks and permits" style="display: flex; flex-direction: column; gap: 14px; padding: 14px 16px">
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500">{{g.name}}</span>
+            <span style="font-size: 12px; color: {{t.muted}}">{{g.kind}}</span>
+            <span style="font-size: 12px; color: {{g.nowColor}}">{{g.now}}</span>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 12px; height: 14px">
+            <span style="width: 120px; flex: none"></span>
+            <div style="flex: 1; position: relative; height: 12px">
+              <sc-for list="{{ticks}}" as="k" hint-placeholder-count="7">
+                <span style="position: absolute; left: {{k.left}}; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace; font-size: 10px; color: {{t.muted}}">{{k.label}}</span>
+              </sc-for>
+            </div>
+          </div>
+          <sc-for list="{{g.lanes}}" as="lane" hint-placeholder-count="2">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <span style="width: 120px; flex: none; font-size: 12px; color: {{t.muted}}">{{lane.name}}</span>
+              <div style="flex: 1; height: 22px; position: relative; border-radius: 4px; background: {{t.surface2}}">
+                <sc-for list="{{lane.segs}}" as="seg" hint-placeholder-count="3">
+                  <div style="position: absolute; top: 2px; bottom: 2px; left: {{seg.left}}; width: {{seg.width}}; border-radius: 3px; background: {{seg.bg}}; border: {{seg.border}}; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 18px; padding-left: 4px; box-sizing: border-box; color: {{seg.color}}">{{seg.label}}</div>
+                </sc-for>
+                <div aria-hidden="true" style="position: absolute; top: -3px; bottom: -3px; left: 35%; width: 2px; background: {{t.text}}"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+      <span style="font-size: 12px; color: {{t.muted}}">Outlined bars are still to come. Slots only lay the permits out: a semaphore does not number its permits. Click a coroutine in the tree to inspect it as it was at 4.2 s.</span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const isLight = (this.props.theme ?? 'dark') === 'light';
+    const t = isLight
+      ? { bg: '#fafafa', surface: '#ffffff', surface2: '#f4f4f5', surface3: '#e4e4e7', border: '#e4e4e7', text: '#18181b', muted: '#52525b', primary: '#006fee', sel: '#005bc4', hl: 'rgba(0,111,238,0.12)' }
+      : { bg: '#0a0a0b', surface: '#131316', surface2: '#18181b', surface3: '#27272a', border: '#27272a', text: '#fafafa', muted: '#a1a1aa', primary: '#006fee', sel: '#4da3ff', hl: 'rgba(77,163,255,0.16)' };
+    t.line = isLight ? '#a1a1aa' : '#52525b';
+    t.link = isLight ? '#005bc4' : '#4da3ff';
+    const pal = isLight
+      ? { ACTIVE: ['#006fee', '#005bc4'], SUSPENDED: ['#f5a524', '#936316'], WAITING: ['#9353d3', '#6020a0'], COMPLETED: ['#17c964', '#0e793c'], FAILED: ['#f31260', '#c20e4d'], CANCELLED: ['#a1a1aa', '#52525b'] }
+      : { ACTIVE: ['#006fee', '#4da3ff'], SUSPENDED: ['#f5a524', '#f5a524'], WAITING: ['#9353d3', '#b47cff'], COMPLETED: ['#17c964', '#17c964'], FAILED: ['#f31260', '#ff6b95'], CANCELLED: ['#71717a', '#a1a1aa'] };
+    const names = { ACTIVE: 'Active', SUSPENDED: 'Suspended', WAITING: 'Waiting for children', COMPLETED: 'Completed', FAILED: 'Failed', CANCELLED: 'Cancelled' };
+    const s = {};
+    for (const k of Object.keys(pal)) s[k] = { dot: pal[k][0], text: pal[k][1], tint: pal[k][0] + '26', label: names[k] };
+    const node = (name, st, o) => {
+      o = o || {};
+      const noteColors = { wait: s.SUSPENDED.text, hold: t.sel, fail: s.FAILED.text, muted: t.muted };
+      return {
+        name, dot: s[st].dot, color: s[st].text, label: o.detail ? s[st].label + ' · ' + o.detail : s[st].label,
+        note: o.note || '', noteColor: noteColors[o.kind || 'muted'], pressed: o.selected ? 'true' : 'false',
+        border: o.selected ? '2px solid ' + t.sel : '1px solid ' + t.border, bg: t.surface, stub: o.child ? '14px' : '0px'
+      };
+    };
+    const chip = (label, on) => ({ label, pressed: on ? 'true' : 'false', border: on ? t.sel : t.border, bg: on ? t.hl : 'transparent', color: on ? t.text : t.muted });
+    const tab = (label, on) => ({ label, selected: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? t.surface3 : 'transparent', color: on ? t.text : t.muted });
+    const btn = (label, primary, aria, disabled) => ({
+      label, aria: aria || label, weight: primary ? 600 : 400,
+      border: primary && !disabled ? '0' : '1px solid ' + t.border,
+      bg: disabled ? t.surface3 : primary ? t.primary : 'transparent',
+      color: disabled ? t.muted : primary ? '#ffffff' : t.text
+    });
+    const CUR = 4.2, T = 12;
+    const pct = v => (v / T * 100) + '%';
+    const segs = list => list.flatMap(([label, a, b]) => {
+      const past = { label, left: pct(a), width: pct(Math.min(b, CUR) - a), bg: t.primary, border: '0', color: '#ffffff' };
+      const future = { label: a >= CUR ? label : '', left: pct(Math.max(a, CUR)), width: pct(b - Math.max(a, CUR)), bg: 'transparent', border: '1px dashed ' + t.sel, color: t.text };
+      return b <= CUR ? [past] : a >= CUR ? [future] : [past, future];
+    });
+    return {
+      t, s,
+      title: 'E-commerce Orders',
+      status: { dot: t.muted, text: t.text, tint: t.surface3, label: 'Replay · 4.2 s of 12.0 s' },
+      meta: 'Recorded run · 7 coroutines · 1 mutex · 1 semaphore',
+      actions: [btn('Share'), btn('More', false, 'More actions: Reset session, Clear events, Export, Checks')],
+      filters: [chip('All 7', true), chip('Active 4'), chip('Suspended 3'), chip('Completed 0')],
+      rows: [
+        { top: '0', below: '0px', nodes: [
+          node('order-1', 'SUSPENDED', { detail: 'in delay', note: 'holds a payment-gateway permit', kind: 'hold' }),
+          node('order-2', 'SUSPENDED', { detail: 'in delay', note: 'holds a payment-gateway permit', kind: 'hold' }),
+          node('order-3', 'SUSPENDED', { detail: 'in delay', note: 'holds inventory-lock', kind: 'hold' }),
+          node('order-4', 'ACTIVE', { note: 'waits for inventory-lock · 1st', kind: 'wait' }),
+          node('order-5', 'ACTIVE', { note: 'waits for inventory-lock · 2nd', kind: 'wait' }),
+          node('order-6', 'ACTIVE', { note: 'waits for inventory-lock · 3rd', kind: 'wait' }),
+          node('order-7', 'ACTIVE', { note: 'waits for inventory-lock · 4th', kind: 'wait' })
+        ] }
+      ],
+      tiles: [
+        { label: 'Live coroutines', value: '7', color: t.text },
+        { label: 'Completed', value: '0', color: t.text },
+        { label: 'Waiting for the lock', value: '4', color: s.SUSPENDED.text },
+        { label: 'Permits in use', value: '2 of 2', color: t.text },
+        { label: 'Observed threads', value: '3', color: t.text },
+        { label: 'At', value: '4.2 s', color: t.text }
+      ],
+      tabs: [tab('Inspector'), tab('Threads'), tab('Locks and permits', true), tab('Events'), tab('Learn')],
+      ticks: [0, 2, 4, 6, 8, 10, 12].map(v => ({ left: pct(v), label: v + ' s' })),
+      groups: [
+        { name: 'inventory-lock', kind: 'Mutex', now: 'held by order-3 · 4 waiting', nowColor: s.SUSPENDED.text, lanes: [
+          { name: 'Holder', segs: segs([['order-1', 0, 1.5], ['order-2', 1.5, 3], ['order-3', 3, 4.5], ['order-4', 4.5, 6], ['order-5', 6, 7.5], ['order-6', 7.5, 9], ['order-7', 9, 9.6]]) }
+        ] },
+        { name: 'payment-gateway', kind: 'Semaphore, 2 permits', now: '2 of 2 in use', nowColor: t.muted, lanes: [
+          { name: 'Slot 1', segs: segs([['order-1', 1.5, 4.5], ['order-3', 4.5, 7.5], ['order-5', 7.5, 10.5]]) },
+          { name: 'Slot 2', segs: segs([['order-2', 3, 6], ['order-4', 6, 9], ['order-6', 9, 12]]) }
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

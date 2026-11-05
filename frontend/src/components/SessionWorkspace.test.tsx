@@ -109,12 +109,6 @@ vi.mock('./SessionMetrics', () => ({
   ),
 }))
 
-vi.mock('./LivePill', () => ({
-  LivePill: ({ streamEnabled }: { streamEnabled: boolean }) => (
-    <div data-testid="live-pill" data-stream={String(streamEnabled)} />
-  ),
-}))
-
 vi.mock('./channels/ChannelPanel', () => ({
   ChannelPanel: () => <div data-testid="channel-panel" />,
 }))
@@ -430,10 +424,10 @@ describe('SessionWorkspace', () => {
       { wrapper: createWrapper() },
     )
 
-    // Completed state: the disabled "Scenario Running" button should NOT be present
+    // Finished state: the disabled "Scenario Running" button should NOT be present
     expect(screen.queryByRole('button', { name: /scenario running/i })).not.toBeInTheDocument()
-    // Instead, an explicit completed indicator button should appear
-    expect(screen.getByRole('button', { name: /scenario completed/i })).toBeInTheDocument()
+    // Instead, a finished indicator button should appear
+    expect(screen.getByRole('button', { name: /scenario finished/i })).toBeInTheDocument()
   })
 
   it('shows disabled "Scenario Running" button when some coroutines are still active (in-progress)', () => {
@@ -911,24 +905,48 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(graph).toHaveAttribute('data-ids', 'a-active,b-suspended')
   })
 
-  it('surfaces a filtered state even when every coroutine is terminal', async () => {
-    // Regression: the empty state was gated on activeCoroutines, which ignores
-    // the filter — so picking "Failed" on an all-terminal session kept showing
-    // "No live coroutines yet" instead of the failed coroutines.
+  it('shows every coroutine of a finished run, not "Nothing running now"', async () => {
     mountSession([
       coro('a-failed', 'FAILED'),
       coro('b-failed', 'FAILED'),
       coro('c-cancelled', 'CANCELLED'),
     ])
 
-    expect(screen.getByText('Nothing running now')).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Failed 2' }))
-
     expect(screen.queryByText('Nothing running now')).not.toBeInTheDocument()
+    expect(screen.getByText('Everything has finished')).toBeInTheDocument()
     expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
       'data-ids',
-      'a-failed,b-failed'
+      'a-failed,b-failed,c-cancelled',
+    )
+    // Nothing is live, so there is nothing to hide the completed ones behind.
+    expect(screen.queryByText(/Show completed|Hide completed/)).toBeNull()
+
+    // A chip still narrows the finished run.
+    await userEvent.click(screen.getByRole('button', { name: 'Failed 2' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'a-failed,b-failed')
+  })
+
+  it('keeps the Waiting chip clearable after the last parent stops waiting', async () => {
+    const { rerender } = mountSession([
+      coro('p-waiting', 'WAITING_FOR_CHILDREN'),
+      coro('c-active', 'ACTIVE'),
+    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 1' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'p-waiting')
+
+    // The children finish, and the parent with them.
+    const done = [coro('p-waiting', 'COMPLETED'), coro('c-active', 'COMPLETED')]
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: done.length, coroutines: done }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    rerender(<SessionWorkspace sessionId="session-1" />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 0' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
+      'data-ids',
+      'p-waiting,c-active',
     )
   })
 
@@ -971,7 +989,7 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
       coro('d-failed', 'FAILED'),
     ])
     // Counts cover every coroutine, not just the ones the canvas renders.
-    expect(screen.getByRole('button', { name: 'Running 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Active 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Suspended 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Completed 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Failed 1' })).toBeInTheDocument()
@@ -1038,15 +1056,20 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(graph).toHaveAttribute('data-count', '200')
   })
 
-  it('mounts the docked metrics panel (LivePill + SessionMetrics) below the live canvas (Delta L1)', () => {
+  it('mounts the metric strip below the live canvas', () => {
     mountSession([coro('a-active', 'ACTIVE')])
     // The dock lives in the live "Coroutines" tab region (default selected) —
     // no tab switch needed; it is always visible below the canvas.
     const metrics = screen.getByTestId('session-metrics')
     expect(metrics).toBeInTheDocument()
     expect(metrics).toHaveAttribute('data-session', 'session-1')
-    // The LIVE/DEMO pill renders in the dock header.
-    expect(screen.getByTestId('live-pill')).toBeInTheDocument()
+  })
+
+  it('puts the tree above the explanation', () => {
+    mountSession([coro('a-active', 'ACTIVE')])
+    const tree = screen.getByTestId('coroutine-tree-graph')
+    const info = screen.getByTestId('structured-concurrency-info')
+    expect(tree.compareDocumentPosition(info) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('mounts SessionMetrics exactly once (single /metrics poll — no double-mount, T-08.1-04)', () => {
@@ -1063,11 +1086,32 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
   })
 
-  it('says everything finished, not "start your app", when only completed coroutines remain', () => {
+  it('shows the completed coroutines of a finished demo, not "start your app"', () => {
     mountSession([coro('c-completed', 'COMPLETED')])
-    expect(screen.getByText('Nothing running now')).toBeInTheDocument()
-    expect(screen.getByText(/All 1 coroutines in this session have finished/)).toBeInTheDocument()
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'c-completed')
     expect(screen.queryByText(/Start your instrumented app/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the active-only default while anything is still live', () => {
+    mountSession([coro('a-active', 'ACTIVE'), coro('c-completed', 'COMPLETED')])
+    expect(screen.getByText("What's running now")).toBeInTheDocument()
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'a-active')
+  })
+
+  it('caps a finished run at the node cap and counts the rest', () => {
+    mountSession(Array.from({ length: 205 }, (_, i) => coro(`c-${i}`, 'COMPLETED')))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-count', '200')
+    expect(screen.getByText('5 more coroutines')).toBeInTheDocument()
+  })
+
+  it('counts "more" from what the chip selects, not from the whole run', async () => {
+    mountSession([
+      ...Array.from({ length: 205 }, (_, i) => coro(`c-${i}`, 'COMPLETED')),
+      coro('f-1', 'FAILED'),
+    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Failed 1' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'f-1')
+    expect(screen.queryByText(/more coroutines/)).toBeNull()
   })
 
   it('tells an app session with no coroutines to start the instrumented app', () => {

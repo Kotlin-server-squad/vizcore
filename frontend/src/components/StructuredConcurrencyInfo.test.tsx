@@ -1,49 +1,68 @@
-/**
- * TDD RED → GREEN: StructuredConcurrencyInfo Failure Propagation copy
- *
- * Asserts that the Failure Propagation block:
- *  - states the parent becomes FAILED (not CANCELLED)
- *  - retains the sibling-CANCELLED wording
- */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
+import userEvent from '@testing-library/user-event'
+import { StructuredConcurrencyInfo, HOW_TO_READ_KEY } from './StructuredConcurrencyInfo'
 
-// No external dependencies — pure presentational component
+const open = () => userEvent.click(screen.getByRole('button', { name: /how to read the tree/i }))
+
 describe('StructuredConcurrencyInfo', () => {
-  it('renders the Failure Propagation section', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('is one closed line by default, so the tree stays near the top', () => {
     render(<StructuredConcurrencyInfo />)
+    const toggle = screen.getByRole('button', { name: /how to read the tree/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Failure Propagation')).toBeNull()
+  })
+
+  it('opens to the explanation and the legend, and remembers that', async () => {
+    const { unmount } = render(<StructuredConcurrencyInfo />)
+    await open()
     expect(screen.getByText('Failure Propagation')).toBeInTheDocument()
+    expect(screen.getByText('Suspended')).toBeInTheDocument()
+    expect(localStorage.getItem(HOW_TO_READ_KEY)).toBe('open')
+
+    unmount()
+    render(<StructuredConcurrencyInfo />)
+    expect(screen.getByRole('button', { name: /how to read the tree/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
   })
 
-  it('states the parent becomes FAILED (not CANCELLED) in the Failure Propagation block', () => {
+  it('points aria-controls at the body only while the body exists', async () => {
     render(<StructuredConcurrencyInfo />)
+    const toggle = screen.getByRole('button', { name: /how to read the tree/i })
+    expect(toggle).not.toHaveAttribute('aria-controls')
+    await open()
+    const id = toggle.getAttribute('aria-controls')
+    expect(id).toBeTruthy()
+    expect(document.getElementById(id!)).toHaveTextContent('Failure Propagation')
+  })
 
-    // The failure propagation description should mention the parent becoming FAILED
-    const body = screen.getByText(/when a child coroutine throws/i)
-    expect(body).toBeInTheDocument()
+  it('opens from the keyboard', async () => {
+    render(<StructuredConcurrencyInfo />)
+    const toggle = screen.getByRole('button', { name: /how to read the tree/i })
+    toggle.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.keyboard(' ')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
 
-    const container = body.closest('div')
-    expect(container).not.toBeNull()
-    const text = container!.textContent ?? ''
+  it('remembers closing it again', async () => {
+    localStorage.setItem(HOW_TO_READ_KEY, 'open')
+    render(<StructuredConcurrencyInfo />)
+    await open()
+    expect(localStorage.getItem(HOW_TO_READ_KEY)).toBe('closed')
+  })
 
-    // Should describe the parent becoming FAILED (completes exceptionally)
-    // The phrase "which gets FAILED" or "parent, which gets FAILED" must appear
+  it('states the parent becomes FAILED, and the siblings are cancelled', async () => {
+    render(<StructuredConcurrencyInfo />)
+    await open()
+    const text = screen.getByText(/when a child coroutine throws/i).closest('div')!.textContent ?? ''
     expect(text).toMatch(/parent.*which gets FAILED/i)
-
-    // The text must NOT say "parent, which gets CANCELLED"
-    // (Note: siblings being cancelled is fine — the regex anchors on "which gets CANCELLED"
-    // to avoid false-matching "sibling coroutines are also cancelled")
     expect(text).not.toMatch(/which gets CANCELLED/i)
-  })
-
-  it('retains sibling CANCELLED wording in the Failure Propagation block', () => {
-    render(<StructuredConcurrencyInfo />)
-
-    const body = screen.getByText(/when a child coroutine throws/i)
-    const container = body.closest('div')
-    const text = container!.textContent ?? ''
-    // Siblings still get CANCELLED
     expect(text).toMatch(/sibling.*cancel/i)
   })
 })

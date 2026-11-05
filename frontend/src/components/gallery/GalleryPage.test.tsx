@@ -219,12 +219,12 @@ describe('GalleryPage', () => {
   })
 
   it('shows no level for a demo without a guide', () => {
-    renderPage('patterns')
+    renderPage('sync-mutex')
     expect(screen.getAllByTestId('demo-card').length).toBeGreaterThan(0)
     expect(screen.queryByText(/^(beginner|intermediate|advanced)$/)).toBeNull()
   })
 
-  it.each(['basics', 'flow'])('links every %s card to its How it works page', (group) => {
+  it.each(['basics', 'channels', 'flow', 'patterns'])('links every %s card to its How it works page', (group) => {
     renderPage(group)
     for (const s of all.filter((d) => d.group === group)) {
       expect(screen.getByRole('link', { name: `How it works: ${s.name}` })).toHaveAttribute('href', `/gallery/${demoSlug(s.id)}`)
@@ -239,7 +239,7 @@ describe('GalleryPage', () => {
   })
 
   it('has no How it works link for a demo without a guide', () => {
-    renderPage('patterns')
+    renderPage('sync-mutex')
     expect(screen.queryByRole('link', { name: /how it works/i })).toBeNull()
   })
 })
