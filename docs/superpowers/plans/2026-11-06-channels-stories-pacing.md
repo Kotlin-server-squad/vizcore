@@ -27,6 +27,14 @@
 
 **Parallel work:** a Flow PR touches the same shared files: `DemoCatalog.kt`, `demo-catalog.json`, `will-see.json`, `guides.ts`, `guides.test.ts`, `GuideLabelsTest.start` and `CHANGELOG.md`. Keep those edits small and additive.
 
+**Changes while building (after the Codex plan review and the first test runs):**
+- **Buffer size in core:** `InstrumentedChannel` updates its buffer counter after the delegate's send or receive returns. Where a send meets a receive, the two updates land in either order, so a rendezvous channel reported 1, a full buffer capacity + 1, and the size could go negative. The reported size is now clamped to what the channel can hold, with two `InstrumentedChannelTest` cases. Without this, "the print queue fills to 5" was flaky, and the Channels panel drew wrong sizes.
+- **Fan-Out queue check:** the test reads real queue waits (send completed → receive completed) instead of `bufferSizes().max() >= 1`. With the size clamped, a hand-over to a waiting agent still reads 1 for a moment.
+- **Fan-Out timing:** at one ticket every 0.8 s the three agents kept up, and no ticket ever waited. The demo now has a morning rush: tickets 1-6 arrive 0.5 s apart, then one every 1.2 s. Tickets 4-6 wait about 1 s each, and the demo ends at about 13 s.
+- **Buffered timing:** at one job every 0.7 s the office waited only 0.24 s with job 7. It now sends a job every 0.6 s: the queue is full at 3.6 s, job 7 waits 4.2-5.5 s and job 8 waits 6.1-8 s.
+- **`guides.test.ts`:** the guard keeps its list, now `guided`, so `noUnusedLocals` still passes.
+- **`detekt.yml`:** `ChannelScenarios.kt` is excluded from `MagicNumber`, like `BasicScenarios.kt` (the numbers are step lengths).
+
 ---
 
 ## The three demos
