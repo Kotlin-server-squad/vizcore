@@ -12,6 +12,8 @@
  * `image/svg+xml` using the export-png object-URL download idiom.
  */
 
+import { withDarkTheme } from './export-theme'
+
 /**
  * Computed-style properties inlined onto every element of the cloned SVG.
  * Whitelisted (10 props) per Pattern 4 — NOT a full computed-style dump.
@@ -96,7 +98,7 @@ export function exportToSvg(svg: SVGSVGElement, filename?: string): void {
   const clone = svg.cloneNode(true) as SVGSVGElement
 
   // Inline whitelisted computed styles (Pattern 4).
-  inlineStyles(svg, clone)
+  withDarkTheme(() => inlineStyles(svg, clone))
 
   // Ensure xmlns + explicit dimensions so the file renders standalone.
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')

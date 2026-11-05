@@ -249,6 +249,32 @@ describe('createReplayRecorder', () => {
     expect(fakeTrack.requestFrame).toHaveBeenCalled()
   })
 
+  it('captures a DOM panel in the dark theme while light mode is on', async () => {
+    mockFindSvgRoot.mockReturnValue(null)
+    const { asDarkClone } = await import('./export-theme')
+    document.documentElement.className = 'light'
+    let classDuringCapture = ''
+    const original = mockHtml2Canvas.getMockImplementation()
+    mockHtml2Canvas.mockImplementationOnce(async (...args: unknown[]) => {
+      classDuringCapture = document.documentElement.className
+      return original?.(...args)
+    })
+    try {
+      const recorder = createReplayRecorder({
+        panelEl,
+        speed: 1,
+        mimeType: 'video/webm',
+        sessionId: 'abc',
+      })
+      await recorder.captureFrame()
+      expect(mockHtml2Canvas).toHaveBeenCalledWith(panelEl, expect.objectContaining({ onclone: asDarkClone }))
+      expect(classDuringCapture).toBe('dark')
+      expect(document.documentElement.className).toBe('light')
+    } finally {
+      document.documentElement.className = 'dark'
+    }
+  })
+
   it('stop() assembles a Blob and downloads a .webm', async () => {
     const recorder = createReplayRecorder({
       panelEl,

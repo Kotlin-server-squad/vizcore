@@ -25,6 +25,7 @@
 
 import html2canvas from 'html2canvas'
 import { findSvgRoot } from './export-svg'
+import { asDarkClone, withDarkTheme } from './export-theme'
 import { buildExportFilename } from './export-filename'
 
 /** D-25 codec cascade, highest-quality first. */
@@ -196,12 +197,16 @@ export function createReplayRecorder({
       return
     }
     // DOM path: html2canvas at 2x to match the mirror-canvas resolution.
-    const rendered = await html2canvas(panelEl, {
-      backgroundColor: '#18181b',
-      scale: CAPTURE_SCALE,
-      useCORS: true,
-      logging: false,
-    })
+    // Dark in both themes, as exportToPng does (see there).
+    const rendered = await withDarkTheme(() =>
+      html2canvas(panelEl, {
+        backgroundColor: '#18181b',
+        scale: CAPTURE_SCALE,
+        useCORS: true,
+        logging: false,
+        onclone: asDarkClone,
+      }),
+    )
     ctx.drawImage(rendered, 0, 0, canvas.width, canvas.height)
   }
 
