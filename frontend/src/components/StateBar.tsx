@@ -75,7 +75,9 @@ export function StateBar({
       aria-label="Coroutine state"
     >
       {[...chips, ...leakChip]
-        .filter((chip) => chip.always || chip.count > 0)
+        // The selected chip stays at zero: a bucket can empty under its own
+        // filter (a parent stops waiting), and a hidden chip could not be cleared.
+        .filter((chip) => chip.always || chip.count > 0 || filter === chip.filter)
         .map((chip) => {
           const active = filter === chip.filter
           return (

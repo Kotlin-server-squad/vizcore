@@ -30,6 +30,26 @@ describe('StructuredConcurrencyInfo', () => {
     )
   })
 
+  it('points aria-controls at the body only while the body exists', async () => {
+    render(<StructuredConcurrencyInfo />)
+    const toggle = screen.getByRole('button', { name: /how to read the tree/i })
+    expect(toggle).not.toHaveAttribute('aria-controls')
+    await open()
+    const id = toggle.getAttribute('aria-controls')
+    expect(id).toBeTruthy()
+    expect(document.getElementById(id!)).toHaveTextContent('Failure Propagation')
+  })
+
+  it('opens from the keyboard', async () => {
+    render(<StructuredConcurrencyInfo />)
+    const toggle = screen.getByRole('button', { name: /how to read the tree/i })
+    toggle.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.keyboard(' ')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
   it('remembers closing it again', async () => {
     localStorage.setItem(HOW_TO_READ_KEY, 'open')
     render(<StructuredConcurrencyInfo />)

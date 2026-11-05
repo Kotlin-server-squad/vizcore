@@ -36,7 +36,9 @@ export function StructuredConcurrencyInfo() {
       <button
         type="button"
         aria-expanded={open}
-        aria-controls="how-to-read-tree"
+        // Only while the body is mounted: an id that resolves to nothing is a
+        // broken relationship for assistive tech.
+        aria-controls={open ? 'how-to-read-tree' : undefined}
         onClick={toggle}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
       >

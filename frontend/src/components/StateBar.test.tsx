@@ -60,6 +60,16 @@ describe('StateBar waiting chip', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 2' }))
     expect(onFilterChange).toHaveBeenCalledWith('waiting')
   })
+
+  it('keeps the selected chip at zero, so the filter it applies can still be cleared', async () => {
+    // Parents stop waiting as their children finish: the bucket empties under
+    // an active filter, and a hidden chip would leave nothing to click.
+    const { onFilterChange } = renderBar({ counts: { ...counts, waiting: 0 }, filter: 'waiting' })
+    const chip = screen.getByRole('button', { name: 'Waiting for children 0' })
+    expect(chip).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(chip)
+    expect(onFilterChange).toHaveBeenCalledWith('all')
+  })
 })
 
 describe('StateBar', () => {

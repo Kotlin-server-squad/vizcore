@@ -926,6 +926,30 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'a-failed,b-failed')
   })
 
+  it('keeps the Waiting chip clearable after the last parent stops waiting', async () => {
+    const { rerender } = mountSession([
+      coro('p-waiting', 'WAITING_FOR_CHILDREN'),
+      coro('c-active', 'ACTIVE'),
+    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 1' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'p-waiting')
+
+    // The children finish, and the parent with them.
+    const done = [coro('p-waiting', 'COMPLETED'), coro('c-active', 'COMPLETED')]
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: done.length, coroutines: done }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    rerender(<SessionWorkspace sessionId="session-1" />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 0' }))
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute(
+      'data-ids',
+      'p-waiting,c-active',
+    )
+  })
+
   it('explains an empty result as a filter miss, not a missing app', async () => {
     mountSession([coro('a-active', 'ACTIVE'), coro('b-failed', 'FAILED')])
 
