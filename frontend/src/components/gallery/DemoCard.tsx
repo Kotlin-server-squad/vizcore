@@ -11,11 +11,13 @@ interface DemoCardProps {
   /** The demo's "How it works" content, when it has one: adds the level and tags. */
   guide?: DemoGuide
   isStarting: boolean
+  /** Another demo is starting; one start at a time. */
+  isDisabled?: boolean
   onRun: () => void
 }
 
 /** One demo in the Gallery: what it shows, how long it runs, and Run. */
-export function DemoCard({ scenario, groupLabel, guide, isStarting, onRun }: DemoCardProps) {
+export function DemoCard({ scenario, groupLabel, guide, isStarting, isDisabled = false, onRun }: DemoCardProps) {
   return (
     <Card data-testid="demo-card" data-demo-id={scenario.id} className="flex flex-col">
       <CardHeader className="flex items-start justify-between gap-2 pb-0">
@@ -50,6 +52,7 @@ export function DemoCard({ scenario, groupLabel, guide, isStarting, onRun }: Dem
           variant="flat"
           startContent={isStarting ? undefined : <FiZap className="h-4 w-4" />}
           isLoading={isStarting}
+          isDisabled={isDisabled}
           onPress={onRun}
           // Names repeat across groups (two Producer-Consumers).
           aria-label={`Run ${scenario.name} (${groupLabel})`}

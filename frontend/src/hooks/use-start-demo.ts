@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useCreateSession } from '@/hooks/use-sessions'
 import type { Scenario } from '@/types/api'
@@ -15,16 +15,20 @@ export interface DemoStartError {
  *
  * Never rejects: a failed create (e.g. the session-create rate limit) is kept
  * in `startError` for the caller to show, instead of becoming an unhandled
- * rejection (#139).
+ * rejection (#139). One start at a time: a second one while the first is still
+ * creating its session is ignored, or the slower answer would open the other demo.
  */
 export function useStartDemo(onStarted?: () => void) {
   const createSession = useCreateSession()
   const navigate = useNavigate()
   const [preparing, setPreparing] = useState<string | null>(null)
   const [startError, setStartError] = useState<DemoStartError | null>(null)
+  const inFlight = useRef(false)
 
   const start = useCallback(
     async (scenario: Scenario) => {
+      if (inFlight.current) return
+      inFlight.current = true
       setPreparing(scenario.id)
       setStartError(null)
       try {
@@ -38,6 +42,7 @@ export function useStartDemo(onStarted?: () => void) {
       } catch (error) {
         setStartError({ scenario: scenario.name, error })
       } finally {
+        inFlight.current = false
         setPreparing(null)
       }
     },

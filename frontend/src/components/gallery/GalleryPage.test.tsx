@@ -115,6 +115,26 @@ describe('GalleryPage', () => {
     expect(screen.queryAllByTestId('demo-card')).toHaveLength(0)
   })
 
+  it('shows placeholders, not an empty catalog, while a request waits for the network', () => {
+    // React Query while offline: pending, not loading, no error and no data.
+    useScenariosMock.mockReturnValue({ data: undefined, isLoading: false, isPending: true, error: null, refetch })
+    renderPage('basics')
+    expect(screen.getAllByTestId('demo-card-skeleton').length).toBeGreaterThan(0)
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+  })
+
+  it('disables the other Run buttons while a demo is starting', () => {
+    startState.preparing = 'nested'
+    renderPage('basics')
+    expect(screen.getByRole('button', { name: 'Run Parallel: Dashboard (Basics)' })).toBeDisabled()
+  })
+
+  it('ignores a malformed link fragment instead of failing', () => {
+    window.location.hash = '#%'
+    renderPage('mistakes')
+    expect(screen.getAllByTestId('mistake-card')).toHaveLength(MISTAKES.length)
+  })
+
   it('offers Retry when the list cannot be loaded', async () => {
     useScenariosMock.mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(500, 'boom'), refetch })
     renderPage('basics')

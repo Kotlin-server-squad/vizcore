@@ -6,19 +6,21 @@ import { MISTAKES } from './mistakes'
 import { GUIDES } from './guides'
 import type { MistakeId } from './types'
 
-// Every AntiPatternType value, spelled out so a new one fails this test until it has an entry.
-const ALL: MistakeId[] = [
-  'GLOBAL_SCOPE_USAGE',
-  'BLOCKING_ON_MAIN',
-  'LEAKED_COROUTINE',
-  'UNNECESSARY_ASYNC_AWAIT',
-  'RUN_BLOCKING_MISUSE',
-  'COROUTINE_EXPLOSION',
-  'UNHANDLED_EXCEPTION',
-  'MISSING_CANCELLATION_CHECK',
-  'SHARED_MUTABLE_STATE',
-  'WRONG_DISPATCHER',
-]
+// Every AntiPatternType value. `satisfies` makes a new kind a type error here until it is listed,
+// and the list then fails the first test until mistakes.ts has its entry.
+const KINDS = {
+  GLOBAL_SCOPE_USAGE: true,
+  BLOCKING_ON_MAIN: true,
+  LEAKED_COROUTINE: true,
+  UNNECESSARY_ASYNC_AWAIT: true,
+  RUN_BLOCKING_MISUSE: true,
+  COROUTINE_EXPLOSION: true,
+  UNHANDLED_EXCEPTION: true,
+  MISSING_CANCELLATION_CHECK: true,
+  SHARED_MUTABLE_STATE: true,
+  WRONG_DISPATCHER: true,
+} as const satisfies Record<MistakeId, true>
+const ALL = Object.keys(KINDS) as MistakeId[]
 
 const here = dirname(fileURLToPath(import.meta.url))
 const detector = readFileSync(

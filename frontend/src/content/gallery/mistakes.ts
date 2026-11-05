@@ -26,7 +26,7 @@ export const MISTAKES: Mistake[] = [
     id: 'LEAKED_COROUTINE',
     title: 'Leaked coroutine',
     whatGoesWrong:
-      'Its scope has finished, but the coroutine never completed or was cancelled. Nobody waits for its result and nobody stops it.',
+      'The coroutine started but never completed and was never cancelled: it may be waiting for something that never comes, and nothing will stop it. The visualizer flags such coroutines as possibly leaked.',
     fix: 'Keep every coroutine inside a scope that lives at least as long as it does, and cancel that scope when its owner goes away.',
     detected: true,
   },
@@ -42,7 +42,7 @@ export const MISTAKES: Mistake[] = [
     id: 'COROUTINE_EXPLOSION',
     title: 'Too many coroutines at once',
     whatGoesWrong:
-      'One coroutine per item, with no limit. The visualizer flags more than 100 created within one second; memory and threads run out under load.',
+      'One coroutine per item, with no limit. The visualizer flags 100 or more created within one second; memory and threads run out under load.',
     fix: 'Limit how many run at the same time: a Semaphore, a fixed set of workers reading a Channel, or flatMapMerge(concurrency = n).',
     detected: true,
   },

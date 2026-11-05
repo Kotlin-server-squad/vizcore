@@ -28,7 +28,7 @@ interface GalleryPageProps {
  * dialog.
  */
 export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
-  const { data, isLoading, error, refetch } = useScenarios()
+  const { data, isLoading, isPending, error, refetch } = useScenarios()
   const { start, preparing, startError } = useStartDemo()
   const groups = useMemo(() => groupDemos(data?.scenarios ?? []), [data?.scenarios])
 
@@ -37,11 +37,20 @@ export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
 
   // A link such as /gallery?group=mistakes#LEAKED_COROUTINE: the card renders
   // after the page does, so the browser's own jump to the anchor misses it.
+  // Pending without loading is a request waiting for the network (offline): still no list.
+  const waiting = isLoading || (isPending === true && !data && !error)
+  const failed = !waiting && error != null && !data
   // The cards exist only once the list has loaded, hence `showsTabs`.
-  const showsTabs = !isLoading && !(error && !data)
+  const showsTabs = !waiting && !failed
   useEffect(() => {
     if (!showsTabs || selected !== MISTAKES_TAB || !window.location.hash) return
-    document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: 'start' })
+    let id: string
+    try {
+      id = decodeURIComponent(window.location.hash.slice(1))
+    } catch {
+      return // a malformed fragment such as #% names no card
+    }
+    document.getElementById(id)?.scrollIntoView({ block: 'start' })
   }, [selected, showsTabs])
 
   return (
@@ -60,7 +69,7 @@ export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
         </div>
       )}
 
-      {isLoading ? (
+      {waiting ? (
         <div className={GRID}>
           {Array.from({ length: 6 }, (_, i) => (
             <Card key={i} data-testid="demo-card-skeleton">
@@ -72,7 +81,7 @@ export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
             </Card>
           ))}
         </div>
-      ) : error && !data ? (
+      ) : failed ? (
         <ErrorState error={error} subject="The demo list" onRetry={() => void refetch()} />
       ) : (
         <Tabs
@@ -94,6 +103,7 @@ export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
                       groupLabel={g.label}
                       guide={GUIDES[scenario.id]}
                       isStarting={preparing === scenario.id}
+                      isDisabled={preparing !== null && preparing !== scenario.id}
                       onRun={() => void start(scenario)}
                     />
                   ))}

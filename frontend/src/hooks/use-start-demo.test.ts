@@ -68,4 +68,24 @@ describe('useStartDemo', () => {
     await act(() => result.current.start(nested))
     expect(result.current.startError).toBeNull()
   })
+  it('ignores a second start while one is in flight, so a slow first start cannot open the wrong demo', async () => {
+    const parallel = { id: 'parallel', name: 'Parallel: Dashboard', description: '' } as Scenario
+    let finish: (v: { sessionId: string }) => void = () => {}
+    mutateAsync.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+    const { result } = renderHook(() => useStartDemo())
+
+    let first: Promise<void> = Promise.resolve()
+    act(() => {
+      first = result.current.start(nested)
+    })
+    await act(() => result.current.start(parallel))
+    expect(mutateAsync).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finish({ sessionId: 'sid-1' })
+      await first
+    })
+    expect(navigate).toHaveBeenCalledTimes(1)
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ search: expect.objectContaining({ scenarioId: 'nested' }) }))
+  })
 })
