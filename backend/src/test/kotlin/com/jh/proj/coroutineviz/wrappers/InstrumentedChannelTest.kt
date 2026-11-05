@@ -262,7 +262,11 @@ class InstrumentedChannelTest {
             channel.send("b") // replaces "a"
             assertEquals("b", channel.receive())
 
-            val sizes = session.store.all().filterIsInstance<ChannelBufferStateChanged>().map { it.currentSize }
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
             assertEquals(listOf(1, 1, 0), sizes)
         }
 
