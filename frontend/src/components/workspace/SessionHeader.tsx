@@ -108,13 +108,17 @@ export function SessionHeader({
         <Chip size="sm" variant="flat" color={rung === 'demo' ? 'default' : 'primary'} data-testid="rung-badge">
           {RUNG_LABEL[rung]}
         </Chip>
+        {/* A live region, so a screen reader hears a run fail without moving
+            focus (#290). Always mounted for a demo, so the change is heard. */}
         {outcome && (
-          <OutcomePill
-            facts={outcome}
-            spanNanos={runSpanNanos}
-            // Events the backend shed may have been the first or the last.
-            spanIsFloor={droppedCount > 0}
-          />
+          <span role="status" aria-label="Run outcome" aria-atomic="true">
+            <OutcomePill
+              facts={outcome}
+              spanNanos={runSpanNanos}
+              // Events the backend shed may have been the first or the last.
+              spanIsFloor={droppedCount > 0}
+            />
+          </span>
         )}
         <ViewPill
           readOnly={readOnly}

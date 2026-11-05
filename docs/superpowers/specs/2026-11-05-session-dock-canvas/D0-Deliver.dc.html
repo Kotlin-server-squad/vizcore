@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What you will get</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 1000px; box-sizing: border-box; display: flex; flex-direction: column; font-family: Inter, system-ui, sans-serif; background: {{t.bg}}; color: {{t.text}}">
+
+  <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 28px 32px">
+    <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px">
+      <h1 style="margin: 0; font-size: 24px; font-weight: 700">What you will get, part by part</h1>
+      <span style="font-size: 14px; color: {{t.muted}}">10 parts, each its own PR. Comment on any row: keep, change, drop, or do earlier.</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px">
+      <sc-for list="{{legend}}" as="l" hint-placeholder-count="3">
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: {{l.tint}}; color: {{l.text}}"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{l.dot}}"></span>{{l.label}}</span>
+      </sc-for>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45">
+      <thead>
+        <tr style="text-align: left; color: {{t.muted}}">
+          <th scope="col" style="padding: 8px; font-weight: 500; width: 36px">#</th>
+          <th scope="col" style="padding: 8px; font-weight: 500; width: 190px">Part</th>
+          <th scope="col" style="padding: 8px; font-weight: 500">What you will see</th>
+          <th scope="col" style="padding: 8px; font-weight: 500; width: 150px">For whom</th>
+          <th scope="col" style="padding: 8px; font-weight: 500; width: 190px">Where on the canvas</th>
+          <th scope="col" style="padding: 8px; font-weight: 500; width: 210px">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <sc-for list="{{parts}}" as="p" hint-placeholder-count="10">
+          <tr style="border-top: 1px solid {{t.border}}; vertical-align: top; background: {{p.rowBg}}">
+            <td style="padding: 10px 8px; font-weight: 700">{{p.n}}</td>
+            <td style="padding: 10px 8px; font-weight: 600">{{p.name}}<div style="font-size: 11px; font-weight: 400; color: {{t.muted}}">{{p.size}}</div></td>
+            <td style="padding: 10px 8px">{{p.what}}</td>
+            <td style="padding: 10px 8px; color: {{t.muted}}">{{p.who}}</td>
+            <td style="padding: 10px 8px; color: {{t.link}}">{{p.where}}</td>
+            <td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: {{p.st.tint}}; color: {{p.st.text}}"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{p.st.dot}}"></span>{{p.st.label}}</span><div style="font-size: 11px; color: {{t.muted}}; margin-top: 4px">{{p.note}}</div></td>
+          </tr>
+        </sc-for>
+      </tbody>
+    </table>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{cards}}" as="c" hint-placeholder-count="3">
+        <div style="padding: 12px 16px; border-radius: 10px; background: {{t.hl}}; font-size: 13px; line-height: 1.5"><span style="font-weight: 600">{{c.title}}</span> {{c.text}}</div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const isLight = (this.props.theme ?? 'dark') === 'light';
+    const t = isLight
+      ? { bg: '#fafafa', surface: '#ffffff', surface2: '#f4f4f5', surface3: '#e4e4e7', border: '#e4e4e7', text: '#18181b', muted: '#52525b', primary: '#006fee', sel: '#005bc4', hl: 'rgba(0,111,238,0.10)', line: '#a1a1aa', link: '#005bc4' }
+      : { bg: '#0a0a0b', surface: '#131316', surface2: '#18181b', surface3: '#27272a', border: '#27272a', text: '#fafafa', muted: '#a1a1aa', primary: '#006fee', sel: '#4da3ff', hl: 'rgba(77,163,255,0.14)', line: '#52525b', link: '#4da3ff' };
+    const pal = isLight
+      ? { ACTIVE: ['#006fee', '#005bc4'], SUSPENDED: ['#f5a524', '#936316'], WAITING: ['#9353d3', '#6020a0'], COMPLETED: ['#17c964', '#0e793c'], FAILED: ['#f31260', '#c20e4d'], CANCELLED: ['#a1a1aa', '#52525b'] }
+      : { ACTIVE: ['#006fee', '#4da3ff'], SUSPENDED: ['#f5a524', '#f5a524'], WAITING: ['#9353d3', '#b47cff'], COMPLETED: ['#17c964', '#17c964'], FAILED: ['#f31260', '#ff6b95'], CANCELLED: ['#71717a', '#a1a1aa'] };
+    const names = { ACTIVE: 'Active', SUSPENDED: 'Suspended', WAITING: 'Waiting for children', COMPLETED: 'Completed', FAILED: 'Failed', CANCELLED: 'Cancelled' };
+    const s = {};
+    for (const k of Object.keys(pal)) s[k] = { dot: pal[k][0], text: pal[k][1], tint: pal[k][0] + '26', label: names[k] };
+    const node = (name, st, o) => {
+      o = o || {};
+      const noteColors = { wait: s.SUSPENDED.text, hold: t.sel, fail: s.FAILED.text, muted: t.muted };
+      return {
+        name, dot: s[st].dot, color: s[st].text, label: o.detail ? s[st].label + ' · ' + o.detail : s[st].label,
+        note: o.note || '', noteColor: noteColors[o.kind || 'muted'], pressed: o.selected ? 'true' : 'false',
+        border: o.selected ? '2px solid ' + t.sel : o.actor ? '2px solid ' + s[st].dot : '1px solid ' + t.border,
+        stub: o.child ? '14px' : '0px', opacity: o.dim ? 0.45 : 1
+      };
+    };
+    const chip = (label, on) => ({ label, pressed: on ? 'true' : 'false', border: on ? t.sel : t.border, bg: on ? t.hl : 'transparent', color: on ? t.text : t.muted });
+    const view = (label, on) => ({ label, pressed: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? t.surface : 'transparent', color: on ? t.text : t.muted });
+    const tab = (label, on, badge, alert) => ({ label, selected: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? t.surface3 : 'transparent', color: on ? t.text : t.muted,
+      badge: badge || '', badgePad: badge ? '1px 7px' : '0', badgeBg: alert ? s.SUSPENDED.dot : t.surface3, badgeColor: alert ? '#18181b' : t.muted });
+    const btn = (label, primary, aria) => ({ label, aria: aria || label, weight: primary ? 600 : 400, border: primary ? '0' : '1px solid ' + t.border, bg: primary ? t.primary : 'transparent', color: primary ? '#ffffff' : t.text });
+    const st = {
+      built: { dot: s.COMPLETED.dot, text: s.COMPLETED.text, tint: s.COMPLETED.tint, label: 'Built, ready to try' },
+      building: { dot: s.ACTIVE.dot, text: s.ACTIVE.text, tint: s.ACTIVE.tint, label: 'Being built now' },
+      planned: { dot: t.muted, text: t.muted, tint: t.surface3, label: 'Designed, not started' }
+    };
+    const row = (n, name, size, what, who, where, status, note) =>
+      ({ n, name, size, what, who, where, st: st[status], note, rowBg: status === 'planned' ? 'transparent' : t.hl });
+    return {
+      t, s,
+      legend: [st.built, st.building, st.planned],
+      parts: [
+        row('1', 'Quick wins', 'small · page only', 'Today\'s page, fixed: the tree on the first screen; plain words (Active, Waiting for children); a finished demo keeps its tree; a failed run is red, never green; a held lock is grey; one live badge; the long explanation folds into one line.', 'everyone', 'page 2 · Quick wins first', 'built', 'try it: localhost:13501 · PR when you say push it'),
+        row('2', 'Waiting shows as Suspended', 'medium · core library', 'A coroutine waiting for a lock, a permit or a channel shows Suspended and says what it waits for. A semaphore release nobody can be blamed for says holder unknown. Failures carry their stack trace.', 'everyone', 'every screen: the state line on each node', 'building', 'its own copy, not pushed'),
+        row('3', 'The dock', 'large · page', 'The new layout: header, the tree filling the screen, and a resizable dock below with five tabs: Problems, Inspector, Evidence, Events, Learn. Fold it, or maximise the tree.', 'everyone', 'page 1 · board 1, How the page is built', 'planned', 'after Part 1'),
+        row('4', 'One selection, live facts', 'medium · page', 'Click anything (a node, an event, a problem) and every part shows that coroutine. Nodes say what they hold or wait for, and lock facts update live.', 'everyone', 'page 1 · boards 2 and 3', 'planned', 'after Parts 2 and 3'),
+        row('5', 'Health API', 'large · server', 'The server works out problems: failures, and coroutines that ran over 10 s without pausing. Nothing visible yet; Part 7 shows it.', 'developers', 'none (behind the scenes)', 'planned', 'can start any time'),
+        row('6', 'Big apps', 'medium · page', 'For apps with hundreds of coroutines: pick a round, group order-1 … order-300 into order-*, find any coroutine.', 'developers', 'page 1 · board 3, A developer opens their app', 'planned', 'after Parts 3, 4, 5'),
+        row('7', 'Problems tab', 'medium · page', 'Opens first when something went wrong: "1 problem detected", each with why and a Show button that lights it up in the tree.', 'developers', 'page 1 · board 3', 'planned', 'after Parts 3 to 6'),
+        row('8', 'Replay shows one moment', 'medium · page + server', 'During replay every part (inspector, evidence, numbers) shows the same moment, with a time slider in seconds.', 'everyone', 'page 1 · boards 2 and 4 (the time bar)', 'planned', 'after Parts 4 and 5'),
+        row('9', 'Story mode + Run again', 'large · page + guides', 'A demo explains itself in Learn: chapter by chapter, guess what happens next, then Reveal jumps to that moment. Run again starts a fresh run in a new session.', 'learners', 'page 1 · board 2, A learner opens a demo', 'planned', 'after Part 8 · starts with the 7 Basics'),
+        row('10', 'Timeline view', 'large · page + server', 'A second main view: one row per coroutine over time, with a band for what it holds, so you see who waited for what, and when.', 'everyone', 'page 1 · board 4, Anyone switches to Timeline', 'planned', 'after Parts 2 and 8')
+      ],
+      cards: [
+        { title: 'Ready now:', text: 'Part 1, on your machine at localhost:13501. Part 2 is being built next to it.' },
+        { title: 'You get the most, soonest, from:', text: 'Parts 1 and 2 (this week), then 3 and 4: after those the page already looks like board 1.' },
+        { title: 'Not in this design:', text: 'who waits on what (arrows between coroutines), comparing two runs, dismissing a problem. They are listed as later.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
