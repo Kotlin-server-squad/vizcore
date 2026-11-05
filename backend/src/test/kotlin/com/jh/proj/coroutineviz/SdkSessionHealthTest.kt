@@ -89,7 +89,13 @@ class SdkSessionHealthTest {
                 module = Application::module,
             ).start(wait = false)
         server = started
-        val port = runBlocking { started.engine.resolvedConnectors().first().port }
+        val port =
+            runBlocking {
+                started.engine
+                    .resolvedConnectors()
+                    .first()
+                    .port
+            }
         return "http://127.0.0.1:$port"
     }
 
