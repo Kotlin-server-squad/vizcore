@@ -116,7 +116,8 @@ export function CoroutineCanvas({
               ) : (
                 <EmptyState
                   title="No live coroutines yet"
-                  description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
+                  // H-4: the first empty result is where sampling is explained.
+                  description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here as they are captured: vizcore samples them on a poll, so one that starts and ends between two polls may not appear."
                 />
               )
             ) : (
