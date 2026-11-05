@@ -18,6 +18,7 @@ import { Route as CompareIndexRouteImport } from './routes/compare/index'
 import { Route as SharedTokenRouteImport } from './routes/shared.$token'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
 import { Route as ScenariosBuilderRouteImport } from './routes/scenarios/builder'
+import { Route as GallerySlugRouteImport } from './routes/gallery/$slug'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -64,10 +65,16 @@ const ScenariosBuilderRoute = ScenariosBuilderRouteImport.update({
   path: '/scenarios/builder',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GallerySlugRoute = GallerySlugRouteImport.update({
+  id: '/gallery/$slug',
+  path: '/gallery/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/gallery/$slug': typeof GallerySlugRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/shared/$token': typeof SharedTokenRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/gallery/$slug': typeof GallerySlugRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/shared/$token': typeof SharedTokenRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/gallery/$slug': typeof GallerySlugRoute
   '/scenarios/builder': typeof ScenariosBuilderRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/shared/$token': typeof SharedTokenRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/gallery/$slug'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
     | '/shared/$token'
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/gallery/$slug'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
     | '/shared/$token'
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
+    | '/gallery/$slug'
     | '/scenarios/builder'
     | '/sessions/$sessionId'
     | '/shared/$token'
@@ -138,6 +150,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  GallerySlugRoute: typeof GallerySlugRoute
   ScenariosBuilderRoute: typeof ScenariosBuilderRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
   SharedTokenRoute: typeof SharedTokenRoute
@@ -212,12 +225,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ScenariosBuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gallery/$slug': {
+      id: '/gallery/$slug'
+      path: '/gallery/$slug'
+      fullPath: '/gallery/$slug'
+      preLoaderRoute: typeof GallerySlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  GallerySlugRoute: GallerySlugRoute,
   ScenariosBuilderRoute: ScenariosBuilderRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
   SharedTokenRoute: SharedTokenRoute,

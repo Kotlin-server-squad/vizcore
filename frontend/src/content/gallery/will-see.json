@@ -1,0 +1,92 @@
+{
+  "nested": {
+    "atSeconds": 10,
+    "moment": "About 10 s in: the page and its sections wait for their children",
+    "coroutines": [
+      { "label": "load-product-page", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "fetch-product", "state": "COMPLETED", "depth": 1 },
+      { "label": "load-price-box", "state": "COMPLETED", "depth": 1 },
+      { "label": "fetch-price", "state": "COMPLETED", "depth": 2 },
+      { "label": "fetch-delivery-date", "state": "COMPLETED", "depth": 2 },
+      { "label": "load-reviews", "state": "WAITING_FOR_CHILDREN", "depth": 1 },
+      { "label": "fetch-reviews", "state": "WAITING_FOR_CHILDREN", "depth": 2 },
+      { "label": "fetch-review-photos", "state": "SUSPENDED", "depth": 3 },
+      { "label": "load-recommendations", "state": "WAITING_FOR_CHILDREN", "depth": 1 },
+      { "label": "fetch-similar-products", "state": "WAITING_FOR_CHILDREN", "depth": 2 },
+      { "label": "fetch-thumbnails", "state": "SUSPENDED", "depth": 3 }
+    ]
+  },
+  "parallel": {
+    "atSeconds": 5,
+    "moment": "About 5 s in: two widgets are in, three are still loading",
+    "coroutines": [
+      { "label": "load-dashboard", "state": "ACTIVE", "depth": 0 },
+      { "label": "fetch-sales", "state": "SUSPENDED", "depth": 1 },
+      { "label": "fetch-orders", "state": "COMPLETED", "depth": 1 },
+      { "label": "fetch-visitors", "state": "SUSPENDED", "depth": 1 },
+      { "label": "fetch-alerts", "state": "COMPLETED", "depth": 1 },
+      { "label": "fetch-top-products", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "cancellation": {
+    "atSeconds": 7,
+    "moment": "About 7 s in: just after the user closes the screen",
+    "coroutines": [
+      { "label": "app-session", "state": "ACTIVE", "depth": 0 },
+      { "label": "profile-screen", "state": "CANCELLED", "depth": 1 },
+      { "label": "fetch-avatar", "state": "COMPLETED", "depth": 2 },
+      { "label": "fetch-friends", "state": "CANCELLED", "depth": 2 },
+      { "label": "fetch-activity-feed", "state": "CANCELLED", "depth": 2 },
+      { "label": "sync-settings", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "deep-nesting": {
+    "atSeconds": 14,
+    "moment": "About 14 s in: the three deepest folders are done, the others finish one by one",
+    "coroutines": [
+      { "label": "index-home", "state": "ACTIVE", "depth": 0 },
+      { "label": "index-ana", "state": "ACTIVE", "depth": 1 },
+      { "label": "index-projects", "state": "SUSPENDED", "depth": 2 },
+      { "label": "index-vizcore", "state": "COMPLETED", "depth": 3 },
+      { "label": "index-backend", "state": "COMPLETED", "depth": 4 },
+      { "label": "index-src", "state": "COMPLETED", "depth": 5 }
+    ]
+  },
+  "mixed": {
+    "atSeconds": 6,
+    "moment": "About 6 s in: the three middle steps run at the same time",
+    "coroutines": [
+      { "label": "checkout", "state": "ACTIVE", "depth": 0 },
+      { "label": "validate-cart", "state": "COMPLETED", "depth": 1 },
+      { "label": "reserve-stock", "state": "SUSPENDED", "depth": 1 },
+      { "label": "charge-card", "state": "SUSPENDED", "depth": 1 },
+      { "label": "calculate-shipping", "state": "COMPLETED", "depth": 1 }
+    ]
+  },
+  "exception": {
+    "atSeconds": 12.5,
+    "moment": "Just after 12 s: the loyalty call has failed",
+    "coroutines": [
+      { "label": "load-account-page", "state": "FAILED", "depth": 0 },
+      { "label": "fetch-delivery-status", "state": "COMPLETED", "depth": 1 },
+      { "label": "fetch-profile", "state": "COMPLETED", "depth": 1 },
+      { "label": "fetch-orders", "state": "CANCELLED", "depth": 1 },
+      { "label": "fetch-invoices", "state": "CANCELLED", "depth": 1 },
+      { "label": "fetch-loyalty-points", "state": "FAILED", "depth": 1 }
+    ]
+  },
+  "dispatcher": {
+    "atSeconds": 4.5,
+    "moment": "About 4.5 s in: photo 1 is resized on Default while photos 2 and 3 download on IO",
+    "coroutines": [
+      { "label": "make-thumbnails", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "process-photo-1", "state": "ACTIVE", "depth": 1 },
+      { "label": "download-photo-1", "state": "COMPLETED", "depth": 2 },
+      { "label": "resize-photo-1", "state": "SUSPENDED", "depth": 2 },
+      { "label": "process-photo-2", "state": "ACTIVE", "depth": 1 },
+      { "label": "download-photo-2", "state": "SUSPENDED", "depth": 2 },
+      { "label": "process-photo-3", "state": "ACTIVE", "depth": 1 },
+      { "label": "download-photo-3", "state": "SUSPENDED", "depth": 2 }
+    ]
+  }
+}

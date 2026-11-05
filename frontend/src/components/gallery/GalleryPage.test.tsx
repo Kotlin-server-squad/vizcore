@@ -12,8 +12,28 @@ vi.mock('@/hooks/use-start-demo', () => ({
   useStartDemo: () => ({ start, ...startState }),
 }))
 
+// A plain anchor whose href shows where the router would go.
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    children,
+    to,
+    params,
+    ...rest
+  }: { children: React.ReactNode; to: string; params?: Record<string, string> } & Record<string, unknown>) => {
+    let path = to
+    for (const [key, value] of Object.entries(params ?? {})) path = path.replace(`$${key}`, value)
+    return (
+      <a href={path} {...rest}>
+        {children}
+      </a>
+    )
+  },
+}))
+
 import { GalleryPage } from './GalleryPage'
 import { MISTAKES } from '@/content/gallery/mistakes'
+import { GUIDES } from '@/content/gallery/guides'
+import { demoSlug } from '@/lib/demo-slug'
 import { ApiError } from '@/lib/api-errors'
 // What GET /api/scenarios serves; a backend test keeps this copy equal to it.
 import catalog from '@/test/demo-catalog.json'
@@ -191,9 +211,35 @@ describe('GalleryPage', () => {
     }
   })
 
-  it('offers no How it works or level until a demo has a guide', () => {
+  it('shows the level and tags of a demo that has a guide', () => {
     renderPage('basics')
-    expect(screen.queryByText(/how it works/i)).toBeNull()
-    expect(screen.queryByText(/beginner|intermediate|advanced/i)).toBeNull()
+    const nested = screen.getAllByTestId('demo-card').find((c) => c.getAttribute('data-demo-id') === 'nested')!
+    expect(within(nested).getByText(GUIDES.nested!.level)).toBeInTheDocument()
+    for (const tag of GUIDES.nested!.tags) expect(within(nested).getByText(tag)).toBeInTheDocument()
+  })
+
+  it('shows no level for a demo without a guide', () => {
+    renderPage('flow')
+    expect(screen.getAllByTestId('demo-card').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/^(beginner|intermediate|advanced)$/)).toBeNull()
+  })
+
+  it('links every Basics card to its How it works page', () => {
+    renderPage('basics')
+    for (const s of all.filter((d) => d.group === 'basics')) {
+      expect(screen.getByRole('link', { name: `How it works: ${s.name}` })).toHaveAttribute('href', `/gallery/${demoSlug(s.id)}`)
+    }
+  })
+
+  it('shows keyboard focus on a How it works link', () => {
+    renderPage('basics')
+    const link = screen.getByRole('link', { name: /^How it works: Nested/ })
+    // HeroUI's button classes hide the outline and expect data-focus-visible, which a router Link never sets.
+    expect(link.className).toMatch(/focus-visible:outline-/)
+  })
+
+  it('has no How it works link for a demo without a guide', () => {
+    renderPage('flow')
+    expect(screen.queryByRole('link', { name: /how it works/i })).toBeNull()
   })
 })

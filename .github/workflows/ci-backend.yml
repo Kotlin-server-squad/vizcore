@@ -5,10 +5,10 @@ on:
     branches: [main]
     # The demo catalog's SPA copy and the Compose files are checked by backend tests
     # (DemoCatalogTest, ComposeDemoSettingsTest).
-    paths: ['backend/**', 'frontend/src/test/demo-catalog.json', 'docker-compose.yml', 'docker-compose.prod.yml']
+    paths: ['backend/**', 'frontend/src/test/demo-catalog.json', 'frontend/src/content/gallery/will-see.json', 'docker-compose.yml', 'docker-compose.prod.yml']
   pull_request:
     branches: [main]
-    paths: ['backend/**', 'frontend/src/test/demo-catalog.json', 'docker-compose.yml', 'docker-compose.prod.yml']
+    paths: ['backend/**', 'frontend/src/test/demo-catalog.json', 'frontend/src/content/gallery/will-see.json', 'docker-compose.yml', 'docker-compose.prod.yml']
 
 # The IntelliJ plugin is postponed (#130) and is no longer configured or built by this
 # workflow: backend/settings.gradle.kts leaves :intellij-plugin out of the build unless
