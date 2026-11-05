@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
 import { findSvgRoot } from '@/lib/export-svg'
@@ -124,6 +124,28 @@ describe('CoroutineTreeGraph', () => {
     render(<CoroutineTreeGraph coroutines={[]} />)
 
     expect(screen.getByText('No coroutines in this session yet.')).toBeInTheDocument()
+  })
+
+  it('shows what a coroutine waits for on a second line, in the Suspended colour', () => {
+    const activity = new Map([['c-1', { text: 'waits for inventory-lock · 1st', waiting: true }]])
+    render(<CoroutineTreeGraph coroutines={[makeCoroutine({ id: 'c-1', state: CoroutineState.SUSPENDED })]} activity={activity} />)
+    const line = within(screen.getByTestId('graph-node-c-1')).getByTestId('activity-line')
+    expect(line).toHaveTextContent('waits for inventory-lock · 1st')
+    expect(line.className).toContain('text-warning')
+  })
+
+  it('shows a hold neutrally, and no line for a coroutine that holds or waits for nothing', () => {
+    const activity = new Map([['c-1', { text: 'holds inventory-lock', waiting: false }]])
+    render(
+      <CoroutineTreeGraph
+        coroutines={[makeCoroutine({ id: 'c-1' }), makeCoroutine({ id: 'c-2', label: 'other' })]}
+        activity={activity}
+      />,
+    )
+    const line = within(screen.getByTestId('graph-node-c-1')).getByTestId('activity-line')
+    expect(line.className).toContain('text-default-600')
+    expect(line.className).not.toContain('text-warning')
+    expect(within(screen.getByTestId('graph-node-c-2')).queryByTestId('activity-line')).toBeNull()
   })
 
   it('renders with coroutine data', () => {
