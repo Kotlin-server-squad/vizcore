@@ -107,7 +107,7 @@ describe('CoroutineTreeGraph', () => {
     const canvas = screen.getByTestId('graph-canvas')
     expect(canvas.className).toContain('h-full')
     expect(canvas.className).not.toContain('70vh')
-    expect(canvas.className).not.toContain('min-h-[480px]')
+    expect(canvas.className).not.toContain('min-h-')
   })
 
   beforeEach(() => {

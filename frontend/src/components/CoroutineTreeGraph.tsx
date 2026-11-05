@@ -276,12 +276,12 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId }: Cor
       data-fullscreen={isFullscreen ? 'true' : 'false'}
       // HTML cards over an SVG layer: export it as a picture, not as one of its svgs
       data-export-raster="true"
-      // The main view sizes the canvas (S-1): it fills that box. `min-h` only
-      // keeps it usable if a parent forgets to give it a height.
+      // The main view sizes the canvas (S-1): it fills that box, however small
+      // the dock leaves it — a minimum of its own would overflow the box.
       className={
         isFullscreen
           ? 'fixed inset-0 z-50 overflow-hidden bg-default-50'
-          : 'relative h-full min-h-[240px] w-full overflow-hidden rounded-lg border border-default-200 bg-default-50'
+          : 'relative h-full w-full overflow-hidden rounded-lg border border-default-200 bg-default-50'
       }
     >
       <TransformWrapper
