@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz
 import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.UserStore
 import com.jh.proj.coroutineviz.routes.CorrelationRegistry
+import com.jh.proj.coroutineviz.routes.IngestStates
 import com.jh.proj.coroutineviz.routes.registerAuthRoutes
 import com.jh.proj.coroutineviz.routes.registerComparisonRoutes
 import com.jh.proj.coroutineviz.routes.registerFlowScenarioRoutes
@@ -11,6 +12,7 @@ import com.jh.proj.coroutineviz.routes.registerIngestRoutes
 import com.jh.proj.coroutineviz.routes.registerPatternRoutes
 import com.jh.proj.coroutineviz.routes.registerRootRoutes
 import com.jh.proj.coroutineviz.routes.registerScenarioRunnerRoutes
+import com.jh.proj.coroutineviz.routes.registerSessionHealthRoutes
 import com.jh.proj.coroutineviz.routes.registerSessionRoutes
 import com.jh.proj.coroutineviz.routes.registerSyncScenarioRoutes
 import com.jh.proj.coroutineviz.routes.registerTestRoutes
@@ -36,6 +38,8 @@ fun Application.configureRouting() {
     // clobber"). Fires in BOTH the backing-store and in-memory delete branches, so eviction is
     // uniform across persistence modes. No TTL: the map is bounded purely by live-session lifecycle.
     SessionManager.addOnSessionClosed { sessionId -> CorrelationRegistry.evict(sessionId) }
+    // A deleted session's ingest state (watermark, transport) goes with it.
+    SessionManager.addOnSessionClosed { sessionId -> IngestStates.forget(sessionId) }
 
     // Stores built by configureAuth() (runs first in module()); reused for the token endpoint.
     val userStore = attributes.getOrNull(UserStoreKey) ?: UserStore(emptyList())
@@ -76,6 +80,7 @@ fun Application.configureRouting() {
                 registerSyncScenarioRoutes()
                 registerTestRoutes()
                 registerSessionRoutes()
+                registerSessionHealthRoutes()
                 // WebSocket ingest (RCO-05): inherits auth + the "api" stream bucket
                 // + D-04a fail-open from this authenticatedApi/rateLimit block.
                 registerIngestRoutes()

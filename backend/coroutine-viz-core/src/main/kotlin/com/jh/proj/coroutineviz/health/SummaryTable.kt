@@ -30,6 +30,15 @@ interface SummaryView {
      * an attached session's table.
      */
     val latestEventAppNanos: Long?
+
+    /**
+     * Sequence of the first event applied, 0 before any. A table that saw every event of its session (the in-memory
+     * table of a live session) tells a trimmed store apart from one that never held more.
+     */
+    val firstEventSeq: Long
+
+    /** Smallest app-clock time of any event applied, `null` before any: the capture's start (spec C-3 `captureStartAppNanos`). */
+    val earliestEventAppNanos: Long?
 }
 
 /**
@@ -70,35 +79,99 @@ class SummaryTable(
     override var latestEventAppNanos: Long? = null
         private set
 
+    override var firstEventSeq: Long = 0L
+        private set
+
+    override var earliestEventAppNanos: Long? = null
+        private set
+
     override fun get(id: String): CoroutineSummary? = summaries[id]
 
     override val all: Collection<CoroutineSummary> get() = summaries.values
 
     fun apply(event: VizEvent) {
-        lastEventSeq = event.seq
-        latestEventAppNanos = maxOf(latestEventAppNanos ?: Long.MIN_VALUE, event.tsNanos)
+        observe(event.seq, event.tsNanos)
         if (event !is CoroutineEvent) return
         if (event is CoroutineCreated) onCreated(event) else onUpdate(event)
     }
 
-    private fun onCreated(e: CoroutineCreated) {
-        if (e.coroutineId in summaries) return
+    private fun observe(
+        seq: Long,
+        appNanos: Long,
+    ) {
+        if (firstEventSeq == 0L) firstEventSeq = seq
+        lastEventSeq = seq
+        latestEventAppNanos = maxOf(latestEventAppNanos ?: Long.MIN_VALUE, appNanos)
+        earliestEventAppNanos = minOf(earliestEventAppNanos ?: Long.MAX_VALUE, appNanos)
+    }
+
+    private fun onCreated(e: CoroutineCreated) = track(e.coroutineId, e.parentCoroutineId, e.seq) { SummaryUpdater.created(e) }
+
+    private fun track(
+        id: String,
+        parentId: String?,
+        seq: Long,
+        create: () -> CoroutineSummary,
+    ) {
+        if (id in summaries) return
         // Growth counts even for a child beyond capacity: the root is still a container.
-        val parent = e.parentCoroutineId?.let { summaries[it] }
+        val parent = parentId?.let { summaries[it] }
         if (parent != null && parent.promotedAtSeq != null && !parent.grewAfterPromotion) {
-            summaries[parent.id] = parent.copy(grewAfterPromotion = true, lastModifiedSeq = e.seq)
+            summaries[parent.id] = parent.copy(grewAfterPromotion = true, lastModifiedSeq = seq)
         }
         if (summaries.size >= trackedCapacity) {
             untrackedCount++
             return
         }
-        summaries[e.coroutineId] = SummaryUpdater.created(e)
-        creationOrder[e.coroutineId] = nextCreationOrder++
+        summaries[id] = create()
+        creationOrder[id] = nextCreationOrder++
         fullSummaryCount++
-        subtrees.add(e.coroutineId, e.parentCoroutineId)
-        promoteIfQualified(subtrees.rootOf(e.coroutineId), e.seq)
-        reduceOverTarget(e.seq)
+        subtrees.add(id, parentId)
+        promoteIfQualified(subtrees.rootOf(id), seq)
+        reduceOverTarget(seq)
     }
+
+    /**
+     * Replay seed (spec "Modes", Replay; used by [SummaryFold]): every coroutine of [durable] first observed before
+     * [retainedFrom] (its creation event was trimmed) and at or before [atSeq] is created again from its summary, and
+     * finished at its terminal transition when that is in the same range, all in seq order through the same bookkeeping
+     * as [apply]. Promotion and round anchoring depend only on creations and terminals, so they are those of the cursor.
+     * Nothing in between is known, so nothing is invented: a seeded coroutine reads as created until a retained event
+     * says more. Call it on an empty table, before any [apply].
+     */
+    internal fun seed(
+        durable: SummaryView,
+        retainedFrom: Long,
+        atSeq: Long,
+    ) {
+        check(lastEventSeq == 0L && summaries.isEmpty()) { "seed an empty table only" }
+        val trimmed = { seq: Long -> seq < retainedFrom && seq <= atSeq }
+        val steps = ArrayList<SeedStep>()
+        for (s in durable.all) {
+            if (!trimmed(s.firstObserved.seq)) continue
+            steps += SeedStep(s.firstObserved, s, creation = true)
+            s.terminal?.takeIf { trimmed(it.seq) }?.let { steps += SeedStep(it, s, creation = false) }
+        }
+        steps.sortBy { it.at.seq }
+        for (step in steps) {
+            val s = step.summary
+            observe(step.at.seq, step.at.appNanos)
+            if (step.creation) {
+                track(s.id, s.parentId, step.at.seq) { SummaryUpdater.createdFrom(s) }
+            } else {
+                val current = summaries[s.id] ?: continue
+                val next = SummaryUpdater.finishedAs(current, s)
+                summaries[s.id] = next
+                onTerminal(next, step.at.seq)
+            }
+        }
+    }
+
+    private class SeedStep(
+        val at: Transition,
+        val summary: CoroutineSummary,
+        val creation: Boolean,
+    )
 
     private fun onUpdate(event: CoroutineEvent) {
         val current = summaries[event.coroutineId] ?: return

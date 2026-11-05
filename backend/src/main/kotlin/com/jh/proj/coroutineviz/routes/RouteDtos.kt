@@ -1,6 +1,9 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.SessionKind
+import com.jh.proj.coroutineviz.health.SessionOrigin
+import com.jh.proj.coroutineviz.health.WatermarkObservation
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
@@ -53,6 +56,24 @@ data class SessionSnapshotResponse(
     val coroutineCount: Int,
     val eventCount: Int,
     val coroutines: List<CoroutineNodeDto>,
+    /** ATTACHED for a connected app's session, DEMO for vizcore's own runs (spec C-3). */
+    val kind: SessionKind,
+    /** When the session was created (backend wall clock). */
+    val startedAtEpochMs: Long,
+    /** App-clock time of the earliest event captured, the origin of "time into the capture"; null when unknown. */
+    val captureStartAppNanos: Long?,
+    /** REPORTED when the producer reports coroutine origins (or for demos), else UNKNOWN. */
+    val origin: SessionOrigin,
+    /** Whether an app's ingest socket is open on this backend right now (spec T-2, dock S-3). */
+    val appConnected: Boolean,
+    /** Backend receipt time of the last event frame from the app, null before any. */
+    val lastIngestEpochMs: Long?,
+    /** The app's latest poll watermark, null before any (spec C-7). */
+    val lastWatermark: WatermarkObservation?,
+    /** Seq of the oldest event still retained, null when none is. */
+    val oldestRetainedSeq: Long?,
+    /** Whether older events were dropped (bounded store or retention). */
+    val trimmed: Boolean,
 )
 
 @Serializable

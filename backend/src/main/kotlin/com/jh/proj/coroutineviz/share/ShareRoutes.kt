@@ -5,8 +5,7 @@ import com.jh.proj.coroutineviz.auth.TenantContext
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.currentPrincipal
-import com.jh.proj.coroutineviz.routes.CoroutineNodeDto
-import com.jh.proj.coroutineviz.routes.SessionSnapshotResponse
+import com.jh.proj.coroutineviz.routes.snapshotResponseOf
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.HttpStatusCode
@@ -204,29 +203,12 @@ fun Route.registerSharedPublicRoute(service: ShareService) {
 
 /**
  * Build the `{session, events}` body for a shared session — the same snapshot
- * shape `GET /api/sessions/{id}` returns plus the full event history (reusing
- * the [VizSession] store, which the SSE/events paths also read).
+ * shape `GET /api/sessions/{id}` returns (with its session facts) plus the full
+ * event history (reusing the [VizSession] store, which the SSE/events paths also read).
  */
 private fun sharedResponse(session: VizSession): SharedSessionResponse {
     val events = session.store.all()
-    val snapshot =
-        SessionSnapshotResponse(
-            sessionId = session.sessionId,
-            coroutineCount = session.snapshot.coroutines.size,
-            eventCount = events.size,
-            coroutines =
-                session.snapshot.coroutines.values.map { node ->
-                    CoroutineNodeDto(
-                        id = node.id,
-                        jobId = node.jobId,
-                        parentId = node.parentId,
-                        scopeId = node.scopeId,
-                        label = node.label,
-                        state = node.state.toString(),
-                    )
-                },
-        )
-    return SharedSessionResponse(session = snapshot, events = events)
+    return SharedSessionResponse(session = snapshotResponseOf(session, events), events = events)
 }
 
 /**

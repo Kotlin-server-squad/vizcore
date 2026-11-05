@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.PollWatermark
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.withSessionId
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
@@ -86,7 +87,7 @@ fun Route.registerIngestRoutes() {
                 removed.set(true)
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
             }
-        // Registered right before the try and released first in the finally, so nothing between
+        // Registered right before the try and released in the finally before anything that can fail, so nothing between
         // the two can leave the session marked connected (which would hide Checks failures). A
         // retention decision may have deleted the session while this socket waited to register;
         // then no frame may be stored into it, and the client must learn to recreate it (#261).
@@ -96,19 +97,30 @@ fun Route.registerIngestRoutes() {
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
             return@webSocket
         }
+        // This connection's events get seqs after everything appended so far (spec C-3 `transport.sinceSeq`).
+        val connection = IngestStates.connectionOpened(sessionId, firstSeq = session.lastSeq + 1)
         try {
             for (frame in incoming) {
                 // Frames already queued when the session was deleted must not land in it;
                 // the watcher above is closing the socket.
                 if (removed.get()) break
-                if (frame is Frame.Text) {
-                    publishFrame(session, sessionId, frame.readText())
+                when (frame) {
+                    is Frame.Text -> publishFrame(session, connection, frame.readText())
+                    // Events travel as text; a binary data frame is not read, and may have been one.
+                    is Frame.Binary -> IngestStates.frameSkipped(connection)
+                    else -> Unit
                 }
             }
         } finally {
+            // Transport facts first (in memory, cannot fail): once the session reads as disconnected,
+            // how the connection ended is already known.
+            IngestStates.connectionClosed(connection)
             IngestConnections.closed(sessionId)
             sessionRemoved.cancel()
             session.ingestSocketClosed()
+            // A socket set up while its session was being deleted may have allocated ingest state after
+            // the delete dropped it.
+            if (removed.get() || !sessionStillExists(sessionId)) IngestStates.forget(sessionId)
         }
     }
 }
@@ -117,7 +129,7 @@ fun Route.registerIngestRoutes() {
  * Whether [sessionId] still exists, without rebuilding the session: a row lookup in database mode,
  * the in-memory map otherwise.
  */
-private fun sessionStillExists(sessionId: String): Boolean =
+internal fun sessionStillExists(sessionId: String): Boolean =
     (SessionManager.backingStore() as? ExposedSessionStore)?.sessionExists(sessionId)
         ?: (SessionManager.getSession(sessionId) != null)
 
@@ -126,6 +138,7 @@ private fun sessionStillExists(sessionId: String): Boolean =
  *
  *  - T-07-05: a malformed frame is skipped (logged at debug); the caller keeps
  *    looping so the stream stays open — one bad frame never drops the connection.
+ *    It may have been an event, so delivery becomes uncertain ([IngestStates.frameSkipped]).
  *  - T-07-03: the frame's own `sessionId` is REWRITTEN to the server-resolved
  *    [VizSession.sessionId] before the event is decoded ([withSessionId]), so the
  *    stored, replayed and streamed event carries the session the request resolved
@@ -134,10 +147,12 @@ private fun sessionStillExists(sessionId: String): Boolean =
  *    ever written to; the frame body never selects a destination.
  *  - The server also assigns `seq` (`ingest()` never keeps the client's value), so
  *    session order stays strictly increasing.
+ *  - A [PollWatermark] is transport state (spec C-7): it goes to [IngestStates], never into the
+ *    store. Frames of one socket are handled in order, so the poll's events are applied first.
  */
 private fun publishFrame(
     session: VizSession,
-    sessionId: String,
+    connection: IngestStates.Connection,
     text: String,
 ) {
     val event =
@@ -145,8 +160,16 @@ private fun publishFrame(
             val stamped = appJson.parseToJsonElement(text).withSessionId(session.sessionId)
             appJson.decodeFromJsonElement(PolymorphicSerializer(VizEvent::class), stamped)
         }.getOrElse {
-            ingestLogger.debug("Skipped malformed ingest frame for session {}: {}", sessionId, it.message)
+            ingestLogger.debug("Skipped malformed ingest frame for session {}: {}", connection.sessionId, it.message)
+            IngestStates.frameSkipped(connection)
             return
         }
+    val receivedEpochMs = System.currentTimeMillis()
+    if (event is PollWatermark) {
+        IngestStates.watermarkReceived(connection, event, receivedEpochMs)
+        return
+    }
+    // Recorded before the append: "last data" is never earlier than an event a health read includes.
+    IngestStates.eventReceived(connection, receivedEpochMs)
     session.ingest(event)
 }

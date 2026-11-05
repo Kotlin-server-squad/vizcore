@@ -300,6 +300,89 @@
         }
       }
     },
+    "/api/sessions/{id}/health": {
+      "get": {
+        "operationId": "getSessionHealth",
+        "summary": "The session's derived health, live or at a replay cursor",
+        "description": "What the captured coroutines show (spec 2026-10-21, C-3): failed rounds, ungrouped failures and possibly blocked coroutines, observations, origin counts, transport and retention facts; every list is capped at 50 with its total. Without atSeq the health is live; with it, it is the fold of the retained events up to the cursor (clamped to the last event), seeded from the durable summaries for coroutines whose creation was trimmed.",
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "atSeq",
+            "in": "query",
+            "required": false,
+            "description": "Replay cursor (event seq). Omit for live health.",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "leakThresholdMs",
+            "in": "query",
+            "required": false,
+            "description": "Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session's health",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionHealth"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "atSeq is not a non-negative integer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Health unavailable: code summaries-unavailable, or history-trimmed for a database session whose early events were trimmed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{id}/coroutines/{coroutineId}/timeline": {
       "get": {
         "operationId": "getCoroutineTimeline",
@@ -1135,6 +1218,16 @@
         "properties": {
           "error": {
             "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "demo-limit",
+              "demo-time-limit",
+              "summaries-unavailable",
+              "history-trimmed"
+            ],
+            "description": "Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s)"
           }
         }
       },
@@ -1187,7 +1280,16 @@
           "sessionId",
           "coroutineCount",
           "eventCount",
-          "coroutines"
+          "coroutines",
+          "kind",
+          "startedAtEpochMs",
+          "captureStartAppNanos",
+          "origin",
+          "appConnected",
+          "lastIngestEpochMs",
+          "lastWatermark",
+          "oldestRetainedSeq",
+          "trimmed"
         ],
         "properties": {
           "sessionId": {
@@ -1204,6 +1306,52 @@
             "items": {
               "$ref": "#/components/schemas/CoroutineNodeDto"
             }
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionKind"
+          },
+          "startedAtEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the session was created (backend wall clock)"
+          },
+          "captureStartAppNanos": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "App-clock time of the earliest event captured; null when unknown"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/SessionOrigin"
+          },
+          "appConnected": {
+            "type": "boolean",
+            "description": "Whether an app's ingest socket is open on this backend right now"
+          },
+          "lastIngestEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Backend receipt time of the last event frame from the app"
+          },
+          "lastWatermark": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WatermarkObservation"
+              }
+            ],
+            "nullable": true,
+            "description": "The app's latest poll watermark"
+          },
+          "oldestRetainedSeq": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Seq of the oldest event still retained"
+          },
+          "trimmed": {
+            "type": "boolean",
+            "description": "Whether older events were dropped"
           }
         }
       },
@@ -1927,6 +2075,821 @@
           "reason": {
             "type": "string",
             "description": "Reason for suspension (e.g. \"delay\", \"withContext\", \"join\", \"await\")"
+          }
+        }
+      },
+      "SessionKind": {
+        "type": "string",
+        "enum": [
+          "ATTACHED",
+          "DEMO"
+        ],
+        "description": "ATTACHED for a connected app's session, DEMO for vizcore's own runs"
+      },
+      "SessionOrigin": {
+        "type": "string",
+        "enum": [
+          "REPORTED",
+          "UNKNOWN"
+        ],
+        "description": "REPORTED when the producer reports coroutine origins (or for demos)"
+      },
+      "WatermarkObservation": {
+        "type": "object",
+        "description": "An SDK poll watermark (spec C-7)",
+        "required": [
+          "appNanos",
+          "appEpochMs",
+          "receivedEpochMs"
+        ],
+        "properties": {
+          "appNanos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Poll time on the app clock"
+          },
+          "appEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The app's wall-clock time of that poll"
+          },
+          "receivedEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the backend received it"
+          }
+        }
+      },
+      "AsOfKind": {
+        "type": "string",
+        "enum": [
+          "WATERMARK",
+          "INGEST",
+          "LAST_EVENT",
+          "REPLAY_CURSOR"
+        ]
+      },
+      "AsOf": {
+        "type": "object",
+        "description": "The observation a health statement is about (spec H-2)",
+        "required": [
+          "kind",
+          "appNanos",
+          "appEpochMs",
+          "receivedEpochMs",
+          "seq",
+          "lowerBound"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AsOfKind"
+          },
+          "appNanos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Latest app-clock time observed in the events up to seq"
+          },
+          "appEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "The app's wall-clock time of the observation, when known"
+          },
+          "receivedEpochMs": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "The backend's receipt time"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Last event seq the health reflects"
+          },
+          "lowerBound": {
+            "type": "boolean",
+            "description": "A replay of trimmed history: appNanos is the latest time known at or before the cursor, a lower bound"
+          }
+        }
+      },
+      "EvaluationStatus": {
+        "type": "string",
+        "enum": [
+          "EVALUATED",
+          "NOT_EVALUATED"
+        ]
+      },
+      "NotEvaluatedReason": {
+        "type": "string",
+        "enum": [
+          "NO_WATERMARK",
+          "DEMO",
+          "REPLAY",
+          "OVERFLOW",
+          "EVENTS_DROPPED",
+          "HISTORY_TRIMMED"
+        ]
+      },
+      "PossiblyBlockedEvaluation": {
+        "type": "object",
+        "required": [
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/EvaluationStatus"
+          },
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotEvaluatedReason"
+              }
+            ],
+            "nullable": true,
+            "description": "Set if and only if NOT_EVALUATED; the highest-precedence reason"
+          }
+        }
+      },
+      "HealthState": {
+        "type": "string",
+        "enum": [
+          "AWAITING_FIRST_DATA",
+          "PROBLEMS",
+          "NO_PROBLEMS",
+          "NO_FAILURES_PARTIAL",
+          "NO_APP_COROUTINES"
+        ],
+        "description": "The health strip's state (spec 'Health strip states')"
+      },
+      "IncidentKind": {
+        "type": "string",
+        "enum": [
+          "FAILED",
+          "POSSIBLY_BLOCKED"
+        ]
+      },
+      "TransitionKind": {
+        "type": "string",
+        "enum": [
+          "CREATED",
+          "STARTED",
+          "SUSPENDED",
+          "RESUMED",
+          "BODY_COMPLETED",
+          "COMPLETED",
+          "CANCELLED",
+          "FAILED"
+        ]
+      },
+      "Transition": {
+        "type": "object",
+        "required": [
+          "kind",
+          "appNanos",
+          "seq"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TransitionKind"
+          },
+          "appNanos": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ThreadObservation": {
+        "type": "object",
+        "required": [
+          "threadId",
+          "threadName",
+          "seq"
+        ],
+        "properties": {
+          "threadId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "threadName": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FailureEntry": {
+        "type": "object",
+        "required": [
+          "coroutineId",
+          "name",
+          "exceptionType",
+          "message",
+          "failedAtSeq",
+          "detailsDropped"
+        ],
+        "properties": {
+          "coroutineId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "exceptionType": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "failedAtSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "detailsDropped": {
+            "type": "boolean",
+            "description": "The summary was reduced: type and message are no longer known"
+          }
+        }
+      },
+      "CappedFailureEntries": {
+        "type": "object",
+        "description": "Failures, newest first, capped at 50",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FailureEntry"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Entries before the cap of 50"
+          }
+        }
+      },
+      "CappedStrings": {
+        "type": "object",
+        "description": "Coroutine ids, newest first, capped at 50",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Entries before the cap of 50"
+          }
+        }
+      },
+      "FailedRoundIncident": {
+        "type": "object",
+        "description": "All failed coroutines of one round (spec 'Incidents'); cancellations after the first failure are context",
+        "required": [
+          "type",
+          "id",
+          "roundId",
+          "anchorId",
+          "failures",
+          "cancelledAfter",
+          "firstFailureSeq",
+          "sortSeq"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "FAILED_ROUND"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "roundId": {
+            "type": "string"
+          },
+          "anchorId": {
+            "type": "string"
+          },
+          "failures": {
+            "$ref": "#/components/schemas/CappedFailureEntries"
+          },
+          "cancelledAfter": {
+            "$ref": "#/components/schemas/CappedStrings"
+          },
+          "firstFailureSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sortSeq": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "UngroupedFailureIncident": {
+        "type": "object",
+        "description": "A failed coroutine whose round cannot be determined",
+        "required": [
+          "type",
+          "id",
+          "failure",
+          "sortSeq"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "UNGROUPED_FAILURE"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "failure": {
+            "$ref": "#/components/schemas/FailureEntry"
+          },
+          "sortSeq": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PossiblyBlockedIncident": {
+        "type": "object",
+        "description": "A coroutine observed running past the threshold up to the latest watermark",
+        "required": [
+          "type",
+          "id",
+          "coroutineId",
+          "name",
+          "roundId",
+          "anchorId",
+          "lastThread",
+          "dispatcher",
+          "lastSuspension",
+          "lastSuspensionProvenance",
+          "lastRunStart",
+          "runningForNanos",
+          "transitions",
+          "transitionsGap",
+          "firstObservedRunning",
+          "eventLoopClue",
+          "sortSeq"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "POSSIBLY_BLOCKED"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "coroutineId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "roundId": {
+            "type": "string",
+            "nullable": true
+          },
+          "anchorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastThread": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ThreadObservation"
+              }
+            ],
+            "nullable": true,
+            "description": "The thread assigned in the current run, null when none was observed"
+          },
+          "dispatcher": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastSuspension": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SuspensionPoint"
+              }
+            ],
+            "nullable": true
+          },
+          "lastSuspensionProvenance": {
+            "type": "string",
+            "enum": [
+              "REAL_FRAME",
+              "CREATION_FALLBACK",
+              "STALE"
+            ],
+            "nullable": true
+          },
+          "lastRunStart": {
+            "$ref": "#/components/schemas/Transition"
+          },
+          "runningForNanos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "From the latest start/resume to the watermark (app clock)"
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Transition"
+            },
+            "description": "Up to the 20 most recent retained transitions"
+          },
+          "transitionsGap": {
+            "type": "boolean",
+            "description": "The retained transitions do not start with the creation"
+          },
+          "firstObservedRunning": {
+            "type": "boolean",
+            "description": "No suspension was ever observed"
+          },
+          "eventLoopClue": {
+            "type": "string",
+            "nullable": true,
+            "description": "The matched event-loop thread prefix (a clue, never a verdict)"
+          },
+          "sortSeq": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Incident": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/FailedRoundIncident"
+          },
+          {
+            "$ref": "#/components/schemas/UngroupedFailureIncident"
+          },
+          {
+            "$ref": "#/components/schemas/PossiblyBlockedIncident"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "FAILED_ROUND": "#/components/schemas/FailedRoundIncident",
+            "UNGROUPED_FAILURE": "#/components/schemas/UngroupedFailureIncident",
+            "POSSIBLY_BLOCKED": "#/components/schemas/PossiblyBlockedIncident"
+          }
+        }
+      },
+      "CappedIncidents": {
+        "type": "object",
+        "description": "Incidents by kind (failures first), newest first, capped at 50",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Incident"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Entries before the cap of 50"
+          }
+        }
+      },
+      "ObservedAge": {
+        "type": "object",
+        "required": [
+          "coroutineId",
+          "name",
+          "ageNanos"
+        ],
+        "properties": {
+          "coroutineId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "ageNanos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Frozen at the last observation"
+          }
+        }
+      },
+      "CappedObservedAges": {
+        "type": "object",
+        "description": "Newest first, capped at 50",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObservedAge"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Entries before the cap of 50"
+          }
+        }
+      },
+      "Observations": {
+        "type": "object",
+        "description": "Shown, never counted as problems",
+        "required": [
+          "longLived",
+          "longSuspended"
+        ],
+        "properties": {
+          "longLived": {
+            "$ref": "#/components/schemas/CappedObservedAges"
+          },
+          "longSuspended": {
+            "$ref": "#/components/schemas/CappedObservedAges"
+          }
+        }
+      },
+      "OriginCounts": {
+        "type": "object",
+        "required": [
+          "app",
+          "vizcore",
+          "unknown",
+          "untracked"
+        ],
+        "properties": {
+          "app": {
+            "type": "integer"
+          },
+          "vizcore": {
+            "type": "integer"
+          },
+          "unknown": {
+            "type": "integer"
+          },
+          "untracked": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Coroutines beyond capacity, only counted"
+          }
+        }
+      },
+      "VizcoreConnectionHealth": {
+        "type": "object",
+        "required": [
+          "captured",
+          "failed",
+          "failures"
+        ],
+        "properties": {
+          "captured": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "failures": {
+            "$ref": "#/components/schemas/CappedFailureEntries"
+          }
+        }
+      },
+      "TransportStatus": {
+        "type": "object",
+        "description": "Sticky for the session across reconnects",
+        "required": [
+          "lostEvents",
+          "deliveryUncertain",
+          "sinceSeq"
+        ],
+        "properties": {
+          "lostEvents": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Largest cumulative loss count an SDK watermark reported"
+          },
+          "deliveryUncertain": {
+            "type": "boolean",
+            "description": "An ingest connection ended without a final watermark, a frame could not be read, or the events came through a connection this backend did not watch"
+          },
+          "sinceSeq": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "First seq that may be incomplete"
+          }
+        }
+      },
+      "ProblemRound": {
+        "type": "object",
+        "required": [
+          "roundId",
+          "anchorId",
+          "anchorCreatedNanos",
+          "kinds"
+        ],
+        "properties": {
+          "roundId": {
+            "type": "string"
+          },
+          "anchorId": {
+            "type": "string"
+          },
+          "anchorCreatedNanos": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentKind"
+            }
+          }
+        }
+      },
+      "CappedProblemRounds": {
+        "type": "object",
+        "description": "Capped at 50",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemRound"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Entries before the cap of 50"
+          }
+        }
+      },
+      "RetentionInfo": {
+        "type": "object",
+        "required": [
+          "oldestRetainedSeq",
+          "oldestRetainedAppNanos",
+          "trimmed"
+        ],
+        "properties": {
+          "oldestRetainedSeq": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "oldestRetainedAppNanos": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "trimmed": {
+            "type": "boolean",
+            "description": "Events before the oldest retained one were dropped"
+          }
+        }
+      },
+      "SessionHealth": {
+        "type": "object",
+        "description": "A session's derived health (spec 2026-10-21, C-3)",
+        "required": [
+          "state",
+          "asOf",
+          "asOfSeq",
+          "sessionOrigin",
+          "problemCount",
+          "failedRoundCount",
+          "ungroupedFailureCount",
+          "possiblyBlockedCount",
+          "incidents",
+          "possiblyBlocked",
+          "observations",
+          "counts",
+          "failuresAtLeast",
+          "vizcoreConnection",
+          "transport",
+          "roundCount",
+          "problemRoundCount",
+          "problemRounds",
+          "asOfWatermark",
+          "retention"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/HealthState"
+          },
+          "asOf": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AsOf"
+              }
+            ],
+            "nullable": true,
+            "description": "Null before the first observation"
+          },
+          "asOfSeq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The last event seq the health reflects (the cursor in replay)"
+          },
+          "sessionOrigin": {
+            "$ref": "#/components/schemas/SessionOrigin"
+          },
+          "problemCount": {
+            "type": "integer",
+            "description": "Failed rounds + ungrouped failures + possibly blocked"
+          },
+          "failedRoundCount": {
+            "type": "integer"
+          },
+          "ungroupedFailureCount": {
+            "type": "integer"
+          },
+          "possiblyBlockedCount": {
+            "type": "integer"
+          },
+          "incidents": {
+            "$ref": "#/components/schemas/CappedIncidents"
+          },
+          "possiblyBlocked": {
+            "$ref": "#/components/schemas/PossiblyBlockedEvaluation"
+          },
+          "observations": {
+            "$ref": "#/components/schemas/Observations"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/OriginCounts"
+          },
+          "failuresAtLeast": {
+            "type": "boolean",
+            "description": "Counts may be low (overflow, lost or possibly lost events)"
+          },
+          "vizcoreConnection": {
+            "$ref": "#/components/schemas/VizcoreConnectionHealth"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/TransportStatus"
+          },
+          "roundCount": {
+            "type": "integer"
+          },
+          "problemRoundCount": {
+            "type": "integer"
+          },
+          "problemRounds": {
+            "$ref": "#/components/schemas/CappedProblemRounds"
+          },
+          "asOfWatermark": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WatermarkObservation"
+              }
+            ],
+            "nullable": true,
+            "description": "The watermark the health used (live attached sessions only)"
+          },
+          "retention": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetentionInfo"
+              }
+            ],
+            "nullable": true
           }
         }
       }

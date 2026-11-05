@@ -16,14 +16,14 @@ object SessionHealthDerivation {
         val demo = input.kind == SessionKind.DEMO
         // Demo sessions are always REPORTED, whatever the producer stated.
         val sessionOrigin =
-            if (demo) SessionOrigin.REPORTED else input.reportedOrigin ?: sessionOriginOf(view, demo = false)
+            if (demo) SessionOrigin.REPORTED else input.reportedOrigin ?: sessionOrigin(view, input.kind)
         val originOf = { s: CoroutineSummary -> effectiveOrigin(s, demo, sessionOrigin) }
         val (vizcore, evaluated) = view.all.partition { originOf(it) == CoroutineOrigin.VIZCORE }
         val anchoring = RoundAnchoring.of(view)
         val asOf = resolveAsOf(input)
         val evaluation = evaluatePossiblyBlocked(input)
         val incidents = incidentsOf(input, evaluated, anchoring, evaluation)
-        val failuresAtLeast = view.untrackedCount > 0 || transportLossApplies(input)
+        val failuresAtLeast = view.untrackedCount > 0 || transportLossApplies(input) || input.historyIncomplete
         val problemRounds = HealthParts.problemRounds(incidents, view)
         val problemAnchors = problemRounds.mapTo(HashSet()) { it.anchorId }
 
@@ -34,7 +34,8 @@ object SessionHealthDerivation {
                     problemCount = incidents.size,
                     // Spec: never claimed with origin UNKNOWN, nor when coroutines went untracked.
                     noAppCoroutines =
-                        evaluated.isEmpty() && sessionOrigin == SessionOrigin.REPORTED && view.untrackedCount == 0L,
+                        evaluated.isEmpty() && sessionOrigin == SessionOrigin.REPORTED && view.untrackedCount == 0L &&
+                            !input.historyIncomplete,
                     // Green needs at least one evaluated coroutine that is known to be the app's (unknown is never
                     // counted as healthy, spec H-3), both kinds evaluated, and complete counts.
                     green =
@@ -58,6 +59,8 @@ object SessionHealthDerivation {
             roundCount = anchoring.anchorIds.count { id -> id in problemAnchors || view.get(id)?.let(originOf) != CoroutineOrigin.VIZCORE },
             problemRoundCount = problemRounds.size,
             problemRounds = Capped.of(problemRounds),
+            asOfWatermark = input.watermark?.takeIf { liveWatermarkNanos(input) != null },
+            retention = input.retention,
         )
     }
 
@@ -90,12 +93,13 @@ object SessionHealthDerivation {
     private fun liveWatermarkNanos(input: HealthInput): Long? =
         input.watermark?.appNanos?.takeIf { input.mode == HealthMode.Live && input.kind == SessionKind.ATTACHED }
 
-    private fun sessionOriginOf(
+    /** The session origin as the derivation reads it (spec "Origin"): demos are REPORTED; otherwise REPORTED once a coroutine reported one. */
+    fun sessionOrigin(
         view: SummaryView,
-        demo: Boolean,
+        kind: SessionKind,
     ): SessionOrigin {
         val reported = view.all.any { it.origin == CoroutineOrigin.APP || it.origin == CoroutineOrigin.VIZCORE }
-        return if (demo || reported) SessionOrigin.REPORTED else SessionOrigin.UNKNOWN
+        return if (kind == SessionKind.DEMO || reported) SessionOrigin.REPORTED else SessionOrigin.UNKNOWN
     }
 
     private fun effectiveOrigin(
@@ -113,7 +117,11 @@ object SessionHealthDerivation {
         val view = input.summaries
         val lastNanos = view.latestEventAppNanos
         val mode = input.mode
-        if (mode is HealthMode.Replay) return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq) }
+        if (mode is HealthMode.Replay) {
+            // Appends are not in app-time order, so once events were trimmed no cursor's latest time is known for sure.
+            val trimmed = input.retention?.trimmed == true
+            return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq, lowerBound = trimmed) }
+        }
         val watermark = input.watermark
         return when {
             input.kind == SessionKind.DEMO -> lastNanos?.let { AsOf(AsOfKind.LAST_EVENT, it, seq = view.lastEventSeq) }
@@ -131,6 +139,7 @@ object SessionHealthDerivation {
                 input.kind == SessionKind.DEMO -> NotEvaluatedReason.DEMO
                 // Sticky for the rest of the session (spec "Health strip states"), so before NO_WATERMARK.
                 input.transport.lostEvents > 0 || input.transport.deliveryUncertain -> NotEvaluatedReason.EVENTS_DROPPED
+                input.historyIncomplete -> NotEvaluatedReason.HISTORY_TRIMMED
                 input.summaries.untrackedCount > 0 -> NotEvaluatedReason.OVERFLOW
                 input.watermark == null -> NotEvaluatedReason.NO_WATERMARK
                 else -> null

@@ -69,24 +69,41 @@ class ExposedSessionStore(
         // creation is global (null tenant) — only Scoped callers stamp ownership.
         val owner = (tenant as? TenantContext.Scoped)?.tenantId
 
+        val now = Clock.System.now()
         transaction(db) {
             SessionsTable.insert {
                 it[id] = sessionId
                 it[SessionsTable.name] = name
-                it[createdAt] = Clock.System.now()
+                it[createdAt] = now
                 it[scenario] = null
                 it[tenantId] = owner
                 it[metadata] = null
             }
         }
         logger.info("Created session (db): $sessionId (tenant=${owner ?: "<global>"})")
-        return buildSession(sessionId)
+        return buildSession(sessionId, now.toEpochMilliseconds())
     }
 
     override fun getSession(
         sessionId: String,
         tenant: TenantContext,
-    ): VizSession? = if (sessionExists(sessionId, tenant)) buildSession(sessionId) else null
+    ): VizSession? = createdAtMsOf(sessionId, tenant)?.let { buildSession(sessionId, it) }
+
+    /** The session row's creation time, or null when no row is visible to [tenant]. */
+    @OptIn(ExperimentalTime::class)
+    private fun createdAtMsOf(
+        sessionId: String,
+        tenant: TenantContext,
+    ): Long? =
+        transaction(db) {
+            SessionsTable
+                .selectAll()
+                .where { tenantPredicate(tenant) and (SessionsTable.id eq sessionId) }
+                .limit(1)
+                .firstOrNull()
+                ?.get(SessionsTable.createdAt)
+                ?.toEpochMilliseconds()
+        }
 
     /** Whether the session's row exists, without rebuilding the session from its events. */
     fun sessionExists(
@@ -159,12 +176,19 @@ class ExposedSessionStore(
     /**
      * Build a [VizSession] whose event store is an [ExposedEventStore] scoped to
      * [sessionId]. Uses the injectable event-store-factory seam on VizSession so
-     * no DB dependency leaks into coroutine-viz-core.
+     * no DB dependency leaks into coroutine-viz-core. The session keeps summaries, folded
+     * from the stored events by the rehydration below: complete while the store was never
+     * trimmed (the health route says so once it was; Part 5b persists them).
      */
-    private fun buildSession(sessionId: String): VizSession =
+    private fun buildSession(
+        sessionId: String,
+        createdAtMs: Long,
+    ): VizSession =
         VizSession(
             sessionId = sessionId,
             maxEvents = maxEvents,
+            createdAtMs = createdAtMs,
+            keepSummaries = true,
             eventStoreFactory = { id -> ExposedEventStore(db, id) },
         ).also {
             // A DB-backed session is reconstructed fresh on every read with empty
