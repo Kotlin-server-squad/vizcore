@@ -9,11 +9,11 @@ provenance of each suspension point.
 
 **Architecture:** Core's DebugProbes path computes origin (creation stack) and provenance (which frame it found), skips
 coroutines a `VizScope` of the same session already reports, and reports each completed poll through a callback. The
-client turns each poll into a `PollWatermark` on the local session's bus (so it follows that poll's events in bus
-order), and the outbound buffer — the one ordered path to the socket — forwards at most one per second, stamped with
-the cumulative loss count. `stop()` sets a capture cutoff (a marker on the same bus), lets the buffer drain, sends a
-`final` watermark and closes, within a deadline. Watermarks go only to servers that serve session health, because a
-1.2 server knows the type but would store every watermark as an event.
+client numbers each poll's `PollWatermark` and puts it on the local session's bus (so it follows that poll's events in
+bus order); the outbound buffer — the one ordered path to the socket — forwards at most one per second, stamped with
+the exact cumulative loss count. `stop()` sets a capture cutoff (a numbered marker on the same bus), lets the buffer
+drain, sends a `final` watermark and closes, all within a deadline. Watermarks go only to servers that serve session
+health, because a 1.2 server knows the type but would store every watermark as an event.
 
 **Tech Stack:** Kotlin 2.3 (language/API 2.2), JVM 17 bytecode, kotlinx-coroutines 1.10 (DebugProbes), Ktor 3 client
 (CIO, WebSockets), kotlinx-serialization, JUnit 5, `kotlinx-coroutines-test`, `ktor-server-test-host`.
@@ -32,6 +32,7 @@ the cumulative loss count. `stop()` sets a capture cutoff (a marker on the same 
 What the server expects (from #295 and its plan `2026-11-06-part5-health-api.md`):
 - A `PollWatermark` text frame on the ingest socket is transport state (`IngestStates.watermarkReceived`), never stored.
   The newest by app clock wins (D-1b); the largest cumulative `lostEvents` and any `deliveryUncertain` are sticky (D-4).
+  Its `seq` is not read.
 - A connection closes cleanly only when a watermark with `final = true` arrived on it (D-2); otherwise delivery is
   uncertain from that connection's first seq on, and possibly blocked reads `NOT_EVALUATED (EVENTS_DROPPED)`.
 - `CoroutineCreated.origin` (`APP` | `VIZCORE` | `UNKNOWN`, absent from older SDKs) and
@@ -43,27 +44,29 @@ What the server expects (from #295 and its plan `2026-11-06-part5-health-api.md`
 
 | # | Topic | Decision |
 |---|---|---|
-| P-1 | The leftovers (spec "Origin": "PR 3 starts by verifying this on the leftovers") | Verified with a scratch dump of `DebugProbes.dumpCoroutinesInfo()` after `VizcoreClient.start` against `FakeBackend` (2026-11-06, output kept in the PR notes): `nonce-generator`'s creation stack contains `com.jh.proj.coroutineviz.client.IngestTransportKt$connectAndDrain…` → **`VIZCORE`**. `cio-from-nio-reader` and `cio-to-nio-writer` are launched from Ktor's `Endpoint.connect` while a coroutine is resumed on a worker thread; the thread stack holds no SDK frame → they stay **`APP`**, as the spec accepts ("they only appear in Long-lived (n)"). `cio-request-timeout` was not present in the dump (it exists only while a request with a timeout runs); it is launched the same way inside the CIO engine, so it stays `APP` too. The rule is applied as written: any frame whose class starts with `com.jh.proj.coroutineviz.client.`; the wrapper package does not count. |
+| P-1 | The leftovers (spec "Origin": "PR 3 starts by verifying this on the leftovers") | Verified with a scratch dump of `DebugProbes.dumpCoroutinesInfo()` after `VizcoreClient.start` against `FakeBackend` (2026-11-06): `nonce-generator`'s creation stack contains `com.jh.proj.coroutineviz.client.IngestTransportKt$connectAndDrain…` → **`VIZCORE`**. `cio-from-nio-reader` and `cio-to-nio-writer` are launched from Ktor's `Endpoint.connect` while a coroutine is resumed on a worker thread; the thread stack holds no SDK frame → they stay **`APP`**, as the spec accepts ("they only appear in Long-lived (n)"). `cio-request-timeout` was not in the dump (it exists only while a request with a timeout runs); it is launched the same way inside the CIO engine, so it stays `APP` too. The rule is applied as written: any frame whose class starts with `com.jh.proj.coroutineviz.client.`; the wrapper package does not count. A fresh-JVM test (Task 9) pins the verified classification. |
 | P-2 | No creation stacks | A coroutine whose creation stack is empty (DebugProbes installed without creation stacks, e.g. by IntelliJ first, #217) is `UNKNOWN`. Core already makes the session origin `REPORTED` only once a coroutine reported `APP`/`VIZCORE`, so a session with no stacks reads "origin not available" and hides nothing. |
-| P-3 | Wrapper coroutines captured once | Verified: today the DebugProbes path does **not** skip `VizCoroutineElement` coroutines (only `VizcoreInternal` and the transport dispatcher), so a `VizScope(client.session).vizLaunch { }` coroutine would also appear as `dp-…`. `VizCoroutineElement` gains two internal fields, `owner` (the `VizSession` of the `VizScope` that launched it) and `ownerJob` (the coroutine it was created for). The DebugProbes source of session S drops a coroutine whose element's `owner === S` and whose `ownerJob` is its own Job (or not yet set: the wrapper itself, before its body runs). Children the wrapper body launches with plain kotlinx builders inherit the element but have another Job, so they stay captured. A `VizScope` of another session is not skipped. Wrapper `CoroutineCreated` events carry `origin = APP` (the public wrapper API is app code by the spec's rule). |
+| P-2b | Where origin rides inside core | `CoroutineSnapshot` gets an **`internal var origin`** in its body, set by the adapter, read by the synthesizer. Not a constructor property: that would change the public data class's JVM constructors and its mangled `copy-…` methods (inline `CoroKey` parameters), breaking binaries compiled against 0.3.x. The public API of `CoroutineSnapshot` stays byte-identical. |
+| P-3 | Wrapper coroutines captured once | Verified: today the DebugProbes path does **not** skip `VizCoroutineElement` coroutines (only `VizcoreInternal` and the transport dispatcher), so a `VizScope(client.session).vizLaunch { }` coroutine would also appear as `dp-…`. `VizCoroutineElement` gains two internal fields, `owner` (the `VizSession` of the `VizScope` that launched it) and `ownerJob` (the coroutine it was created for). The DebugProbes source of session S drops a coroutine whose element's `owner === S` and whose `ownerJob` is its own Job (or not yet set: the wrapper itself, before its body runs). A coroutine that inherits the element (launched from the wrapper's body via `coroutineScope { launch { } }` or `CoroutineScope(currentCoroutineContext())`) has another Job and stays captured. (A bare `launch` in a `vizLaunch` block runs on the `VizScope` receiver and carries no element at all.) A `VizScope` of another session is not skipped. Wrapper `CoroutineCreated` events carry `origin = APP`. |
 | P-4 | Poll time | Taken right before the dump (`System.nanoTime()` and `System.currentTimeMillis()`). The dump observed the app no earlier than that, so "running until the watermark" never overstates (H-1). Events of the same poll carry later timestamps, so a coroutine first seen running is never flagged by its own poll's watermark. |
-| P-5 | Watermark path and ordering | Core's `DebugProbesSource.onPollCompleted(pollNanos, pollEpochMs)` runs on the poll loop after every poll whose events were all sent (also when it found no change; never after a failed poll or once stopped). The client's callback sends a `PollWatermark` with `session.bus.send(…)`, bypassing the local store (one per poll would evict the local store's events). Bus order is send order, the feed is the bus's single outbound collector, so the watermark follows that poll's events into the buffer and onto the socket. The feed forwards at most one per second (by app clock; the first at once), stamped with the counts at that moment. A watermark that does not fit a full buffer is skipped, not counted as lost: it is not an event, and the next one carries the counts. |
-| P-6 | `lostEvents` | Cumulative per client: outbound-buffer overflow drops plus the events the session bus evicted for the feed while it lagged (new per-subscriber `EventBus.stream(onSubscribed, onMissed)`; the bus-wide `onEvicted` would also count other subscribers' lag). Kept across a replacement session (#129): it can overstate for the new session, never understate. |
+| P-5 | Watermark path and ordering | Core's `DebugProbesSource.onPollCompleted(pollNanos, pollEpochMs)` runs on the poll loop after every poll whose events were all sent (also when it found no change; never after a failed poll or once stopped). The client's callback calls `OutboundBuffer.poll(...)`, which puts a `PollWatermark` on the session's bus with `bus.send` (not `session.send`: one per poll would evict the local store's events). Bus order is send order and the feed is the bus's single outbound collector, so the watermark follows that poll's events into the buffer and onto the socket. The feed forwards at most one per second (by app clock; the first at once), stamped with the counts at that moment. A watermark that does not fit a full buffer is skipped, not counted: it is not an event, and the next one carries the counts. |
+| P-6 | `lostEvents` is exact | Cumulative per client: outbound-buffer overflow drops plus the **events** the session bus evicted for the feed while it lagged (new per-subscriber `EventBus.stream(onSubscribed, onMissed)`; the bus-wide `onEvicted` would also count other subscribers' lag). The bus also carries control items (watermarks, the cutoff marker), so each is numbered under one lock as it goes on the bus (`PollWatermark.seq`, which the server does not read; the stamped copy sends `seq = 0`). When the feed receives control item `n` after `p`, `n - p - 1` control items were among the evicted entries; evicted events = evicted entries − evicted control items, exact at every stamp because every stamp is taken on a received control item. Kept across a replacement session (#129): it can overstate for the new session, never understate. |
 | P-7 | SDK `deliveryUncertain` | Sticky once a socket ended any way other than the buffer closing at `stop()` after it had taken at least one event (not counting watermarks): that event may not have arrived (no acknowledgement). The server already marks such a connection uncertain on its side; the flag keeps the SDK's own statement complete (C-7). |
-| P-8 | Capture cutoff | `stop()` sends a private cutoff marker on the session bus. Bus order is the capture order: everything sent before the marker is handed to the buffer, everything after it is outside the capture and is neither forwarded nor counted as lost. Producers are not rejected at `VizSession.send` (the local session still records them); the effect on what is sent is the spec's, without a new `VizSession` API. |
-| P-9 | Final watermark | When the feed reaches the marker it queues `final = true` carrying the newest poll it saw before the marker (also one the rate limit held back) and the final counts, then closes the buffer. No later producer can add to the counts. If no poll completed yet, it carries the cutoff time. The drain sends it last; the socket then closes normally. |
-| P-10 | `stop()` deadline | `stop()` = `stop(DEFAULT_STOP_TIMEOUT_MILLIS)` (5 s); new `stop(timeoutMillis)`. It waits (blocking the caller, bounded) only when a socket is open at the cutoff: for the buffer to drain, the final watermark and the close. It never reconnects during shutdown. A missed deadline logs one WARN and closes without the final watermark, which the server reads as delivery uncertain (C-7: "if any step misses the deadline, the close reports delivery uncertain"). Without an open socket `stop()` returns at once, as today (the server already marked the last connection's end). |
+| P-8 | Capture cutoff | `OutboundBuffer.cutoff(session)` runs under the same control lock as `poll(...)`: after it, no watermark goes on the bus. If the feed has subscribed (recorded under that lock from the bus's `onSubscribed`, i.e. once its slot is allocated), a numbered cutoff marker goes on the bus: everything sent before it is handed to the buffer, everything after it is outside the capture, neither forwarded nor counted. If the feed has not subscribed yet, nothing was captured (the source starts only after the feed subscribed) and the buffer closes at once. If the bus evicts entries for the feed after the cutoff was requested, the marker may be among them: the feed then ends the capture without a final watermark (losses already happened, so the server's "delivery uncertain" is the honest reading). Producers are not rejected at `VizSession.send` (the local session still records them); the effect on what is sent is the spec's, without a new `VizSession` API. |
+| P-9 | Final watermark | When the feed reaches the marker it queues `final = true` carrying the newest completed poll it saw before the marker (also one the rate limit held back) and the final counts, then closes the buffer. No later producer can add to the counts. **If no poll completed, there is no final watermark** (a watermark is an observation, H-1/H-3): the buffer just closes and the server reads delivery uncertain. The drain sends the final watermark last; the socket then closes normally. |
+| P-10 | `stop()` | `stop()` = `stop(DEFAULT_STOP_TIMEOUT_MILLIS)` (5 s); new `stop(timeoutMillis)`. Order: take the deadline on entry; under the lifecycle lock mark the client **stopped for good** (`start()` never runs again: the scope is cancelled at the end anyway, so a client never restarted) and note whether a socket is open; set the cutoff; if a socket is open, wait for the reconnect loop to finish that socket (drain, final, close) with what is left of the deadline — it never reconnects, because the client is no longer running; then, in a `finally`, stop the source (cancel the poll loop, release DebugProbes — the release can take its own time, as before, and comes after the delivery wait), close the buffer and the HTTP client and cancel the scope. A missed deadline logs one WARN and closes without the final watermark (C-7: "the close reports delivery uncertain"). An interrupt during the wait ends the wait, keeps the thread's interrupt status, and still releases everything. Without an open socket `stop()` does not wait. |
 | P-11 | Older servers (compatibility) | A 1.2.0 server registers `PollWatermark` as an event type (#248 is in rc3/rc4) but its ingest stores every decoded frame, so watermarks would fill its bounded store and show up as events. Before each connection the client asks `GET /api/sessions/{id}/health`: `200`, or `503` with a health code (`summaries-unavailable`, `history-trimmed`), means the server takes watermarks as transport state; `404` means an older server; anything else (no answer, an auth or proxy error) means "not known" and that connection sends none. Origin and provenance are new JSON keys: 1.1 servers ignore unknown keys (`ignoreUnknownKeys = true`), 1.2 servers know both fields and all their values. |
 | P-12 | Older SDKs with the new server | Unchanged (5a D-2): no watermark → "not evaluated (no poll data)" while connected, "events may have been lost" after. |
 | P-13 | Server code | None. One backend **test** runs the real SDK against the real backend module. |
 | P-14 | Version | The client stays `0.3.1`; the version bump and publication belong to the release PR. |
+| P-15 | Real-DebugProbes tests | They live in the client module (no JaCoCo agent there, and `SdkOwnCoroutinesTest` already runs real probes in its default `test`). Those that depend on process-wide state (which JVM-wide coroutines exist, the creation-stack flag) are tagged `fresh-jvm` and run in a new `freshJvmTest` task with `forkEvery = 1`, wired into `check`; the default `test` excludes them. |
 
 ## File map
 
 **Core (`backend/coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/…`)**
 - `session/source/debugprobes/SourceAttribution.kt` — `origin(creationStack)` and `SDK_CLIENT_PACKAGE`.
-- `session/source/debugprobes/CoroutineSnapshot.kt` — `origin` field (+ hidden 0.3.x constructor).
-- `session/source/debugprobes/CoroutineInfoAdapter.kt` — fills `origin`.
+- `session/source/debugprobes/CoroutineSnapshot.kt` — `internal var origin`.
+- `session/source/debugprobes/CoroutineInfoAdapter.kt` — sets it (also on the `parentKey` copies).
 - `session/source/debugprobes/DebugProbesEventSynthesizer.kt` — `origin` on `CoroutineCreated`, `provenance` on `CoroutineSuspended`.
 - `session/source/debugprobes/WrapperOwnedCoroutines.kt` (new) — `excludeWrapperOwned`.
 - `session/source/debugprobes/DebugProbesSource.kt` — wrapper filter in the default dump; `onPollCompleted`.
@@ -71,10 +74,11 @@ What the server expects (from #295 and its plan `2026-11-06-part5-health-api.md`
 - `wrappers/VizScope.kt` — sets them; `origin = APP` on wrapper `CoroutineCreated`.
 - `session/EventBus.kt` — `stream(onSubscribed, onMissed)`.
 
-**Client (`backend/coroutine-viz-client/src/main/kotlin/com/jh/proj/coroutineviz/client/…`)**
-- `OutboundBuffer.kt` — watermark forwarding, loss counts, delivery uncertainty, cutoff and final.
-- `IngestTransport.kt` — `takesWatermarks` probe; `sendWatermarks` per socket; `SocketLifetime.isOpen`.
-- `VizcoreClient.kt` — poll → watermark wiring, probe before connect, `stop(timeoutMillis)`.
+**Client (`backend/coroutine-viz-client/…`)**
+- `src/main/…/client/OutboundBuffer.kt` — numbered control items, watermark forwarding, exact loss counts, delivery uncertainty, cutoff and final.
+- `src/main/…/client/IngestTransport.kt` — `takesWatermarks` probe; `sendWatermarks` per socket; `SocketLifetime.isOpen`.
+- `src/main/…/client/VizcoreClient.kt` — poll → watermark wiring, probe before connect, `stop(timeoutMillis)`.
+- `build.gradle.kts` — `kotlinx-coroutines-debug` for tests; `freshJvmTest` task.
 
 **Tests** (core, client, backend) — listed per task. **Docs** — `README.md` (SDK limits), `CHANGELOG.md`.
 **Sample** — `examples/spring-vizcore-demo` gets an optional busy coroutine for the end-to-end check.
@@ -83,9 +87,9 @@ What the server expects (from #295 and its plan `2026-11-06-part5-health-api.md`
 
 All from `backend/` with `export JAVA_HOME=/Users/jirihermann/Library/Java/JavaVirtualMachines/azul-21/Contents/Home`.
 - Core tests: `./gradlew :coroutine-viz-core:test --tests '<pattern>'`
-- Client tests: `./gradlew :coroutine-viz-client:test --tests '<pattern>'`
-- Backend tests: `./gradlew test --tests '<pattern>'`
-- Full gate (end): `./gradlew ktlintCheck detekt test checkBytecode build :coroutine-viz-core:build :coroutine-viz-client:test`;
+- Client tests: `./gradlew :coroutine-viz-client:test --tests '<pattern>'`; fresh-JVM ones: `./gradlew :coroutine-viz-client:freshJvmTest`
+- Backend tests: `./gradlew :test --tests '<pattern>'` (the root project; an unqualified `test` applies the filter to every subproject)
+- Full gate (end): `./gradlew ktlintCheck detekt test checkBytecode build :coroutine-viz-core:build :coroutine-viz-client:test :coroutine-viz-client:freshJvmTest`;
   revert `backend/docs/index.html` if the build regenerated it (`git checkout -- docs/index.html`).
 
 Every commit ends with the trailer:
@@ -102,12 +106,11 @@ Claude-Session: https://claude.ai/code/session_01W1v63uErFTcSoWqE152KLG
 - Modify: `coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/session/source/debugprobes/SourceAttribution.kt`
 - Modify: `…/debugprobes/CoroutineSnapshot.kt`, `…/debugprobes/CoroutineInfoAdapter.kt`, `…/debugprobes/DebugProbesEventSynthesizer.kt`
 - Test: `coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/session/source/debugprobes/SourceAttributionTest.kt`,
-  `…/CoroutineInfoAdapterTest.kt`, `…/DebugProbesEventSynthesizerTest.kt`, new `…/DebugProbesOriginTest.kt`,
-  `coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/compat/BinaryCompatibilityTest.kt`
+  `…/CoroutineInfoAdapterTest.kt`, `…/DebugProbesEventSynthesizerTest.kt`
 
 - [ ] **Step 1: Write the failing tests**
 
-`SourceAttributionTest.kt` (add):
+`SourceAttributionTest.kt` (add; import `com.jh.proj.coroutineviz.events.CoroutineOrigin`):
 ```kotlin
     private fun frame(cls: String) = StackTraceElement(cls, "run", "X.kt", 1)
 
@@ -129,133 +132,43 @@ Claude-Session: https://claude.ai/code/session_01W1v63uErFTcSoWqE152KLG
         assertEquals(CoroutineOrigin.UNKNOWN, SourceAttribution.origin(emptyList()))
     }
 ```
-(import `com.jh.proj.coroutineviz.events.CoroutineOrigin`.)
 
 `CoroutineInfoAdapterTest.kt` (add):
 ```kotlin
     @Test
-    fun `the snapshot carries the origin of its creation stack`() {
+    fun `the snapshot carries the origin of its creation stack, parent links included`() {
         val adapter = CoroutineInfoAdapter()
         val sdk = StackTraceElement("com.jh.proj.coroutineviz.client.IngestTransportKt", "connect", "IngestTransport.kt", 9)
-        fun raw(stack: List<StackTraceElement>) = CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, Job(), EmptyCoroutineContext, stack, emptyList())
+        fun raw(stack: List<StackTraceElement>, job: Job = Job()) =
+            CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, job, EmptyCoroutineContext, stack, emptyList())
         assertEquals(CoroutineOrigin.VIZCORE, adapter.toSnapshot(raw(listOf(sdk))).origin)
         assertEquals(CoroutineOrigin.APP, adapter.toSnapshot(raw(creationStack)).origin)
         assertEquals(CoroutineOrigin.UNKNOWN, adapter.toSnapshot(raw(emptyList())).origin)
+        val parent = Job()
+        val child = adapter.toSnapshots(listOf(raw(creationStack, parent), raw(listOf(sdk), Job(parent))))[1]
+        assertTrue(child.parentKey != null)
+        assertEquals(CoroutineOrigin.VIZCORE, child.origin, "the parentKey copy keeps the origin")
     }
 ```
 (`creationStack` is the test class's existing app-frame fixture.)
 
-`DebugProbesEventSynthesizerTest.kt` (add; the local `snap` helper gains `origin: CoroutineOrigin? = null` passed through):
+`DebugProbesEventSynthesizerTest.kt` (add):
 ```kotlin
     @Test
     fun `CoroutineCreated carries the snapshot's origin`() {
         val s = session()
-        val vizcore = synthesizer.synthesize(CoroutineDelta.Appeared(snap("a", CoroState.CREATED, origin = CoroutineOrigin.VIZCORE)), s)
-        val unset = synthesizer.synthesize(CoroutineDelta.Appeared(snap("b", CoroState.RUNNING)), s)
-        assertEquals(CoroutineOrigin.VIZCORE, (vizcore.first() as CoroutineCreated).origin)
-        assertNull((unset.first() as CoroutineCreated).origin)
-    }
-```
-
-New `DebugProbesOriginTest.kt` (real DebugProbes, like `DebugProbesFailureCaptureTest`):
-```kotlin
-package com.jh.proj.coroutineviz.session.source.debugprobes
-
-import com.jh.proj.coroutineviz.events.CoroutineOrigin
-import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
-import com.jh.proj.coroutineviz.session.SessionManager
-import com.jh.proj.coroutineviz.session.VizSession
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.debug.DebugProbes
-import kotlinx.coroutines.launch
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
-import kotlin.time.Duration.Companion.milliseconds
-
-/** Origin from real creation stacks (spec "Origin"): a test coroutine is the app's; without creation stacks it is unknown. */
-class DebugProbesOriginTest {
-    @BeforeEach
-    fun reset() {
-        DebugProbesInstall.resetForTest()
-        SessionManager.clearSessionListeners()
-    }
-
-    @AfterEach
-    fun cleanup() {
-        DebugProbesInstall.resetForTest()
-        DebugProbes.enableCreationStackTraces = true
-        SessionManager.clearSessionListeners()
-    }
-
-    private fun originOf(label: String): CoroutineOrigin? {
-        val session = VizSession("origin")
-        val source = DebugProbesSource(session = session, pollInterval = 20.milliseconds)
-        val app = Job()
-        try {
-            source.start()
-            CoroutineScope(Dispatchers.Default + app).launch(CoroutineName(label)) { awaitCancellation() }
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                session.store.all().filterIsInstance<CoroutineCreated>().firstOrNull { it.label == label }?.let { return it.origin }
-                Thread.sleep(20)
-            }
-            error("$label was never captured")
-        } finally {
-            app.cancel()
-            source.stop()
-            session.close()
-        }
-    }
-
-    @Test
-    fun `a coroutine launched outside the SDK client is the app's`() {
-        assertEquals(CoroutineOrigin.APP, originOf("app-origin"))
-    }
-
-    @Test
-    fun `without creation stacks every coroutine is unknown`() {
-        // As when another party (IntelliJ's debugger, #217) installed DebugProbes first without creation stacks:
-        // DebugProbesInstall then leaves the install as it is.
-        DebugProbes.enableCreationStackTraces = false
-        DebugProbes.install()
-        try {
-            assertEquals(CoroutineOrigin.UNKNOWN, originOf("no-stack-origin"))
-        } finally {
-            runCatching { DebugProbes.uninstall() }
-        }
-    }
-}
-```
-
-`BinaryCompatibilityTest.kt` (add): pin the `CoroutineSnapshot` constructors 0.3.1 published. Recorded with
-`javap -p` on the `origin/main` classes before the change: the two public constructors are
-`(String, CoroState, String, String, String, String, Integer, String, List, String, Long, String, DefaultConstructorMarker)`
-and the same twelve plus `(int, DefaultConstructorMarker)` (the inline `CoroKey` parameters compile to `String`; the
-marker comes from them):
-```kotlin
-    @Test
-    fun `CoroutineSnapshot keeps its 0_3_x constructors`() {
-        val str = String::class.java
-        val v03 =
-            arrayOf<Class<*>?>(
-                str, CoroState::class.java, str, str, str, str, Integer::class.java, str, List::class.java, str,
-                java.lang.Long::class.java, str,
-            )
-        CoroutineSnapshot::class.java.getDeclaredConstructor(*v03, marker)
-        CoroutineSnapshot::class.java.getDeclaredConstructor(*v03, Int::class.javaPrimitiveType, marker)
+        val vizcore = snap("a", CoroState.CREATED).also { it.origin = CoroutineOrigin.VIZCORE }
+        val created = synthesizer.synthesize(CoroutineDelta.Appeared(vizcore), s).first() as CoroutineCreated
+        val unset = synthesizer.synthesize(CoroutineDelta.Appeared(snap("b", CoroState.RUNNING)), s).first() as CoroutineCreated
+        assertEquals(CoroutineOrigin.VIZCORE, created.origin)
+        assertNull(unset.origin)
     }
 ```
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `./gradlew :coroutine-viz-core:test --tests '*SourceAttributionTest*' --tests '*CoroutineInfoAdapterTest*' --tests '*DebugProbesEventSynthesizerTest*' --tests '*DebugProbesOriginTest*' --tests '*BinaryCompatibilityTest*'`
-Expected: compilation fails (`origin` unresolved on `SourceAttribution`/`CoroutineSnapshot`).
+Run: `./gradlew :coroutine-viz-core:test --tests '*SourceAttributionTest*' --tests '*CoroutineInfoAdapterTest*' --tests '*DebugProbesEventSynthesizerTest*'`
+Expected: compilation fails (`origin` unresolved).
 
 - [ ] **Step 3: Implement**
 
@@ -277,42 +190,31 @@ Expected: compilation fails (`origin` unresolved on `SourceAttribution`/`Corouti
         }
 ```
 
-`CoroutineSnapshot.kt`: add a last property and keep the old constructor:
+`CoroutineSnapshot.kt` — a body property (the primary constructor is unchanged, P-2b):
 ```kotlin
-    /** Who launched it, from the creation stack ([SourceAttribution.origin]); `null` when not determined. */
-    val origin: CoroutineOrigin? = null,
+data class CoroutineSnapshot(
+    …unchanged…
 ) {
-    /** The 0.3.x JVM constructor, kept for binary compatibility; hidden from source resolution. */
-    @Deprecated("binary compatibility with 0.3.x", level = DeprecationLevel.HIDDEN)
-    constructor(
-        key: CoroKey,
-        state: CoroState,
-        label: String? = null,
-        dispatcherName: String? = null,
-        function: String? = null,
-        fileName: String? = null,
-        lineNumber: Int? = null,
-        reason: String? = null,
-        lastObservedStackTrace: List<StackTraceElement>? = null,
-        parentKey: CoroKey? = null,
-        threadId: Long? = null,
-        threadName: String? = null,
-    ) : this(key, state, label, dispatcherName, function, fileName, lineNumber, reason, lastObservedStackTrace, parentKey, threadId, threadName, null)
+    /**
+     * Who launched it, from the creation stack ([SourceAttribution.origin]); `null` when not determined. Set by
+     * [CoroutineInfoAdapter], read by [DebugProbesEventSynthesizer]. Kept out of the constructor so the published
+     * constructors and `copy` keep their JVM signatures; not part of equality, and `copy` does not carry it.
+     */
+    internal var origin: CoroutineOrigin? = null
 }
 ```
 
-`CoroutineInfoAdapter.toSnapshot(raw: RawInfo)`: add `origin = SourceAttribution.origin(raw.creationStackTrace),` to the
-`CoroutineSnapshot(...)` call.
+`CoroutineInfoAdapter`:
+- `toSnapshot(raw: RawInfo)`: `return CoroutineSnapshot(…).also { it.origin = SourceAttribution.origin(raw.creationStackTrace) }`.
+- `toSnapshots(raws)` second pass: `snap.copy(parentKey = …).also { it.origin = snap.origin }`.
 
 `DebugProbesEventSynthesizer.appearedEvents`:
 ```kotlin
         val created = ctx.coroutineCreated(creationPoint = creationPointOf(snapshot)).copy(origin = snapshot.origin)
 ```
-and add a KDoc line: "`origin` comes from the creation stack ([SourceAttribution.origin])".
+and a KDoc line: "`origin` comes from the creation stack ([SourceAttribution.origin])".
 
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Same command as Step 2. Expected: PASS.
+- [ ] **Step 4: Run the tests to verify they pass** — same command as Step 2, plus `--tests '*BinaryCompatibilityTest*'`. Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -393,13 +295,14 @@ Update the class KDoc bullet on suspension points: "… with `provenance` `REAL_
 
 ---
 
-### Task 3: Core — a wrapper coroutine is captured once, as the app's
+### Task 3: Core — a wrapper coroutine is left to its wrapper events, as the app's
 
 **Files:**
 - Modify: `coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/wrappers/VizCoroutineElement.kt`, `…/wrappers/VizScope.kt`
 - Create: `…/session/source/debugprobes/WrapperOwnedCoroutines.kt`
 - Modify: `…/session/source/debugprobes/DebugProbesSource.kt` (default `dump`)
-- Test: new `…/debugprobes/WrapperOwnedCoroutinesTest.kt`, new `…/debugprobes/WrapperCapturedOnceTest.kt`
+- Test: new `…/debugprobes/WrapperOwnedCoroutinesTest.kt`; new `coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/wrappers/VizScopeOwnershipTest.kt`
+  (the real-DebugProbes "captured once" test is in Task 9, P-15)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -428,7 +331,8 @@ class WrapperOwnedCoroutinesTest {
     private fun raw(name: String, job: Job, context: CoroutineContext) =
         CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, job, context + CoroutineName(name), emptyList(), emptyList())
 
-    private fun kept(vararg raws: CoroutineInfoAdapter.RawInfo) = excludeWrapperOwned(raws.toList(), session).map { it.context[CoroutineName]!!.name }
+    private fun kept(vararg raws: CoroutineInfoAdapter.RawInfo) =
+        excludeWrapperOwned(raws.toList(), session).map { it.context[CoroutineName]!!.name }
 
     @Test
     fun `the coroutine a VizScope of this session launched is left to its wrapper events`() {
@@ -442,7 +346,7 @@ class WrapperOwnedCoroutinesTest {
     }
 
     @Test
-    fun `a plain child of a wrapper inherits the element and is kept`() {
+    fun `a coroutine that inherited a wrapper's element is kept`() {
         val wrapperJob = Job()
         val e = element(session, wrapperJob)
         assertEquals(listOf("child"), kept(raw("wrapper", wrapperJob, e), raw("child", Job(wrapperJob), e)))
@@ -461,80 +365,73 @@ class WrapperOwnedCoroutinesTest {
 }
 ```
 
-`WrapperCapturedOnceTest.kt` (real DebugProbes):
+`VizScopeOwnershipTest.kt`:
 ```kotlin
-package com.jh.proj.coroutineviz.session.source.debugprobes
+package com.jh.proj.coroutineviz.wrappers
 
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
-import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
-import com.jh.proj.coroutineviz.wrappers.VizScope
-import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
+import kotlin.test.assertNotSame
+import kotlin.test.assertSame
 
-/**
- * A coroutine launched through `VizScope.vizLaunch`/`vizAsync` into the session the DebugProbes source records is captured
- * once, by its wrapper events, as the app's; a plain child it launches is captured by DebugProbes (spec "Origin").
- */
-class WrapperCapturedOnceTest {
-    @BeforeEach
-    fun reset() {
-        DebugProbesInstall.resetForTest()
-        SessionManager.clearSessionListeners()
-    }
-
-    @AfterEach
-    fun cleanup() {
-        DebugProbesInstall.resetForTest()
-        SessionManager.clearSessionListeners()
-    }
-
+/** A wrapper coroutine records whose it is (P-3), and its CoroutineCreated says it is the app's. */
+class VizScopeOwnershipTest {
     @Test
-    fun `vizLaunch and vizAsync are captured once and are the app's`() {
-        val session = VizSession("once")
-        val source = DebugProbesSource(session = session, pollInterval = 20.milliseconds)
-        val scope = VizScope(session)
-        try {
-            source.start()
-            runBlocking {
-                scope.vizLaunch(label = "wrapped-launch", context = CoroutineName("wrapped-launch")) {
-                    launch(CoroutineName("plain-child")) { awaitCancellation() }
-                    awaitCancellation()
+    fun `vizLaunch records its session and its own job, an inheriting child has another job`() =
+        runBlocking {
+            val session = VizSession("own")
+            val scope = VizScope(session)
+            val seen = CompletableDeferred<Pair<Pair<VizCoroutineElement, Job>, Pair<VizCoroutineElement, Job>>>()
+            val job =
+                scope.vizLaunch(label = "w") {
+                    val mine = currentCoroutineContext()[VizCoroutineElement]!! to currentCoroutineContext()[Job]!!
+                    coroutineScope {
+                        launch {
+                            seen.complete(mine to (currentCoroutineContext()[VizCoroutineElement]!! to currentCoroutineContext()[Job]!!))
+                            awaitCancellation()
+                        }
+                    }
                 }
-                scope.vizAsync(label = "wrapped-async", context = CoroutineName("wrapped-async")) { awaitCancellation() }
-            }
-            val created = { session.store.all().filterIsInstance<CoroutineCreated>() }
-            val deadline = System.currentTimeMillis() + 5_000
-            while (created().none { it.label == "plain-child" } && System.currentTimeMillis() < deadline) Thread.sleep(20)
-            Thread.sleep(200) // several more polls
-
-            val byLabel = created().groupBy { it.label }
-            assertEquals(1, byLabel["wrapped-launch"]?.size, "vizLaunch coroutine captured once: ${byLabel["wrapped-launch"]}")
-            assertEquals(1, byLabel["wrapped-async"]?.size, "vizAsync coroutine captured once: ${byLabel["wrapped-async"]}")
-            assertTrue(byLabel.getValue("wrapped-launch").single().coroutineId.startsWith("coroutine-"))
-            assertEquals(CoroutineOrigin.APP, byLabel.getValue("wrapped-launch").single().origin)
-            assertEquals(CoroutineOrigin.APP, byLabel.getValue("wrapped-async").single().origin)
-            assertTrue(byLabel.getValue("plain-child").single().coroutineId.startsWith("dp-"), "the plain child stays captured")
-        } finally {
+            val (wrapper, child) = withTimeout(5_000) { seen.await() }
+            assertSame(session, wrapper.first.owner)
+            assertSame(wrapper.second, wrapper.first.ownerJob)
+            assertSame(job, wrapper.second)
+            assertSame(wrapper.first, child.first, "the child inherits the wrapper's element")
+            assertNotSame(child.first.ownerJob, child.second, "but is another coroutine")
             scope.cancel()
-            source.stop()
             session.close()
         }
-    }
+
+    @Test
+    fun `vizLaunch and vizAsync coroutines are the app's`() =
+        runBlocking {
+            val session = VizSession("origin")
+            val scope = VizScope(session)
+            scope.vizLaunch(label = "l") { }.join()
+            scope.vizAsync(label = "a") { 1 }.await()
+            val created = session.store.all().filterIsInstance<CoroutineCreated>()
+            assertEquals(listOf("l", "a"), created.map { it.label })
+            assertEquals(listOf(CoroutineOrigin.APP, CoroutineOrigin.APP), created.map { it.origin })
+            scope.cancel()
+            session.close()
+        }
 }
 ```
-(`VizScope` is a `CoroutineScope`; `scope.cancel()` is `kotlinx.coroutines.cancel` — import it.)
+(If `InstrumentedDeferred` exposes `await` differently, use its existing API; `vizAsync` returns it.)
 
-- [ ] **Step 2: Run to verify they fail** — `./gradlew :coroutine-viz-core:test --tests '*WrapperOwnedCoroutinesTest*' --tests '*WrapperCapturedOnceTest*'`; expected: compilation fails (`owner`, `excludeWrapperOwned` unresolved).
+- [ ] **Step 2: Run to verify they fail** — `./gradlew :coroutine-viz-core:test --tests '*WrapperOwnedCoroutinesTest*' --tests '*VizScopeOwnershipTest*'`; expected: compilation fails (`owner`, `excludeWrapperOwned` unresolved).
 
 - [ ] **Step 3: Implement**
 
@@ -549,8 +446,8 @@ class WrapperCapturedOnceTest {
     internal var owner: VizSession? = null
 
     /**
-     * The coroutine this element was made for. Children launched with plain kotlinx builders inherit the element but
-     * are other coroutines, and DebugProbes still captures them. `null` until the wrapper records it.
+     * The coroutine this element was made for. A coroutine launched from its body with the body's context inherits the
+     * element but is another coroutine, which DebugProbes still captures. `null` until the wrapper records it.
      */
     @Volatile
     internal var ownerJob: Job? = null
@@ -558,12 +455,13 @@ class WrapperCapturedOnceTest {
 
 `VizScope.vizLaunch`: `val vizElement = VizCoroutineElement(...).also { it.owner = session }`; right after
 `val job = targetScope.launch(mergedContext, start = CoroutineStart.LAZY) { … }` add
-`vizElement.ownerJob = job // before job.start(): no child exists yet`; and
-`session.send(ctx.coroutineCreated().copy(origin = CoroutineOrigin.APP))` (the public wrapper API is app code).
+`vizElement.ownerJob = job // before job.start(): the body, and so any child, runs after this`; and replace
+`session.send(ctx.coroutineCreated())` with `session.send(ctx.coroutineCreated().copy(origin = CoroutineOrigin.APP))`
+(comment: "the public wrapper API is app code (spec "Origin")").
 
 `VizScope.vizAsync`: `.also { it.owner = session }` on the element; first statement of the `async` body after
-`val currentJob = …`: `vizElement.ownerJob = currentJob // before the body can launch a child`; and
-`session.send(ctx.coroutineCreated().copy(origin = CoroutineOrigin.APP))`.
+`val currentJob = …`: `vizElement.ownerJob = currentJob // before the body can launch a child`; and the same
+`copy(origin = CoroutineOrigin.APP)` on its `coroutineCreated()`.
 
 `WrapperOwnedCoroutines.kt`:
 ```kotlin
@@ -576,7 +474,7 @@ import com.jh.proj.coroutineviz.wrappers.VizCoroutineElement
  * Leaves out of a dump the coroutines a [com.jh.proj.coroutineviz.wrappers.VizScope] of [session] launched: their wrapper
  * events already describe them, so each is captured once (spec 2026-10-21, "Origin"). A coroutine whose element was
  * made for it ([VizCoroutineElement.ownerJob] is its Job, or not recorded yet: the wrapper before its body runs) is the
- * wrapper's; a plain child inherits the element with its parent's Job and stays. A `VizScope` of another session is not
+ * wrapper's; a coroutine that inherited the element has another Job and stays. A `VizScope` of another session is not
  * this session's to describe and stays too.
  */
 internal fun excludeWrapperOwned(
@@ -597,7 +495,7 @@ internal fun excludeWrapperOwned(
 ```
 
 - [ ] **Step 4: Run** — same command, plus `./gradlew :coroutine-viz-core:test --tests '*VizScope*' --tests '*Wrapper*'`; expected PASS.
-- [ ] **Step 5: Commit** — `git commit -am "core: a VizScope coroutine is captured once, as the app's (triage PR 3)"` (add the new files first).
+- [ ] **Step 5: Commit** — `git add` the new files, then `git commit -am "core: a VizScope coroutine is left to its wrapper events, as the app's (triage PR 3)"`.
 
 ---
 
@@ -613,14 +511,13 @@ internal fun excludeWrapperOwned(
     fun `every completed poll is reported after its events, quiet polls included`() =
         runTest {
             val session = VizSession("polls")
-            var tick = 0
             val source =
                 DebugProbesSource(
                     session = session,
                     pollInterval = interval,
                     scope = backgroundScope,
                     installProbes = false,
-                    dump = { if (tick++ == 0) listOf(snap("a", CoroState.RUNNING)) else listOf(snap("a", CoroState.RUNNING)) },
+                    dump = { listOf(snap("a", CoroState.RUNNING)) },
                 )
             val polls = mutableListOf<Pair<Long, Int>>()
             source.onPollCompleted = { nanos, _ -> polls += nanos to session.store.all().size }
@@ -710,6 +607,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EventBusMissedTest {
@@ -731,7 +629,7 @@ class EventBusMissedTest {
             assertEquals(10, fastReceived)
             assertEquals(0L, fastMissed)
             assertEquals(10L, slowReceived + slowMissed, "every event is either received or reported missed")
-            assertEquals(true, slowMissed > 0)
+            assertTrue(slowMissed > 0)
             slow.cancel()
             fast.cancel()
         }
@@ -740,19 +638,20 @@ class EventBusMissedTest {
 
 - [ ] **Step 2: Run** — `./gradlew :coroutine-viz-core:test --tests '*EventBusMissedTest*'`; expected: compilation fails.
 
-- [ ] **Step 3: Implement** — move the body of `stream(onSubscribed)` into a private `stream(onSubscribed, onMissed: ((Long) -> Unit)?)`-style helper and add:
+- [ ] **Step 3: Implement** — both public `stream` overloads delegate to one private function:
 ```kotlin
+    /** (existing KDoc) */
+    fun stream(onSubscribed: (suspend () -> Unit)? = null): Flow<VizEvent> = indexedStream(onSubscribed, null)
+
     /**
-     * [stream] for a subscriber that must know what it missed: [onMissed] gets the number of events evicted for THIS
-     * subscriber while it lagged ([onEvicted] still hears every subscriber's). The SDK's outbound feed counts its own
-     * losses with it (spec 2026-10-21, C-7).
+     * [stream] for a subscriber that must know what it missed: [onMissed] gets the number of entries evicted for THIS
+     * subscriber while it lagged, right before the next entry it receives ([onEvicted] still hears every subscriber's).
+     * The SDK's outbound feed counts its own losses with it (spec 2026-10-21, C-7).
      */
     fun stream(
         onSubscribed: (suspend () -> Unit)?,
         onMissed: (Long) -> Unit,
     ): Flow<VizEvent> = indexedStream(onSubscribed, onMissed)
-
-    fun stream(onSubscribed: (suspend () -> Unit)? = null): Flow<VizEvent> = indexedStream(onSubscribed, null)
 
     private fun indexedStream(
         onSubscribed: (suspend () -> Unit)?,
@@ -776,14 +675,13 @@ class EventBusMissedTest {
                 }
         }
 ```
-(The existing KDoc of `stream(onSubscribed)` stays on that function.)
 
 - [ ] **Step 4: Run** — same command plus `--tests '*BusSubscriptionRaceTest*'`; expected PASS.
-- [ ] **Step 5: Commit** — `git commit -am "core: EventBus.stream can report one subscriber's evictions (triage PR 3)"` (add the test file).
+- [ ] **Step 5: Commit** — `git add` the test, `git commit -am "core: EventBus.stream can report one subscriber's evictions (triage PR 3)"`.
 
 ---
 
-### Task 6: Client — the outbound buffer forwards watermarks, counts losses, and closes with a final watermark
+### Task 6: Client — the outbound buffer: numbered watermarks, exact losses, cutoff and final
 
 **Files:**
 - Modify: `coroutine-viz-client/src/main/kotlin/com/jh/proj/coroutineviz/client/OutboundBuffer.kt`
@@ -825,8 +723,6 @@ class OutboundBufferWatermarkTest {
 
     private fun event(n: Int): VizEvent = CoroutineCreated("s", n.toLong(), n.toLong(), "c$n", "j$n", null, "scope", "e$n")
 
-    private fun poll(nanos: Long) = PollWatermark(sessionId = "s", seq = 0, tsNanos = nanos, pollEpochMs = 1_000 + nanos / 1_000_000)
-
     private fun childScope(context: CoroutineContext) = CoroutineScope(context + Job(context.job))
 
     private val VizEvent.label: String
@@ -841,7 +737,7 @@ class OutboundBufferWatermarkTest {
             buffer.feed(session, scope)
             session.send(event(0))
             session.send(event(1))
-            session.bus.send(poll(5 * second))
+            buffer.poll(session, 5 * second, 5_000)
             session.send(event(2))
             val sent = mutableListOf<String>()
             val drain = scope.launch { buffer.drain { delay(10); sent += it.label } }
@@ -853,16 +749,17 @@ class OutboundBufferWatermarkTest {
         }
 
     @Test
-    fun `at most one watermark a second, the first at once`() =
+    fun `at most one watermark a second, the first at once, sent with seq 0`() =
         runTest(UnconfinedTestDispatcher()) {
             val session = VizSession("s")
             val scope = childScope(coroutineContext)
             val buffer = OutboundBuffer()
             buffer.feed(session, scope)
-            listOf(0L, 500_000_000L, 1_000_000_000L, 1_600_000_000L, 2_100_000_000L).forEach { session.bus.send(poll(it)) }
-            val sent = mutableListOf<Long>()
-            val drain = scope.launch { buffer.drain { sent += (it as PollWatermark).tsNanos } }
-            assertEquals(listOf(0L, 1_000_000_000L, 2_100_000_000L), sent)
+            listOf(0L, 500_000_000L, 1_000_000_000L, 1_600_000_000L, 2_100_000_000L).forEach { buffer.poll(session, it, 1) }
+            val sent = mutableListOf<PollWatermark>()
+            val drain = scope.launch { buffer.drain { sent += it as PollWatermark } }
+            assertEquals(listOf(0L, 1_000_000_000L, 2_100_000_000L), sent.map { it.tsNanos })
+            assertTrue(sent.all { it.seq == 0L })
             drain.cancel()
             scope.cancel()
             session.close()
@@ -876,11 +773,11 @@ class OutboundBufferWatermarkTest {
             val buffer = OutboundBuffer(2)
             buffer.feed(session, scope)
             repeat(3) { session.send(event(it)) } // the third does not fit
-            session.bus.send(poll(0)) // does not fit either: skipped, not counted
+            buffer.poll(session, 0, 1) // does not fit either: skipped, not counted
             assertEquals(1, buffer.lost)
             val sent = mutableListOf<VizEvent>()
             val drain = scope.launch { buffer.drain { sent += it } }
-            session.bus.send(poll(2 * second))
+            buffer.poll(session, 2 * second, 1)
             assertEquals(listOf("c0", "c1", "wm@2"), sent.map { it.label })
             assertEquals(1, (sent.last() as PollWatermark).lostEvents)
             drain.cancel()
@@ -889,20 +786,27 @@ class OutboundBufferWatermarkTest {
         }
 
     @Test
-    fun `events the session bus evicted before the feed read them count as lost`() {
+    fun `evicted bus entries count as lost only when they were events`() {
         val feedThread = Executors.newSingleThreadExecutor()
-        val feedDispatcher = feedThread.asCoroutineDispatcher()
         val session = VizSession("s")
-        val scope = CoroutineScope(feedDispatcher + Job())
+        val scope = CoroutineScope(feedThread.asCoroutineDispatcher() + Job())
         val buffer = OutboundBuffer(20_000)
         try {
             runBlocking { buffer.feed(session, scope) }
             val release = CountDownLatch(1)
             feedThread.execute { release.await() } // the feed cannot run while the bus fills
-            repeat(10_010) { session.send(event(it)) }
+            repeat(20) { buffer.poll(session, it.toLong(), 1) } // the 20 oldest entries: watermarks
+            repeat(10_000) { session.send(event(it)) }
+            buffer.poll(session, 10 * second, 1) // 10,021 entries: the bus keeps 10,000, the 21 oldest are evicted
             release.countDown()
-            runBlocking { withTimeout(10_000) { while (buffer.offered < 10_000) delay(10) } }
-            assertEquals(10, buffer.lost, "the bus keeps 10,000 for a lagging subscriber; the 10 oldest were evicted")
+            val sent = mutableListOf<VizEvent>()
+            runBlocking {
+                val drain = scope.launch { buffer.drain { sent += it } }
+                withTimeout(10_000) { while (sent.lastOrNull() !is PollWatermark) delay(10) }
+                drain.cancel()
+            }
+            assertEquals(9_999, sent.count { it !is PollWatermark })
+            assertEquals(1, (sent.last() as PollWatermark).lostEvents, "20 evicted watermarks and 1 evicted event")
         } finally {
             scope.cancel()
             session.close()
@@ -917,13 +821,13 @@ class OutboundBufferWatermarkTest {
             val scope = childScope(coroutineContext)
             val buffer = OutboundBuffer()
             buffer.feed(session, scope)
-            session.bus.send(poll(0))
+            buffer.poll(session, 0, 1)
             runCatching { buffer.drain { throw IOException("socket dropped") } }
             assertFalse(buffer.deliveryUncertain, "only a watermark was in flight")
             session.send(event(0))
             runCatching { buffer.drain { throw IOException("socket dropped") } }
             assertTrue(buffer.deliveryUncertain)
-            session.bus.send(poll(5 * second))
+            buffer.poll(session, 5 * second, 1)
             val sent = mutableListOf<VizEvent>()
             val drain = scope.launch { buffer.drain { sent += it } }
             assertTrue((sent.last() as PollWatermark).deliveryUncertain)
@@ -939,12 +843,12 @@ class OutboundBufferWatermarkTest {
             val scope = childScope(coroutineContext)
             val buffer = OutboundBuffer()
             buffer.feed(session, scope)
-            session.bus.send(poll(1 * second))
+            buffer.poll(session, 1 * second, 1)
             session.send(event(0))
-            session.bus.send(poll(1 * second + 300_000_000L)) // held back by the rate limit
+            buffer.poll(session, 1 * second + 300_000_000L, 1) // held back by the rate limit
             buffer.cutoff(session)
             session.send(event(1)) // after the cutoff: outside the capture
-            session.bus.send(poll(9 * second))
+            buffer.poll(session, 9 * second, 1) // after the cutoff: not even put on the bus
             val sent = mutableListOf<VizEvent>()
             withTimeout(5_000) { buffer.drain { sent += it } } // returns: the buffer closed after the final watermark
             assertEquals(listOf("wm@1", "c0", "wm@1!"), sent.map { it.label })
@@ -955,52 +859,181 @@ class OutboundBufferWatermarkTest {
             scope.cancel()
             session.close()
         }
+
+    @Test
+    fun `without a completed poll the capture ends with no final watermark`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val session = VizSession("s")
+            val scope = childScope(coroutineContext)
+            val buffer = OutboundBuffer()
+            buffer.feed(session, scope)
+            session.send(event(0))
+            buffer.cutoff(session)
+            val sent = mutableListOf<VizEvent>()
+            withTimeout(5_000) { buffer.drain { sent += it } }
+            assertEquals(listOf("c0"), sent.map { it.label }, "no watermark is made up (H-1)")
+            scope.cancel()
+            session.close()
+        }
+
+    @Test
+    fun `a cutoff before the feed subscribed closes the buffer at once`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val session = VizSession("s")
+            val buffer = OutboundBuffer()
+            buffer.cutoff(session)
+            withTimeout(1_000) { buffer.drain { error("nothing was captured") } }
+            session.close()
+        }
+
+    @Test
+    fun `entries evicted after the cutoff end the capture without a final watermark`() {
+        val feedThread = Executors.newSingleThreadExecutor()
+        val session = VizSession("s")
+        val scope = CoroutineScope(feedThread.asCoroutineDispatcher() + Job())
+        val buffer = OutboundBuffer(20_000)
+        try {
+            runBlocking { buffer.feed(session, scope) }
+            val release = CountDownLatch(1)
+            feedThread.execute { release.await() }
+            buffer.poll(session, 1, 1)
+            buffer.cutoff(session) // the marker is the 2nd entry …
+            repeat(10_000) { session.send(event(it)) } // … and is evicted by what follows it
+            release.countDown()
+            val sent = mutableListOf<VizEvent>()
+            runBlocking { withTimeout(10_000) { buffer.drain { sent += it } } }
+            assertTrue(sent.none { it is PollWatermark && it.final }, "no clean close after a loss: $sent")
+            assertTrue(sent.none { it is CoroutineCreated }, "nothing after the cutoff is sent")
+        } finally {
+            scope.cancel()
+            session.close()
+            feedThread.shutdownNow()
+        }
+    }
 }
 ```
 
-- [ ] **Step 2: Run** — `./gradlew :coroutine-viz-client:test --tests '*OutboundBufferWatermarkTest*'`; expected: compilation fails (`lost`, `cutoff`, `deliveryUncertain`).
+- [ ] **Step 2: Run** — `./gradlew :coroutine-viz-client:test --tests '*OutboundBufferWatermarkTest*'`; expected: compilation fails (`poll`, `lost`, `cutoff`, `deliveryUncertain`).
 
-- [ ] **Step 3: Implement** (in `OutboundBuffer`; imports `PollWatermark`, `kotlinx.coroutines.flow.takeWhile`):
+- [ ] **Step 3: Implement** (in `OutboundBuffer`; imports `PollWatermark`, `kotlinx.coroutines.CompletableDeferred`, `kotlinx.coroutines.flow.takeWhile`):
 
-Constructor: `internal constructor(capacity: Int, reportIntervalMillis: Long, clock: () -> Long, watermarkIntervalNanos: Long = DEFAULT_WATERMARK_INTERVAL_NANOS)` as the primary (the public `@JvmOverloads constructor(capacity)` unchanged).
+Primary constructor: `internal constructor(capacity: Int, reportIntervalMillis: Long, clock: () -> Long, watermarkIntervalNanos: Long = DEFAULT_WATERMARK_INTERVAL_NANOS)` (the public `@JvmOverloads constructor(capacity)` is unchanged).
 
 State:
 ```kotlin
-    private val evictedCount = AtomicLong(0)
+    // Control items (poll watermarks and the cutoff marker) are numbered under controlLock as they go on the session
+    // bus, so the feed can tell how many of the entries the bus evicted for it were control items, not events (P-6).
+    private val controlLock = Any()
+    private var controlSeq = 0L // guarded by controlLock
+    private var subscribed = false // guarded by controlLock
+    private var cutoffRequested = false // guarded by controlLock
+
+    @Volatile
+    private var cutoffMarker: PollWatermark? = null
+
+    // Written by the feed, read when stamping and by tests.
+    private val missedEntries = AtomicLong(0)
+    private val missedControl = AtomicLong(0)
 
     @Volatile
     private var uncertain = false
 
     // Feed-only state: one collector reads and writes it.
+    private var lastControlSeq = 0L
     private var latestPoll: PollWatermark? = null
     private var lastForwardedNanos: Long? = null
-    private var sessionId = ""
 
-    // Sent on the session bus by cutoff(); recognised by identity, never forwarded.
-    private val cutoffMarker = PollWatermark(sessionId = "", seq = -1, tsNanos = Long.MIN_VALUE, pollEpochMs = 0)
+    @Volatile
+    private var abandoned = false
 
     /**
      * Events lost before sending, cumulative for the client (spec C-7): dropped because the buffer was full, or evicted
-     * from the session bus before the feed read them. A skipped watermark is not an event and does not count.
+     * from the session bus before the feed read them. Skipped or evicted watermarks are not events and do not count.
+     * Exact whenever the feed has just received a control item, which is when it stamps a watermark.
      */
-    internal val lost: Long get() = droppedCount.get() + evictedCount.get()
+    internal val lost: Long get() = droppedCount.get() + missedEntries.get() - missedControl.get()
 
-    /** A socket ended, other than by [close] at the end of a drain, after taking an event that may not have arrived. Sticky. */
+    /** A socket ended, other than by the buffer closing at the end of a drain, after taking an event that may not have arrived. Sticky. */
     internal val deliveryUncertain: Boolean get() = uncertain
 ```
 
-`feed`:
+`feed` (replaces the `subscriptionCount` wait by the bus's own subscription callback):
 ```kotlin
-        sessionId = session.sessionId
+    suspend fun feed(
+        session: VizSession,
+        scope: CoroutineScope,
+    ): Job {
+        val subscription = CompletableDeferred<Unit>()
         val job =
             scope.launch {
+                var reachedCutoff = false
                 session.bus
-                    .stream(onSubscribed = null, onMissed = { evictedCount.addAndGet(it) })
-                    .takeWhile { it !== cutoffMarker }
-                    .collect { offer(it) }
-                // The bus never completes, so only the cutoff ends the collection: nothing after it is sent, and the counts are final.
-                finish()
+                    .stream(
+                        onSubscribed = {
+                            synchronized(controlLock) { subscribed = true }
+                            subscription.complete(Unit)
+                        },
+                        onMissed = { missed ->
+                            missedEntries.addAndGet(missed)
+                            // The marker may be among them: end without a clean close (P-8).
+                            if (synchronized(controlLock) { cutoffRequested }) abandoned = true
+                        },
+                    ).takeWhile { entry ->
+                        if (abandoned) return@takeWhile false
+                        if (entry is PollWatermark) countControl(entry.seq)
+                        (entry !== cutoffMarker).also { if (!it) reachedCutoff = true }
+                    }.collect { offer(it) }
+                // The bus never completes: only the cutoff, or a loss after it, ends the collection.
+                if (reachedCutoff) finish() else close()
             }
+        subscription.await()
+        return job
+    }
+
+    private fun countControl(seq: Long) {
+        if (seq <= lastControlSeq) return
+        missedControl.addAndGet(seq - lastControlSeq - 1)
+        lastControlSeq = seq
+    }
+```
+(The KDoc of `feed` keeps its contract: it returns once the feed's own collector is registered; say it is now
+signalled by the bus's `onSubscribed`, which runs once the collector's slot exists.)
+
+`poll` and `cutoff`:
+```kotlin
+    /**
+     * Puts a completed poll's watermark on [session]'s bus (spec C-7), numbered as a control item. Called on the poll loop
+     * right after the poll's events, so the watermark follows them. Nothing after the cutoff.
+     */
+    internal fun poll(
+        session: VizSession,
+        pollNanos: Long,
+        pollEpochMs: Long,
+    ) {
+        synchronized(controlLock) {
+            if (cutoffRequested) return
+            session.bus.send(PollWatermark(session.sessionId, ++controlSeq, pollNanos, pollEpochMs))
+        }
+    }
+
+    /**
+     * Sets the capture cutoff (spec C-7, P-8): what [session] sent on its bus before this call is handed to the buffer,
+     * nothing after it is, and none of that counts as lost. The feed then queues the final watermark and closes the
+     * buffer, so a drain sends it last and returns. Before the feed subscribed nothing was captured: the buffer closes now.
+     */
+    internal fun cutoff(session: VizSession) {
+        synchronized(controlLock) {
+            if (cutoffRequested) return
+            cutoffRequested = true
+            if (!subscribed) {
+                close()
+                return
+            }
+            val marker = PollWatermark(session.sessionId, ++controlSeq, Long.MIN_VALUE, 0)
+            cutoffMarker = marker
+            session.bus.send(marker)
+        }
+    }
 ```
 
 `offer` first line: `if (event is PollWatermark) return offerWatermark(event)`, plus:
@@ -1017,27 +1050,24 @@ State:
         if (channel.trySend(stamped(poll, final = false)).isSuccess) lastForwardedNanos = poll.tsNanos
     }
 
-    private fun stamped(poll: PollWatermark, final: Boolean): PollWatermark =
-        poll.copy(lostEvents = lost, deliveryUncertain = uncertain, final = final)
+    // seq = 0: the numbering is the bus's business; the server does not read a watermark's seq.
+    private fun stamped(
+        poll: PollWatermark,
+        final: Boolean,
+    ): PollWatermark = poll.copy(seq = 0, lostEvents = lost, deliveryUncertain = uncertain, final = final)
 
     /**
-     * Sets the capture cutoff (spec C-7): everything [session] sent on its bus before this call is handed to the buffer;
-     * nothing after it is, and none of it counts as lost. The feed then queues a final watermark and closes the buffer,
-     * so the drain sends it last and returns.
+     * The close message: the newest completed poll before the cutoff with the final counts. Without a completed poll there
+     * is none (a watermark is an observation, H-1): the buffer just closes.
      */
-    internal fun cutoff(session: VizSession) {
-        session.bus.send(cutoffMarker)
-    }
-
-    /** The close message: the newest poll before the cutoff (the cutoff time when none completed) with the final counts. */
     private suspend fun finish() {
-        val poll = latestPoll ?: PollWatermark(sessionId, 0, System.nanoTime(), System.currentTimeMillis())
+        val poll = latestPoll
         try {
-            channel.send(stamped(poll, final = true))
-            channel.close()
+            if (poll != null) channel.send(stamped(poll, final = true))
         } catch (_: ClosedSendChannelException) {
-            // close() came first: the client is not waiting for a final watermark.
+            // close() came first: nobody is waiting for the final watermark.
         }
+        close()
     }
 ```
 
@@ -1061,16 +1091,16 @@ State:
             }
             closed = true
         } finally {
-            // There is no delivery acknowledgement: an event this socket took may not have arrived (spec C-7).
+            // There is no delivery acknowledgement: an event this socket took may not have arrived (spec C-7, P-7).
             if (!closed && tookEvent) uncertain = true
         }
     }
 ```
 Companion: `const val DEFAULT_WATERMARK_INTERVAL_NANOS = 1_000_000_000L // at most one watermark a second (spec C-7)`.
-Update the class KDoc with a "Watermarks and losses (spec C-7)" paragraph.
+Class KDoc: add a "Watermarks, losses and the cutoff (spec C-7)" paragraph summarising P-5…P-9.
 
 - [ ] **Step 4: Run** — `./gradlew :coroutine-viz-client:test --tests '*OutboundBuffer*'`; expected PASS (existing `OutboundBufferTest` too).
-- [ ] **Step 5: Commit** — `git commit -am "client: the outbound buffer forwards watermarks with the loss count and ends with a final one (triage PR 3)"` (add the test).
+- [ ] **Step 5: Commit** — `git add` the test, `git commit -am "client: the outbound buffer forwards numbered watermarks with exact losses and ends with a final one (triage PR 3)"`.
 
 ---
 
@@ -1093,7 +1123,6 @@ import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.install
 import io.ktor.server.response.respondText
-import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
@@ -1110,18 +1139,9 @@ import org.junit.jupiter.api.Test
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /** P-11: a 1.2 server would store every watermark as an event, so watermarks go only to servers that serve health. */
 class WatermarkSupportTest {
-    private fun Route.ingest(received: MutableList<VizEvent>) {
-        webSocket("/api/sessions/{id}/ingest") {
-            for (frame in incoming) {
-                if (frame is Frame.Text) received += appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), frame.readText())
-            }
-        }
-    }
-
     @Test
     fun `the health answer says whether the server takes watermarks`() =
         testApplication {
@@ -1130,7 +1150,9 @@ class WatermarkSupportTest {
                 get("/api/sessions/trimmed/health") {
                     call.respondText("""{"error":"x","code":"history-trimmed"}""", status = HttpStatusCode.ServiceUnavailable)
                 }
-                get("/api/sessions/proxy/health") { call.respondText("<html>bad gateway</html>", status = HttpStatusCode.ServiceUnavailable) }
+                get("/api/sessions/proxy/health") {
+                    call.respondText("<html>bad gateway</html>", status = HttpStatusCode.ServiceUnavailable)
+                }
                 get("/api/sessions/denied/health") { call.respondText("", status = HttpStatusCode.Forbidden) }
             }
             val http = createClient { }
@@ -1147,21 +1169,29 @@ class WatermarkSupportTest {
             val received = CopyOnWriteArrayList<VizEvent>()
             application {
                 install(ServerWebSockets)
-                routing { ingest(received) }
+                routing {
+                    webSocket("/api/sessions/{id}/ingest") {
+                        for (frame in incoming) {
+                            if (frame is Frame.Text) {
+                                received += appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), frame.readText())
+                            }
+                        }
+                    }
+                }
             }
             val http = createClient { install(WebSockets) }
             val session = VizSession("old")
             val scope = CoroutineScope(SupervisorJob())
             val buffer = OutboundBuffer()
             buffer.feed(session, scope)
+            buffer.poll(session, 1, 1)
             session.send(CoroutineCreated("old", 1, 1, "c1", "j1", null, "sc", "e1"))
-            session.bus.send(PollWatermark("old", 0, 1, 1))
+            buffer.poll(session, 2_000_000_000, 2)
             buffer.cutoff(session)
             val transport = scope.launch { stream(http, "", "old", "t", buffer, IngestTimeouts(), sendWatermarks = false) }
+            transport.join() // the drain ends at the cutoff, the socket closes normally
             pollFor { received.takeIf { it.isNotEmpty() } }
-            transport.join()
-            assertEquals(listOf("CoroutineCreated"), received.map { it.kind })
-            assertTrue(received.none { it is PollWatermark })
+            assertEquals(listOf("CoroutineCreated"), received.map { it.kind }, "the final watermark is held back too")
             scope.cancel()
             session.close()
         }
@@ -1204,7 +1234,7 @@ internal suspend fun takesWatermarks(
             when (response.status) {
                 HttpStatusCode.OK -> true
                 HttpStatusCode.NotFound -> false
-                HttpStatusCode.ServiceUnavailable -> response.bodyAsText().let { body -> HEALTH_UNAVAILABLE_CODES.any { it in body } }.takeIf { it }
+                HttpStatusCode.ServiceUnavailable -> true.takeIf { HEALTH_UNAVAILABLE_CODES.any { it in response.bodyAsText() } }
                 else -> null
             }
         } catch (cancellation: CancellationException) {
@@ -1214,13 +1244,15 @@ internal suspend fun takesWatermarks(
         }
     }
 ```
-(`withTimeoutOrNull` returns `null` both on timeout and for a `null` answer — both mean "not known".)
+(`withTimeoutOrNull` yields `null` on timeout and for a `null` answer alike — both mean "not known". A timeout inside
+is the block's own `TimeoutCancellationException`, which `withTimeoutOrNull` turns into `null`; an outer cancellation
+propagates.)
 
 The internal `stream(...)` gains `sendWatermarks: Boolean = true` (after `lifetime`), passed to `connectAndDrain`; the
 drain lambda becomes:
 ```kotlin
                             buffer.drain { event ->
-                                // An older server would store a watermark as an event (P-11): skipped, not counted.
+                                // An older server would store a watermark as an event (P-11): held back, not counted.
                                 if (event is PollWatermark && !sendWatermarks) return@drain
                                 send(Frame.Text(appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)))
                             }
@@ -1232,7 +1264,7 @@ drain lambda becomes:
 ```
 
 - [ ] **Step 4: Run** — `./gradlew :coroutine-viz-client:test --tests '*WatermarkSupportTest*' --tests '*IngestTransport*'`; expected PASS.
-- [ ] **Step 5: Commit** — `git commit -am "client: send watermarks only to a server that serves session health (triage PR 3)"` (add the test).
+- [ ] **Step 5: Commit** — `git add` the test, `git commit -am "client: send watermarks only to a server that serves session health (triage PR 3)"`.
 
 ---
 
@@ -1271,17 +1303,22 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.PolymorphicSerializer
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** `stop()` drains and closes with a final watermark (spec 2026-10-21, C-7). */
+/** `stop()` drains and closes with a final watermark (spec 2026-10-21, C-7; P-10). */
 class VizcoreClientStopTest {
     private class FakeSource : InstrumentationSource {
         override val sourceId = "fake"
@@ -1294,6 +1331,23 @@ class VizcoreClientStopTest {
     }
 
     private fun event(n: Int): VizEvent = CoroutineCreated("s", n.toLong(), n.toLong(), "c$n", "j$n", null, "sc", "e$n")
+
+    /** A client whose transport opens a socket that never takes anything; [opened] counts down when it is open. */
+    private fun stalledClient(opened: CountDownLatch, scopeJob: Job, source: FakeSource = FakeSource()) =
+        VizcoreClient(
+            httpClient = HttpClient(),
+            backendUrl = "",
+            sessionId = "s",
+            token = "t",
+            session = VizSession("s"),
+            source = source,
+            scope = CoroutineScope(Dispatchers.Default + scopeJob),
+            transport = { _, lifetime ->
+                lifetime.opened()
+                opened.countDown()
+                awaitCancellation()
+            },
+        )
 
     @Test
     fun `stop delivers every captured event and closes with the final watermark last`() =
@@ -1308,7 +1362,9 @@ class VizcoreClientStopTest {
                     webSocket("/api/sessions/{id}/ingest") {
                         connected.set(true)
                         for (frame in incoming) {
-                            if (frame is Frame.Text) received += appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), frame.readText())
+                            if (frame is Frame.Text) {
+                                received += appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), frame.readText())
+                            }
                         }
                         closed.set(true)
                     }
@@ -1316,6 +1372,7 @@ class VizcoreClientStopTest {
             }
             val local = VizSession("s1")
             val source = FakeSource()
+            val buffer = OutboundBuffer()
             val client =
                 VizcoreClient(
                     httpClient = createClient { install(WebSockets) },
@@ -1325,20 +1382,20 @@ class VizcoreClientStopTest {
                     session = local,
                     source = source,
                     scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+                    buffer = buffer,
                 )
             client.start()
             pollFor { if (source.isRunning && connected.get()) Unit else null }
-            local.bus.send(PollWatermark("s1", 0, 1_000, 1))
+            buffer.poll(local, 1_000, 1)
             repeat(500) { local.send(event(it)) }
-            local.bus.send(PollWatermark("s1", 0, 2_000, 2))
+            buffer.poll(local, 2_000, 2)
 
             val started = System.nanoTime()
             withContext(Dispatchers.IO) { client.stop() }
             assertTrue(System.nanoTime() - started < 5_000_000_000L, "within the deadline")
 
             pollFor { if (closed.get()) Unit else null }
-            val events = received.filterNot { it is PollWatermark }
-            assertEquals(500, events.size, "every event captured before stop() arrives")
+            assertEquals(500, received.count { it !is PollWatermark }, "every event captured before stop() arrives")
             val last = received.last() as PollWatermark
             assertTrue(last.final, "the close message comes last")
             assertEquals(2_000, last.tsNanos, "it carries the newest poll")
@@ -1346,7 +1403,7 @@ class VizcoreClientStopTest {
         }
 
     @Test
-    fun `stop without an open socket returns at once`() {
+    fun `stop without an open socket does not wait`() {
         val client =
             VizcoreClient(
                 httpClient = HttpClient(),
@@ -1366,6 +1423,44 @@ class VizcoreClientStopTest {
 
     @Test
     fun `stop gives up after its deadline when the socket does not drain`() {
+        val opened = CountDownLatch(1)
+        val scopeJob = SupervisorJob()
+        val client = stalledClient(opened, scopeJob)
+        client.start()
+        assertTrue(opened.await(5, TimeUnit.SECONDS))
+        val started = System.nanoTime()
+        client.stop(300)
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+        assertTrue(tookMs in 250..2_000, "waited for the 300 ms deadline, took $tookMs ms")
+        assertFalse(scopeJob.isActive)
+    }
+
+    @Test
+    fun `an interrupt ends the wait, keeps the interrupt, and still releases everything`() {
+        val opened = CountDownLatch(1)
+        val scopeJob = SupervisorJob()
+        val source = FakeSource()
+        val client = stalledClient(opened, scopeJob, source)
+        client.start()
+        assertTrue(opened.await(5, TimeUnit.SECONDS))
+        var interruptKept = false
+        val stopper =
+            thread {
+                client.stop(30_000)
+                interruptKept = Thread.currentThread().isInterrupted
+            }
+        Thread.sleep(200)
+        stopper.interrupt()
+        stopper.join(5_000)
+        assertFalse(stopper.isAlive, "stop() returned")
+        assertTrue(interruptKept)
+        assertFalse(source.isRunning)
+        assertFalse(scopeJob.isActive)
+    }
+
+    @Test
+    fun `start after stop does nothing`() {
+        val source = FakeSource()
         val client =
             VizcoreClient(
                 httpClient = HttpClient(),
@@ -1373,19 +1468,15 @@ class VizcoreClientStopTest {
                 sessionId = "s",
                 token = "t",
                 session = VizSession("s"),
-                source = FakeSource(),
+                source = source,
                 scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
-                transport = { _, lifetime ->
-                    lifetime.opened() // a socket that never takes anything
-                    awaitCancellation()
-                },
+                transport = { _, _ -> awaitCancellation() },
             )
         client.start()
-        Thread.sleep(200)
-        val started = System.nanoTime()
-        client.stop(300)
-        val tookMs = (System.nanoTime() - started) / 1_000_000
-        assertTrue(tookMs in 250..2_000, "waited for the 300 ms deadline, took $tookMs ms")
+        client.stop()
+        client.start()
+        Thread.sleep(100)
+        assertFalse(source.isRunning)
     }
 }
 ```
@@ -1405,14 +1496,18 @@ Default `transport`:
 ```
 Fields:
 ```kotlin
-    // The reconnect loop, joined by stop() while it finishes the last socket.
+    // Set for good by stop(): the scope is cancelled then, so a client never runs again.
+    @Volatile
+    private var stopped = false
+
+    // The reconnect loop, joined by stop() while it finishes the open socket.
     @Volatile
     private var loopJob: Job? = null
 
-    // The current connection attempt's socket; stop() drains only through an open one.
+    // The current connection attempt's socket; stop() waits for delivery only through an open one.
     private val liveSocket = AtomicReference<SocketLifetime?>(null)
 ```
-`start()`: `loopJob = scope.launch { reconnectLoop() }`.
+`start()`: `if (running || stopped) return` inside the lock; `loopJob = scope.launch { reconnectLoop() }`.
 `streamOnce`: `liveSocket.set(lifetime)` before `transport(…)`, and `liveSocket.compareAndSet(lifetime, null)` in a
 `finally` around the `try`/`catch`.
 `createFirstSession`'s `LinkageError` branch: `stop(0)` (it runs on the loop itself, which must not wait for itself).
@@ -1424,35 +1519,53 @@ Fields:
 
     /**
      * Stop capturing and close the connection (spec 2026-10-21, C-7). Sets the capture cutoff first: everything the app's
-     * coroutines produced before it is sent, nothing after it. With a socket open, it then waits (blocking the caller, at
-     * most [timeoutMillis]) while the buffer drains, sends a final watermark carrying the final loss count, and closes the
-     * socket normally: the backend reads a clean close. If the deadline passes first, or no socket is open, it closes
-     * without that message, and the backend reads delivery as uncertain. It never reconnects to finish. Then the source,
-     * the buffer, the HTTP client and the scope are released, as before. Idempotent.
+     * coroutines produced before it is sent, nothing after it. With a socket open, it then waits — blocking the caller,
+     * at most [timeoutMillis] from the call — while the buffer drains, a final watermark with the final loss count goes
+     * out, and the socket closes normally: the backend reads a clean close. It never reconnects to finish. If the
+     * deadline passes first, the calling thread is interrupted, or no socket is open, it closes without that message,
+     * and the backend reads delivery as uncertain. Then it stops the source (releasing DebugProbes takes its own time,
+     * as before), closes the buffer and the HTTP client and cancels the scope. Idempotent; a stopped client never starts
+     * again. An app that must not wait passes 0.
      *
      * @throws IllegalArgumentException when [timeoutMillis] is negative.
      */
     fun stop(timeoutMillis: Long) {
         require(timeoutMillis >= 0) { "timeoutMillis must not be negative, was $timeoutMillis" }
+        val deadline = System.nanoTime() + timeoutMillis * NANOS_PER_MILLI
         val socketOpen =
             synchronized(lifecycleLock) {
                 if (!running) return
                 running = false
-                source.stop()
+                stopped = true
                 liveSocket.get()?.isOpen == true
             }
-        if (socketOpen && timeoutMillis > 0) finishDelivery(timeoutMillis)
-        buffer.close()
-        httpClient.close()
-        scope.cancel()
+        try {
+            buffer.cutoff(session)
+            if (socketOpen) awaitDelivery(deadline, timeoutMillis)
+        } finally {
+            synchronized(lifecycleLock) { source.stop() }
+            buffer.close()
+            httpClient.close()
+            scope.cancel()
+        }
     }
 
-    /** Cut the capture off and wait for the open socket to drain, send the final watermark and close. */
-    private fun finishDelivery(timeoutMillis: Long) {
-        buffer.cutoff(session)
+    /** Wait until [deadlineNanos] for the reconnect loop to finish the open socket: drain, final watermark, close. */
+    private fun awaitDelivery(
+        deadlineNanos: Long,
+        timeoutMillis: Long,
+    ) {
         val loop = loopJob ?: return
-        val finished = runBlocking { withTimeoutOrNull(timeoutMillis) { loop.join() } } != null
-        if (!finished) {
+        val remainingMillis = (deadlineNanos - System.nanoTime()) / NANOS_PER_MILLI
+        val delivered =
+            try {
+                remainingMillis > 0 && runBlocking { withTimeoutOrNull(remainingMillis) { loop.join() } } != null
+            } catch (_: InterruptedException) {
+                // The caller wants out: keep its interrupt and release everything without waiting.
+                Thread.currentThread().interrupt()
+                false
+            }
+        if (!delivered) {
             logger.warn(
                 "vizcore could not send every event within {} ms of stop(); the session will say events may have been lost",
                 timeoutMillis,
@@ -1460,40 +1573,57 @@ Fields:
         }
     }
 ```
-Companion: `/** How long [stop] waits for the last events to be sent. */ const val DEFAULT_STOP_TIMEOUT_MILLIS: Long = 5_000`.
+Companion: `/** How long [stop] waits for the last events to be sent. */ const val DEFAULT_STOP_TIMEOUT_MILLIS: Long = 5_000`;
+file-private `private const val NANOS_PER_MILLI = 1_000_000L`.
 
-Factory `start(…httpClient…)`: after `probes` is built, `probes.onPollCompleted = pollWatermarks(local)`; add at file level:
-```kotlin
-/**
- * Puts each completed poll's watermark on [session]'s bus (spec 2026-10-21, C-7), after that poll's events and outside
- * the local store; the outbound buffer decides which ones to send.
- */
-internal fun pollWatermarks(session: VizSession): (Long, Long) -> Unit =
-    { pollNanos, pollEpochMs ->
-        session.bus.send(PollWatermark(sessionId = session.sessionId, seq = 0, tsNanos = pollNanos, pollEpochMs = pollEpochMs))
-    }
-```
-Update the class KDoc (stop drains; watermarks) and the `stop()` sentence in the companion `start` KDoc if any.
+Factory `start(…httpClient…)`: create `val outbound = OutboundBuffer()`, pass `buffer = outbound` to the constructor,
+and after `probes` is built: `probes.onPollCompleted = { nanos, epochMs -> outbound.poll(local, nanos, epochMs) }`
+(comment: "each completed poll's watermark, after that poll's events (spec C-7)").
+Update the class KDoc (stop drains; watermarks).
 
 - [ ] **Step 4: Run** — `./gradlew :coroutine-viz-client:test`; expected PASS. Where an existing test now waits for a
   drain inside `testApplication` (its server shares the test thread), move only its `stop()` call off the thread with
   `withContext(Dispatchers.IO) { client.stop() }`; no assertion changes.
-- [ ] **Step 5: Commit** — `git commit -am "client: watermark every poll, and stop() drains and closes with a final watermark (triage PR 3)"` (add the test).
+- [ ] **Step 5: Commit** — `git add` the test, `git commit -am "client: watermark every poll, and stop() drains and closes with a final watermark (triage PR 3)"`.
 
 ---
 
-### Task 9: Client — origin end to end in an app (the leftovers)
+### Task 9: Client — origin and capture-once with real DebugProbes, each in a fresh JVM
 
 **Files:**
-- Modify: `coroutine-viz-client/src/test/kotlin/com/jh/proj/coroutineviz/sdkapp/FakeBackend.kt` (record `origin`, all frame kinds; answer `GET …/health`)
-- Create: `coroutine-viz-client/src/test/kotlin/com/jh/proj/coroutineviz/sdkapp/SdkOriginTest.kt`
+- Modify: `coroutine-viz-client/build.gradle.kts` (test dependency `kotlinx-coroutines-debug`; `freshJvmTest`)
+- Modify: `coroutine-viz-client/src/test/kotlin/com/jh/proj/coroutineviz/sdkapp/FakeBackend.kt` (record `origin`,
+  `coroutineId`, every frame kind; answer `GET …/health`)
+- Create: `…/sdkapp/SdkOriginTest.kt`, `…/sdkapp/NoCreationStacksTest.kt`, `…/sdkapp/WrapperCapturedOnceTest.kt`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Build wiring** (`coroutine-viz-client/build.gradle.kts`):
+```kotlin
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
+…
+tasks.named<Test>("test") {
+    useJUnitPlatform { excludeTags("fresh-jvm") }
+}
 
-`FakeBackend`: `Created` gains `val origin: CoroutineOrigin?` and `val coroutineId: String`; the frame callback records
-`events[event.coroutineId] = Created(event.label, event.creationPoint?.fileName, event.origin, event.coroutineId)` and
-appends every decoded frame's `kind` to a new `val kinds: List<String>`; a new branch answers
-`GET /api/sessions/$sessionId/health` with `200 {}` (`Connection: close`).
+// Tests that read process-wide state — which JVM-wide coroutines exist (Ktor's nonce generator), DebugProbes'
+// creation-stack flag — each get a JVM of their own (P-15).
+val freshJvmTest by tasks.registering(Test::class) {
+    description = "Runs the @Tag(\"fresh-jvm\") tests, one JVM per test class."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("fresh-jvm") }
+    forkEvery = 1
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
+}
+tasks.named("check") { dependsOn(freshJvmTest) }
+```
+
+- [ ] **Step 2: Write the tests**
+
+`FakeBackend`: `Created` becomes `Created(val label: String?, val fileName: String?, val origin: CoroutineOrigin?, val coroutineId: String)`;
+the frame callback records `events[event.coroutineId] = Created(event.label, event.creationPoint?.fileName, event.origin, event.coroutineId)`
+and appends every decoded frame's `kind` to a new `val kinds: List<String>` (a `CopyOnWriteArrayList`); a new branch
+answers `GET /api/sessions/$sessionId/health` with `200 {}` (`Content-Length: 2`, `Connection: close`).
 
 `SdkOriginTest.kt`:
 ```kotlin
@@ -1502,25 +1632,24 @@ package com.jh.proj.coroutineviz.sdkapp
 import com.jh.proj.coroutineviz.client.VizcoreClient
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesInstall
-import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Origin as an app sees it (spec "Origin", P-1): the app's coroutines are APP, one launched through `VizScope` into the
- * client's session is APP and captured once, Ktor's process-wide nonce generator is VIZCORE (created by the SDK's
- * connection), and the socket reader and writer stay APP (no SDK frame on their creation stack). Lives outside the
- * SDK's packages, as an app does.
+ * Origin as an app sees it (spec "Origin", P-1), in a JVM of its own with DebugProbes installed before Ktor runs, so the
+ * SDK's leftovers are created — and captured — by this client: Ktor's process-wide nonce generator is VIZCORE (created
+ * by the SDK's connection), the socket reader and writer stay APP (no SDK frame on their creation stack), and the app's
+ * coroutine is APP. Lives outside the SDK's packages, as an app does.
  */
+@Tag("fresh-jvm")
 class SdkOriginTest {
     @Test
     fun `the app's coroutines are APP, the SDK's leftovers as verified`() {
@@ -1528,31 +1657,21 @@ class SdkOriginTest {
         var server: FakeBackend? = null
         var client: VizcoreClient? = null
         val app = Job()
-        var scope: VizScope? = null
         try {
             val backend = FakeBackend().also { server = it }
             val started = VizcoreClient.start(appName = "origin", backendUrl = "http://localhost:${backend.port}", token = "t")
             client = started
             CoroutineScope(Dispatchers.Default + app).launch(CoroutineName("app-work")) { awaitCancellation() }
-            scope = VizScope(started.session)
-            runBlocking { scope!!.vizLaunch(label = "wrapped", context = CoroutineName("wrapped")) { awaitCancellation() } }
+            listOf("app-work", "nonce-generator", "cio-from-nio-reader", "cio-to-nio-writer").forEach(backend::awaitLabel)
+            backend.awaitKind("PollWatermark")
 
-            backend.awaitLabel("app-work")
-            backend.awaitLabel("wrapped")
-            Thread.sleep(1_500) // more polls, and a watermark
-
-            val created = backend.created
-            assertEquals(CoroutineOrigin.APP, created.single { it.label == "app-work" }.origin)
-            val wrapped = created.filter { it.label == "wrapped" }
-            assertEquals(1, wrapped.size, "captured once: $wrapped")
-            assertEquals(CoroutineOrigin.APP, wrapped.single().origin)
-            assertTrue(created.filter { it.label == "nonce-generator" }.all { it.origin == CoroutineOrigin.VIZCORE })
-            assertTrue(
-                created.filter { it.label in setOf("cio-from-nio-reader", "cio-to-nio-writer") }.all { it.origin == CoroutineOrigin.APP },
-            )
-            assertTrue("PollWatermark" in backend.kinds, "a server that serves health gets watermarks")
+            val byLabel = backend.created.groupBy { it.label }
+            assertEquals(CoroutineOrigin.APP, byLabel.getValue("app-work").single().origin)
+            assertEquals(setOf(CoroutineOrigin.VIZCORE), byLabel.getValue("nonce-generator").map { it.origin }.toSet())
+            assertEquals(setOf(CoroutineOrigin.APP), byLabel.getValue("cio-from-nio-reader").map { it.origin }.toSet())
+            assertEquals(setOf(CoroutineOrigin.APP), byLabel.getValue("cio-to-nio-writer").map { it.origin }.toSet())
+            assertTrue(backend.created.none { it.origin == null }, "every DebugProbes coroutine says its origin")
         } finally {
-            scope?.cancel()
             app.cancel()
             client?.stop()
             server?.close()
@@ -1561,13 +1680,126 @@ class SdkOriginTest {
     }
 }
 ```
-(The leftover assertions are `all { … }`: whether a given leftover is captured at all depends on whether this JVM
-created it before DebugProbes were installed; when it is captured, its origin is the verified one.)
+(`FakeBackend.awaitKind(kind)` waits like `awaitLabel` on `kinds`.)
 
-- [ ] **Step 2: Run** — `./gradlew :coroutine-viz-client:test --tests '*SdkOriginTest*' --tests '*SdkOwnCoroutinesTest*'`; expected: compiles after the `FakeBackend` change; passes only with Tasks 1–8 in (it guards the integration).
-- [ ] **Step 3: Implement** — nothing beyond `FakeBackend`; fix any integration gap the test exposes.
-- [ ] **Step 4: Run** — same command; expected PASS.
-- [ ] **Step 5: Commit** — `git commit -am "client: an app's coroutines carry their origin end to end (triage PR 3)"` (add the test).
+`NoCreationStacksTest.kt`:
+```kotlin
+package com.jh.proj.coroutineviz.sdkapp
+
+import com.jh.proj.coroutineviz.client.VizcoreClient
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesInstall
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.debug.DebugProbes
+import kotlinx.coroutines.launch
+import org.junit.jupiter.api.Tag
+import org.junit.jupiter.api.Test
+import kotlin.test.assertEquals
+
+/**
+ * Without creation stacks (another party installed DebugProbes first without them, #217) a coroutine's origin is
+ * UNKNOWN (P-2). DebugProbes read the flag at each coroutine's creation, so turning it off after the install is that case.
+ */
+@Tag("fresh-jvm")
+class NoCreationStacksTest {
+    @Test
+    fun `a coroutine created without a creation stack is unknown`() {
+        DebugProbesInstall.acquire()
+        var server: FakeBackend? = null
+        var client: VizcoreClient? = null
+        val app = Job()
+        try {
+            val backend = FakeBackend().also { server = it }
+            client = VizcoreClient.start(appName = "no-stacks", backendUrl = "http://localhost:${backend.port}", token = "t")
+            DebugProbes.enableCreationStackTraces = false
+            CoroutineScope(Dispatchers.Default + app).launch(CoroutineName("stackless")) { awaitCancellation() }
+            backend.awaitLabel("stackless")
+            assertEquals(CoroutineOrigin.UNKNOWN, backend.created.single { it.label == "stackless" }.origin)
+        } finally {
+            DebugProbes.enableCreationStackTraces = true
+            app.cancel()
+            client?.stop()
+            server?.close()
+            DebugProbesInstall.release()
+        }
+    }
+}
+```
+
+`WrapperCapturedOnceTest.kt`:
+```kotlin
+package com.jh.proj.coroutineviz.sdkapp
+
+import com.jh.proj.coroutineviz.client.VizcoreClient
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesInstall
+import com.jh.proj.coroutineviz.wrappers.VizScope
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Tag
+import org.junit.jupiter.api.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * A coroutine an app launches through `VizScope` into the client's session is captured once, by its wrapper events, as
+ * the app's; a coroutine its body launches with the body's context inherits the wrapper's element and is captured by
+ * DebugProbes (spec "Origin", P-3).
+ */
+@Tag("fresh-jvm")
+class WrapperCapturedOnceTest {
+    @Test
+    fun `vizLaunch and vizAsync are captured once and are the app's`() {
+        DebugProbesInstall.acquire()
+        var server: FakeBackend? = null
+        var client: VizcoreClient? = null
+        var scope: VizScope? = null
+        try {
+            val backend = FakeBackend().also { server = it }
+            val started = VizcoreClient.start(appName = "once", backendUrl = "http://localhost:${backend.port}", token = "t")
+            client = started
+            val viz = VizScope(started.session).also { scope = it }
+            runBlocking {
+                viz.vizLaunch(label = "wrapped-launch", context = CoroutineName("wrapped-launch")) {
+                    coroutineScope {
+                        launch(CoroutineName("inheriting-child")) { awaitCancellation() }
+                    }
+                }
+                viz.vizAsync(label = "wrapped-async", context = CoroutineName("wrapped-async")) { awaitCancellation() }
+            }
+            listOf("wrapped-launch", "wrapped-async", "inheriting-child").forEach(backend::awaitLabel)
+            Thread.sleep(500) // several more polls: a dp- duplicate would have arrived by now
+
+            val byLabel = backend.created.groupBy { it.label }
+            for (label in listOf("wrapped-launch", "wrapped-async")) {
+                val captured = byLabel.getValue(label)
+                assertEquals(1, captured.size, "$label captured once: $captured")
+                assertTrue(captured.single().coroutineId.startsWith("coroutine-"), "by its wrapper events")
+                assertEquals(CoroutineOrigin.APP, captured.single().origin)
+            }
+            assertTrue(byLabel.getValue("inheriting-child").single().coroutineId.startsWith("dp-"))
+        } finally {
+            scope?.cancel()
+            client?.stop()
+            server?.close()
+            DebugProbesInstall.release()
+        }
+    }
+}
+```
+
+- [ ] **Step 3: Run** — `./gradlew :coroutine-viz-client:freshJvmTest :coroutine-viz-client:test --tests '*SdkOwnCoroutinesTest*'`;
+  expected PASS with Tasks 1–8 in (these guard the integration). If `awaitLabel` for a leftover times out, record
+  which and why (the plan's P-1 verification says all three exist in a fresh JVM) before changing the assertion.
+- [ ] **Step 4: Commit** — `git add` the new tests and build file, `git commit -am "client: origin and capture-once with real DebugProbes, each in a fresh JVM (triage PR 3)"`.
 
 ---
 
@@ -1604,6 +1836,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
@@ -1619,9 +1852,9 @@ import kotlin.test.assertTrue
 import io.ktor.client.HttpClient as KtorClient
 
 /**
- * Triage PR 3 end to end in one JVM: [VizcoreClient] against the real backend [module] (API keys, so the SDK's
- * `GET …/health` capability check runs with a runner key). While connected the SDK's watermarks make possibly blocked
- * evaluated and origins reported; after `stop()` the close was clean, so nothing reads "events may have been lost".
+ * Triage PR 3 end to end in one JVM: [VizcoreClient] against the real backend [module], secured with an API key (so the
+ * SDK's `GET …/health` capability check runs with a runner key). While connected the SDK's watermarks make possibly
+ * blocked evaluated and origins reported; after `stop()` the close was clean, so nothing reads "events may have been lost".
  */
 class SdkSessionHealthTest {
     private val apiKey = "sdk-health-test-key"
@@ -1648,15 +1881,16 @@ class SdkSessionHealthTest {
         val started =
             embeddedServer(
                 Netty,
-                environment = {
-                    config =
-                        MapApplicationConfig(
-                            "auth.keys.size" to "1",
-                            "auth.keys.0.name" to "sdk",
-                            "auth.keys.0.hash" to ApiKeyStore.sha256Hex(apiKey),
-                            "auth.keys.0.role" to "runner",
-                        )
-                }.let { applicationEnvironment(it) },
+                environment =
+                    applicationEnvironment {
+                        config =
+                            MapApplicationConfig(
+                                "auth.keys.size" to "1",
+                                "auth.keys.0.name" to "sdk",
+                                "auth.keys.0.hash" to ApiKeyStore.sha256Hex(apiKey),
+                                "auth.keys.0.role" to "runner",
+                            )
+                    },
                 configure = {
                     connector {
                         host = "127.0.0.1"
@@ -1666,11 +1900,18 @@ class SdkSessionHealthTest {
                 module = Application::module,
             ).start(wait = false)
         server = started
-        return "http://127.0.0.1:${runBlocking { started.engine.resolvedConnectors().first().port }}"
+        val port = runBlocking { started.engine.resolvedConnectors().first().port }
+        return "http://127.0.0.1:$port"
     }
 
-    private fun KtorClient.json(url: String): JsonObject =
-        runBlocking { kotlinx.serialization.json.Json.parseToJsonElement(get(url) { header("X-API-Key", apiKey) }.bodyAsText()).jsonObject }
+    private suspend fun KtorClient.json(url: String): JsonObject =
+        Json.parseToJsonElement(get(url) { header("X-API-Key", apiKey) }.bodyAsText()).jsonObject
+
+    private fun JsonObject.str(vararg path: String): String? {
+        var node: JsonObject = this
+        path.dropLast(1).forEach { node = node[it]?.jsonObject ?: return null }
+        return node[path.last()]?.jsonPrimitive?.content
+    }
 
     @Test
     fun `possibly blocked is evaluated while connected and the close is clean`() {
@@ -1679,41 +1920,46 @@ class SdkSessionHealthTest {
         client = started
         CoroutineScope(Dispatchers.Default + app).launch(CoroutineName("health-app-work")) { awaitCancellation() }
         val id = started.currentSessionId
+        val health = "$backendUrl/api/sessions/$id/health"
         KtorClient(CIO).use { http ->
-            val health = "$backendUrl/api/sessions/$id/health"
-            var connected = JsonObject(emptyMap())
             runBlocking {
-                withTimeout(15_000) {
-                    while (true) {
-                        connected = http.json(health)
-                        val evaluated = connected["possiblyBlocked"]!!.jsonObject["status"]!!.jsonPrimitive.content == "EVALUATED"
-                        if (evaluated && connected["counts"]!!.jsonObject["app"]!!.jsonPrimitive.int > 0) break
-                        delay(100)
+                // The exact state asserted below: a watermark has been applied and an app coroutine counted.
+                val connected =
+                    withTimeout(15_000) {
+                        while (true) {
+                            val h = http.json(health)
+                            val ready =
+                                h.str("possiblyBlocked", "status") == "EVALUATED" && h.str("asOf", "kind") == "WATERMARK" &&
+                                    (h["counts"]!!.jsonObject["app"]!!.jsonPrimitive.int > 0)
+                            if (ready) return@withTimeout h
+                            delay(100)
+                        }
+                        @Suppress("UNREACHABLE_CODE")
+                        error("unreachable")
                     }
-                }
-            }
-            assertEquals("REPORTED", connected["sessionOrigin"]!!.jsonPrimitive.content)
-            assertEquals("WATERMARK", connected["asOf"]!!.jsonObject["kind"]!!.jsonPrimitive.content)
+                assertEquals("REPORTED", connected.str("sessionOrigin"))
 
-            started.stop()
-            client = null
-            val session = http.json("$backendUrl/api/sessions/$id")
-            assertFalse(session["appConnected"]!!.jsonPrimitive.boolean)
-            val after = http.json(health)
-            val transport = after["transport"]!!.jsonObject
-            assertFalse(transport["deliveryUncertain"]!!.jsonPrimitive.boolean, "a clean close: $transport")
-            assertEquals(0L, transport["lostEvents"]!!.jsonPrimitive.long)
-            assertFalse(after["failuresAtLeast"]!!.jsonPrimitive.boolean)
-            assertEquals("EVALUATED", after["possiblyBlocked"]!!.jsonObject["status"]!!.jsonPrimitive.content)
-            assertTrue(after["counts"]!!.jsonObject["app"]!!.jsonPrimitive.int > 0)
+                started.stop()
+                client = null
+                assertFalse(http.json("$backendUrl/api/sessions/$id")["appConnected"]!!.jsonPrimitive.boolean)
+                val after = http.json(health)
+                val transport = after["transport"]!!.jsonObject
+                assertFalse(transport["deliveryUncertain"]!!.jsonPrimitive.boolean, "a clean close: $transport")
+                assertEquals(0L, transport["lostEvents"]!!.jsonPrimitive.long)
+                assertFalse(after["failuresAtLeast"]!!.jsonPrimitive.boolean)
+                assertEquals("EVALUATED", after.str("possiblyBlocked", "status"))
+                assertTrue(after["counts"]!!.jsonObject["app"]!!.jsonPrimitive.int > 0)
+            }
         }
     }
 }
 ```
-(Mirror `SdkBackendAuthTest.startBackend` exactly for the server construction; the snippet above shows the config.)
+(If the module reads `appConnected` asynchronously after the socket closes, poll the session read for
+`appConnected == false` with the same 15 s bound before the `after` assertions.)
 
-- [ ] **Step 2: Run** — `./gradlew test --tests '*SdkSessionHealthTest*'`; expected PASS with Tasks 1–8 in. To confirm it
-  tests the change: with `probes.onPollCompleted = …` commented out it fails (`NOT_EVALUATED`); restore.
+- [ ] **Step 2: Run** — `./gradlew :test --tests '*SdkSessionHealthTest*'`; expected PASS with Tasks 1–8 in. To confirm
+  it tests the change: with the factory's `probes.onPollCompleted = …` line commented out it fails (never
+  `EVALUATED`); restore.
 - [ ] **Step 3: Commit** — `git add src/test/kotlin/com/jh/proj/coroutineviz/SdkSessionHealthTest.kt && git commit -m "test: the SDK against the backend reads evaluated while connected and clean after stop (triage PR 3)"`
 
 ---
@@ -1728,7 +1974,7 @@ class SdkSessionHealthTest {
   `busyMs > 0`, right after the client starts:
 ```kotlin
 		if (busyMs > 0) {
-			// Blocks a Default thread without suspending: the Problems tab's "possibly blocked" (over 10 s running).
+			// Holds a Default thread without suspending: what the Problems tab calls "possibly blocked" (over 10 s running).
 			CoroutineScope(Dispatchers.Default).launch(CoroutineName("busy-worker")) {
 				logger.info("busy-worker blocks its thread for {} ms", busyMs)
 				Thread.sleep(busyMs)
@@ -1739,12 +1985,12 @@ class SdkSessionHealthTest {
 
 - [ ] **Step 2: README** — replace the `stop()` bullet ("drops events that have not been sent yet … #207") with:
   "`stop()` sends what the app produced before it, then a closing message, and only then disconnects; it waits at most
-  5 s (`stop(timeoutMillis)` to change that), so call it from a shutdown hook. Without that message, or after a lost
-  connection, the session says events may have been lost." Extend the #225 bullet: "Of those, the session marks Ktor's
-  `nonce-generator` as vizcore's (the "vizcore connection" count) when the SDK created it; the socket reader and writer
-  are created where nothing names the SDK, so they count as the app's (they only show as long-lived)." Add a bullet:
+  5 s (`stop(timeoutMillis)` to change that; `stop(0)` does not wait), so call it from a shutdown hook. Without that
+  message, or after a lost connection, the session says events may have been lost." Extend the #225 bullet: "Of those,
+  the session counts Ktor's `nonce-generator` as vizcore's own connection when the SDK created it; the socket reader
+  and writer are created where nothing names the SDK, so they count as the app's (they only show as long-lived)." Add:
   "Each poll also tells the backend when it looked (at most once a second), which is what lets the session say a
-  coroutine may be blocked; servers before 1.3 are not sent these."
+  coroutine may be blocked; a server without session health (before vizcore 1.3) is not sent these."
 
 - [ ] **Step 3: CHANGELOG** — under `[Unreleased]` / `### Added`:
   "- SDK: the session can now judge an attached app. Each poll tells the backend when it looked (at most once a second),
@@ -1752,8 +1998,8 @@ class SdkSessionHealthTest {
   message within 5 s (`stop(timeoutMillis)`), so a clean shutdown no longer reads \"events may have been lost\"; every
   coroutine says whether it is the app's or vizcore's own connection (Ktor's `nonce-generator`), or unknown when
   DebugProbes run without creation stacks; suspension points say whether the frame was observed or is the creation
-  site; a coroutine launched through `VizScope` into the client's session is reported once. Servers before 1.3 are not
-  sent the poll messages."
+  site; a coroutine launched through `VizScope` into the client's session is reported once. Servers without session
+  health are not sent the poll messages."
 
 - [ ] **Step 4: Build the sample** — `cd backend && ./gradlew :coroutine-viz-client:jar :coroutine-viz-core:jar && cd ../examples/spring-vizcore-demo && ./gradlew bootJar -q` (expected: BUILD SUCCESSFUL).
 - [ ] **Step 5: Commit** — `git commit -am "docs: the SDK's watermark, clean stop and origin; sample busy worker (triage PR 3)"`
@@ -1763,30 +2009,29 @@ class SdkSessionHealthTest {
 ### Task 12: Gates and end-to-end check
 
 - [ ] **Step 1: Full gate** — from `backend/`:
-  `./gradlew ktlintCheck detekt test checkBytecode build :coroutine-viz-core:build :coroutine-viz-client:test`
-  Expected: BUILD SUCCESSFUL; record the test counts (`find . -path '*/build/test-results/test/*.xml' | xargs grep -ho 'tests="[0-9]*"' | …`).
-  Revert `docs/index.html` if regenerated. Fix ktlint with `./gradlew ktlintFormat` and detekt findings in the code (no baseline additions).
+  `./gradlew ktlintCheck detekt test checkBytecode build :coroutine-viz-core:build :coroutine-viz-client:test :coroutine-viz-client:freshJvmTest`
+  Expected: BUILD SUCCESSFUL; record the test counts from `build/test-results/**.xml`. Revert `docs/index.html` if
+  regenerated. Fix ktlint with `./gradlew ktlintFormat` and detekt findings in the code (no baseline additions).
 
 - [ ] **Step 2: End to end** (port **18951** only). Outputs to
   `/private/tmp/claude-501/-Users-jirihermann-Documents-workspace-vizcore/9e9c5bc5-1b4c-412c-966d-6cf483ca2458/scratchpad/pr3-e2e/`.
-  1. Backend: `./gradlew installDist` (or `run`) with `PORT=18951` / `-Dktor.deployment.port=18951`, auth off, memory mode; log to `backend.log`.
-  2. Sample: `java -jar examples/spring-vizcore-demo/build/libs/spring-vizcore-demo-*.jar --vizcore.backend-url=http://localhost:18951 --vizcore.busy-ms=15000 --vizcore.token= > app.log`.
+  1. Backend on 18951, auth off, memory mode; log to `backend.log`.
+  2. Sample: `java -jar examples/spring-vizcore-demo/build/libs/spring-vizcore-demo-*.jar --vizcore.backend-url=http://localhost:18951 --vizcore.busy-ms=15000 > app.log`.
   3. Session id from `GET /api/sessions` (app name `spring-vizcore-demo`); at ~5 s and ~13 s save
      `GET /api/sessions/{id}/health` → `health-connected-5s.json`, `health-connected-13s.json`: at 13 s
      `possiblyBlocked.status = EVALUATED`, a `POSSIBLY_BLOCKED` incident for `busy-worker` with `runningForNanos` > 10 s,
-     `asOf.kind = WATERMARK`; `counts` with `vizcore` ≥ 1 (`nonce-generator`) and `app` the rest; save
+     `asOf.kind = WATERMARK`; `counts.vizcore` ≥ 1 (`nonce-generator`) and `counts.app` the rest; save
      `GET /api/sessions/{id}` → `session-connected.json`.
   4. `kill -TERM <app pid>` (shutdown hook → `stop()`); save `health-after-stop.json` and `session-after-stop.json`:
      `appConnected = false`, `transport.deliveryUncertain = false`, `lostEvents = 0`, `failuresAtLeast = false`.
-  5. Contrast (optional, documents the old behaviour): the same against an app killed with `kill -9` →
-     `transport.deliveryUncertain = true`.
+  5. Contrast: the same against an app killed with `kill -9` → `transport.deliveryUncertain = true`.
   6. Stop the backend; `lsof -i :18951` shows nothing. Summarise in `pr3-e2e/README.md`.
 
 ---
 
 ## Compatibility evidence to collect for the PR
 
-- `BinaryCompatibilityTest` (core) green, with the new `CoroutineSnapshot` 0.3.x constructor pins.
+- `BinaryCompatibilityTest` (core) green; `CoroutineSnapshot`'s public API unchanged (P-2b; `javap` before/after).
 - `ClientBinaryCompatibilityTest` green, with `stop(long)` added and every older signature unchanged.
 - `checkBytecode` green (JVM 17 class files, no Ktor in core).
 - `HealthWireTypesTest` (from #248) still decodes an older SDK's events (no origin/provenance).
@@ -1797,6 +2042,7 @@ class SdkSessionHealthTest {
 
 - `cio-from-nio-reader`, `cio-to-nio-writer` and `cio-request-timeout` stay `APP` (P-1); they show only as long-lived.
 - `lostEvents` is per client, so a replacement session (#129) inherits the earlier session's count (overstates, P-6).
-- A session that dropped its connection reconnects with delivery uncertain for the rest of the session (server rule, D-2).
-- `stop()` blocks the caller up to its deadline; an app that must not block calls `stop(0)` (old behaviour).
+- A session that dropped its connection reads delivery uncertain for the rest of the session (server rule, D-2).
+- If the bus evicts entries for the feed after `stop()` began, the close is not clean (P-8): losses happened anyway.
+- `stop()` blocks the caller up to its deadline; an app that must not block calls `stop(0)`.
 - The SDK version bump and publication (release PR); the Problems tab and the "vizcore connection (n)" toggle (Parts 6/7).
