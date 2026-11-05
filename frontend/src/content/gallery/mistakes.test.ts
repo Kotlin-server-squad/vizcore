@@ -1,0 +1,56 @@
+import { readFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, it, expect } from 'vitest'
+import { MISTAKES } from './mistakes'
+import { GUIDES } from './guides'
+import type { MistakeId } from './types'
+
+// Every AntiPatternType value, spelled out so a new one fails this test until it has an entry.
+const ALL: MistakeId[] = [
+  'GLOBAL_SCOPE_USAGE',
+  'BLOCKING_ON_MAIN',
+  'LEAKED_COROUTINE',
+  'UNNECESSARY_ASYNC_AWAIT',
+  'RUN_BLOCKING_MISUSE',
+  'COROUTINE_EXPLOSION',
+  'UNHANDLED_EXCEPTION',
+  'MISSING_CANCELLATION_CHECK',
+  'SHARED_MUTABLE_STATE',
+  'WRONG_DISPATCHER',
+]
+
+const here = dirname(fileURLToPath(import.meta.url))
+const detector = readFileSync(
+  resolve(
+    here,
+    '../../../../backend/coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/checksystem/AntiPatternDetector.kt',
+  ),
+  'utf8',
+)
+
+describe('common mistakes', () => {
+  it('has exactly one entry per anti-pattern kind', () => {
+    expect(MISTAKES.map((m) => m.id).sort()).toEqual([...ALL].sort())
+  })
+
+  it('marks as detected exactly the kinds the detector reports today', () => {
+    const reported = [...new Set([...detector.matchAll(/AntiPatternType\.([A-Z_]+)/g)].map((m) => m[1]))].sort()
+    expect(reported.length).toBeGreaterThan(0)
+    expect(MISTAKES.filter((m) => m.detected).map((m) => m.id).sort()).toEqual(reported)
+  })
+
+  it('gives every mistake a title, what goes wrong and the fix', () => {
+    for (const m of MISTAKES) {
+      expect(m.title.length, m.id).toBeGreaterThan(0)
+      expect(m.whatGoesWrong.length, m.id).toBeGreaterThan(20)
+      expect(m.fix.length, m.id).toBeGreaterThan(20)
+    }
+  })
+
+  it('points guides only at mistakes that exist', () => {
+    for (const guide of Object.values(GUIDES)) {
+      if (guide.mistakeId) expect(ALL).toContain(guide.mistakeId)
+    }
+  })
+})
