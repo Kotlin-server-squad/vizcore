@@ -34,6 +34,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * - Tracks channel close
  * - Records a send or receive that has to wait as a suspension (spec 2026-11-05, S-7); select clauses are not recorded
  *
+ * [send] tries `trySend` first and calls the delegate's `send` only when it must wait. That is the delegate's own
+ * behaviour for the overflow policies [VizScope.vizChannel] creates (`SUSPEND`, and `DROP_OLDEST` for
+ * [Channel.CONFLATED]). A delegate built with `BufferOverflow.DROP_LATEST` and an `onUndeliveredElement` callback
+ * differs: its `trySend` drops an element that finds the buffer full without calling the callback, where its
+ * `send` would call it.
+ *
  * @param T The type of values transmitted through the channel
  * @param delegate The underlying Channel
  * @param session The VizSession for event tracking
