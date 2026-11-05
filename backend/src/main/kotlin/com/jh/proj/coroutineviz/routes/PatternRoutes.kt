@@ -117,7 +117,7 @@ fun Route.registerPatternRoutes() {
                             name = "Circuit Breaker: Payment Provider",
                             description =
                                 "The payment provider is down. After 3 failed charges the breaker opens and rejects orders at " +
-                                    "once for 5 s, then lets one trial order through; the provider is back, so the breaker closes.",
+                                    "once for 5.5 s, then lets one trial order through; the provider is back, so the breaker closes.",
                             endpoint = "/api/scenarios/patterns/circuit-breaker",
                             duration = "~22 seconds",
                         ),

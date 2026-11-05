@@ -44,6 +44,7 @@ Failures are marked as intended (`intendedByDemo()`), so where one reaches `demo
 - **A rejected order fails "at once":** this now means within 0.5 s (scripted), not 0.2 s. The main proof is that it has no `charge` child.
 - **The picture rule, enforced:** `GuideLabelsTest` now also tracks channel sends and receives. A picture only matches while no pictured coroutine is inside one; a coroutine that has ended counts as waiting for nothing. The two Channels pictures that show such a wait on purpose (`channel-rendezvous`, `channel-buffered`) are listed as exceptions. The new check was seen failing on exactly those two before they were listed.
 - **Logging:** the retry's caught failures never reach `demoFailureHandler`; the retry loop logs them at debug. Only the supervised failures (a backup, an order) reach the handler, and it logs them in one line.
+- **Breaker open for 5.5 s, not 5 s (Codex round 1):** at 5 s order 5 came only 1 s (100 ms real at test scale) before the breaker half-opened. A delay never ends early, so the threads can only make an order later: order 6 (6 s after the opening) is always past the cooldown, and only order 5 needs room. At 5.5 s it has 1.5 s, and the test checks that room (at least 1.2 s, seen failing at 5 s).
 - **The gallery tests:** `GalleryPage.test.tsx` and `HowItWorksPage.test.tsx` used Patterns as their "no guide yet" example. They now use Sync: Mutex, and the "links every card" test also covers Channels and Patterns.
 
 ---
@@ -142,14 +143,14 @@ A shop charges each order through a payment provider. The provider is down until
 
 The breaker:
 - **Opens** after 3 failures in a row.
-- **Rejects** every order for 5 s once open: the order fails at once, without calling the provider.
-- **Half-opens** after the 5 s: it lets one trial order through. If it succeeds, the breaker closes; if it fails, the breaker opens again.
+- **Rejects** every order for 5.5 s once open: the order fails at once, without calling the provider.
+- **Half-opens** after the 5.5 s: it lets one trial order through. If it succeeds, the breaker closes; if it fails, the breaker opens again.
 
 ```
 checkout                       supervisorScope: order-1 … order-8, one at a time
 ├── order-1 ── charge-1        FAILED at 1.5 s
 ├── order-2 ── charge-2        FAILED at 5 s
-├── order-3 ── charge-3        FAILED at 8.5 s: the breaker opens until 13.5 s
+├── order-3 ── charge-3        FAILED at 8.5 s: the breaker opens until 14 s
 ├── order-4                    FAILED at 10.5 s at once: rejected, no charge
 ├── order-5                    FAILED at 12.5 s at once: rejected
 ├── order-6 ── charge-6        14.5 s: the trial; the provider is back, COMPLETED; the breaker closes
@@ -157,13 +158,13 @@ checkout                       supervisorScope: order-1 … order-8, one at a ti
 └── order-8 ── charge-8        COMPLETED at about 21.5 s
 ```
 
-- The breaker's 5 s and the provider's 12 s are measured with `System.nanoTime()` and scaled with `scaled()`, so they keep the demo's pace.
+- The breaker's 5.5 s and the provider's 12 s are measured with `System.nanoTime()` and scaled with `scaled()`, so they keep the demo's pace.
 - The nearest order is 1 s from each boundary, so the outcome does not depend on thread timing.
 - **Labels:** `checkout`, `order-1` … `order-8`, `charge-1` … `charge-3`, `charge-6` … `charge-8`.
 - **Behaviour test:**
   - orders 1–3 and their charges failed;
   - orders 4 and 5 failed within 0.2 s of starting, with no charge;
-  - order 6 started at least 5 s after `charge-3` failed;
+  - order 6 started at least 5.5 s after `charge-3` failed, and order 5 at least 1.2 s before that;
   - orders 6–8 and their charges completed;
   - the root completed.
 

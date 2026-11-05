@@ -243,7 +243,7 @@ val demoCatalog: List<DemoCatalogEntry> =
                 "patterns/circuit-breaker",
                 "Circuit Breaker: Payment Provider",
                 "The payment provider is down. After 3 failed charges the breaker opens and rejects orders at " +
-                    "once for 5 s, then lets one trial order through; the provider is back, so the breaker closes.",
+                    "once for 5.5 s, then lets one trial order through; the provider is back, so the breaker closes.",
                 "~22 seconds",
             ),
         ) +

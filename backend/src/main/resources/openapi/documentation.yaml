@@ -1189,7 +1189,7 @@ paths:
       description: >
         A shop charges orders through a payment provider that is down: after
         3 failed charges the breaker opens and rejects orders at once for
-        5 s, then lets one trial order through (half-open), which succeeds
+        5.5 s, then lets one trial order through (half-open), which succeeds
         and closes it. Paced to about 22 seconds; answers once the demo has
         ended.
       operationId: runCircuitBreakerScenario

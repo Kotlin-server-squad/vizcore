@@ -115,7 +115,7 @@ class GuideLabelsTest {
                 is ChannelReceiveStarted -> event.coroutineId to 1
                 is ChannelSendCompleted -> event.coroutineId to -1
                 is ChannelReceiveCompleted -> event.coroutineId to -1
-                is CoroutineCompleted, is CoroutineCancelled, is CoroutineFailed -> (event as CoroutineEvent).coroutineId to 0
+                is CoroutineCompleted, is CoroutineCancelled, is CoroutineFailed -> event.coroutineId to 0
                 else -> return
             }
         val label = created[coroutineId]?.label ?: return
@@ -200,6 +200,14 @@ class GuideLabelsTest {
             "flow/operators" -> FlowScenarios.flowOperators(session)
             "flow/stateflow" -> FlowScenarios.stateFlowDemo(session)
             "flow/sharedflow" -> FlowScenarios.sharedFlowDemo(session)
+            else -> startPattern(demoId, session)
+        }
+
+    private suspend fun startPattern(
+        demoId: String,
+        session: VizSession,
+    ): Job =
+        when (demoId) {
             "patterns/retry" -> PatternScenarios.runRetry(session)
             "patterns/producer-consumer" -> PatternScenarios.runProducerConsumer(session)
             "patterns/fan-out-fan-in" -> PatternScenarios.runFanOutFanIn(session)

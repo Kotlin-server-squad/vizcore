@@ -267,9 +267,16 @@ class PatternsDemoPacingTest {
         for (n in 4..5) {
             assertTrue(run.failed("order-$n"), "order-$n is rejected")
             assertEquals(emptyList(), run.childrenOf("order-$n"), "a rejected order does not call the provider")
-            assertTrue(run.endedAt("order-$n") - run.startedAt("order-$n") < 500, "a rejected order fails at once")
+            // "At once" next to a charge's 1.5 s; broad, since at test scale 1 s is 100 ms of real time.
+            assertTrue(run.endedAt("order-$n") - run.startedAt("order-$n") < 1_000, "a rejected order fails at once")
         }
-        assertTrue(run.startedAt("order-6") - run.endedAt("charge-3") >= 5_000, "the trial order comes after the 5 s cooldown")
+        // A delay never ends early, so the threads can only make an order later than scripted. Order 6
+        // is safely past the cooldown that way; order 5 needs room before it, or a slow run turns it
+        // into the trial.
+        val open = PatternScenarios.BREAKER_OPEN_MILLIS
+        val order5 = run.startedAt("order-5") - run.endedAt("charge-3")
+        assertTrue(order5 <= open - 1_200, "order 5 comes $order5 ms after the breaker opened, too close to its $open ms")
+        assertTrue(run.startedAt("order-6") - run.endedAt("charge-3") >= open, "the trial order comes after the cooldown")
         for (n in 6..8) {
             assertEquals(listOf("charge-$n"), run.childrenOf("order-$n"), "order-$n calls the provider")
             assertTrue(run.completed("charge-$n") && run.completed("order-$n"), "order-$n is paid: the provider is back")

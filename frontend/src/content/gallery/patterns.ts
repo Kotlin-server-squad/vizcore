@@ -213,7 +213,7 @@ launch {                                          // checkout
             launch {                              // order-1 … order-8
                 breaker.call { charge(n) }        // charge-n
             }.join()
-            delay(2000)              // the next customer
+            if (n < 8) delay(2000)   // the next customer
         }
     }
 }`,
@@ -224,15 +224,15 @@ launch {                                          // checkout
       },
       {
         title: 'Open: orders fail at once',
-        text: 'For the next 5 s the breaker does not call the provider at all. Orders 4 (at 10.5 s) and 5 (at 12.5 s) fail at once, with no charge below them in the tree. No customer waits 1.5 s for an answer that will not come, and the provider gets time to recover.',
+        text: 'For the next 5.5 s, until 14 s, the breaker does not call the provider at all. Orders 4 (at 10.5 s) and 5 (at 12.5 s) fail at once, with no charge below them in the tree. No customer waits 1.5 s for an answer that will not come, and the provider gets time to recover.',
       },
       {
         title: 'Half-open: one trial',
-        text: 'At 14.5 s the 5 s are over. The breaker lets the next order through as a trial: order 6 calls the provider again.',
+        text: 'After 14 s the breaker is half-open. It lets the next order through as a trial: order 6, at 14.5 s, calls the provider again.',
       },
       {
         title: 'The trial succeeds: closed',
-        text: 'The provider is back, so charge-6 succeeds in 1 s and the breaker closes. Orders 7 and 8 are paid as usual, and the checkout is done at about 21.5 s. Had the trial failed, the breaker would have opened again for 5 s.',
+        text: 'The provider is back, so charge-6 succeeds in 1 s and the breaker closes. Orders 7 and 8 are paid as usual, and the checkout is done at about 21.5 s. Had the trial failed, the breaker would have opened again for 5.5 s.',
       },
     ],
     keyIdea:

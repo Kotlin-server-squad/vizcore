@@ -223,9 +223,9 @@ object PatternScenarios {
      * 12 s. A charge to the down provider takes 1.5 s and fails (HTTP 503); to the working one it
      * takes 1 s. Orders come one at a time, the next 2 s after the last is done.
      *
-     * Orders 1-3 fail; after the third failure in a row (8.5 s) the breaker opens for 5 s. Orders 4
-     * (10.5 s) and 5 (12.5 s) are rejected at once, without calling the provider. At 14.5 s the
-     * breaker is half-open: it lets order 6 through as a trial. The provider is back, the trial
+     * Orders 1-3 fail; after the third failure in a row (8.5 s) the breaker opens for 5.5 s. Orders
+     * 4 (10.5 s) and 5 (12.5 s) are rejected at once, without calling the provider. From 14 s the
+     * breaker is half-open: it lets the next order, 6 at 14.5 s, through as a trial. The provider is back, the trial
      * succeeds and the breaker closes; orders 7 and 8 are paid too, the last at about 21.5 s. Each
      * order runs under `supervisorScope`, so a failed order does not stop the checkout.
      */
@@ -236,7 +236,7 @@ object PatternScenarios {
             val viz = session.demoScope()
             val start = System.nanoTime()
             val providerBackAt = start + viz.scaled(12_000) * NANOS_PER_MILLI
-            val breaker = CircuitBreaker(failureThreshold = 3, openNanos = viz.scaled(5_000) * NANOS_PER_MILLI)
+            val breaker = CircuitBreaker(failureThreshold = 3, openNanos = viz.scaled(BREAKER_OPEN_MILLIS) * NANOS_PER_MILLI)
 
             viz.vizLaunch("checkout") {
                 supervisorScope {
@@ -266,6 +266,13 @@ object PatternScenarios {
     private const val RESIZERS = 3
     private const val ORDERS = 8
     private const val NANOS_PER_MILLI = 1_000_000L
+
+    /**
+     * How long the Circuit Breaker demo's breaker stays open, in scripted milliseconds: order 5 comes
+     * 4 s after it opens and order 6 comes 6 s after. Threads can only make an order later, never
+     * earlier, so order 6 is safely past this; order 5 has 1.5 s of room before it.
+     */
+    internal const val BREAKER_OPEN_MILLIS = 5_500L
 }
 
 /** A circuit breaker's answer while it is open: the call is not made at all. */

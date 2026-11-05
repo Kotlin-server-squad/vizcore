@@ -234,7 +234,7 @@
         {
             "id": "patterns/circuit-breaker",
             "name": "Circuit Breaker: Payment Provider",
-            "description": "The payment provider is down. After 3 failed charges the breaker opens and rejects orders at once for 5 s, then lets one trial order through; the provider is back, so the breaker closes.",
+            "description": "The payment provider is down. After 3 failed charges the breaker opens and rejects orders at once for 5.5 s, then lets one trial order through; the provider is back, so the breaker closes.",
             "category": "pattern",
             "group": "patterns",
             "groupLabel": "Patterns",
