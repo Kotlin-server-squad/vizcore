@@ -2,15 +2,12 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
-import com.jh.proj.coroutineviz.health.HealthInput
-import com.jh.proj.coroutineviz.health.HealthMode
 import com.jh.proj.coroutineviz.health.RetentionInfo
 import com.jh.proj.coroutineviz.health.SessionHealth
 import com.jh.proj.coroutineviz.health.SessionHealthDerivation
 import com.jh.proj.coroutineviz.health.SessionKind
 import com.jh.proj.coroutineviz.health.SessionOrigin
 import com.jh.proj.coroutineviz.health.SummariesUnavailableException
-import com.jh.proj.coroutineviz.health.SummaryFold
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.health.Transition
 import com.jh.proj.coroutineviz.health.Transitions
@@ -73,11 +70,11 @@ internal fun transportOf(
 private val PROCESS_STARTED_AT_MS: Long = ManagementFactory.getRuntimeMXBean().startTime
 
 /**
- * The session's health (spec C-3): live when [atSeq] is null, else the replay fold at the cursor, clamped to the last
- * event. [watermarkCut] must be read before [session] was resolved: in database mode resolving rebuilds the session from the
- * stored events, and a watermark is recorded only after its poll's events were stored, so every event the watermark
- * vouches for is in the rebuilt summaries (spec C-7). The other order could compare a newer watermark with an older run
- * start and report a coroutine that has since suspended.
+ * The session's health (spec C-3): live when [atSeq] is null, else the replay view at the cursor, clamped to the last
+ * event (plan E-3: the same bound view the replay's follow-up reads use). [watermarkCut] must be read before [session] was
+ * resolved: in database mode resolving rebuilds the session from the stored events, and a watermark is recorded only after
+ * its poll's events were stored, so every event the watermark vouches for is in the rebuilt summaries (spec C-7). The live
+ * health's cut is kept for the reads bound to it (plan E-17).
  *
  * @throws com.jh.proj.coroutineviz.health.SummariesUnavailableException when the session keeps no usable summaries.
  * @throws HistoryTrimmedException for a trimmed database session.
@@ -88,40 +85,10 @@ internal fun readSessionHealth(
     atSeq: Long?,
     leakThresholdMs: Long,
 ): SessionHealth {
-    val durable = session.readSummaries { it.snapshot() }
-    // Transport facts are sticky and only grow, so the ones read after the copy cover every event in it: a frame skipped
-    // or a connection lost while this read ran must not be missed (a newer watermark could not do harm here, a cleaner
-    // transport could). The watermark stays the one from before the session was resolved.
-    val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = watermarkCut.watermark)
-    // Read after the copy: the store holds at least every event the copy saw, possibly newer ones.
-    val events = session.store.all()
-    val everyEvent = summariesSeeEveryEvent()
-    val retention = retentionOf(events, firstSeqEver = durable.firstSeqEver(everyEvent))
-    if (retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
-    val kind = sessionKindOf(session.sessionId)
-    val input =
-        HealthInput(
-            summaries = durable,
-            kind = kind,
-            watermark = ingest.watermark,
-            lastIngestEpochMs = ingest.lastIngestEpochMs,
-            transport = transportOf(ingest, session, kind, durable.lastEventSeq),
-            leakThresholdMs = leakThresholdMs,
-            retention = retention,
-        )
-    if (atSeq == null) {
-        val transitions = RetainedTransitions(events, upToSeq = durable.lastEventSeq)
-        return SessionHealthDerivation.derive(input.copy(transitionsFor = transitions::of))
-    }
-    val cursor = minOf(atSeq, durable.lastEventSeq)
-    return SessionHealthDerivation.derive(
-        input.copy(
-            summaries = SummaryFold.foldTo(events, cursor, durable),
-            mode = HealthMode.Replay(cursor),
-            // The seed cannot tell which coroutines beyond capacity existed at the cursor: their failures may be missing.
-            historyIncomplete = retention.trimmed && durable.untrackedCount > 0,
-        ),
-    )
+    val binding = atSeq?.let { ViewBinding.Replay(it) } ?: ViewBinding.Current
+    val view = readView(session, watermarkCut, binding, leakThresholdMs)
+    if (binding == ViewBinding.Current) HealthCuts.remember(view.cut(System.currentTimeMillis()))
+    return SessionHealthDerivation.derive(view.input)
 }
 
 /** Retained lifecycle transitions per coroutine up to [upToSeq], indexed on first use (`HealthInput.transitionsFor`). */
