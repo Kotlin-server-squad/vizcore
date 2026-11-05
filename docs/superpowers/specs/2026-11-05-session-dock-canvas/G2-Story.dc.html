@@ -157,7 +157,7 @@ class Component extends DCLogic {
           node('fetch-loyalty-points', 'FAILED', { child: true, actor: true, note: 'where the failure starts', kind: 'fail' })
         ] }
       ],
-      tabs: [tab('Problems', false, '1'), tab('Inspector'), tab('Threads'), tab('Events'), tab('Learn', true)],
+      tabs: [tab('Problems'), tab('Inspector'), tab('Evidence'), tab('Events'), tab('Learn', true)],
       tiles: [],
       choices: ['They keep loading: they are independent', 'They are cancelled', 'They fail with the same exception'],
       steps: [

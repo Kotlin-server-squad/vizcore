@@ -41,7 +41,7 @@ body{margin:0}
         </div>
       </div>
       <div style="padding: 14px 16px; border: 2px solid {{t.border}}; border-radius: 10px; background: {{t.surface}}; display: flex; flex-direction: column; gap: 10px">
-        <span style="font-size: 13px; font-weight: 600">3 · Dock: tabs, resizable, foldable</span>
+        <span style="font-size: 13px; font-weight: 600">3 · Dock: five tabs, one per question; resizable, foldable</span>
         <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
           <sc-for list="{{tabsMap}}" as="d" hint-placeholder-count="6">
             <div style="padding: 10px; border-radius: 8px; background: {{t.surface2}}; display: flex; flex-direction: column; gap: 3px">
@@ -111,10 +111,9 @@ class Component extends DCLogic {
         { name: 'Timeline', what: 'One row per coroutine over time: its state, and a band for what it holds.', from: 'direction E' }
       ],
       tabsMap: [
-        { name: 'Problems', what: 'Failures and possibly stuck work, each with why it is listed.', from: 'direction F + Codex\'s inbox' },
+        { name: 'Problems', what: 'Failures, and coroutines running over 10 s without suspending, each with why and as of when.', from: 'direction F + the triage design' },
         { name: 'Inspector', what: 'The selected coroutine: facts, example code, its own events.', from: 'today\'s inspector' },
-        { name: 'Locks and permits', what: 'Who holds, who waits, in what order.', from: 'today\'s lock panel' },
-        { name: 'Threads', what: 'Which threads ran what.', from: 'today\'s thread panel' },
+        { name: 'Evidence', what: 'Folding sections: Threads, Dispatchers, Locks and permits, Channels, Flows, Jobs. Empty ones say what would capture them.', from: 'today\'s evidence panels' },
         { name: 'Events', what: 'Everything recorded, filterable.', from: 'today\'s events' },
         { name: 'Learn', what: 'Story mode: predict, then reveal. Plus the legend.', from: 'direction D + Codex' }
       ],
@@ -128,7 +127,9 @@ class Component extends DCLogic {
       order: [
         'Quick wins in today\'s page',
         'Core fix: waiting for a lock, permit or channel records Suspended',
-        'The dock, with Problems, Inspector, Locks, Threads, Events',
+        'The dock: shell, shared selection, big apps',
+        'Health API, then the Problems tab',
+        'Every part shows the same moment (replay)',
         'Learn: story mode, starting with the 7 Basics',
         'Timeline view',
         'Later: who waits on what, compare two runs'

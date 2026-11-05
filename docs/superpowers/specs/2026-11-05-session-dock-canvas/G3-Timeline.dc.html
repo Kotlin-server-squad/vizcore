@@ -93,7 +93,7 @@ body{margin:0}
     <div role="tabpanel" aria-label="Inspector" style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 0">
       <div style="display: flex; flex-direction: column; gap: 8px; padding: 14px 18px; border-right: 1px solid {{t.border}}">
         <span style="font-size: 15px"><span style="font-family: 'JetBrains Mono', monospace; font-weight: 500">order-7</span> waited <span style="font-weight: 700">9.0 s</span> for <span style="font-family: 'JetBrains Mono', monospace">inventory-lock</span>, the longest wait of the run.</span>
-        <span style="font-size: 13px; color: {{t.muted}}">Six orders held the lock before it, 1.5 s each. It then held the lock for 0.6 s and completed at 9.6 s.</span>
+        <span style="font-size: 13px; color: {{t.muted}}">Six orders held the lock before it, 1.5 s each. It then held the lock for 0.6 s and completed at 9.6 s. This is the longest observed wait: no events were lost.</span>
         <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px">
           <button type="button" style="font: inherit; font-size: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Show in the tree</button>
           <button type="button" style="font: inherit; font-size: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Replay from 9.0 s</button>
@@ -173,7 +173,7 @@ class Component extends DCLogic {
         { h: '12px', bg: delayBg, label: 'Suspended: in delay' },
         { h: '12px', bg: s.COMPLETED.dot, label: 'Completed (the mark)' }
       ],
-      tabs: [tab('Problems'), tab('Inspector', true), tab('Locks and permits'), tab('Threads'), tab('Events'), tab('Learn')],
+      tabs: [tab('Problems'), tab('Inspector', true), tab('Evidence'), tab('Events'), tab('Learn')],
       tiles: [{ label: 'Longest wait', value: '9.0 s', color: s.SUSPENDED.text }, { label: 'Peak live', value: '7', color: t.text }]
     };
   }

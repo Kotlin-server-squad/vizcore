@@ -83,20 +83,19 @@ body{margin:0}
         </sc-for>
       </ul>
       <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 18px">
-        <span style="font-size: 14px; font-weight: 600">40 order-* coroutines are queued for inventory-lock</span>
+        <span style="font-size: 12px; color: {{t.muted}}">2 problems detected in the captured coroutines · as of 14:02:31</span>
+        <span style="font-size: 14px; font-weight: 600">checkout-1842 failed</span>
         <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12px">
-          <dt style="color: {{t.muted}}">Why it is listed</dt><dd style="margin: 0">the longest has waited 2.3 s, over the 1 s limit</dd>
-          <dt style="color: {{t.muted}}">Held by</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">order-9917, for 2.3 s</dd>
-          <dt style="color: {{t.muted}}">Holder last seen at</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">InventoryService.kt:61</dd>
-          <dt style="color: {{t.muted}}">Waits so far</dt><dd style="margin: 0">median 0.8 s · longest 2.3 s</dd>
+          <dt style="color: {{t.muted}}">Exception</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">SocketTimeoutException: Read timed out</dd>
+          <dt style="color: {{t.muted}}">In round</dt><dd style="margin: 0">14:02:07, started by handle-request-9120</dd>
+          <dt style="color: {{t.muted}}">After it</dt><dd style="margin: 0">3 children cancelled</dd>
+          <dt style="color: {{t.muted}}">Created at</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace">CheckoutService.kt:44</dd>
         </dl>
         <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px">
-          <button type="button" style="font: inherit; font-size: 12px; font-weight: 600; padding: 8px 12px; border-radius: 8px; border: 0; background: {{t.primary}}; color: #ffffff">Show the 40 in the timeline</button>
-          <button type="button" style="font: inherit; font-size: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Inspect the holder</button>
-          <button type="button" style="font: inherit; font-size: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Mark as expected</button>
-          <button type="button" style="font: inherit; font-size: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Dismiss</button>
+          <button type="button" style="font: inherit; font-size: 12px; font-weight: 600; padding: 8px 12px; border-radius: 8px; border: 0; background: {{t.primary}}; color: #ffffff">Show in the tree</button>
+          <button type="button" style="font: inherit; font-size: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{t.border}}; background: transparent; color: {{t.text}}">Open in the Inspector</button>
         </div>
-        <span style="font-size: 11px; color: {{t.muted}}">Lock queues are recorded only for locks created with vizMutex. Other suspended coroutines show where they were last seen.</span>
+        <span style="font-size: 11px; color: {{t.muted}}">Observations, not problems: Long-lived (12) · Instrumentation checks: not run. A lock queue is evidence: see Evidence · Locks and permits.</span>
       </div>
     </div>
   </section>
@@ -141,27 +140,27 @@ class Component extends DCLogic {
       t, s,
       title: 'shop-api',
       status: { ...s.ACTIVE, label: 'Live · your app' },
-      meta: '70 live now · 312 recorded · attached 14 min ago',
+      meta: '71 live now · 313 recorded · attached 14 min ago',
       actions: [btn('Pause the stream'), btn('Share'), btn('More', false, 'More actions: Export, Checks')],
       views: [view('Tree', true), view('Timeline')],
-      filters: [chip('Group by name', true), chip('Only problems')],
-      viewNote: '312 coroutines in 6 groups',
+      filters: [chip('Group by name', true), chip('Long-lived 12')],
+      viewNote: '313 coroutines · siblings grouped by name',
       groups: [
-        grp('order-*  ×41', 'SUSPENDED', '1 holds inventory-lock, 40 wait for it', '41 live', { open: true, selected: true, warn: 'SUSPENDED' }),
+        grp('order-*  ×41', 'SUSPENDED', '1 holds inventory-lock, 40 wait for it', '41 live', { open: true }),
         grp('order-9917', 'SUSPENDED', 'holds inventory-lock', 'last seen InventoryService.kt:61', { child: true }),
         grp('… 40 waiting', 'SUSPENDED', 'longest 2.3 s', '', { child: true, warn: 'SUSPENDED' }),
         grp('handle-request-*  ×214', 'ACTIVE', '16 live', '198 completed', {}),
-        grp('pollPrices-*  ×12', 'ACTIVE', 'live for 5+ min', '12 live', { warn: 'SUSPENDED' }),
-        grp('checkout-1842', 'FAILED', 'SocketTimeoutException', '3 children cancelled after', { warn: 'FAILED' }),
+        grp('pollPrices-*  ×12', 'SUSPENDED', 'long-lived: 5+ min', '12 live', {}),
+        grp('price-sync-3', 'ACTIVE', 'running 14 s without suspending', '1 live', { warn: 'SUSPENDED' }),
+        grp('checkout-1842', 'FAILED', 'SocketTimeoutException', '3 children cancelled after', { warn: 'FAILED', selected: true }),
         grp('send-email-*  ×43', 'COMPLETED', '', '43 completed', {}),
         grp('metrics-flusher', 'SUSPENDED', 'in delay', '1 live', {})
       ],
-      tabs: [tab('Problems', true, '3', true), tab('Inspector'), tab('Locks and permits'), tab('Threads'), tab('Events'), tab('Learn')],
-      tiles: [{ label: 'Live', value: '70', color: t.text }, { label: 'Failed', value: '1', color: s.FAILED.text }],
+      tabs: [tab('Problems', true, '2', true), tab('Inspector'), tab('Evidence'), tab('Events'), tab('Learn')],
+      tiles: [{ label: 'Live', value: '71', color: t.text }, { label: 'Failed', value: '1', color: s.FAILED.text }],
       problems: [
-        prob('Possibly blocked', 'SUSPENDED', '40 order-* coroutines are queued for inventory-lock. The longest has waited 2.3 s.', true),
-        prob('Long-lived', 'SUSPENDED', '12 pollPrices-* coroutines have been live for more than 5 minutes. Expected for a poller?'),
-        prob('Failure', 'FAILED', 'checkout-1842 failed with SocketTimeoutException. 3 children were cancelled after it.')
+        prob('Failed', 'FAILED', 'checkout-1842 failed with SocketTimeoutException. 3 children were cancelled after it.', true),
+        prob('Possibly blocked', 'SUSPENDED', 'price-sync-3 has been running for 14 s without suspending, on DefaultDispatcher-worker-5. The limit is 10 s.')
       ]
     };
   }
