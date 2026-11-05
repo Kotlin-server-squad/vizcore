@@ -8,7 +8,7 @@ search, `health/items`, hierarchy with C-2 fields and round ids, the per-corouti
 ingest state and the "ingest open" marker survive a restart), C-5 checks persistence, C-6 shares, and `/metrics` by origin.
 
 **Architecture:** Core gains one pure piece per concern: `SessionHealthDerivation.deriveFull` (uncapped lists for
-paging), `SummaryBinding.bindAt` (the summaries at a past seq, each coroutine marked EXACT / STATE_ONLY / UNKNOWN), and
+paging), `SummaryBinding.bindAt` (the summaries at a past seq, each coroutine known or unknown), a short-lived cache of the exact cuts health responses used, and
 `SummaryTableState` (a serializable checkpoint of the summary table that restores to an identical table). The backend
 adds one parameter parser and one read skeleton (`readView`) used by every follow-up read, live and shared; the database
 store restores the checkpoint the retention trim writes before it deletes events, and an id-keyed persistence hook keeps
@@ -36,7 +36,7 @@ Flyway + H2 (tests), JUnit 5 + `kotlin.test`, Gradle (`backend/gradlew`), ktlint
 
 | PR | Content | Base |
 |---|---|---|
-| **5b-1** (branch `feat/health-api-b`) | Tasks 1–9: the two tests 5a's reviews asked for; `TransportStatus.revision`; core `deriveFull` and `SummaryBinding`; the binding parameters and `STALE`; `GET …/rounds`, `GET …/health/items`, `GET …/hierarchy` (C-2 fields, `roundId`, `?roundId=`, `?atSeq=`/`?asOfSeq=`), the timeline bound to a seq; API docs and types | `main` |
+| **5b-1** (branch `feat/health-api-b`) | Tasks 1–9: the two tests 5a's reviews asked for; `TransportStatus.revision`; core `deriveFull` and `SummaryBinding`; the binding parameters, kept health cuts and `STALE`; `GET …/rounds`, `GET …/health/items`, `GET …/hierarchy` (C-2 fields, `roundId`, `?roundId=`, `?atSeq=`/`?asOfSeq=`), the timeline bound to a seq; API docs and types | `main` |
 | **5b-2** (branch `feat/health-api-b2`) | Tasks 10–17: core `SummaryTableState`; migration V2; summary checkpoints written by the trim and restored on every database read (lifts 5a's `503 history-trimmed` for every session trimmed from now on); persisted ingest state and "ingest open" marker with the startup sweep (replaces D-9b); C-5 checks persistence; `/metrics` by origin; C-6 shares under one cut and the shared read routes; API docs and types | `feat/health-api-b` (retarget to `main` once 5b-1 merges) |
 
 Each is shippable alone: 5b-1 makes every follow-up read of a live or replay view consistent with its health (database
@@ -46,22 +46,23 @@ sessions keep 5a's limits until 5b-2); 5b-2 adds durability and the shared view 
 
 | # | Gap | Decision |
 |---|---|---|
-| E-1 | What "its state at `asOfSeq` can be rebuilt from retained events" means | `SummaryBinding.bindAt(durable, retained, s)` folds the retained events to `s`, seeded from the durable summaries (5a's `SummaryFold`), and rates each coroutine first observed at or before `s`: **EXACT** when its summary did not change after `s` (`lastModifiedSeq ≤ s`, the durable summary is then used as is), when its creation is retained (every event it had up to `s` is), or when it had finished by `s` (a finished summary changes later only by reduction, which drops details and says so); **STATE_ONLY** when its creation was trimmed but a lifecycle transition of its own at or before `s` is retained: then its last transition, run start, terminal and last observation are exact (every event from the oldest retained one up to `s` is retained), while thread, dispatcher and suspension point may be older than the retained window; **UNKNOWN** otherwise. A property test checks every claim against a fold of the untrimmed history. |
-| E-2 | Which coroutines a read "needs" | `rounds` and `health/items` derive from the whole view, so any UNKNOWN coroutine makes them `STALE`; a `POSSIBLY_BLOCKED` entry they return needs EXACT (it shows thread, dispatcher, suspension point). `hierarchy` needs EXACT for each summary-only node it returns (E-6). The timeline needs at least STATE_ONLY for its coroutine. |
-| E-3 | Live versus replay follow-ups | Two bindings, exclusive (both → `400`): `asOfSeq=S[&asOfWatermark=W][&asOfTransport=R]` binds a live or shared view to the health it fetched and is **strict** (`STALE` per E-2); `atSeq=N` is the replay view and is **lenient**, as spec "Modes"/Replay asks: nothing is `STALE`, a node that cannot be rebuilt is returned as the durable summary with `partial: true`, possibly blocked is not evaluated (REPLAY). Neither: the current state. `asOfSeq`/`atSeq` later than the last event are clamped to it (as 5a's D-11). `asOfWatermark`/`asOfTransport` without `asOfSeq` → `400`. |
+| E-1 | What "its state at `asOfSeq` can be rebuilt from retained events" means | `SummaryBinding.bindAt(durable, retained, s)` folds the retained events to `s`, seeded from the durable summaries (5a's `SummaryFold`), and rates each coroutine first observed at or before `s` **EXACT** or **UNKNOWN**. EXACT, with the value used: the **durable** summary when it did not change after `s` (`lastModifiedSeq ≤ s`), or when the coroutine had finished by `s` (after its terminal a summary changes only by reduction to a stub, which drops details and says so with `reduced`); the **fold's** summary when its creation is retained (every event it had up to `s` is retained). UNKNOWN otherwise (creation trimmed, still active at `s`, changed since): its fold value is a guess and is never presented as known. A property test checks every EXACT value against a fold of the untrimmed history, including across reduction. (Round 1 of the plan review showed that a retained transition alone does not rebuild run start or last observation: no intermediate level.) |
+| E-2 | Which coroutines a read "needs" | `rounds` and `health/items` derive from the whole view, so in a bound read any UNKNOWN coroutine makes them `STALE`. `hierarchy` needs EXACT for every node it returns; the timeline for its coroutine. A bound read that hits a cached cut (E-17) has no UNKNOWN coroutine, so `STALE` happens only when the cut is gone (expired, another process). |
+| E-3 | Live versus replay follow-ups | Two bindings, exclusive (both → `400`): `asOfSeq=S[&asOfWatermark=W][&asOfTransport=R]` binds a live or shared view to the health it fetched and is **strict** (`STALE` per E-2); `atSeq=N` is the replay view and is **lenient**, as spec "Modes"/Replay asks: nothing is `STALE`. Replay derives from the same bound view it rates (E-1's overlay: durable where exact, fold elsewhere) — `GET …/health?atSeq` switches from 5a's plain fold to it, so health, rounds, items and hierarchy of one cursor agree and are never less exact than before — and says what it does not know: hierarchy nodes carry `partial: true`, round entries `unknownMembers`, every page `unknownAtSeq` (0 outside replay). Possibly blocked is not evaluated (REPLAY). Neither binding: the current state. `asOfSeq`/`atSeq` later than the last event are clamped to it (as 5a's D-11). `asOfWatermark`/`asOfTransport` without `asOfSeq` → `400`. |
 | E-4 | Wire form of `STALE` | `409 Conflict` with `ErrorResponse` code `stale` ("this view has moved on"). |
-| E-5 | A transport change between the health read and a follow-up read (possibly blocked turns not evaluated) | The transport facts are sticky and cannot be rebuilt at a past seq, so they get a counter: `TransportStatus.revision` (core field, default 0), bumped by `IngestStates` on every change and echoed in the health. A follow-up read may pass `asOfTransport=<revision>`; a different current revision → `STALE`. Not in the spec's parameter list; the only way to stay exact without guessing. |
-| E-6 | Hierarchy at a past seq | The projection (`HierarchyNode`) is rebuilt from the retained events up to the seq in a throwaway in-memory `VizSession`, so its fields are those of that moment. A coroutine the summaries know but the rebuilt projection lacks (its creation was trimmed, or the database store never had it) becomes a **summary-only node** built from its summary (`summaryOnly: true`; `scopeId`, `jobId`, `dispatcherId` null). The current (unbound) hierarchy uses the live projection plus summary-only nodes for what it lacks. Every node gains `roundId` and `summary` (the C-2 `CoroutineSummary`, `null` for a coroutine beyond capacity). The response stays a JSON array; new fields are additive. |
-| E-7 | Timeline at a past seq | `…/timeline?atSeq=` or `?asOfSeq=`: the throwaway session's timeline (events up to the seq). A coroutine whose creation is not retained answers `404` code `events-trimmed` (the page shows "events unavailable (trimmed)" with the node's summary). The open-phase rule of today's route is unchanged. |
+| E-5 | A transport change between the health read and a follow-up read (possibly blocked turns not evaluated) | A cached cut (E-17) carries the transport the health used, so a hit needs nothing more. For a miss the transport facts, sticky and not rebuildable at a past seq, get a counter: `TransportStatus.revision` (core field, default 0), bumped by `IngestStates` on every change and echoed in the health; a follow-up may pass `asOfTransport=<revision>`, and a different current revision → `STALE`. Not in the spec's parameter list. |
+| E-6 | Hierarchy, current or at a seq | The projection (`HierarchyNode`) updates asynchronously through the bus, so it cannot be paired with a summary copy. Every hierarchy read therefore rebuilds the projection from the read's event cut (the retained events up to the view's seq) in a throwaway in-memory `VizSession`, so nodes and summaries describe one moment. A coroutine the summaries know but the rebuilt projection lacks (its creation is not retained) is a **summary-only node** built from its summary (`summaryOnly: true`; `scopeId`, `jobId`, `dispatcherId` null). Every node gains `roundId`, `summary` (the C-2 `CoroutineSummary`, `null` beyond capacity) and `summaryState` (`CoroutineSummary.state` is computed and not serialized). The response stays a JSON array of the new `HierarchyNodeDto`; new fields are additive, `scopeId`/`jobId` become nullable. Without summaries (unavailable, or a database session trimmed without a checkpoint) the current hierarchy still answers, with the rebuilt projection only. |
+| E-7 | Timeline, current or at a seq | `…/timeline?atSeq=` or `?asOfSeq=`: the throwaway session's timeline (events up to the seq). A coroutine whose creation is not retained but whose summary is known gets a timeline from a creation synthesized from its summary plus its retained events (none → empty list), with `eventsTrimmed: true` and the three durations null (unknown). A bound or replay timeline describes its moment, not now: no open phase and no `observedAtEpochMs`, so a client cannot extrapolate past the bound observation; its `state` is the summary's at the seq. The current timeline (no binding) keeps today's behaviour. |
 | E-8 | Rounds list details | Order: problem rounds first, then anchor creation time (app clock) newest first, then anchor seq, then anchor id. Each entry: core `RoundSummary` fields + `problem` + `problemKinds`, and with `q` the matching coroutine ids (`matches`, capped at 50 with total). Rounds anchored by a `VIZCORE` coroutine without a problem are left out unless `includeVizcore=true` (same rule as `SessionHealth.roundCount`). `q`: case-insensitive substring of a member's name, creation function or creation file; blank `q` = no filter; at most 200 characters (`400` beyond). |
 | E-9 | Paging | `limit` 1..200, default 50 (`400` outside). Keyset cursor over each list's sort key `(group, a, b, id)` — group ascending, `a` and `b` descending, id ascending — encoded as `g.a.b.<base64url(id)>`; `400` for a cursor that does not parse. Incidents: (kind, sortSeq, 0, incident id); round members: (role, terminal seq, 0, id); long-lived: (0, first-observed seq, 0, id); long-suspended: (0, last-transition seq, 0, id); rounds: (problem ? 0 : 1, anchor nanos, anchor seq, anchor id). Every page carries `asOfSeq`, `total` and `nextCursor` (null on the last page). |
 | E-10 | `health/items` shapes | `list=incidents[&kind=FAILED\|POSSIBLY_BLOCKED]` → `Incident` items (the derivation's own, so they equal the health's first 50); `list=round-members&incidentId=` → `RoundMember` (coroutine, name, role `FAILED`\|`CANCELLED_AFTER`, type, message, terminal seq, details dropped), failures first; `404` code `incident-not-found` when the incident is not a failed round in this view; `list=long-lived`, `list=long-suspended` → `ObservedAge`. Unknown `list` or `kind` → `400`. |
 | E-11 | `deriveFull` | `SessionHealthDerivation.deriveFull(input)` returns the health plus the uncapped incident, problem-round, long-lived and long-suspended lists, the anchoring and the effective-origin function; `derive(input)` is `deriveFull(input).health`, unchanged in output. |
-| E-12 | Summary checkpoint (C-4) | The database trim folds the events it is about to delete into a `SummaryTableState` checkpoint on the session row (columns `summaries`, `summaries_seq`) in the same transaction as the delete. A database read restores the checkpoint and applies the stored events after `summaries_seq`, reading the events **before** the checkpoint (so a trim that commits between the two reads is seen whole: either the old checkpoint with the not yet deleted events, or the new checkpoint). A restored table is identical to the in-memory one (property test), so a checkpointed session reads as memory mode does: `trimmed` exact, `captureStartAppNanos` known, health and replay available. **Replaces D-9 for every session trimmed from now on.** A session trimmed before 5b-2 (no checkpoint, oldest stored seq > 1) gets no checkpoint (folding what is left would lose ancestry) and keeps answering `503 history-trimmed`. |
-| E-13 | Persisted ingest state (C-4 watermark column, C-3 "ingest open" marker) | Columns `ingest_state` (JSON: watermark, last ingest time, transport with revision, first connection seq) and `ingest_open_since` (seq). `IngestStates` takes a persistence hook in database mode: a connection's state is seeded from the row; the row is written when a connection opens (marker = earliest open connection's first seq), at most every 5 s while frames arrive, and when a connection closes (marker cleared with the last one). Reads use this process's state when it has one, else the row. At startup, every row whose marker is set is marked delivery-uncertain since that seq and its marker cleared (a crash ran no close handler). New rows start with an empty state. **Replaces D-9b** for rows that have a state; a row from before 5b-2 (`ingest_state` null) keeps D-9b's rule. |
+| E-12 | Summary checkpoint (C-4) | The database trim folds the events it is about to delete into a `SummaryTableState` checkpoint on the session row (columns `summaries`, `summaries_seq`) in the same transaction as the delete. A database read reads the events, then the checkpoint, and retries (up to 3 times, then `SummariesUnavailableException`) while the checkpoint is newer than the newest event read: so summaries, snapshot and projections are rebuilt from one cut, and a trim committing in between is never half seen. A restored table is identical to the in-memory one (property test), so a checkpointed session reads as memory mode does: `trimmed` exact, `captureStartAppNanos` known, health and replay available. **Replaces D-9 for every session trimmed from now on.** When the fold fails (an event that does not decode or apply), the trim clears the checkpoint in the same transaction before deleting, so the session reads as trimmed without one and answers `503 history-trimmed` (never a health that silently misses the deleted range). A session trimmed before 5b-2 (no checkpoint, oldest stored seq > 1) gets no checkpoint and keeps answering `503 history-trimmed`. |
+| E-13 | Persisted ingest state (C-4 watermark column, C-3 "ingest open" marker) | Columns `ingest_state` (JSON: watermark, last ingest time, transport with revision, first connection seq) and `ingest_open_since` (seq). `IngestStates` takes a persistence hook in database mode. Every write is one `UPDATE` setting both columns, made **under the session's state lock**, so writes land in the order the state changed. A connection's state is seeded from the row; opening writes state + marker (the earliest open connection's first seq) and, if that write fails, the socket is refused (closed with `TRY_AGAIN_LATER`) before any event is accepted; frames write at most every 5 s; closing writes the final state and the marker of the remaining connections (null after the last) in one statement — if it fails, the old marker stays and the startup sweep marks the session uncertain. Reads use this process's state when it has one, else the row. At startup every row whose marker is set is marked delivery-uncertain since that seq (revision + 1) and its marker cleared, in one statement per row. New rows start with an empty state. **Replaces D-9b** for rows that have a state; a row from before 5b-2 (`ingest_state` null) keeps D-9b's rule. |
 | E-14 | Checks persistence (C-5) | `POST /api/validate/session/{id}` also stores the run (checked seq = the last event validated, run time, per rule: name, passed, failure count); `GET /api/validate/session/{id}` answers `{sessionId, lastRun, newEventsSince}` (`lastRun` null when never run; `newEventsSince` = the session's last seq − checked seq). Memory mode: an id-keyed registry dropped on delete; database mode: column `checks`. |
-| E-15 | `/metrics` by origin | `MetricsResponse` gains `byOrigin` (per origin: captured, active, long-lived) from the summaries, and each `leaks[]` entry its `origin`; leak ages become the core long-lived rule's (frozen at the last observation or the live watermark, the same threshold parameter), so the state bar filter and the health's "Long-lived" agree. When the summaries are unavailable (or a database session's trimmed history is not checkpointed), `leaks` keep today's wall-clock ages, `origin` null, `byOrigin` null. |
-| E-16 | Shares under one cut (C-6) | The share payload is taken from one cut: under the session's send lock the summaries are copied, the coroutine nodes read and the last seq noted; the events served are the stored ones up to that seq. It adds `health` (or `healthUnavailable` with the 503 code) and `checks` (E-14's body). Shared reads `GET /api/shared/{token}/health`, `…/health/items`, `…/rounds`, `…/hierarchy`, `…/coroutines/{coroutineId}/timeline` take the same parameters as the session routes and share their handlers; they do not count as share accesses (`ShareService.resolve(token, countAccess = false)`). |
+| E-15 | `/metrics` by origin | Core `MetricsProjection` keeps its aggregates per reported origin as well (`APP`, `VIZCORE`, unknown/none): active, peak, throughput, dispatcher utilization. `MetricsResponse` gains `byOrigin` (per effective origin: captured, active, peak, throughput, dispatcher utilization, long-lived; demos read all as `APP`, a session whose origin is `UNKNOWN` all as unknown, as the derivation does) and `retainedOnly` (the figures come from retained events only: a database session rebuilt after a trim) with `oldestRetainedAppNanos`; each `leaks[]` entry gets its `origin`. Leak ages become the core long-lived rule's (frozen at the last observation or the live watermark, the same threshold), so the state bar filter and the health's "Long-lived" agree. When the summaries are unavailable, `leaks` is empty, `leaksAvailable: false`, `byOrigin` null — never ages that keep growing on the wall clock (H-1, H-3). |
+| E-16 | Shares under one cut (C-6) | The share load reads, in this order: the ingest snapshot and the stored checks run (both before the session is resolved, so neither is newer than the cut: 5a D-9c, and a run's checked seq is at most the cut's), the session, then the cut under the session's send lock (summaries copy, coroutine nodes, last seq). Events served = the stored ones up to that seq; the C-3 session facts and the health are built from the cut and that ingest snapshot. It adds `health` (or `healthUnavailable` with the 503 code) and `checks` (E-14's body), and caches the cut (E-17) so the shared view's follow-up reads are exact. Shared reads `GET /api/shared/{token}/health`, `…/health/items`, `…/rounds`, `…/hierarchy`, `…/coroutines/{coroutineId}/timeline` take the same parameters as the session routes and share their handlers; they do not count as share accesses (`ShareService.resolve(token, countAccess = false)`). |
+| E-17 | Bound reads on a busy app (no livelock) | `HealthCuts`, an id-keyed in-memory registry, keeps the exact cut each live health response and share load used (summaries copy, watermark, transport, retention, seq): the newest 2 per session, for 60 s, at most 256 in all (oldest dropped first), dropped on delete. A bound read whose `asOfSeq` matches a kept cut answers from it — exact by construction, so health → rounds → items → hierarchy make progress while events keep arriving; only a miss falls back to E-1's rating and may be `STALE`. Process-local like `IngestStates`. |
 
 ## Not in 5b (each named in the PR bodies)
 
@@ -113,6 +114,7 @@ sessions keep 5a's limits until 5b-2); 5b-2 adds durability and the shared view 
 | `backend/src/main/kotlin/com/jh/proj/coroutineviz/routes/IngestStates.kt` | revision; test seam; (5b-2) persistence hook | both |
 | `…/routes/ViewBinding.kt` (new) | parameter parsing, `Keyset` cursors, `StaleViewException`, `respondReadErrors` | 5b-1 |
 | `…/routes/SessionViewReads.kt` (new) | `readView` skeleton (current / replay / bound), the per-read STALE checks | 5b-1 |
+| `…/routes/HealthCuts.kt` (new) | the kept health cuts (E-17) | 5b-1 |
 | `…/routes/SessionRoundsReads.kt` (new) | rounds listing | 5b-1 |
 | `…/routes/HealthItemsReads.kt` (new) | items listing | 5b-1 |
 | `…/routes/HierarchyReads.kt` (new) | hierarchy nodes, projection at a seq, bound timeline | 5b-1 |
@@ -154,7 +156,10 @@ Claude-Session: https://claude.ai/code/session_01W1v63uErFTcSoWqE152KLG"
 - Modify: `backend/src/main/kotlin/com/jh/proj/coroutineviz/routes/IngestStates.kt` (test seam)
 - Test: `backend/src/test/kotlin/com/jh/proj/coroutineviz/routes/IngestStateCleanupTest.kt` (new)
 
-These cover behaviour 5a shipped, so they pass once written. "Fail first" is shown by mutation: each step names the
+**Done in `def27e80`** (as below, with the seam firing *before* the allocation — `beforeStateAllocatedForTest` — so the
+delete's own `forget` runs first and only the route's cleanup can remove the state; `IngestStates.states` is `internal`
+for the assertion instead of a `hasState` function, which detekt's object function limit refused). Each test fails
+with its cleanup removed. These cover behaviour 5a shipped, so they pass once written. "Fail first" is shown by mutation: each step names the
 line to break and the test that must then fail; restore it before committing.
 
 - [ ] **Step 1: The `summaries-unavailable` 503, through a store seam (no production change).** `SessionManager.useStore`
@@ -335,6 +340,9 @@ git -C .. commit -m "test(health): the summaries-unavailable 503 and the delete/
 - Modify: `backend/src/main/kotlin/com/jh/proj/coroutineviz/routes/IngestStates.kt`
 - Test: `backend/src/test/kotlin/com/jh/proj/coroutineviz/routes/IngestStatesTest.kt` (extend)
 
+**Done in `80f148be`.** The test uses the file's `watermark(appNanos = …)` builder; the four existing exact
+`TransportStatus(...)` assertions now expect `revision = 1`.
+
 - [ ] **Step 1: Failing tests** (append to `IngestStatesTest`; reuse its connection helpers):
 
 ```kotlin
@@ -497,42 +505,36 @@ private fun CoroutineSummary.member(role: MemberRole) =
 - Create: `backend/coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/health/SummaryBinding.kt`
 - Test: `backend/coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/health/SummaryBindingTest.kt`
 
-- [ ] **Step 1: Failing tests.**
+- [ ] **Step 1: Failing tests.** Table tests first (each with `EventScript`; durable = a `SummaryTable` fed every
+event; retained = the events with seq ≥ T; truth = `SummaryFold.foldTo(allEvents, s)`):
+1. Nothing trimmed, `s` < last: every coroutine EXACT and `bound.view.get(id) == truth.get(id)`; a coroutine created
+   after `s` is absent.
+2. `s` ≥ durable.lastEventSeq: `bound.view` is `durable` (same instance), `unknownIds` empty.
+3. Creation trimmed, unchanged since `s`: EXACT, equal to the durable summary and to truth.
+4. Creation trimmed, failed before `s`, reduced to a stub after `s` (build with `SummaryTable(fullSummaryTarget = 1)`
+   for durable and truth alike): EXACT, equal to the durable stub; truth differs only in the fields `toStub()` drops
+   (assert `truth.toStub().copy(lastModifiedSeq = …) == bound` field by field except `lastModifiedSeq`).
+5. Creation trimmed, started at app time 100 (trimmed), suspended at app time 3 (retained, ≤ `s`), resumed after `s`:
+   UNKNOWN (round 1's counterexample: neither run start nor last observation is recoverable).
+6. Creation trimmed, active, only thread assignments retained after `s`: UNKNOWN, listed in `unknownIds`.
 
-Table tests (each with `EventScript`, durable = a `SummaryTable` fed every event, retained = events with seq ≥ T):
-1. Nothing trimmed, `s` < last: every coroutine EXACT; `bound.view.get(id) == fold(all events, s).get(id)` for all;
-   a coroutine created after `s` is absent.
-2. `s` ≥ durable.lastEventSeq: `bound.view` is `durable` (same instance) and nothing is rated below EXACT.
-3. Creation trimmed, unchanged since `s` (`lastModifiedSeq ≤ s`): EXACT and equal to the durable summary.
-4. Creation trimmed, finished by `s`, reduced to a stub after `s`: EXACT.
-5. Creation trimmed, active, suspended at a retained seq ≤ `s`, resumed after `s`: STATE_ONLY; `state == SUSPENDED`.
-6. Creation trimmed, active, its only events ≤ `s` trimmed, changed after `s`: UNKNOWN, listed in `unknownIds`.
-
-Property test (the model is `SummaryFoldSeedTest`'s): for 200 random histories (seeded `Random`), every trim point T and
-every cursor s, with `truth = SummaryFold.foldTo(allEvents, s)`:
+Property test (model: `SummaryFoldSeedTest`): 200 seeded random histories, every trim point T and cursor s, with a small
+reduction target so stubs occur (same target for durable, truth and the fold):
 
 ```kotlin
 val bound = SummaryBinding.bindAt(durable, retained, s)
 assertEquals(truth.all.map { it.id }.toSet(), bound.view.all.map { it.id }.toSet())
 for (t in truth.all) {
+    if (bound.levelOf(t.id) != RebuildLevel.EXACT) continue
     val b = bound.view.get(t.id)!!
-    when (bound.levelOf(t.id)) {
-        RebuildLevel.EXACT -> assertEquals(t, b)
-        RebuildLevel.STATE_ONLY -> {
-            assertEquals(t.state, b.state); assertEquals(t.lastTransition, b.lastTransition)
-            assertEquals(t.lastRunStart, b.lastRunStart); assertEquals(t.terminal, b.terminal)
-            assertEquals(t.lastObservedNanos, b.lastObservedNanos)
-        }
-        RebuildLevel.UNKNOWN -> Unit
-    }
+    if (b.reduced && !t.reduced) assertEquals(t.toStub().copy(lastModifiedSeq = b.lastModifiedSeq), b)
+    else assertEquals(t, b)
 }
-// Structure is exact whatever the levels (5a D-10): same rounds.
-assertEquals(RoundAnchoring.of(truth).anchorIds, RoundAnchoring.of(bound.view).anchorIds)
+assertEquals(RoundAnchoring.of(truth).anchorIds, RoundAnchoring.of(bound.view).anchorIds) // structure exact (5a D-10)
 ```
 
-Histories stay below the reduction target (no reduction differences). If the EXACT equality fails only on
-`lastModifiedSeq` of a root (promotion bookkeeping), stop and report: E-1's claim would be wrong and the plan needs
-revisiting, not the test.
+If the EXACT equality fails for a fold-valued coroutine (creation retained), stop and report: E-1's claim would be
+wrong and needs revisiting, not the test.
 
 Run: `./gradlew :coroutine-viz-core:test --tests "*SummaryBindingTest"` → compile failure.
 
@@ -541,55 +543,52 @@ Run: `./gradlew :coroutine-viz-core:test --tests "*SummaryBindingTest"` → comp
 ```kotlin
 package com.jh.proj.coroutineviz.health
 
-import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
 
-/** How much of a coroutine's summary at a past seq is known (spec C-3 `STALE`, plan E-1). */
-enum class RebuildLevel { EXACT, STATE_ONLY, UNKNOWN }
+/** Whether a coroutine's summary at a past seq is known (spec C-3 `STALE`, plan E-1). */
+enum class RebuildLevel { EXACT, UNKNOWN }
 
-/** The summaries at a past seq and how well each one is known; see [SummaryBinding.bindAt]. */
+/** The summaries at a past seq and which of them are known; see [SummaryBinding.bindAt]. */
 class BoundSummaries internal constructor(
     val view: SummaryView,
-    private val levels: Map<String, RebuildLevel>,
+    val unknownIds: Set<String>,
 ) {
-    fun levelOf(id: String): RebuildLevel = levels[id] ?: RebuildLevel.EXACT
+    fun levelOf(id: String): RebuildLevel = if (id in unknownIds) RebuildLevel.UNKNOWN else RebuildLevel.EXACT
 
-    val unknownIds: Set<String> = levels.filterValues { it == RebuildLevel.UNKNOWN }.keys
+    companion object {
+        /** Every summary of [view] known (a cached cut, or the current state). */
+        fun exact(view: SummaryView): BoundSummaries = BoundSummaries(view, emptySet())
+    }
 }
 
 object SummaryBinding {
     /**
-     * The summaries as they were at [atSeq]: [durable] itself when nothing came after it, else the replay fold of
-     * [retained] (in seq order) seeded from [durable], with each coroutine rated (plan E-1): EXACT when its durable
-     * summary did not change after [atSeq] (used as is), its creation is retained, or it had finished by [atSeq];
-     * STATE_ONLY when only a retained transition of its own at or before [atSeq] vouches for its state; UNKNOWN otherwise.
+     * The summaries as they were at [atSeq] (plan E-1): [durable] itself when nothing came after it, else the replay fold
+     * of [retained] (in seq order) seeded from [durable], where the durable summary replaces the fold's for every
+     * coroutine whose summary did not change after [atSeq] or that had finished by then (after its terminal a summary
+     * changes only by reduction, which says so). A coroutine whose creation is retained keeps its fold value (exact).
+     * Every other coroutine is UNKNOWN: its fold value is a guess.
      */
     fun bindAt(
         durable: SummaryView,
         retained: List<VizEvent>,
         atSeq: Long,
     ): BoundSummaries {
-        if (atSeq >= durable.lastEventSeq) return BoundSummaries(durable, emptyMap())
+        if (atSeq >= durable.lastEventSeq) return BoundSummaries.exact(durable)
         val fold = SummaryFold.foldTo(retained, atSeq, durable)
         val oldestRetained = retained.firstOrNull()?.seq ?: Long.MAX_VALUE
-        val withRetainedTransition = HashSet<String>()
-        for (e in retained) {
-            if (e.seq > atSeq) break
-            if (e is CoroutineEvent && Transitions.of(e) != null) withRetainedTransition += e.coroutineId
-        }
         val overrides = HashMap<String, CoroutineSummary>()
-        val levels = HashMap<String, RebuildLevel>()
+        val unknown = HashSet<String>()
         for (f in fold.all) {
             val d = durable.get(f.id) ?: continue
             when {
-                f.firstObserved.seq >= oldestRetained -> Unit
                 d.lastModifiedSeq <= atSeq -> overrides[f.id] = d
-                d.terminal?.let { it.seq <= atSeq } == true -> Unit
-                f.id in withRetainedTransition -> levels[f.id] = RebuildLevel.STATE_ONLY
-                else -> levels[f.id] = RebuildLevel.UNKNOWN
+                d.terminal?.let { it.seq <= atSeq } == true -> overrides[f.id] = d
+                f.firstObserved.seq >= oldestRetained -> Unit
+                else -> unknown += f.id
             }
         }
-        return BoundSummaries(if (overrides.isEmpty()) fold else OverlaidView(fold, overrides), levels)
+        return BoundSummaries(if (overrides.isEmpty()) fold else OverlaidView(fold, overrides), unknown)
     }
 }
 
@@ -604,13 +603,12 @@ private class OverlaidView(
 }
 ```
 
-Note: a creation-trimmed, terminal-by-`s` coroutine is EXACT through the fold's seeded or retained terminal and
-`finishedAs` (final failure details). If case 4 shows the fold's summary differing from truth only by `reduced`/details,
-use the durable summary for it as well (add it to `overrides`) — the durable one is final.
+(The durable override comes first even for retained creations: for those the two agree, and the durable one is the
+same object the current health uses.)
 
 - [ ] **Step 3: Run** the test → PASS; then `./gradlew :coroutine-viz-core:test`.
 
-- [ ] **Step 4: Commit** `feat(health): summaries bound to a past seq, each rated exact, state only or unknown`.
+- [ ] **Step 4: Commit** `feat(health): summaries bound to a past seq, each known or unknown`.
 
 ---
 
@@ -747,13 +745,52 @@ internal suspend fun io.ktor.server.application.ApplicationCall.respondReadError
 }
 ```
 
-- [ ] **Step 3: `SessionViewReads.kt`** — the skeleton every follow-up read uses; mirrors `readSessionHealth`'s order.
+- [ ] **Step 3: `HealthCuts.kt`** (E-17), test first in `HealthCutsTest`: `remember` then `find(id, seq)` returns the
+cut; a third cut for one session drops the oldest; a cut older than 60 s (injectable `clock`) is not found; the 257th
+cut overall drops the oldest of all; `forget(id)` drops a session's cuts; `clear()` resets all and the clock.
 
 ```kotlin
-/** One follow-up read's view of a session (plan E-1..E-3). */
+/** The exact inputs one health response used (spec C-3 `asOfSeq`), kept briefly so its follow-up reads are exact (E-17). */
+internal class HealthCut(
+    val sessionId: String,
+    val seq: Long,
+    val summaries: SummaryView,
+    val watermark: WatermarkObservation?,
+    val lastIngestEpochMs: Long?,
+    val transport: TransportStatus,
+    val retention: RetentionInfo,
+    val createdAtMs: Long,
+)
+
+internal object HealthCuts {
+    const val PER_SESSION = 2
+    const val MAX_TOTAL = 256
+    const val TTL_MS = 60_000L
+
+    @Volatile internal var clock: () -> Long = System::currentTimeMillis
+
+    private val cuts = LinkedHashMap<String, ArrayDeque<HealthCut>>() // guarded by itself
+
+    fun remember(cut: HealthCut) { /* append; per-session cap; global cap by oldest createdAtMs */ }
+    fun find(sessionId: String, seq: Long): HealthCut? { /* newest matching seq, not older than TTL */ }
+    fun forget(sessionId: String) { … }
+    internal fun clear() { … }
+}
+```
+
+`Routing.kt` adds `SessionManager.addOnSessionClosed { HealthCuts.forget(it) }`. The live `GET …/health` (no `atSeq`)
+remembers its cut: refactor `readSessionHealth` so the live branch builds a `HealthCut` from the values it already has
+(`durable`, `ingest.watermark`, `ingest.lastIngestEpochMs`, the transport it passes, `retention`, `durable.lastEventSeq`)
+and calls `HealthCuts.remember` before deriving. A test in `SessionHealthRouteTest`: after `GET …/health`,
+`HealthCuts.find(id, health.asOfSeq)` is not null.
+
+- [ ] **Step 4: `SessionViewReads.kt`** — the skeleton every follow-up read uses; mirrors `readSessionHealth`'s order.
+
+```kotlin
+/** One follow-up read's view of a session (plan E-1..E-3, E-17). */
 internal class SessionView(
     val session: VizSession,
-    /** The stored events read after the summaries were copied. */
+    /** The stored events read after the summaries were copied, up to [seq]. */
     val events: List<VizEvent>,
     val binding: ViewBinding,
     /** The seq the view is at: the last event (Current), the clamped cursor (Replay, Bound). */
@@ -763,19 +800,18 @@ internal class SessionView(
 ) {
     val strict: Boolean get() = binding is ViewBinding.Bound
 
+    /** 0 outside replay; in replay, how many coroutines' state at the cursor is not known (E-3). */
+    val unknownAtSeq: Int get() = if (binding is ViewBinding.Replay) bound.unknownIds.size else 0
+
     fun derive(): DerivedHealth = SessionHealthDerivation.deriveFull(input)
 
-    /** Strict reads cannot answer while a coroutine's state at [seq] is unknown (E-2). */
+    /** A strict read cannot answer while any coroutine's state at [seq] is unknown (E-2). */
     fun requireNoUnknown() {
         if (strict && bound.unknownIds.isNotEmpty()) throw StaleViewException("${bound.unknownIds.size} coroutines changed since $seq")
     }
 
-    /** Strict reads cannot return details of [id] unless they are exact at [seq] (E-2). */
-    fun requireExact(id: String) {
-        if (strict && bound.levelOf(id) != RebuildLevel.EXACT) throw StaleViewException("$id changed since $seq")
-    }
-
-    fun requireStateKnown(id: String) {
+    /** A strict read cannot return [id] unless it is known at [seq] (E-2). */
+    fun requireKnown(id: String) {
         if (strict && bound.levelOf(id) == RebuildLevel.UNKNOWN) throw StaleViewException("$id changed since $seq")
     }
 }
@@ -783,7 +819,7 @@ internal class SessionView(
 /**
  * Reads [session] for a follow-up read. [ingestCut] must be read before [session] was resolved (5a D-9c).
  * @throws SummariesUnavailableException, HistoryTrimmedException (database session trimmed without a checkpoint),
- *   StaleViewException (Bound, transport revision moved on).
+ *   StaleViewException (Bound miss whose transport revision moved on).
  */
 internal fun readView(
     session: VizSession,
@@ -793,9 +829,9 @@ internal fun readView(
 ): SessionView {
     val durable = session.readSummaries { it.snapshot() }
     val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = ingestCut.watermark)
-    val events = session.store.all()
+    val allEvents = session.store.all()
     val everyEvent = summariesSeeEveryEvent()
-    val retention = retentionOf(events, firstSeqEver = durable.firstSeqEver(everyEvent))
+    val retention = retentionOf(allEvents, firstSeqEver = durable.firstSeqEver(everyEvent))
     if (retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
     val kind = sessionKindOf(session.sessionId)
     val transport = transportOf(ingest, session, kind, durable.lastEventSeq)
@@ -810,41 +846,62 @@ internal fun readView(
             leakThresholdMs = leakThresholdMs,
             retention = retention,
         )
+    fun eventsUpTo(seq: Long) = allEvents.filter { it.seq <= seq }
     return when (binding) {
         ViewBinding.Current ->
-            SessionView(session, events, binding, last, SummaryBinding.bindAt(durable, events, last),
-                base.copy(transitionsFor = RetainedTransitions(events, upToSeq = last)::of))
+            SessionView(session, eventsUpTo(last), binding, last, BoundSummaries.exact(durable),
+                base.copy(transitionsFor = RetainedTransitions(allEvents, upToSeq = last)::of))
         is ViewBinding.Replay -> {
             val cursor = minOf(binding.atSeq, last)
-            val bound = SummaryBinding.bindAt(durable, events, cursor)
-            // Replay derives from the plain fold (5a), as GET …/health?atSeq does, so the two agree.
-            val fold = SummaryFold.foldTo(events, cursor, durable)
-            SessionView(session, events, binding, cursor, bound,
-                base.copy(summaries = fold, mode = HealthMode.Replay(cursor), historyIncomplete = retention.trimmed && durable.untrackedCount > 0))
+            val bound = SummaryBinding.bindAt(durable, allEvents, cursor)
+            SessionView(session, eventsUpTo(cursor), binding, cursor, bound,
+                base.copy(summaries = bound.view, mode = HealthMode.Replay(cursor),
+                    historyIncomplete = retention.trimmed && durable.untrackedCount > 0))
         }
         is ViewBinding.Bound -> {
-            if (binding.transportRevision != null && binding.transportRevision != transport.revision) {
-                throw StaleViewException("the transport changed since the health")
-            }
             val s = minOf(binding.asOfSeq, last)
-            val bound = SummaryBinding.bindAt(durable, events, s)
-            val watermark = binding.watermarkNanos?.let { w ->
-                ingest.watermark?.takeIf { it.appNanos == w } ?: WatermarkObservation(w, appEpochMs = 0, receivedEpochMs = 0)
+            val cut = HealthCuts.find(session.sessionId, s)
+            if (cut != null) {
+                SessionView(session, eventsUpTo(s), binding, s, BoundSummaries.exact(cut.summaries),
+                    base.copy(summaries = cut.summaries, watermark = cut.watermark, lastIngestEpochMs = cut.lastIngestEpochMs,
+                        transport = cut.transport, retention = cut.retention,
+                        transitionsFor = RetainedTransitions(allEvents, upToSeq = s)::of))
+            } else {
+                if (binding.transportRevision != null && binding.transportRevision != transport.revision) {
+                    throw StaleViewException("the transport changed since the health")
+                }
+                val bound = SummaryBinding.bindAt(durable, allEvents, s)
+                val watermark = binding.watermarkNanos?.let { w ->
+                    ingest.watermark?.takeIf { it.appNanos == w } ?: WatermarkObservation(w, appEpochMs = 0, receivedEpochMs = 0)
+                }
+                SessionView(session, eventsUpTo(s), binding, s, bound,
+                    base.copy(summaries = bound.view, watermark = watermark,
+                        historyIncomplete = s < last && retention.trimmed && durable.untrackedCount > 0,
+                        transitionsFor = RetainedTransitions(allEvents, upToSeq = s)::of))
             }
-            SessionView(session, events, binding, s, bound,
-                base.copy(summaries = bound.view, watermark = watermark,
-                    historyIncomplete = s < last && retention.trimmed && durable.untrackedCount > 0,
-                    transitionsFor = RetainedTransitions(events, upToSeq = s)::of))
         }
     }
 }
 ```
 
-(Replay's `bound` is used only for the `partial` flags of E-3; its `view` is not the derivation input — the plain fold is,
-to stay identical to `GET …/health?atSeq`.) A Bound view without `asOfWatermark` derives with no watermark: possibly
-blocked is not evaluated, as the health it is bound to said.
+A Bound miss without `asOfWatermark` derives with no watermark: possibly blocked is not evaluated, as the health it is
+bound to said. **Replay health:** `readSessionHealth`'s `atSeq` branch switches to `SummaryBinding.bindAt(...).view`
+instead of the plain `SummaryFold.foldTo` (E-3); its existing replay tests must stay green (they describe states the
+overlay keeps or improves); add one where a creation-trimmed running coroutine unchanged since the cursor reads as its
+durable state at `?atSeq=last`, not `CREATED`.
 
-- [ ] **Step 4: Run** both tests → PASS. **Step 5: Commit** `feat(health): read binding (atSeq, asOfSeq) and STALE`.
+Tests for `SessionViewReadsTest` (memory mode, sessions built directly, a fake `IngestSnapshot`):
+- `Current` → `view.bound.unknownIds` empty, `view.events` all ≤ `view.seq`.
+- `Bound(s)` with a cut kept for `s` → answers from the cut even after more events and a trim (summaries equal the cut's).
+- `Bound(s < last)` without a cut, trimmed store (`SessionManager.configure(maxEventsPerSession = 5)`), an UNKNOWN
+  coroutine → `requireNoUnknown()` throws `StaleViewException`.
+- `Bound` miss with `asOfTransport` ≠ current revision → `StaleViewException`.
+- `Replay(n)` → mode `HealthMode.Replay(n)`, `requireNoUnknown()` does not throw, `unknownAtSeq` = the unknown count.
+- **Sustained writer** (round 1 #10): a coroutine sends events every 5 ms from a background job into a trimmed session
+  (`maxEventsPerSession = 50`); 20 times in a row `GET …/health` then `…/rounds?asOfSeq=<its asOfSeq>` →
+  every rounds call is 200 (placed in `SessionRoundsRouteTest` once the route exists, Task 6).
+
+- [ ] **Step 5: Run** the tests → PASS. **Step 6: Commit** `feat(health): read binding (atSeq, asOfSeq), kept health cuts and STALE`.
 
 ---
 
@@ -867,8 +924,11 @@ blocked is not evaluated, as the health it is bound to said.
 5. A `VIZCORE`-origin root without a problem is absent, present with `?includeVizcore=true`.
 6. `?atSeq=<seq before r3 existed>` → `r3` absent.
 7. Strict: trim (`SessionManager.configure(maxEventsPerSession = 6)`) so a long-lived root's creation is trimmed, take
-   `asOfSeq` from `GET …/health`, then send one event that changes that root (a suspension) **with no retained earlier
-   transition of its own** → `GET …/rounds?asOfSeq=<old>` → `409`, code `stale`. Without the new event → `200`.
+   `asOfSeq` from `GET …/health`, send one event that changes that root (a suspension), then `HealthCuts.clear()`
+   (a miss: the cut expired) → `GET …/rounds?asOfSeq=<old>` → `409`, code `stale`. With the cut kept → `200` with the
+   root's state at the old seq. In replay (`?atSeq=<old>`) after the clear → `200`, `unknownAtSeq == 1`, the root's
+   round has `unknownMembers == 1`.
+7b. The sustained-writer test of Task 5.
 8. `?cursor=bad` → 400; `?limit=0` → 400; `?atSeq=1&asOfSeq=1` → 400; unknown session → 404.
 
 Run → 404 for the route (fails).
@@ -891,10 +951,12 @@ data class RoundEntry(
     val problemKinds: List<IncidentKind>,
     /** With `q`: the matching members (coroutine ids, newest first), else null. */
     val matches: Capped<String>? = null,
+    /** Replay only: members whose state at the cursor is not known (E-3); their counted state is a guess. */
+    val unknownMembers: Int = 0,
 )
 
 @Serializable
-data class RoundsPage(val asOfSeq: Long, val total: Int, val items: List<RoundEntry>, val nextCursor: String?)
+data class RoundsPage(val asOfSeq: Long, val total: Int, val items: List<RoundEntry>, val nextCursor: String?, val unknownAtSeq: Int)
 
 internal const val MAX_QUERY_LENGTH = 200
 
@@ -923,11 +985,12 @@ internal fun listRounds(view: SessionView, params: Parameters): RoundsPage {
                         .sortedByDescending { it.firstObserved.seq }.map { it.id }
                 }
             if (matches != null && matches.isEmpty()) return@mapNotNull null
+            val unknownMembers = membersByAnchor[r.anchorId].orEmpty().count { it.id in view.bound.unknownIds }
             RoundEntry(r.roundId, r.anchorId, r.anchorName, r.anchorOrigin, r.anchorCreatedNanos, r.anchorCreatedSeq,
-                r.inProgress, r.countsByState, r.memberCount, kinds.isNotEmpty(), kinds, matches?.let { Capped.of(it) })
+                r.inProgress, r.countsByState, r.memberCount, kinds.isNotEmpty(), kinds, matches?.let { Capped.of(it) }, unknownMembers)
         }.sortedBy(::roundKey)
     val page = Keyset.page(entries, ::roundKey, params["cursor"], limit)
-    return RoundsPage(view.seq, entries.size, page.items, page.nextCursor)
+    return RoundsPage(view.seq, entries.size, page.items, page.nextCursor, view.unknownAtSeq)
 }
 
 private fun roundKey(r: RoundEntry) = Keyset.Key(if (r.problem) 0 else 1, r.anchorCreatedNanos, r.anchorCreatedSeq, r.anchorId)
@@ -977,8 +1040,8 @@ Route (in `SessionHealthRoutes.kt`; extract the shared "missing id → 400 / res
    404 code `incident-not-found`.
 4. `?list=long-lived&leakThresholdMs=1000` and `?list=long-suspended` → `ObservedAge` items newest first.
 5. `?list=nope` → 400; `?list=incidents&kind=NOPE` → 400; missing `list` → 400.
-6. Strict: a `POSSIBLY_BLOCKED` coroutine whose creation was trimmed and that is STATE_ONLY at S → `409 stale` for
-   `list=incidents` (it shows details); `list=long-lived` at the same S → 200.
+6. Strict miss (`HealthCuts.clear()` after the health): an UNKNOWN coroutine at S → `409 stale` for every list; with the
+   cut kept → 200 and the items equal the health's.
 
 Run → fails (404 route).
 
@@ -986,13 +1049,13 @@ Run → fails (404 route).
 
 ```kotlin
 @Serializable
-data class IncidentsPage(val list: String = "incidents", val asOfSeq: Long, val total: Int, val items: List<Incident>, val nextCursor: String?)
+data class IncidentsPage(val list: String = "incidents", val asOfSeq: Long, val total: Int, val items: List<Incident>, val nextCursor: String?, val unknownAtSeq: Int)
 
 @Serializable
-data class RoundMembersPage(val list: String = "round-members", val asOfSeq: Long, val total: Int, val items: List<RoundMember>, val nextCursor: String?)
+data class RoundMembersPage(val list: String = "round-members", val asOfSeq: Long, val total: Int, val items: List<RoundMember>, val nextCursor: String?, val unknownAtSeq: Int)
 
 @Serializable
-data class ObservedAgesPage(val list: String, val asOfSeq: Long, val total: Int, val items: List<ObservedAge>, val nextCursor: String?)
+data class ObservedAgesPage(val list: String, val asOfSeq: Long, val total: Int, val items: List<ObservedAge>, val nextCursor: String?, val unknownAtSeq: Int)
 ```
 
 (`appJson` encodes defaults, so `list` is always present; check `Serialization.kt`'s `encodeDefaults` — if it is false,
@@ -1011,15 +1074,14 @@ internal suspend fun ApplicationCall.respondHealthItems(view: SessionView) {
             val kind = params["kind"]?.let { k -> IncidentKind.entries.firstOrNull { it.name == k } ?: throw BadReadParameter("unknown kind $k") }
             val all = derived.incidents.filter { kind == null || it.kind == kind }
             val page = Keyset.page(all, ::incidentKey, cursor, limit)
-            page.items.filterIsInstance<PossiblyBlockedIncident>().forEach { view.requireExact(it.coroutineId) }
-            respond(IncidentsPage(asOfSeq = view.seq, total = all.size, items = page.items, nextCursor = page.nextCursor))
+            respond(IncidentsPage(asOfSeq = view.seq, total = all.size, items = page.items, nextCursor = page.nextCursor, unknownAtSeq = view.unknownAtSeq))
         }
         "round-members" -> {
             val incidentId = params["incidentId"] ?: throw BadReadParameter("incidentId is required")
             val members = derived.roundMembers(incidentId)
                 ?: return respond(HttpStatusCode.NotFound, ErrorResponse("No failed round $incidentId", code = "incident-not-found"))
             val page = Keyset.page(members, { Keyset.Key(it.role.ordinal.toLong(), it.terminalSeq, 0, it.coroutineId) }, cursor, limit)
-            respond(RoundMembersPage(asOfSeq = view.seq, total = members.size, items = page.items, nextCursor = page.nextCursor))
+            respond(RoundMembersPage(asOfSeq = view.seq, total = members.size, items = page.items, nextCursor = page.nextCursor, unknownAtSeq = view.unknownAtSeq))
         }
         "long-lived" -> respondAges("long-lived", view, derived.longLived, { view.input.summaries.get(it.coroutineId)?.firstObserved?.seq ?: 0 }, cursor, limit)
         "long-suspended" -> respondAges("long-suspended", view, derived.longSuspended, { view.input.summaries.get(it.coroutineId)?.lastTransition?.seq ?: 0 }, cursor, limit)
@@ -1048,25 +1110,28 @@ Route: `get("/api/sessions/{id}/health/items")` with the same preamble as rounds
 - Test: `backend/src/test/kotlin/com/jh/proj/coroutineviz/routes/HierarchyReadsTest.kt`
 
 - [ ] **Step 1: Failing tests:**
-1. `GET …/hierarchy` on a demo-like session: every node has `roundId` (`round:<anchor>`) and `summary.state`; nodes keep
-   every existing field (decode as `JsonObject` and assert `scopeId`, `jobId`, `state`, `children` present).
+1. `GET …/hierarchy`: every node has `roundId` (`round:<anchor>`), `summaryState` and `summary`; nodes keep every
+   existing field (decode as `JsonObject`; assert `scopeId`, `jobId`, `state`, `children` present for normal nodes).
 2. `?roundId=round:r2` → only `r2`'s subtree; `?roundId=round:none` → `[]`.
-3. `?atSeq=<seq before r2's child failed>` → the child's `state` is `RUNNING` (projection string) and its
-   `summary.state` is `ACTIVE`; nodes created later are absent.
-4. Memory mode, trimmed (`maxEventsPerSession = 6`), a root whose creation was trimmed: unbound `…/hierarchy` returns it
-   as a full node (live projection); `?atSeq=last` returns it as `summaryOnly: true` with `state` from its summary,
-   `scopeId == null`; `?asOfSeq=S` where it is UNKNOWN at S → 409 `stale`; `?atSeq=S` → 200 with `partial: true`.
-5. A coroutine beyond capacity is not testable cheaply (100,000); skip, covered by E-6's text.
-6. Timeline: `…/coroutines/c/timeline?atSeq=N` lists only events with seq ≤ N; `state` is the state at N. For the
-   trimmed root: `…/timeline?atSeq=last` → 404 code `events-trimmed`; `?asOfSeq=S` with the coroutine UNKNOWN → 409.
-   Without params: unchanged (today's tests stay green).
+3. `?atSeq=<seq before r2's child failed>` → the child's `state` is `RUNNING` (projection string) and `summaryState`
+   `ACTIVE`; nodes created later are absent.
+4. One cut (round 1 #11): every node's `state` agrees with its `summaryState` (map `RUNNING`↔`ACTIVE`) and every node
+   has a summary, on a session receiving events from a background job during 20 consecutive reads.
+5. Memory mode, trimmed (`maxEventsPerSession = 6`), a root whose creation was trimmed: `…/hierarchy` returns it as
+   `summaryOnly: true` with `state` from its summary and `scopeId == null`; after a change to it and
+   `HealthCuts.clear()`, `?asOfSeq=<old>` → 409 `stale`, `?atSeq=<old>` → 200 with `partial: true`.
+6. Without summaries (Task 1's store seam): `…/hierarchy` → 200, nodes with `roundId == null`, `summary == null`.
+7. Timeline: `…/coroutines/c/timeline?atSeq=N` lists only events with seq ≤ N, `state` is the state at N, no
+   `openPhase`, no `observedAtEpochMs`; a second read 1.1 s later is identical (round 1 #13). For the trimmed root:
+   `?atSeq=last` → 200, `eventsTrimmed: true`, `totalDuration`/`activeDuration`/`suspendedDuration` null, its retained
+   events listed; `?asOfSeq=<old>` with it UNKNOWN (cut cleared) → 409. Without params: unchanged (today's tests green).
 
 Run → fails.
 
 - [ ] **Step 2: Implement.**
 
 ```kotlin
-/** A hierarchy node (spec C-3): today's projection fields, the derived round and the C-2 summary (plan E-6). */
+/** A hierarchy node (spec C-3): the projection's fields, the derived round and the C-2 summary (plan E-6). */
 @Serializable
 data class HierarchyNodeDto(
     val id: String,
@@ -1090,23 +1155,30 @@ data class HierarchyNodeDto(
     val lastSuspensionPoint: SuspensionPoint?,
     val roundId: String?,
     val summary: CoroutineSummary?,
-    /** Built from the summary only: the events that created it are not retained (or were never in this store). */
+    /** `summary.state`, which is computed and not serialized with the summary. */
+    val summaryState: CoroutineState?,
+    /** Built from the summary only: the events that created it are not retained. */
     val summaryOnly: Boolean = false,
-    /** Replay only: this coroutine's state at the cursor is not fully known (plan E-1); open it from its summary. */
+    /** Replay only: this coroutine's state at the cursor is not known (plan E-3); open it from its summary. */
     val partial: Boolean = false,
 )
 ```
 
-(Check the projection's `HierarchyNode` field list and copy it exactly; the DTO only makes `scopeId`, `jobId` nullable.)
+(Check `HierarchyNode`'s field list and copy it exactly; the DTO only makes `scopeId`, `jobId` nullable.)
 
 ```kotlin
-/** The projection as it was at [seq]: a throwaway in-memory session fed the retained events up to it. */
-internal fun <T> projectionAt(sessionId: String, events: List<VizEvent>, seq: Long, read: (VizSession) -> T): T {
-    val upTo = events.filter { it.seq <= seq }
-    val probe = VizSession("$sessionId#at$seq", maxEvents = maxOf(1, upTo.size), eventStoreFactory = { EventStore(maxOf(1, upTo.size)) })
+/**
+ * A throwaway in-memory session fed [events] (in seq order, already cut at the view's seq): its projection and timeline
+ * are those of that moment. [synthesized] are creations made up from summaries, for coroutines whose creation is not
+ * retained (E-7); they are merged in seq order.
+ */
+internal fun <T> projectionOf(sessionId: String, events: List<VizEvent>, synthesized: List<VizEvent> = emptyList(), read: (VizSession) -> T): T {
+    val all = (events + synthesized).sortedBy { it.seq }
+    val capacity = maxOf(1, all.size)
+    val probe = VizSession("$sessionId#cut", maxEvents = capacity, eventStoreFactory = { EventStore(capacity) })
     try {
-        upTo.forEach(probe.store::record)
-        probe.projectionService.rebuildFrom(upTo)
+        all.forEach(probe.store::record)
+        probe.projectionService.rebuildFrom(all)
         return read(probe)
     } finally {
         probe.close()
@@ -1114,56 +1186,62 @@ internal fun <T> projectionAt(sessionId: String, events: List<VizEvent>, seq: Lo
 }
 
 internal fun hierarchyOf(view: SessionView, scopeId: String?, roundId: String?): List<HierarchyNodeDto> {
-    val nodes =
-        if (view.binding == ViewBinding.Current) {
-            view.session.projectionService.getHierarchyTree(scopeId)
-        } else {
-            projectionAt(view.session.sessionId, view.events, view.seq) { it.projectionService.getHierarchyTree(scopeId) }
-        }
-    val summaries = view.input.summaries // Replay: the plain fold; Bound: the bound view; Current: durable
+    val summaries = view.input.summaries
     val anchoring = RoundAnchoring.of(summaries)
     val inRound = { id: String -> roundId == null || anchoring.roundIdOf(id) == roundId }
+    val nodes = projectionOf(view.session.sessionId, view.events) { it.projectionService.getHierarchyTree(scopeId) }
     val known = nodes.mapTo(HashSet()) { it.id }
-    val full = nodes.filter { inRound(it.id) }.map { it.toDto(summaries.get(it.id), anchoring.roundIdOf(it.id)) }
-    val summaryOnly =
-        summaries.all
-            .filter { it.id !in known && inRound(it.id) && (scopeId == null) }
-            .map { s ->
-                view.requireExact(s.id)
-                s.toSummaryOnlyDto(anchoring.roundIdOf(s.id), partial = view.binding is ViewBinding.Replay && view.bound.levelOf(s.id) != RebuildLevel.EXACT)
-            }
+    val full = nodes.filter { inRound(it.id) }.map { node ->
+        view.requireKnown(node.id)
+        node.toDto(summaries.get(node.id), anchoring.roundIdOf(node.id), partial = view.isPartial(node.id))
+    }
+    val summaryOnly = if (scopeId != null) emptyList() else summaries.all
+        .filter { it.id !in known && inRound(it.id) }
+        .map { s -> view.requireKnown(s.id); s.toSummaryOnlyDto(anchoring.roundIdOf(s.id), partial = view.isPartial(s.id)) }
     return (full + summaryOnly).sortedBy { it.createdAtNanos }
 }
 ```
 
-Summary-only nodes are left out when `scopeId` is given (a summary has no scope). `toSummaryOnlyDto`: `name = s.name ?: s.id`,
+`SessionView.isPartial(id)` = Replay and `bound.levelOf(id) == UNKNOWN`. A node rebuilt from retained events has its
+creation retained, so `requireKnown` never throws for it — kept for clarity. `toSummaryOnlyDto`: `name = s.name ?: s.id`,
 `state = projectionState(s.state)` (`ACTIVE` → `"RUNNING"`, otherwise the enum name, matching `ProjectionService`'s
 strings), `createdAtNanos = s.firstObserved.appNanos`, `completedAtNanos = s.terminal?.appNanos`,
 `currentThreadId/Name = s.lastThread` (null when terminal), `dispatcherName = s.dispatcher`,
 `exceptionType/Message = s.failure`, `creationPoint = s.creationLocation`, `lastSuspensionPoint = s.lastSuspension`,
-empty children lists, `summaryOnly = true`. In Replay the nodes' `summary` comes from the fold (the cursor's view).
+empty children lists, `summaryOnly = true`.
 
 Hierarchy route: parse the binding, keep `scopeId`, add `roundId`, wrap in `respondReadErrors`, respond
-`hierarchyOf(view, scopeId, roundId)`. **When the summaries are unavailable** the unbound route must keep answering as
-today (the hierarchy is not a health read): catch `SummariesUnavailableException`/`HistoryTrimmedException` only for
-`ViewBinding.Current` and answer the projection nodes with `roundId = null, summary = null`.
+`hierarchyOf(view, scopeId, roundId)`. For `ViewBinding.Current` only, a `SummariesUnavailableException` or
+`HistoryTrimmedException` falls back to the projection nodes of `projectionOf(sessionId, session.store.all())` with
+`roundId`, `summary`, `summaryState` null (the hierarchy is not a health read; E-6).
 
-Timeline route: `ViewBinding.Current` → unchanged code path. Otherwise:
+Timeline route: `ViewBinding.Current` → today's code path, unchanged. Otherwise:
 
 ```kotlin
 val view = readView(session, ingest, binding, call.leakThresholdMs())
-view.requireStateKnown(coroutineId)
+view.requireKnown(coroutineId)
 val summary = view.input.summaries.get(coroutineId)
-val timeline = projectionAt(sessionId, view.events, view.seq) { it.projectionService.getCoroutineTimeline(coroutineId) }
-when {
-    timeline != null -> respond(openPhaseRule(timeline))  // the same live/demo open-phase rule as today
-    summary != null -> respond(HttpStatusCode.NotFound, ErrorResponse("This coroutine's events are not retained", code = "events-trimmed"))
-    else -> respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
-}
+val creationRetained = view.events.any { it is CoroutineCreated && it.coroutineId == coroutineId }
+val synthesized = if (!creationRetained && summary != null) listOf(summary.synthesizedCreation(view.session.sessionId)) else emptyList()
+val timeline = projectionOf(sessionId, view.events, synthesized) { it.projectionService.getCoroutineTimeline(coroutineId) }
+    ?: return call.respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
+// The moment of the view, not now (E-7): no open phase, no observation time to extrapolate from.
+val atMoment = timeline.copy(openPhase = null, openPhaseSinceNanos = null, observedAtEpochMs = null,
+    state = summary?.let { projectionState(it.state) } ?: timeline.state)
+val body = appJson.encodeToJsonElement(CoroutineTimeline.serializer(), if (synthesized.isEmpty()) atMoment
+    else atMoment.copy(totalDuration = null, activeDuration = null, suspendedDuration = null)).jsonObject
+call.respond(HttpStatusCode.OK, JsonObject(body + ("eventsTrimmed" to JsonPrimitive(synthesized.isNotEmpty()))))
 ```
 
+`synthesizedCreation`: a `CoroutineCreated` with `seq = firstObserved.seq`, `tsNanos = firstObserved.appNanos`,
+`coroutineId`, `parentCoroutineId`, `label = name`, `creationPoint = creationLocation`, `origin`,
+`createdAtEpochMs`, `jobId = ""`, `scopeId = ""`. It is used only inside the throwaway session; the timeline's event list
+filters it out (drop the entry whose `seq` equals `firstObserved.seq` and kind is created when `eventsTrimmed`). The
+current-timeline path also gains `"eventsTrimmed": false`? No — leave it byte-identical; document the field as present
+on bound and replay timelines only.
+
 - [ ] **Step 3: Run** the new test and the existing `SessionRoutesTest`, `TimelineRouteAssembledTest` → PASS.
-- [ ] **Step 4: Commit** `feat(health): hierarchy with rounds and summaries, hierarchy and timeline at a seq`.
+- [ ] **Step 4: Commit** `feat(health): hierarchy with rounds and summaries from one cut, hierarchy and timeline at a seq`.
 
 ---
 
@@ -1187,8 +1265,9 @@ response codes 400/404/409 (`stale`)/503 with `ErrorResponse`. `SCRATCH=/private
 - [ ] **Step 5: API check on port 18901 only** (memory mode), outputs to `$SCRATCH/part5b-api/5b1-*.json`: a failing demo
 (`rounds`, `rounds?q=payment`, `rounds?problemsOnly=true`, `health/items?list=incidents&asOfSeq=…`,
 `health/items?list=round-members&incidentId=…`, `hierarchy?roundId=…`, `hierarchy?atSeq=…`,
-`coroutines/{c}/timeline?atSeq=…`), and the 409 path (an attached session trimmed with a low
-`session.maxEvents` if configurable via env, else covered by tests only — say so). Stop the server; confirm nothing
+`coroutines/{c}/timeline?atSeq=…`), and, with the server restarted as `SESSION_MAX_EVENTS=20`, an attached session whose
+long-lived root's creation is trimmed: `rounds?asOfSeq=<from health>` → 200 (kept cut), and the 409 path once the cut is
+gone (wait 61 s, after a change to the root). Stop the server; confirm nothing
 listens on 18901.
 - [ ] **Step 6: Codex code review** up to 3 rounds + one confirmation round on the last fix
 (`codex exec -s read-only -C <worktree> --skip-git-repo-check -o $SCRATCH/codex-part5b1-code-rN.md "<prompt>" < /dev/null`).
@@ -1208,9 +1287,9 @@ Branch `feat/health-api-b2` from `feat/health-api-b` (`git switch -c feat/health
 - Test: `backend/coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/health/SummaryTableStateTest.kt`
 
 - [ ] **Step 1: Failing property test.** For 200 random histories and every split k: table A applies all events; table B
-applies events[0, k), is turned into a state, JSON round-tripped (`Json.encodeToString`/`decodeFromString` with
-`SummaryTableState.serializer()`), restored, and applies events[k, n). Assert `A.all == B.all` (same order, equal
-values), and the five scalar fields equal. Include histories that exceed a small reduction target and capacity: build
+applies events[0, k), is turned into a state, JSON round-tripped (`appJson.encodeToString`/`decodeFromString` with
+`SummaryTableState.serializer()`), restored, and applies events[k, n). Assert `A.toState() == B.toState()` (summaries as
+lists in order, and the five scalar fields). Include histories that exceed a small reduction target and capacity: build
 both tables with `SummaryTable(fullSummaryTarget = 5, trackedCapacity = 30)` and restore with the same limits, so stubs,
 the reduction queues and untracked counting are exercised across the split. Also a table test: a root promoted before
 the split, a new child after it → `grewAfterPromotion` and promotion clearing on cancel behave as in A.
@@ -1291,51 +1370,57 @@ If the property test finds a difference in reduction order (a full summary's cre
 
 ---
 
-### Task 11: Core — `VizSession` rehydrates from a checkpoint; one-cut reads
+### Task 11: Core — `VizSession` rehydrates from a cut and a checkpoint; one-cut reads
 
 **Files:**
 - Modify: `backend/coroutine-viz-core/src/main/kotlin/com/jh/proj/coroutineviz/session/VizSession.kt`
 - Test: `backend/coroutine-viz-core/src/test/kotlin/com/jh/proj/coroutineviz/session/VizSessionCheckpointTest.kt`
 
+The store reads the events and the checkpoint itself (E-12's retry needs both before deciding), so the session takes
+them as arguments.
+
 - [ ] **Step 1: Failing tests:**
-1. A session A (keepSummaries) fed 20 events. Session B with a store holding only events 11..20 and
-   `rehydrateFromStore { stateOfFirst10 }` → `B.readSummaries { it.toState() } == A.readSummaries { it.toState() }`;
-   `B.summarySeedSeq == 10`.
-2. Seed covering events the store still holds (seed at 15, store 11..20): events ≤ 15 are not applied twice (same equality).
-3. `rehydrateFromStore { null }` behaves as `rehydrateFromStore()` (`summarySeedSeq == null`).
-4. The seed supplier is called **after** the store was read (record the call order with a store wrapper).
-5. `readCut { table -> … }` runs under the send lock and passes `null` when summaries are unavailable.
+1. Session A (keepSummaries) fed 20 events. Session B whose store holds only events 11..20, then
+   `B.rehydrateFrom(events = store.all(), seed = stateOfAFirst10)` → `B.readSummaries { it.toState() } == A.readSummaries { it.toState() }`,
+   `B.summarySeedSeq == 10`, `B.lastSeq == 20`, B's hierarchy has the nodes of events 11..20.
+2. A seed covering events still passed in (seed at 15, events 11..20): events ≤ 15 are not applied to the summaries
+   twice (same equality); they still rebuild snapshot and projections.
+3. `rehydrateFrom(events, seed = null)` behaves as `rehydrateFromStore()`; `summarySeedSeq == null`.
+4. A seed newer than the newest event (`require` fails: the caller must retry, E-12).
+5. `readCut { table -> … }` runs under the send lock (a concurrent `send` from another thread blocks until it returns —
+   use a latch) and passes `null` when summaries are unavailable.
 
 - [ ] **Step 2: Implement.** Make `summaryTable` a `private var` (still guarded by `sendLock`). Add:
 
 ```kotlin
-    /** The last seq of the checkpoint the summaries were restored from, `null` when they were folded from the store alone. */
+    /** The last seq of the checkpoint the summaries were restored from, `null` when they were folded from the events alone. */
     @Volatile
     var summarySeedSeq: Long? = null
         private set
 
     /**
-     * [rehydrateFromStore] with the summaries restored from a checkpoint first (spec C-4). [seed] is called after the
-     * store was read, so a trim that commits in between is seen whole (plan E-12). Events up to the checkpoint's last seq
-     * rebuild the snapshot and projections only.
+     * Rebuilds the read models from [events] (in seq order) and, when [seed] is given, the summaries from that checkpoint
+     * plus the events after it (spec C-4). Events up to the checkpoint rebuild the snapshot and projections only. The
+     * caller reads [events] and [seed] as one cut: [seed] must not be newer than the newest event.
      */
-    fun rehydrateFromStore(seed: () -> SummaryTableState?) {
-        val events = store.all()
-        val state = if (summaryTable != null) seed() else null
+    fun rehydrateFrom(events: List<VizEvent>, seed: SummaryTableState?) {
+        val newest = events.lastOrNull()?.seq ?: 0L
+        require(seed == null || seed.lastEventSeq <= newest || events.isEmpty() && seed.lastEventSeq == 0L) {
+            "checkpoint at ${seed?.lastEventSeq} is newer than the newest event $newest"
+        }
         synchronized(sendLock) {
-            if (state != null) {
-                summaryTable = SummaryTable.restore(state)
-                summarySeedSeq = state.lastEventSeq
+            if (seed != null && summaryTable != null) {
+                summaryTable = SummaryTable.restore(seed)
+                summarySeedSeq = seed.lastEventSeq
             }
-            val after = state?.lastEventSeq ?: Long.MIN_VALUE
+            val after = summarySeedSeq ?: Long.MIN_VALUE
             events.forEach {
                 applier.apply(it)
                 if (it.seq > after) applyToSummaries(it)
             }
-            val maxSeq = maxOf(events.maxOfOrNull { it.seq } ?: 0L, state?.lastEventSeq ?: 0L)
-            if (maxSeq > lastSentSeq) {
-                lastSentSeq = maxSeq
-                seqGenerator.set(maxSeq)
+            if (newest > lastSentSeq) {
+                lastSentSeq = newest
+                seqGenerator.set(newest)
             }
         }
         if (events.isNotEmpty()) {
@@ -1349,9 +1434,9 @@ If the property test finds a difference in reduction order (a full summary's cre
         synchronized(sendLock) { block(summaryTable?.takeUnless { summariesDegraded }) }
 ```
 
-and make the old `rehydrateFromStore()` call `rehydrateFromStore { null }` (keep its empty-store early return
-semantics: with no events and no seed nothing changes). Restoring when the table was degraded is not possible (fresh
-instance).
+`rehydrateFromStore()` becomes `rehydrateFrom(store.all(), seed = null)` (empty store: nothing changes, as today).
+(A trim always keeps the newest events, so a checkpoint with an empty event list does not occur; the `require` allows
+only the trivial empty case.)
 
 - [ ] **Step 3: Run** `./gradlew :coroutine-viz-core:test` → PASS. **Step 4: Commit** `feat(core): a session rehydrates its summaries from a checkpoint`.
 
@@ -1389,6 +1474,18 @@ alter table sessions add column checks text;
 2. Trimming twice (40 more events, `cleanup()` again) folds the second batch onto the first checkpoint (same equality).
 3. A legacy-trimmed session (events start at seq 5, no checkpoint): `cleanup()` writes no checkpoint and still trims.
 
+4. **Failure after a valid checkpoint** (round 1 #5): a first trim writes a checkpoint; store one event whose payload
+   does not decode (insert a row with payload `"{}"`) among the next batch; the second `cleanup()` clears the checkpoint
+   (`summaries` and `summaries_seq` null) and trims; `GET …/health` → `503 history-trimmed`.
+5. Existing `DbRetentionPolicyTest` fixtures store `"{}"` payloads: they decode-fail, so their sessions get no
+   checkpoint and are trimmed exactly as before (their assertions stay green; round 1 #18).
+6. **Append/trim interleaving** (round 1 #4): a test seam `ExposedSessionStore.afterEventsReadForTest` runs, once,
+   between reading the events and reading the checkpoint; it appends 5 events and runs `cleanup()` (writing a newer
+   checkpoint). The read retries: the rebuilt session's summaries equal a memory table fed every event, its
+   `lastSeq` = the newest seq, and its hierarchy has the nodes of the retained events (projection and summaries agree).
+7. Summaries **and** watermark together (round 1 #20): ingest events and a watermark through the socket, trim, build a
+   fresh session → `GET …/health` has the failed round intact and `asOf.kind == WATERMARK` (connected).
+
 Extend `SessionHealthDatabaseModeTest`: the 5a test asserting `503 history-trimmed` after a trim now asserts **200**
 with the failed round intact (`failedRoundCount == 1`, no ungrouped failure), `retention.trimmed == true`, and
 `GET /api/sessions/{id}` gives `captureStartAppNanos` = the first event's time; keep a second test for the legacy case
@@ -1417,27 +1514,34 @@ internal object SummaryCheckpoints {
      * applied; the trim still happens and the session's health stays unavailable (H-3).
      */
     fun foldBelow(sessionId: String, keepFromSeq: Long): Boolean {
-        val current = read(sessionId)
-        val after = current?.lastEventSeq ?: 0L
-        val events = EventsTable.selectAll()
-            .where { (EventsTable.sessionId eq sessionId) and (EventsTable.seq greater after) and (EventsTable.seq less keepFromSeq) }
-            .orderBy(EventsTable.seq to SortOrder.ASC)
-            .map { decodeEvent(it[EventsTable.payload]) }
-        if (events.isEmpty()) return current != null
-        if (current == null && events.first().seq > 1) return false
-        val table = current?.let(SummaryTable::restore) ?: SummaryTable()
-        return try {
-            events.forEach(table::apply)
-            val state = table.toState()
-            SessionsTable.update({ SessionsTable.id eq sessionId }) {
-                it[summaries] = appJson.encodeToString(SummaryTableState.serializer(), state)
-                it[summariesSeq] = state.lastEventSeq
+        val written =
+            try {
+                val current = read(sessionId)
+                val after = current?.lastEventSeq ?: 0L
+                val rows = EventsTable.selectAll()
+                    .where { (EventsTable.sessionId eq sessionId) and (EventsTable.seq greater after) and (EventsTable.seq less keepFromSeq) }
+                    .orderBy(EventsTable.seq to SortOrder.ASC)
+                    .toList()
+                when {
+                    rows.isEmpty() -> current != null
+                    // Trimmed before checkpoints existed: folding what is left would lose ancestry.
+                    current == null && rows.first()[EventsTable.seq] > 1 -> false
+                    else -> {
+                        val table = current?.let(SummaryTable::restore) ?: SummaryTable()
+                        rows.forEach { table.apply(decodeEvent(it[EventsTable.payload])) }
+                        write(sessionId, table.toState())
+                        true
+                    }
+                }
+            } catch (e: RuntimeException) {
+                // SerializationException is a RuntimeException too: a payload that does not decode lands here.
+                logger.error("Summary checkpoint of session {} failed; its health becomes unavailable", sessionId, e)
+                false
             }
-            true
-        } catch (e: RuntimeException) {
-            logger.error("Summary checkpoint of session {} failed; its health stays unavailable", sessionId, e)
-            false
-        }
+        // The events below keepFromSeq are deleted next: a checkpoint that no longer covers them must not stay, or a read
+        // would take the gap for complete history (E-12, H-3).
+        if (!written) clear(sessionId)
+        return written
     }
 }
 ```
@@ -1445,14 +1549,38 @@ internal object SummaryCheckpoints {
 (`decodeEvent` = the `ExposedEventStore` decoder; make its `decode` an `internal` top-level function both use.) A
 failed checkpoint must not leave a half-written row: the update is one statement after the fold succeeded.
 
-`DbRetentionPolicy.trimEvents`: before the `deleteWhere`, call `SummaryCheckpoints.foldBelow(sessionId, keepCutoffSeq)`
-(same transaction). `ExposedSessionStore.buildSession`: `it.rehydrateFromStore { transaction(db) { SummaryCheckpoints.read(sessionId) } }`.
+`write` updates `summaries`/`summaries_seq`; `clear` sets both to null; `read` decodes, and a checkpoint that does not
+decode reads as none (logged). `DbRetentionPolicy.trimEvents`: before the `deleteWhere`, call
+`SummaryCheckpoints.foldBelow(sessionId, keepCutoffSeq)` (same transaction).
+
+`ExposedSessionStore.buildSession` (E-12's cut):
+
+```kotlin
+    private fun rehydrate(session: VizSession) {
+        repeat(CUT_ATTEMPTS) {
+            val events = ExposedEventStore(db, session.sessionId).all()
+            afterEventsReadForTest?.invoke(session.sessionId)
+            val seed = transaction(db) { SummaryCheckpoints.read(session.sessionId) }
+            if (seed == null || seed.lastEventSeq <= (events.lastOrNull()?.seq ?: 0L)) {
+                session.rehydrateFrom(events, seed)
+                return
+            }
+            // A trim committed between the two reads: read again, now after it.
+        }
+        throw SummariesUnavailableException("session ${session.sessionId}: no consistent cut after $CUT_ATTEMPTS attempts")
+    }
+```
+
+(`CUT_ATTEMPTS = 3`; `afterEventsReadForTest` is an `internal @Volatile var` the test sets and clears. A throw here
+surfaces from `getSession`; catch it in `getSession` and build the session without summaries instead — `keepSummaries`
+on but the table marked degraded — so non-health reads still answer and health reads 503. Add
+`VizSession.abandonSummaries()` (internal → public, documented) for that.)
 
 `summariesSeeEveryEvent()` becomes `summariesSeeEveryEvent(session: VizSession)`: memory store → true; else
 `session.summarySeedSeq != null`. Update the callers in `SessionHealthReads.kt` and `SessionViewReads.kt`
 (`firstSeqEver` then comes from the restored table's `firstEventSeq`).
 
-- [ ] **Step 4: Run** the new tests, `SessionHealthDatabaseModeTest`, `MigrationLayoutTest`,
+- [ ] **Step 4: Run** the new tests, `SessionHealthDatabaseModeTest`, `DbRetentionPolicyTest`, `MigrationLayoutTest`,
 `SessionDeleteDatabaseModeTest`, `DemoRunDatabaseModeTest` → PASS.
 - [ ] **Step 5: Commit** `feat(persistence): the trim folds events into a summary checkpoint first`.
 
@@ -1461,26 +1589,36 @@ failed checkpoint must not leave a half-written row: the update is one statement
 ### Task 13: Persisted ingest state and the "ingest open" marker (E-13)
 
 **Files:**
-- Modify: `…/routes/IngestStates.kt` (persistence hook, open counter, throttle)
-- Create: `…/persistence/ExposedIngestStatePersistence.kt`
-- Modify: `…/persistence/ExposedSessionStore.kt` (initial state on create), `…/Application.kt` (hook + startup sweep),
-  `…/routes/SessionHealthReads.kt` (`transportOf`)
+- Create: `…/routes/IngestStatePersistence.kt` (interface + `PersistedIngestState`), `…/persistence/ExposedIngestStatePersistence.kt`
+- Modify: `…/routes/IngestStates.kt` (hook, open connections, throttle), `…/routes/IngestRoutes.kt` (refuse when the
+  open write fails), `…/persistence/ExposedSessionStore.kt` (initial state on create, `hasIngestState`),
+  `…/Application.kt` (hook + startup sweep), `…/routes/SessionHealthReads.kt` (`transportOf`)
 - Test: `backend/src/test/kotlin/com/jh/proj/coroutineviz/routes/IngestStatePersistenceTest.kt`
 
+`IngestStates` is at detekt's function limit for objects (11): move the persistence plumbing into a small
+`internal object IngestStateWrites` (load/save/marker helpers taking the state) rather than raising the limit.
+
 - [ ] **Step 1: Failing tests** (H2, database mode; "restart" = `IngestStates.clear()` + a new `ExposedSessionStore`
-on the same `db` + `IngestStates.usePersistence(ExposedIngestStatePersistence(db))` + `ExposedIngestStatePersistence(db).sweepOpenMarkers()`):
+on the same `db` + `ExposedIngestStatePersistence(db).sweepOpenMarkers()` + `IngestStates.usePersistence(ExposedIngestStatePersistence(db))`):
 1. App connects, sends events and a watermark at 12 s, closes with a `final` watermark → restart → `GET …/health`:
    `asOf.kind == WATERMARK`, `transport.deliveryUncertain == false` (5a's D-9b said uncertain), `GET /api/sessions/{id}`
    `lastWatermark.appNanos == 12 s`.
-2. App connects, sends a watermark, and the process "crashes" (restart without closing the socket: call
-   `IngestStates.connectionOpened` + `watermarkReceived` directly, then restart) → `transport.deliveryUncertain == true`,
-   `sinceSeq` = that connection's first seq; the row's `ingest_open_since` is null after the sweep.
-3. A loss reported before the restart (`lostEvents = 3`) is still 3 after it (sticky across restarts), revision kept.
-4. A row with `ingest_state` null (set by SQL, as a pre-5b row) and stored events → still delivery-uncertain since 1
-   (D-9b's rule for legacy rows).
-5. Throttle: 10 watermarks within 1 s write the row at most twice (open + first frame); use an injectable clock on
-   `IngestStates` (`internal var clock: () -> Long = System::currentTimeMillis`, reset by `clear()`).
-6. Memory mode (no persistence hook): unchanged (5a's `IngestStatesTest` stays green).
+2. **Unclean close persisted** (round 1 #20): connects, sends a watermark, closes without `final` → restart →
+   delivery-uncertain since that connection's first seq, marker null.
+3. **Crash**: connection opened and a watermark received through `IngestStates` directly, no close → restart (the sweep)
+   → `deliveryUncertain == true`, `sinceSeq` = that connection's first seq, revision bumped, marker null afterwards.
+4. A loss reported before the restart (`lostEvents = 3`) is still 3 after it; the revision is kept.
+5. A row with `ingest_state` null (set by SQL, as a pre-5b row) and stored events → still delivery-uncertain since 1.
+6. Throttle: 10 watermarks within 1 s (injectable `IngestStates.clock`) write the row at most twice (open + first due).
+7. **Ordered writes** (round 1 #6): a persistence fake records every write; two connections open/close and send
+   watermarks from two threads (latches interleave them); the recorded writes' revisions never decrease and the last
+   write equals the final in-memory state; after both closed the last write's marker is null, and while one is still
+   open no write has a null marker.
+8. **Open write fails** (round 1 #7): the fake throws on the first write → the socket is closed with `TRY_AGAIN_LATER`
+   before any event is stored (`GET …/events` is empty); a later connection succeeds.
+9. **Close write fails**: the fake throws on the close write → the row keeps its marker (the earlier open write) → restart
+   → delivery-uncertain.
+10. Memory mode (no hook): unchanged (5a's `IngestStatesTest` stays green).
 
 - [ ] **Step 2: Implement.**
 
@@ -1488,9 +1626,9 @@ on the same `db` + `IngestStates.usePersistence(ExposedIngestStatePersistence(db
 /** Where `IngestStates` keeps what must survive a restart (database mode only; spec C-3 marker, C-4). */
 interface IngestStatePersistence {
     fun load(sessionId: String): PersistedIngestState?
-    fun save(sessionId: String, state: PersistedIngestState)
-    /** Sets or clears the "ingest open" marker (the earliest open connection's first seq). */
-    fun setOpenMarker(sessionId: String, sinceSeq: Long?)
+
+    /** Writes the state and the "ingest open" marker (the earliest open connection's first seq, null when none) in one statement. */
+    fun save(sessionId: String, state: PersistedIngestState, openSince: Long?)
 }
 
 @Serializable
@@ -1503,37 +1641,34 @@ data class PersistedIngestState(
 ```
 
 `IngestStates` changes:
-- `@Volatile private var persistence: IngestStatePersistence? = null`; `fun usePersistence(p: IngestStatePersistence?)`;
-  `clear()` resets it and the clock.
-- `State` gains `var openConnections = 0`, `var lastSavedAtMs = Long.MIN_VALUE`, and is created seeded from
-  `persistence?.load(id)` (in `stateOf`).
-- `connectionOpened`: under the state lock `openConnections++`; then `persistence?.setOpenMarker(id, minOpenFirstSeq)`
-  (keep the open connections' first seqs in a small list on the state) and `save`.
-- `eventReceived`/`watermarkReceived`/`frameSkipped`: after the update, `saveIfDue(state)` (≥ 5,000 ms since the last
-  save by `clock`).
-- `connectionClosed`: after marking, `openConnections--`, remove its first seq; `save` (always); marker = the earliest
-  remaining open first seq, or null.
-- `snapshot(id)`: the in-memory state when present, else `persistence?.load(id)` converted (not cached), else empty.
-- `forget(id)` unchanged (the row is gone with the session).
+- `@Volatile private var persistence: IngestStatePersistence?`; `fun usePersistence(p)`; `internal var clock`;
+  `clear()` resets both.
+- `State` gains `val openFirstSeqs = mutableListOf<Long>()`, `var lastSavedAtMs = Long.MIN_VALUE`; `stateOf` seeds a new
+  state from `persistence?.load(id)`.
+- Every write happens **inside `synchronized(state)`**, right after the change it records, so writes are in state order
+  (a DB write every 5 s per session under that lock; ingest in database mode already writes each event to the DB).
+- `connectionOpened`: add the first seq, then `save(id, state, openSince = openFirstSeqs.min())`, **letting a failure
+  throw** (after removing the first seq again); the ingest route catches it and closes the socket with
+  `CloseReason(TRY_AGAIN_LATER, "Ingest state could not be stored")` before reading any frame.
+- `eventReceived`/`watermarkReceived`/`frameSkipped`: after the update, save when ≥ 5,000 ms (by `clock`) since the last
+  save; a failure is logged and skipped (the marker written at open is still set, so a crash reads uncertain).
+- `connectionClosed`: mark (as today), remove the first seq, then `save(id, state, openSince = openFirstSeqs.minOrNull())`;
+  a failure is logged (the old marker stays: uncertain after a restart, never wrongly clean).
+- `snapshot(id)`: the in-memory state when present, else `persistence?.load(id)` (not cached), else empty.
 
-Persistence calls run outside the state lock (copy the state under the lock, write after) and never throw into the
-ingest loop: wrap them in `runCatching { … }.onFailure { logger.warn(…) }` — a failed write leaves the marker set, so
-the sweep errs on the uncertain side.
+`ExposedIngestStatePersistence(db)`: `load` reads `ingest_state` (null → null; a value that does not decode → an empty
+state with `deliveryUncertain = true` since 1, logged); `save` = one `UPDATE sessions SET ingest_state = ?,
+ingest_open_since = ? WHERE id = ?`; `sweepOpenMarkers()` updates, per row with `ingest_open_since` not null, the state
+to `deliveryUncertain = true`, `sinceSeq = min(sinceSeq, marker)`, `revision + 1` (when that changed) and the marker to
+null, in one statement per row. `Application.kt`: right after `SessionManager.useStore(ExposedSessionStore(db, …))`,
+`ExposedIngestStatePersistence(db).also { it.sweepOpenMarkers(); IngestStates.usePersistence(it) }`.
 
-`ExposedIngestStatePersistence(db)`: `load` reads `ingest_state` (null → null), `save` updates it, `setOpenMarker`
-updates `ingest_open_since`; `sweepOpenMarkers()` selects rows with `ingest_open_since` not null and, for each,
-saves the state with `transport.deliveryUncertain = true`, `sinceSeq = min(sinceSeq, marker)`, revision + 1 when that
-changed, and clears the marker — all in one transaction, before the routes start (call it in `Application.kt` right
-after `SessionManager.useStore(ExposedSessionStore(db, …))`, then `IngestStates.usePersistence(...)`).
+`ExposedSessionStore.createSession` writes `ingest_state = "{}"`; `hasIngestState(sessionId)` says whether the column is
+set. `transportOf`: the D-9b branch (`recovered || eventsBeforeWatching`) applies only when the store reports no ingest
+state for the row; for rows with a state only `eventsBeforeWatching` (events stored and no connection ever recorded).
 
-`ExposedSessionStore.createSession` writes `ingest_state = "{}"` (an empty `PersistedIngestState`) so a new row is
-told apart from a pre-5b one. `transportOf` keeps its D-9b branch only when the backing store reports the row as legacy:
-add `ExposedSessionStore.hasIngestState(sessionId): Boolean` and use
-`unwatched = … && !hasIngestState && (recovered || eventsBeforeWatching)`; for rows with a state,
-`eventsBeforeWatching` alone still applies (events stored with no connection ever recorded).
-
-- [ ] **Step 3: Run** the new test, `IngestStatesTest`, `IngestWatermarkTest`, `SessionHealthDatabaseModeTest`,
-`SessionDeleteDatabaseModeTest`, `IngestRoutesTest` → PASS. **Step 4: Commit**
+- [ ] **Step 3: Run** the new test, `IngestStatesTest`, `IngestWatermarkTest`, `IngestRoutesTest`,
+`SessionHealthDatabaseModeTest`, `SessionDeleteDatabaseModeTest` → PASS. **Step 4: Commit**
 `feat(persistence): ingest state and the ingest-open marker survive a restart`.
 
 ---
@@ -1579,32 +1714,69 @@ is the backing store, else a `ConcurrentHashMap`; `Routing.kt` adds `SessionMana
 ### Task 15: `/metrics` by origin (E-15)
 
 **Files:**
-- Modify: `…/routes/SessionRoutes.kt` (metrics handler), `…/routes/RouteDtos.kt`; core `…/health/SessionHealthDerivation.kt` (`longLivedByOrigin`)
-- Test: extend `backend/src/test/kotlin/com/jh/proj/coroutineviz/routes/MetricsRouteTest.kt`; core `DeriveFullTest`
+- Modify: core `…/session/MetricsProjection.kt` (per-origin aggregates), core `…/health/SessionHealthDerivation.kt`
+  (`longLivedByOrigin`), `…/routes/SessionRoutes.kt` (metrics handler), `…/routes/RouteDtos.kt`
+- Test: core `MetricsProjectionByOriginTest.kt`, extend `DeriveFullTest`; backend extend `MetricsRouteTest.kt`
 
-- [ ] **Step 1: Failing tests:** an attached session with an `APP` coroutine and a `VIZCORE` coroutine both created at 1 s
-and suspended, last event at 45 s, then idle: `GET …/metrics?leakThresholdMs=30000` → `byOrigin.app.captured == 1`,
-`byOrigin.vizcore.captured == 1`, both `active == 1`; `leaks` has two entries with `origin` `APP`/`VIZCORE`, each
-`aliveMs` = 44,000 (frozen at its last event, not wall-clock now); a second call 1 s later gives the same ages. A
-session with unavailable summaries (Task 1's store seam) → `byOrigin == null`, `leaks` from the projection with
-`origin == null`. Existing threshold-echo tests stay green.
+- [ ] **Step 1: Failing tests.**
+Core: a projection fed an `APP` root with 2 children on `Dispatchers.Default`, a `VIZCORE` coroutine on `Dispatchers.IO`
+and an origin-less one, some completing → `byOrigin()` gives per bucket (`APP`, `VIZCORE`, `UNREPORTED`) active, peak
+(the bucket's own peak, not a share of the total), throughput over the same 10 s window (events of that bucket's
+coroutines; events not about a coroutine count only in the total) and dispatcher utilization; `rebuildFrom` reproduces it.
+Backend: an attached session with an `APP` and a `VIZCORE` coroutine both created at 1 s and suspended, last event at
+45 s, idle → `GET …/metrics?leakThresholdMs=30000`: `byOrigin.app.captured == 1`, `byOrigin.vizcore.captured == 1`, both
+`active == 1`, `leaks` two entries with `origin` `APP`/`VIZCORE` and `aliveMs == 44_000` (frozen at the last event), the
+same on a second call 1.1 s later; `leaksAvailable == true`, `retainedOnly == false`. A demo session → everything under
+`byOrigin.app`. With unavailable summaries (Task 1's store seam): `leaks == []`, `leaksAvailable == false`,
+`byOrigin == null`. A database session trimmed with a checkpoint → `retainedOnly == true`, `oldestRetainedAppNanos` set.
+Existing threshold-echo tests stay green.
 
-- [ ] **Step 2: Implement.** Core: `fun longLivedByOrigin(input: HealthInput): List<Pair<CoroutineOrigin, ObservedAge>>`
-in `SessionHealthDerivation` — the long-lived rule of `HealthParts` over **all** coroutines (vizcore included), with
-the effective origin. `RouteDtos`: `LeakDto` gains `val origin: CoroutineOrigin? = null`; `MetricsResponse` gains
-`val byOrigin: OriginMetrics? = null` with
+- [ ] **Step 2: Implement.**
+
+Core `MetricsProjection`: keep, beside today's totals, `enum class OriginBucket { APP, VIZCORE, UNREPORTED }` aggregates:
+an `originOf` map filled on `CoroutineCreated` (`APP`/`VIZCORE`, anything else `UNREPORTED`), per bucket the active
+set's count, a peak, a 10 s event-time window (an event counts in its coroutine's bucket when it is a `CoroutineEvent`
+of a known coroutine) and dispatcher counts; `rebuildFrom` clears them. New public API (no change to `MetricsSnapshot`,
+which plugin code may construct):
 
 ```kotlin
-@Serializable data class OriginSlice(val captured: Int, val active: Int, val longLived: Int)
-@Serializable data class OriginMetrics(val app: OriginSlice, val vizcore: OriginSlice, val unknown: OriginSlice, val untracked: Long)
+data class OriginAggregate(val active: Int, val peak: Int, val throughputPerSec: Double, val dispatcherUtilization: Map<String, Int>)
+
+fun byOrigin(nowNanos: Long = System.nanoTime()): Map<OriginBucket, OriginAggregate>
 ```
 
-The handler reads the summaries through `readView(session, ingest, ViewBinding.Current, leakThresholdMs)` (catching the
-503 exceptions → today's projection leaks), builds `byOrigin` from `view.input.summaries` with `derived.originOf`, and
-`leaks` from `longLivedByOrigin` (`aliveMs = ageNanos / 1_000_000`). `active`, `peak`, `throughputPerSec`,
-`dispatcherUtilization` stay from the projection.
+Core derivation: `fun longLivedByOrigin(input: HealthInput): List<Pair<CoroutineOrigin, ObservedAge>>` — the long-lived
+rule of `HealthParts` over **all** coroutines (vizcore included) with the effective origin.
 
-- [ ] **Step 3: Run** → PASS (`MetricsRouteTest`, frontend types later). **Step 4: Commit** `feat(metrics): split by origin, leak ages frozen at the last observation`.
+`RouteDtos`: `LeakDto` gains `val origin: CoroutineOrigin? = null`; `MetricsResponse` gains
+`val leaksAvailable: Boolean = true`, `val byOrigin: OriginMetrics? = null`, `val retainedOnly: Boolean = false`,
+`val oldestRetainedAppNanos: Long? = null`, with
+
+```kotlin
+@Serializable
+data class OriginSlice(
+    val captured: Int,
+    val active: Int,
+    val peak: Int,
+    val throughputPerSec: Double,
+    val dispatcherUtilization: Map<String, Int>,
+    val longLived: Int,
+)
+
+@Serializable
+data class OriginMetrics(val app: OriginSlice, val vizcore: OriginSlice, val unknown: OriginSlice, val untracked: Long)
+```
+
+Effective origin mapping (the derivation's): a demo puts every bucket's figures in `app` (total figures); a session whose
+origin is `UNKNOWN` puts the totals in `unknown`; otherwise `APP` → `app`, `VIZCORE` → `vizcore`, `UNREPORTED` → `unknown`.
+`captured` and `longLived` come from the summaries (`derived.originOf`), the rest from the projection buckets. The handler
+reads `readView(session, ingest, ViewBinding.Current, leakThresholdMs)`; on `SummariesUnavailableException` /
+`HistoryTrimmedException` it answers today's totals with `leaks = []`, `leaksAvailable = false`, `byOrigin = null`.
+`retainedOnly` = a database session (`!summariesSeeEveryEvent` for the projection: the projection of a database session
+is rebuilt from retained events) whose `retention.trimmed`; `oldestRetainedAppNanos` = `retention.oldestRetainedAppNanos`
+then.
+
+- [ ] **Step 3: Run** → PASS. **Step 4: Commit** `feat(metrics): split by origin, leak ages frozen at the last observation`.
 
 ---
 
@@ -1612,36 +1784,48 @@ The handler reads the summaries through `readView(session, ingest, ViewBinding.C
 
 **Files:**
 - Modify: `…/share/ShareRoutes.kt`, `…/share/ShareDtos.kt`, `…/share/ShareService.kt` (`resolve(token, countAccess)`),
-  `…/routes/SessionRoutes.kt` (`snapshotResponseOf` from a cut), `…/routes/SessionHealthReads.kt` (health from a cut)
-- Test: `backend/src/test/kotlin/com/jh/proj/coroutineviz/share/SharedHealthRoutesTest.kt` (H2)
+  `…/routes/SessionRoutes.kt` (`snapshotResponseOf` from a cut), `…/routes/SessionHealthReads.kt` (health from a cut),
+  route bodies extracted into functions taking `(call, session, ingestCut)` so session and shared routes share them
+- Test: `backend/src/test/kotlin/com/jh/proj/coroutineviz/share/SharedHealthRoutesTest.kt` (H2, auth off)
 
-- [ ] **Step 1: Failing tests** (database mode, auth off, a failing session shared with `POST …/share`):
-1. `GET /api/shared/{token}` → `health.failedRoundCount == 1`, `health.asOfSeq == max(events.seq)`,
-   `session.eventCount == events.size`, `checks.lastRun == null`; after a `POST /api/validate/session/{id}`,
-   `checks.lastRun` is set.
-2. One cut: send events from a second coroutine while loading 20 times in a loop (in memory mode the share service is
-   absent, so this uses database mode with a concurrent ingest socket) — every response has
-   `health.asOfSeq == events.last().seq` and `session.eventCount == events.size`.
-3. `GET /api/shared/{token}/health?atSeq=N`, `/health/items?list=incidents&asOfSeq=S`, `/rounds?asOfSeq=S`,
-   `/hierarchy?roundId=…&asOfSeq=S`, `/coroutines/{c}/timeline?asOfSeq=S` → 200 with the same bodies as the session
-   routes; an expired share → 410; unknown → 404; `access_count` of the share is incremented by the payload load only.
-4. A session whose health is unavailable (legacy trimmed) → payload `health == null`, `healthUnavailable == "history-trimmed"`.
+- [ ] **Step 1: Failing tests** (a failing session shared with `POST …/share`):
+1. `GET /api/shared/{token}` → `health.failedRoundCount == 1`, `health.asOfSeq == events.last().seq`,
+   `session.eventCount == events.size`, `checks.lastRun == null`; after `POST /api/validate/session/{id}`, `checks.lastRun`
+   is set and its `checkedSeq ≤ health.asOfSeq`.
+2. **Watermark order** (round 1 #8): a test seam `ShareRoutes.afterIngestReadForTest` runs between the ingest snapshot and
+   the session resolution; in it, the app's running coroutine suspends (event) and a newer watermark arrives. The payload's
+   health has **no** possibly blocked incident for it (its watermark is the one read first, older than the suspension's
+   poll), and `session.lastWatermark` equals `health.asOfWatermark`.
+3. **Checks order**: a seam between the checks read and the cut runs a new validation after more events; the payload's
+   `checks.lastRun.checkedSeq ≤ health.asOfSeq` (the older run is served).
+4. **Cut**: a seam inside the cut appends events after it (another thread blocked on the send lock until the cut returns,
+   via a latch) → events, `session.eventCount`, `session.coroutineCount` and `health.asOfSeq` all describe the cut, not
+   the later events.
+5. `GET /api/shared/{token}/health?atSeq=N`, `/health/items?list=incidents&asOfSeq=S`, `/rounds?asOfSeq=S`,
+   `/hierarchy?roundId=…&asOfSeq=S`, `/coroutines/{c}/timeline?asOfSeq=S` (S from the payload) → 200, bodies equal to
+   the session routes' for the same parameters; with the payload's cut kept they stay 200 after more events arrive;
+   after `HealthCuts.clear()` and a change to a creation-trimmed coroutine → 409 `stale` (shared STALE, round 1 #20).
+   Expired share → 410; unknown → 404; `access_count` grows only with payload loads.
+6. A legacy-trimmed session (events deleted by SQL, no checkpoint) → payload `health == null`,
+   `healthUnavailable == "history-trimmed"`.
 
 - [ ] **Step 2: Implement.**
 - `ShareService.resolve(token: String, countAccess: Boolean = true)`.
 - `SharedSessionResponse` gains `val health: SessionHealth? = null`, `val healthUnavailable: String? = null`,
   `val checks: ChecksStatus? = null`.
-- A cut: `session.readCut { table -> Cut(table?.snapshot(), session.snapshot.nodes(), session.lastSeq) }` (the snapshot
-  nodes and `lastSeq` are read under the same lock); events = `session.store.all().filter { it.seq <= cut.seq }`.
-  `snapshotResponseOf(session, events, nodes, durable)` gains the two optional parameters (the session route keeps
-  calling it as today). Health from the cut: refactor `readSessionHealth` so its body after the summary copy is
-  `healthFrom(session, durable, ingest, events, atSeq, leakThresholdMs)`, and call that with the cut's copy and events
-  (unavailable → `healthUnavailable` = the 503 code).
+- Payload load, in this order: `ingest = IngestStates.snapshot(id)`; `checks = ChecksResults.load(id)`; resolve the
+  session; `cut = session.readCut { table -> Cut(table?.snapshot(), session.snapshot.nodes(), session.lastSeq) }`;
+  `events = session.store.all().filter { it.seq <= cut.seq }`. `snapshotResponseOf(session, events, nodes = cut.nodes,
+  durable = cut.summaries, ingest = ingest)` (new optional parameters; the session route keeps calling it as today, and
+  `readSessionFacts` takes the summaries and ingest snapshot it is given instead of reading its own when they are passed).
+  Health: refactor `readSessionHealth` so its body after the summary copy is
+  `healthFrom(session, durable, ingest, events, atSeq = null, leakThresholdMs)`, which also remembers the cut (E-17);
+  call it with the cut's copy, the payload's ingest snapshot and events (`cut.summaries == null` or a 503 exception →
+  `healthUnavailable` = the code). `checks` = `ChecksStatus(id, checks, newEventsSince = cut.seq - checkedSeq)`.
 - Shared read routes in `registerSharedPublicRoute` (all under the shared rate limit): a helper
-  `withSharedSession(call) { session -> … }` resolving the token with `countAccess = false` (410/404 as the payload
-  route), then exactly the session routes' bodies (`readView` + `listRounds` / `respondHealthItems` / `hierarchyOf` /
-  timeline / health). Extract each session route's body into a function taking `(call, session, ingestCut)` so both
-  route sets call the same code.
+  `withSharedSession(call) { session, ingest -> … }` reads the ingest snapshot, resolves the token with
+  `countAccess = false` (410/404 as the payload route), resolves the session, then calls the same extracted bodies as
+  the session routes.
 
 - [ ] **Step 3: Run** → PASS (and the existing share tests). **Step 4: Commit** `feat(share): health and checks under one cut, shared health reads`.
 
@@ -1655,11 +1839,12 @@ The handler reads the summaries through `readView(session, ingest, ViewBinding.C
 `generated.ts`; `API_REFERENCE.md` (persistence notes: summaries survive the trim, ingest state survives a restart,
 checks, shares). Gates as Task 9 Step 4. Commit `docs(api): checks, metrics by origin, shared health reads`.
 - [ ] **Step 2: API check on 18901**, memory mode (checks, metrics by origin) **and database mode**
-(`STORAGE_TYPE=database` with an H2 file under `$SCRATCH/part5b-api/db` if `application.yaml` reads it from env; check
-the config keys first): create an attached session, ingest events and a watermark, close cleanly, restart the server,
-`GET …/health` (watermark kept, not uncertain); share it and save `GET /api/shared/{token}` and the shared rounds/items.
-Outputs to `$SCRATCH/part5b-api/5b2-*.json`. Persistence across the trim is proven by `SummaryCheckpointTest` and
-`SessionHealthDatabaseModeTest` (the retention loop is hourly). Stop the server; confirm nothing listens on 18901.
+(`STORAGE_TYPE=database DB_URL='jdbc:h2:file:$SCRATCH/part5b-api/db/vizcore;CASE_INSENSITIVE_IDENTIFIERS=TRUE'
+RETENTION_MAX_EVENTS_PER_SESSION=20 RETENTION_CLEANUP_INTERVAL_MINUTES=1`): create an attached session, ingest a failing
+round and a watermark, close cleanly; wait for one retention pass (the trim, about a minute), `GET …/health` (failed
+round intact, `retention.trimmed: true`); restart the server, `GET …/health` again (watermark kept, not uncertain);
+share it and save `GET /api/shared/{token}` and the shared rounds/items. Outputs to `$SCRATCH/part5b-api/5b2-*.json`.
+The same is proven by `SummaryCheckpointTest`, `SessionHealthDatabaseModeTest` and `IngestStatePersistenceTest`. Stop the server; confirm nothing listens on 18901.
 - [ ] **Step 3: Codex code review** up to 3 rounds + one confirmation round (`codex-part5b2-code-rN.md`).
 - [ ] **Step 4: Push `feat/health-api-b2`, open PR 5b-2** with base `feat/health-api-b` (stacked; retarget to `main`
 after 5b-1 merges), #295's structure. Do not merge.
