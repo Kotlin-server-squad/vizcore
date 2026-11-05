@@ -92,6 +92,14 @@ class ChannelsDemoPacingTest {
                 .map { it.valueDescription }
         }
 
+        /** How long each value waited in the channel: from its send completing to its receive completing, in scripted ms. */
+        fun waitedInChannel(): Map<String, Double> {
+            val sent = events.filterIsInstance<ChannelSendCompleted>().associate { it.valueDescription to at(it) }
+            return events
+                .filterIsInstance<ChannelReceiveCompleted>()
+                .associate { it.valueDescription to at(it) - assertNotNull(sent[it.valueDescription], "${it.valueDescription} never sent") }
+        }
+
         /** How full the channel is after each change, in the order the session received them. */
         fun bufferSizes(): List<Int> = events.filterIsInstance<ChannelBufferStateChanged>().sortedBy { it.seq }.map { it.currentSize }
     }
@@ -207,6 +215,7 @@ class ChannelsDemoPacingTest {
         val waits = run.sendsBy("office").map { (started, completed) -> completed - started }
         assertEquals(8, waits.size, "the office sends eight jobs")
         assertTrue(waits.count { it >= 500 } >= 2, "the office waits for a free slot at least twice: $waits")
+        assertTrue(run.waitedInChannel().getValue("job-2") >= 2_000, "a job waits in the queue while the printer is busy")
         assertTrue(run.endedAt("printer") - run.endedAt("office") >= 10_000, "the printer keeps printing long after the office is done")
         assertTrue(run.labels.all { run.completed(it) })
     }
@@ -218,7 +227,10 @@ class ChannelsDemoPacingTest {
 
         assertEquals((1..12).map { "ticket-$it" }.sorted(), byAgent.values.flatten().sorted(), "every ticket, exactly once")
         byAgent.forEach { (agent, tickets) -> assertTrue(tickets.size >= 2, "$agent handled only $tickets") }
-        assertTrue(run.bufferSizes().max() >= 1, "tickets wait in the queue while all three agents are busy")
+        // A hand-over to an agent who is already waiting takes no time; a ticket that arrives while
+        // all three are busy waits in the queue until one of them is free.
+        val waited = run.waitedInChannel().filterValues { it >= 500 }
+        assertTrue(waited.size >= 2, "tickets wait in the queue while all three agents are busy, waited: $waited")
         assertTrue(run.labels.all { run.completed(it) })
     }
 
