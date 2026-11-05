@@ -157,7 +157,7 @@ launch {                                          // shop-server
       'At month end Anna pays Ben and Ben pays Anna at the same moment. Unlike the Bank Transfer demo, each transfer locks its payer\'s account first. Anna\'s transfer holds her account and waits for Ben\'s; Ben\'s holds his and waits for Anna\'s. Neither can go on, and neither lets go: a deadlock. A watchdog notices that nothing finishes and cancels both.',
     code: `suspend fun payerFirst(from: Account, to: Account) {
     from.lock.withLock {                          // 1
-        checkBalance()               // takes 1.5 s
+        checkBalance()           // takes 1 to 1.5 s
         to.lock.withLock {                        // 2
             move(from, to)           // never reached
         }
@@ -167,11 +167,11 @@ launch {                                          // shop-server
 launch {                                          // month-end
     val transfers = listOf(
         launch { payerFirst(anna, ben) },         // anna-pays-ben
-        launch { delay(500); payerFirst(ben, anna) },  // ben-pays-anna
+        launch { payerFirst(ben, anna) },         // ben-pays-anna
     )
     launch {                                      // watchdog
-        repeat(4) {
-            delay(2500)
+        repeat(5) {
+            delay(2000)
             if (transfers.any { it.isCompleted }) return@launch  // 3
         }
         transfers.forEach { it.cancel() }         // 4
@@ -181,15 +181,15 @@ launch {                                          // month-end
     steps: [
       {
         title: 'Each locks the payer\'s account',
-        text: 'anna-pays-ben locks Anna\'s account at once; ben-pays-anna starts 0.5 s later and locks Ben\'s. Each spends 1.5 s checking its payer\'s balance.',
+        text: 'Both transfers start at once: anna-pays-ben locks Anna\'s account and ben-pays-anna locks Ben\'s. Then each checks its payer\'s balance, Ben\'s in 1 s and Anna\'s in 1.5 s.',
       },
       {
         title: 'Each waits for the other\'s',
-        text: 'At 1.5 s anna-pays-ben asks for Ben\'s account, which ben-pays-anna holds; at 2 s ben-pays-anna asks for Anna\'s, which anna-pays-ben holds. Both are now suspended in the tree, waiting for a lock that will never be released. The Lock contention panel shows each account held by one transfer, with the other transfer queued for it.',
+        text: 'At 1 s ben-pays-anna asks for Anna\'s account, which anna-pays-ben holds; at 1.5 s anna-pays-ben asks for Ben\'s, which ben-pays-anna holds. Both are now suspended in the tree, waiting for a lock that will never be released. The Lock contention panel shows each account held by one transfer, with the other transfer queued for it.',
       },
       {
         title: 'Nothing moves',
-        text: 'A deadlock throws no error; it just never ends. The watchdog checks every 2.5 s whether either transfer has finished. At 2.5, 5 and 7.5 s neither has, and the tree stays the same: two transfers suspended.',
+        text: 'A deadlock throws no error; it just never ends. The watchdog checks every 2 s whether either transfer has finished. At 2, 4, 6 and 8 s neither has, and the tree stays the same: two transfers suspended.',
       },
       {
         title: 'Cancelled, never resumed',
