@@ -1,5 +1,6 @@
-import type { RefObject } from 'react'
-import { Card, CardBody, Button } from '@heroui/react'
+import type { ReactNode, RefObject } from 'react'
+import { Button } from '@heroui/react'
+import { FiMaximize2, FiMinimize2 } from 'react-icons/fi'
 import { CoroutineTree } from '../CoroutineTree'
 import { CoroutineTreeGraph } from '../CoroutineTreeGraph'
 import { EmptyState } from '../EmptyState'
@@ -10,6 +11,7 @@ interface CoroutineCanvasProps {
   /** Already filtered and capped by the caller — the canvas renders what it is given. */
   coroutines: CoroutineNode[]
   viewMode: 'graph' | 'list'
+  onViewModeChange: (next: 'graph' | 'list') => void
   /** Terminal coroutines collapsed out of the default active-only view (D-08). */
   completedCount: number
   /** Nothing is live and the canvas shows the whole finished run (spec Part 1). */
@@ -22,6 +24,8 @@ interface CoroutineCanvasProps {
   pendingChildCounts?: ReadonlyMap<string, number>
   /** Which chip the state bar has active — decides which empty state is honest. */
   stateFilter: StateFilter
+  /** The state bar, already bound to the filter (rendered in the toolbar). */
+  stateBar: ReactNode
   /** A vizcore demo run, not the user's app: its empty state says to run the scenario. */
   isDemo?: boolean
   selectedCoroutineId: string | null
@@ -29,12 +33,15 @@ interface CoroutineCanvasProps {
   onSelect?: (id: string) => void
   /** ExportMenu captures this region. */
   panelRef: RefObject<HTMLDivElement | null>
+  /** The dock is hidden and the main view takes the page (S-1). */
+  maximised: boolean
+  onToggleMaximise: () => void
 }
 
 /**
- * The workspace's default body (D-4): the active coroutine set — or, once
- * nothing is live, the whole finished run — filtered by the state bar, rendered
- * as a tree or a graph.
+ * The main view (spec S-1): the coroutine tree or graph in a box that takes
+ * the page's free height, with the view switch, the state bar, the heading and
+ * Maximise in its toolbar.
  *
  * Presentational — every derivation (the active/terminal split, the node cap,
  * the state filter) happens in the caller so this component cannot disagree
@@ -43,6 +50,7 @@ interface CoroutineCanvasProps {
 export function CoroutineCanvas({
   coroutines,
   viewMode,
+  onViewModeChange,
   completedCount,
   allFinished = false,
   showCompleted,
@@ -50,60 +58,78 @@ export function CoroutineCanvas({
   moreCount,
   pendingChildCounts,
   stateFilter,
+  stateBar,
   isDemo = false,
   selectedCoroutineId,
   onSelect,
   panelRef,
+  maximised,
+  onToggleMaximise,
 }: CoroutineCanvasProps) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">
+    <section
+      aria-label="Main view"
+      className="flex min-h-[320px] min-w-0 flex-1 flex-col rounded-xl border border-default-200 bg-content1"
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-default-200 px-3 py-2">
+        <div role="group" aria-label="View" className="flex gap-0.5 rounded-medium bg-default-100 p-0.5">
+          <ViewButton label="Graph" pressed={viewMode === 'graph'} onPress={() => onViewModeChange('graph')} />
+          <ViewButton label="List" pressed={viewMode === 'list'} onPress={() => onViewModeChange('list')} />
+        </div>
+        <h2 className="text-sm font-semibold">
           {allFinished ? 'Everything has finished' : <>What&apos;s running now</>}
-        </h3>
+        </h2>
+        {stateBar}
         {completedCount > 0 && !allFinished && (
-          <Button
-            size="sm"
-            variant="flat"
-            onPress={onToggleCompleted}
-          >
-            {showCompleted
-              ? `Hide completed (${completedCount})`
-              : `Show completed (${completedCount})`}
+          <Button size="sm" variant="flat" onPress={onToggleCompleted}>
+            {showCompleted ? `Hide completed (${completedCount})` : `Show completed (${completedCount})`}
           </Button>
         )}
+        <div className="flex-1" />
+        <Button
+          size="sm"
+          variant="bordered"
+          aria-pressed={maximised}
+          startContent={maximised ? <FiMinimize2 aria-hidden /> : <FiMaximize2 aria-hidden />}
+          onPress={onToggleMaximise}
+        >
+          {maximised ? 'Restore dock' : 'Maximise'}
+        </Button>
       </div>
 
       {/* Gate on what the canvas will actually render, not on the
           active set — a state filter can select terminal coroutines,
           and gating on activeCoroutines hid them behind the
           "no app connected" empty state. */}
-      {coroutines.length === 0 ? (
-        stateFilter === 'all' ? (
-          // Say what is actually true: a demo not run yet, or an app that has not
-          // sent anything yet. A finished run is never empty — it shows its
-          // coroutines.
-          isDemo ? (
-            <EmptyState
-              title="No coroutines yet"
-              description="Run the scenario to see its coroutines here."
-            />
-          ) : (
-            <EmptyState
-              title="No live coroutines yet"
-              description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
-            />
-          )
+      <div className="flex min-h-0 flex-1 flex-col p-3">
+        {coroutines.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center">
+            {stateFilter === 'all' ? (
+              // Say what is actually true: a demo not run yet, or an app that has not
+              // sent anything yet. A finished run is never empty — it shows its
+              // coroutines.
+              isDemo ? (
+                <EmptyState
+                  title="No coroutines yet"
+                  description="Run the scenario to see its coroutines here."
+                />
+              ) : (
+                <EmptyState
+                  title="No live coroutines yet"
+                  description="Start your instrumented app and call VizcoreClient.start(...). Running coroutines will appear here in real time."
+                />
+              )
+            ) : (
+              <EmptyState
+                title={`No ${stateFilter} coroutines`}
+                description="Nothing in this session matches the selected state. Pick another state, or clear the filter to see everything."
+              />
+            )}
+          </div>
         ) : (
-          <EmptyState
-            title={`No ${stateFilter} coroutines`}
-            description="Nothing in this session matches the selected state. Pick another state, or clear the filter to see everything."
-          />
-        )
-      ) : (
-        <Card>
-          <CardBody className="overflow-auto">
-            <div ref={panelRef}>
+          <>
+            {/* The list scrolls inside the box; the graph fills it and pans. */}
+            <div ref={panelRef} className={viewMode === 'graph' ? 'min-h-0 flex-1' : 'min-h-0 flex-1 overflow-auto'}>
               {/* Source-selection is LIVE-ONLY (PD-01): omit
                   onSelect/selectedNodeId in replay/shared so those
                   renders stay presentational with no added
@@ -123,14 +149,27 @@ export function CoroutineCanvas({
                 />
               )}
             </div>
-            {moreCount > 0 && (
-              <div className="text-xs text-default-500 mt-2">
-                {moreCount} more coroutines
-              </div>
-            )}
-          </CardBody>
-        </Card>
-      )}
-    </div>
+            {moreCount > 0 && <div className="mt-2 text-xs text-default-500">{moreCount} more coroutines</div>}
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ViewButton({ label, pressed, onPress }: { label: string; pressed: boolean; onPress: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onPress}
+      className={
+        pressed
+          ? 'rounded-small bg-content1 px-3 py-1 text-xs font-semibold text-foreground shadow-small'
+          : 'rounded-small px-3 py-1 text-xs text-default-500 hover:text-foreground'
+      }
+    >
+      {label}
+    </button>
   )
 }

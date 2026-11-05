@@ -144,6 +144,76 @@ describe('ReplayController — ADR-017 keyboard shortcuts', () => {
   })
 })
 
+describe('ReplayController — keys owned by the dock', () => {
+  it('leaves the arrow keys to a focused separator or tab', async () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <div role="separator" tabIndex={0} aria-label="Resize the dock" />
+        <button role="tab" type="button">Inspector</button>
+      </>,
+    )
+    screen.getByRole('separator').focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowLeft}{Home}{End}')
+    screen.getByRole('tab').focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowLeft}{Home}{End}')
+    expect(replay.stepForward).not.toHaveBeenCalled()
+    expect(replay.stepBack).not.toHaveBeenCalled()
+    expect(replay.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('leaves Home and End to an open menu', async () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <ul role="menu" aria-label="More actions">
+          <li role="menuitem" tabIndex={-1}>Share</li>
+        </ul>
+      </>,
+    )
+    screen.getByRole('menuitem').focus()
+    await userEvent.keyboard('{End}{Home}{ArrowLeft}')
+    screen.getByRole('menu').focus()
+    await userEvent.keyboard('{End}')
+    expect(replay.seekTo).not.toHaveBeenCalled()
+    expect(replay.stepBack).not.toHaveBeenCalled()
+  })
+
+  it('leaves a key alone that a focused control has already handled', () => {
+    const replay = makeReplay()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <div data-testid="widget" tabIndex={0} onKeyDown={e => e.preventDefault()} />
+      </>,
+    )
+    const widget = screen.getByTestId('widget')
+    widget.focus()
+    fireEvent.keyDown(widget, { key: 'End' })
+    expect(replay.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('leaves Space to a focused button, so a disclosure opens instead of playback starting', async () => {
+    const replay = makeReplay()
+    const onToggle = vi.fn()
+    render(
+      <>
+        <ReplayController replay={replay} />
+        <button type="button" aria-expanded={false} onClick={onToggle}>Threads</button>
+      </>,
+    )
+    screen.getByRole('button', { name: 'Threads' }).focus()
+    await userEvent.keyboard(' ')
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    expect(replay.play).not.toHaveBeenCalled()
+    // Arrows still step the replay from a button.
+    await userEvent.keyboard('{ArrowRight}')
+    expect(replay.stepForward).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('ReplayController — recording state', () => {
   it('renders the recording cluster and disables playback when isRecording', () => {
     const onStopRecording = vi.fn()

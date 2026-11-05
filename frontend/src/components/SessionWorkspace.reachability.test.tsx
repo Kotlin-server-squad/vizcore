@@ -23,6 +23,7 @@ vi.mock('@/hooks/use-sessions', () => ({
   useSession: vi.fn(),
   useSessionEvents: vi.fn(() => ({ data: [] })),
   useDeleteSession: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useCreateSession: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
 }))
 
 vi.mock('@/hooks/use-event-stream', () => ({
@@ -217,7 +218,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     expect(screen.queryByText(/Coroutine source —/)).toBeNull()
 
     // Switch to the list view so the real CoroutineTree (not the mocked graph) renders.
-    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
 
     // Click the live coroutine node — additive onSelect wiring (08.2 idiom).
     const node = await screen.findByRole('button', { name: 'Open source for LiveWorker' })
@@ -243,7 +244,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
   it('highlights the selected node with ring-2 ring-primary while its inline source is shown', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
-    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
 
     const node = await screen.findByRole('button', { name: 'Open source for LiveWorker' })
     await userEvent.click(node)
@@ -273,7 +274,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     } as unknown as ReturnType<typeof useSession>)
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
-    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
     expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
 
     // The filter leaves only the parent on screen; its child is still running.
@@ -298,7 +299,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     } as unknown as ReturnType<typeof useSession>)
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
-    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
     await userEvent.click(screen.getByRole('button', { name: 'Waiting for children 1' }))
     expect(screen.getByText(/Waiting for 1 child coroutine/)).toBeInTheDocument()
   })
@@ -316,7 +317,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
 
   // ── Surface 001 IDE-dock reconcile (Task 2) ──────────────────────────────
 
-  it('renders the workspace body (metric strip + canvas) in the live view, with a single inline leak list', async () => {
+  it('renders the main view and the dock (metric strip + canvas) in the live view, with a single inline leak list', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     // The body mounts the metric tiles exactly once.
@@ -344,7 +345,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
 
     // Switch to the REAL CoroutineTree (list view) and prove the nodes carry no
     // clickable source affordance — onSelect is wired only in the live view.
-    await userEvent.click(screen.getByRole('button', { name: /list view/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
     expect(screen.getByText('LiveWorker')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open source for LiveWorker' })).toBeNull()
 

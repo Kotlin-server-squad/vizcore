@@ -24,12 +24,14 @@ import { projectThreadActivity } from '@/lib/projections/project-thread-activity
 import { StructuredConcurrencyInfo } from './StructuredConcurrencyInfo'
 import { SessionHeader } from './workspace/SessionHeader'
 import { CoroutineCanvas } from './workspace/CoroutineCanvas'
-import { WorkspaceBody } from './workspace/WorkspaceBody'
+import { SessionDock } from './workspace/SessionDock'
 import { Inspector } from './workspace/Inspector/Inspector'
 import { EventsDrawer } from './workspace/EventsDrawer'
 import { EvidencePanels } from './workspace/EvidencePanels'
 import { ChecksModal, countFailedChecks } from './workspace/ChecksModal'
-import { ScenarioControls } from './workspace/ScenarioControls'
+import { useScenarioActions } from './workspace/use-scenario-actions'
+import { SessionMetrics } from './SessionMetrics'
+import { LeakList } from './LeakList'
 import { StateBar } from './StateBar'
 import { ReplayController } from './replay/ReplayController'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
@@ -38,7 +40,10 @@ import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
 import type { ThreadActivity } from '@/types/api'
 import { CoroutineState } from '@/types/api'
-import { isDemoSessionId } from '@/lib/session-kind'
+import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
+import { useDockLayout } from '@/hooks/use-dock-layout'
+import { deriveRunOutcome } from '@/lib/run-outcome'
+import { useRecordedSpan } from '@/hooks/use-recorded-span'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -142,6 +147,7 @@ export function SessionWorkspace({
     isPending,
     error: sessionError,
     refetch,
+    dataUpdatedAt,
   } = useSession(sessionId, { pollMs: fallbackPollMs })
   const navigate = useNavigate()
   // In read-only mode the protected /threads fetch is disabled — the shared
@@ -160,6 +166,18 @@ export function SessionWorkspace({
   )
 
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
+
+  // The dock's size, fold and maximise (S-1), remembered per browser.
+  const dock = useDockLayout()
+  // Run / Reset / Clear (S-3). Mutation hooks only — nothing is requested until
+  // an action is used, and none is offered in the shared view.
+  const scenarioActions = useScenarioActions({
+    sessionId,
+    scenarioId: scenarioId ?? '',
+    scenarioName,
+    onClearEvents: clearEvents,
+    onRefetch: () => void refetch(),
+  })
   const hasScenario = !!scenarioId
   // Live-view gate (PD-01): the Surface-001 IDE-dock is LIVE-ONLY. Replay and
   // read-only shared modes keep the existing tabbed, non-interactive layout.
@@ -225,6 +243,18 @@ export function SessionWorkspace({
     [panelCoroutines, selectedCoroutineId],
   )
 
+  // A demo's run outcome (S-3); an attached app has none.
+  const isDemo = hasScenario || isDemoSessionId(sessionId)
+  const outcome = useMemo(() => (isDemo && session ? deriveRunOutcome(session) : null), [isDemo, session])
+  // The run's length over everything the page has held: the history loaded
+  // with it and whatever streamed in since — kept when the view is paused.
+  const runSpanNanos = useRecordedSpan(storedEvents ?? [], liveEvents)
+  // Where the replay cursor is, as time since the first event (the view pill).
+  const replayAtNanos = useMemo(() => {
+    const visible = replay.visibleEvents
+    return replayActive && visible.length > 0 ? visible[visible.length - 1]!.tsNanos - visible[0]!.tsNanos : null
+  }, [replayActive, replay.visibleEvents])
+
   // Close the source drawer if its coroutine leaves the session entirely (e.g. a
   // replay cursor moving before its creation, or a session reset). A terminal or
   // capped-out coroutine still exists in panelCoroutines, so it keeps its drawer +
@@ -265,7 +295,7 @@ export function SessionWorkspace({
   // not a missing session (#139).
   if (isLoading || (isPending === true && !sessionError)) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex flex-1 items-center justify-center py-20">
         <Spinner size="lg" />
       </div>
     )
@@ -294,14 +324,15 @@ export function SessionWorkspace({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <SessionHeader
         sessionId={sessionId}
         session={session}
-        scenarioName={scenarioName}
-        hasScenario={hasScenario}
+        title={hasScenario && scenarioName ? scenarioName : sessionDisplayName(sessionId)}
         rung={rung}
         readOnly={readOnly}
+        outcome={outcome}
+        runSpanNanos={runSpanNanos}
         streamEnabled={streamEnabled}
         isConnected={isConnected}
         streamError={streamError}
@@ -314,31 +345,32 @@ export function SessionWorkspace({
           setStreamEnabled(!streamEnabled)
         }}
         replayActive={replayActive}
+        replayAtNanos={replayAtNanos}
         newEventsCount={newEventsCount}
         onToggleReplay={replayActive ? exitReplay : () => enterReplay()}
         onExitReplay={exitReplay}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        loadedAtMs={dataUpdatedAt}
         onRefetch={() => refetch()}
         onOpenShares={() => setSharesOpen(true)}
         onOpenChecks={() => setChecksOpen(true)}
+        // Run/Reset/Clear are mutations, gated OFF in the read-only shared view (T-03-22).
+        scenario={scenarioId && !readOnly ? scenarioActions : undefined}
         panelRef={panelRef}
         panelEvents={panelEvents}
+        viewMode={viewMode}
         onRecord={recordReplay.canRecord ? recordReplay.startRecording : undefined}
       />
 
-      {/* Sticky ReplayController bar (D-13) — directly above the tabs. While
+      {/* The ReplayController bar (D-13), directly under the header. While
           recording, the controller shows the red-dot recording cluster and the
           scripted pipeline drives playback (D-06/D-23). */}
       {replayActive && (
-        <div className="sticky top-16 z-30">
-          <ReplayController
-            replay={replay}
-            isRecording={recordReplay.isRecording}
-            elapsedMs={recordReplay.elapsedMs}
-            onStopRecording={recordReplay.stopRecording}
-          />
-        </div>
+        <ReplayController
+          replay={replay}
+          isRecording={recordReplay.isRecording}
+          elapsedMs={recordReplay.elapsedMs}
+          onStopRecording={recordReplay.stopRecording}
+        />
       )}
 
       {/* Manage-shares modal (D-11/D-13) — owner-only; never mounted in the
@@ -371,107 +403,118 @@ export function SessionWorkspace({
         onCancel={recordReplay.cancelConfirm}
       />
 
-      {/* Scenario Control Panel — Run/Reset/Clear are mutations, gated OFF in
-          the read-only shared view (T-03-22). */}
-      {scenarioId && !readOnly && (
-        <ScenarioControls
-          sessionId={sessionId}
-          scenarioId={scenarioId}
-          scenarioName={scenarioName}
-          session={session}
-          onClearEvents={clearEvents}
-          onRefetch={refetch}
-        />
-      )}
-
-      {/* The state bar (D-4): what the session is doing, and the canvas filter. */}
-      <StateBar
-        counts={stateCounts}
-        filter={stateFilter}
-        onFilterChange={setStateFilter}
-        // Shown only once a run has actually failed something (M-3): a chip
-        // reading zero for a session nobody validated is a claim we cannot make.
-        action={
-          failedChecks > 0
-            ? { label: 'Checks', count: failedChecks, onPress: () => setChecksOpen(true) }
-            : undefined
-        }
-      />
-
-      {/* The workspace body — canvas + events drawer on the left, inspector on
-          the right (D-4/D-7). In replay it renders the projected snapshot from
-          the replay cursor (D-17). */}
-      <WorkspaceBody
-        sessionId={sessionId}
-        readOnly={readOnly}
-        // The metric strip is live-only: in replay it would report current
-        // numbers over a frozen view, and the shared shell has no Bearer for
-        // the /metrics fetch behind it (M-4).
-        showMetrics={isLiveView}
-        liveList={
-          <div className="space-y-4">
-            <CoroutineCanvas
-              coroutines={renderedCoroutines}
-              viewMode={viewMode}
-              completedCount={completedCount}
-              allFinished={allFinished}
-              showCompleted={showCompleted}
-              onToggleCompleted={() => setShowCompleted(prev => !prev)}
-              moreCount={moreCount}
-              pendingChildCounts={pendingChildCounts}
-              stateFilter={stateFilter}
-              isDemo={hasScenario || isDemoSessionId(sessionId)}
-              selectedCoroutineId={selectedCoroutineId}
-              // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
-              // view stay presentational, with no added interactivity.
-              onSelect={isLiveView ? setSelectedCoroutineId : undefined}
-              panelRef={panelRef}
-            />
-            {/* Events, re-hosted from its tab as a drawer under the canvas and
-                scoped to the current selection (spec: where the eight tabs go). */}
-            <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
-          </div>
-        }
-        inspector={
-          <Inspector
-            sessionId={sessionId}
-            coroutine={isLiveView ? selectedCoroutine : null}
-            readOnly={readOnly}
-            // Selection is live-only, so outside the live view the inspector
-            // must not invite a click that cannot work (#145).
-            placeholder={
-              replayActive
-                ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
-                : readOnly
-                  ? 'Coroutine details are not included in a shared link.'
+      {/* The main view and the dock share the rest of the page (S-1). Each
+          keeps its own minimum, so a maximised view needs only the main view's. */}
+      <div ref={dock.sharedRef} className="flex min-h-0 flex-1 flex-col gap-3">
+        <CoroutineCanvas
+          coroutines={renderedCoroutines}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          completedCount={completedCount}
+          allFinished={allFinished}
+          showCompleted={showCompleted}
+          onToggleCompleted={() => setShowCompleted(prev => !prev)}
+          moreCount={moreCount}
+          pendingChildCounts={pendingChildCounts}
+          stateFilter={stateFilter}
+          stateBar={
+            // The state bar (D-4): what the session is doing, and the canvas filter.
+            <StateBar
+              bare
+              counts={stateCounts}
+              filter={stateFilter}
+              onFilterChange={setStateFilter}
+              // Shown only once a run has actually failed something (M-3): a chip
+              // reading zero for a session nobody validated is a claim we cannot make.
+              action={
+                failedChecks > 0
+                  ? { label: 'Checks', count: failedChecks, onPress: () => setChecksOpen(true) }
                   : undefined
-            }
-            threadActivity={panelThreadActivity}
-          />
-        }
-      />
+              }
+            />
+          }
+          isDemo={isDemo}
+          selectedCoroutineId={selectedCoroutineId}
+          // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
+          // view stay presentational, with no added interactivity.
+          onSelect={isLiveView ? setSelectedCoroutineId : undefined}
+          panelRef={panelRef}
+          maximised={dock.maximised}
+          onToggleMaximise={dock.toggleMaximise}
+        />
 
-      {/* How to read the tree — folded, below the tree (spec Part 1). */}
-      {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
+        {/* The dock (S-1). In this PR it holds today's panels in one scrolling
+            body; Part 3b gives them tabs. Maximise hides it, never unmounts it. */}
+        <SessionDock
+          height={dock.height}
+          maxHeight={dock.maxHeight}
+          folded={dock.folded}
+          hidden={dock.maximised}
+          onResize={dock.resize}
+          onToggleFold={dock.toggleFold}
+          bar={<h2 className="px-2 text-sm font-semibold">Details</h2>}
+        >
+          <div className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div data-testid="inspector-slot" className="min-w-0">
+                <Inspector
+                  sessionId={sessionId}
+                  coroutine={isLiveView ? selectedCoroutine : null}
+                  readOnly={readOnly}
+                  // Selection is live-only, so outside the live view the
+                  // inspector must not invite a click that cannot work (#145).
+                  placeholder={
+                    replayActive
+                      ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
+                      : readOnly
+                        ? 'Coroutine details are not included in a shared link.'
+                        : undefined
+                  }
+                  threadActivity={panelThreadActivity}
+                />
+              </div>
+              {/* Events, scoped to the current selection. */}
+              <div className="min-w-0">
+                <EventsDrawer events={panelEvents} selectedCoroutine={selectedCoroutine} />
+              </div>
+            </div>
 
-      {/* Scenario Pipeline View - shown for realistic scenarios */}
-      {scenarioId === 'order-processing' && allEvents.length > 0 && (
-        <OrderProcessingView events={allEvents} />
-      )}
-      {scenarioId === 'user-registration' && allEvents.length > 0 && (
-        <RegistrationFlowView events={allEvents} />
-      )}
+            {/* The metric strip and the leak list are live-only: in replay they
+                would report current numbers over a frozen view, and the shared
+                shell has no Bearer for /metrics (M-4). Leaks render once (PD-02). */}
+            {isLiveView && (
+              <div className="space-y-4">
+                <SessionMetrics sessionId={sessionId} enabled={!readOnly} showLeaks={false} />
+                {metrics && metrics.leaks.length > 0 && (
+                  <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
+                )}
+              </div>
+            )}
 
-      {/* The evidence section (M-1/M-2): what this session can show beyond the
-          tree, and — where the rung is the reason it cannot — what unlocks it. */}
-      <EvidencePanels
-        sessionId={sessionId}
-        rung={rung}
-        categories={eventCategories}
-        replayActive={replayActive}
-        readOnly={readOnly}
-        threadActivity={panelThreadActivity}
-      />
+            {/* How to read the tree (spec Part 1). */}
+            {session.coroutineCount > 0 && <StructuredConcurrencyInfo />}
+
+            {/* Scenario Pipeline View - shown for realistic scenarios */}
+            {scenarioId === 'order-processing' && allEvents.length > 0 && (
+              <OrderProcessingView events={allEvents} />
+            )}
+            {scenarioId === 'user-registration' && allEvents.length > 0 && (
+              <RegistrationFlowView events={allEvents} />
+            )}
+
+            {/* The evidence section (M-1/M-2): what this session can show beyond the
+                tree, and — where the rung is the reason it cannot — what unlocks it. */}
+            <EvidencePanels
+              sessionId={sessionId}
+              rung={rung}
+              categories={eventCategories}
+              replayActive={replayActive}
+              readOnly={readOnly}
+              threadActivity={panelThreadActivity}
+            />
+          </div>
+        </SessionDock>
+      </div>
     </div>
   )
 }

@@ -41,11 +41,14 @@ export function StateBar({
   filter,
   onFilterChange,
   action,
+  bare = false,
 }: {
   counts: StateCounts
   filter: StateFilter
   onFilterChange: (next: StateFilter) => void
   action?: StateBarAction
+  /** In the main view's toolbar the bar sits on the toolbar's surface, so it has no box of its own. */
+  bare?: boolean
 }) {
   const chips: Chip[] = [
     { filter: 'active', label: 'Active', count: counts.active, color: 'var(--primary)', always: true },
@@ -70,7 +73,11 @@ export function StateBar({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-medium border border-default-200 bg-content1 px-3 py-2"
+      className={
+        bare
+          ? 'flex flex-wrap items-center gap-2'
+          : 'flex flex-wrap items-center gap-2 rounded-medium border border-default-200 bg-content1 px-3 py-2'
+      }
       role="group"
       aria-label="Coroutine state"
     >

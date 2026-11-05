@@ -52,16 +52,23 @@ function formatElapsed(ms: number): string {
 }
 
 /**
- * True when the currently focused element is a text-entry surface, so replay
- * shortcuts must be suppressed (T-02-13). Mirrors standard log-viewer behavior.
+ * True when the focused element handles this key itself, so the replay
+ * shortcut must be suppressed: a text-entry surface (T-02-13, mirrors
+ * standard log-viewer behavior), the dock's separator (arrows resize it), a
+ * tab (arrows move between tabs), a menu or list box (its keys move within
+ * it), or — for Space and Enter — a button or link, which those keys press.
  */
-function isFormFieldFocused(): boolean {
+function focusOwnsKey(key: string): boolean {
   const el = document.activeElement
   if (!el) return false
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if ((el as HTMLElement).isContentEditable) return true
-  return false
+  const role = el.getAttribute('role')
+  if (role === 'separator' || role === 'tab') return true
+  if (el.closest('[role="menu"], [role="listbox"]')) return true
+  const pressable = tag === 'BUTTON' || tag === 'A' || role === 'button'
+  return pressable && (key === ' ' || key === 'Enter')
 }
 
 export function ReplayController({
@@ -98,13 +105,14 @@ export function ReplayController({
   // ADR-017 keyboard shortcuts — active only while the controller is mounted
   // (i.e. replay is active). Suppressed inside form fields; Space prevents
   // page scroll. When the Slider itself has focus its native key handling wins
-  // (the Slider is an input-range, caught by isFormFieldFocused's INPUT guard).
+  // (the Slider is an input-range, caught by focusOwnsKey's INPUT guard).
   useEffect(() => {
     // The scripted recording pipeline owns playback; do not bind shortcuts.
     if (isRecording) return
 
     const handler = (e: KeyboardEvent) => {
-      if (isFormFieldFocused()) return
+      // A control that handled the key itself has already prevented its default.
+      if (e.defaultPrevented || focusOwnsKey(e.key)) return
       if (isEmpty) return
 
       switch (e.key) {

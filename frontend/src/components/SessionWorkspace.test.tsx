@@ -337,7 +337,7 @@ describe('SessionWorkspace', () => {
     expect(screen.getByText('Producer-Consumer')).toBeInTheDocument()
   })
 
-  it('shows "Enable Live Stream" button by default', () => {
+  it('offers Resume view while the view is paused', () => {
     const session = makeSession()
 
     mockedUseSession.mockReturnValue({
@@ -350,7 +350,8 @@ describe('SessionWorkspace', () => {
       wrapper: createWrapper(),
     })
 
-    expect(screen.getByText('Enable Live Stream')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resume view' })).toBeInTheDocument()
+    expect(screen.getByTestId('view-status')).toHaveTextContent('View paused')
   })
 
   it('opens with the live stream on for a just-connected app (startLive, #126)', () => {
@@ -364,7 +365,7 @@ describe('SessionWorkspace', () => {
       wrapper: createWrapper(),
     })
 
-    expect(screen.getByText('Live Stream Active')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pause view' })).toBeInTheDocument()
     expect(mockedUseEventStream).toHaveBeenLastCalledWith('session-1', true, false)
   })
 
@@ -482,12 +483,12 @@ describe('SessionWorkspace', () => {
     )
 
     // The scenario auto-enables the stream once on mount
-    const toggle = await screen.findByRole('button', { name: /live stream active/i })
+    const toggle = await screen.findByRole('button', { name: 'Pause view' })
 
     // Disabling must stick — the old auto-enable effect re-armed instantly
     await userEvent.click(toggle)
-    expect(await screen.findByRole('button', { name: /enable live stream/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /live stream active/i })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Resume view' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pause view' })).not.toBeInTheDocument()
   })
 
   it('"Clear" clears the live events without deleting the session (WR-05)', async () => {
@@ -519,7 +520,8 @@ describe('SessionWorkspace', () => {
       { wrapper: createWrapper() },
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /clear/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /clear events/i }))
 
     // Clear only empties the event list (plus a snapshot refetch)...
     expect(clearEvents).toHaveBeenCalledTimes(1)
@@ -631,7 +633,7 @@ describe('SessionWorkspace - live events do not drive snapshot refetches (#137)'
       { wrapper: createWrapper() },
     )
 
-    expect(screen.getByTestId('stream-status')).toHaveTextContent('Connection lost')
+    expect(screen.getByTestId('view-status')).toHaveTextContent('Connection lost')
     expect(screen.getByTestId('dropped-count')).toHaveTextContent('42 events dropped')
     // The stream is on but disconnected -> the snapshot falls back to a slow poll.
     expect(mockedUseSession).toHaveBeenLastCalledWith('session-1', { pollMs: 10_000 })
@@ -754,7 +756,7 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     expect(screen.getByTestId('export-menu')).toBeInTheDocument()
   })
 
-  it('entering replay seeks to end + shows REPLAY chip + sticky controller (D-03/D-13/D-15)', async () => {
+  it('entering replay seeks to end + says Replay in the view pill + controller (D-03/D-13/D-15)', async () => {
     // Provide stored events so totalEvents > 0
     vi.doMock('@/hooks/use-sessions')
     mockedUseSession.mockReturnValue({
@@ -771,7 +773,7 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
-    expect(screen.getByText('REPLAY')).toBeInTheDocument()
+    expect(screen.getByTestId('view-status')).toHaveTextContent(/^Replay/)
     const controller = screen.getByTestId('replay-controller')
     expect(controller).toBeInTheDocument()
     // Seeked to end → totalEvents reflects all captured events
@@ -861,8 +863,8 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     expect(badge).toHaveTextContent('2 new events')
 
     await userEvent.click(badge)
-    // Back to live: REPLAY chip gone, Replay toggle shown again.
-    expect(screen.queryByText('REPLAY')).not.toBeInTheDocument()
+    // Back to live: the view pill no longer says Replay, Replay toggle shown again.
+    expect(screen.getByTestId('view-status')).not.toHaveTextContent(/^Replay/)
     expect(screen.getByRole('button', { name: /^replay$/i })).toBeInTheDocument()
   })
 })
@@ -1193,7 +1195,79 @@ describe('SessionWorkspace — the tabs are retired (spec: where the eight tabs 
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     expect(screen.queryByRole('tab', { name: /validation/i })).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: /^checks$/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /checks/i }))
     expect(await screen.findByRole('heading', { name: /session checks/i })).toBeInTheDocument()
+  })
+})
+
+describe('SessionWorkspace — header, main view and dock (S-1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 1 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+  })
+
+  it('stacks the header, the main view and the dock, in that order', () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    const header = screen.getByRole('banner')
+    const main = screen.getByRole('region', { name: 'Main view' })
+    const dock = screen.getByRole('region', { name: 'Dock' })
+    expect(header.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(main.compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('opens the dock at 40 % of the window', () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('region', { name: 'Dock' })).toHaveStyle({
+      height: `${Math.round(window.innerHeight * 0.4)}px`,
+    })
+  })
+
+  it('resizes the dock from the keyboard and remembers it', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    const start = Math.round(window.innerHeight * 0.4)
+    screen.getByRole('separator', { name: 'Resize the dock' }).focus()
+    await userEvent.keyboard('{ArrowUp}')
+    expect(screen.getByRole('region', { name: 'Dock' })).toHaveStyle({ height: `${start + 24}px` })
+    expect(JSON.parse(localStorage.getItem('vizcore.dock')!)).toEqual({ height: start + 24, folded: false })
+  })
+
+  it('folds the dock to its bar', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
+    expect(screen.getByTestId('inspector-slot')).not.toBeVisible()
+    expect(screen.getByRole('button', { name: 'Unfold the dock' })).toBeInTheDocument()
+  })
+
+  it('maximise hides the dock; restoring brings it back', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'Maximise' }))
+    expect(screen.queryByRole('region', { name: 'Dock' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Restore dock' }))
+    expect(screen.getByRole('region', { name: 'Dock' })).toBeInTheDocument()
+  })
+
+  it('switches the main view between graph and list from its toolbar', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
+    expect(screen.getByTestId('coroutine-tree')).toBeInTheDocument()
+  })
+
+  it('says Failed in the header for a demo with a failed coroutine', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({
+        coroutineCount: 1,
+        coroutines: [{ id: 'c-1', jobId: 'j', parentId: null, scopeId: 's', label: 'x', state: 'FAILED' as CoroutineState }],
+      }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="session-1" scenarioId="demo" scenarioName="Demo" />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('run-outcome')).toHaveTextContent('Failed · 1 coroutine failed')
   })
 })

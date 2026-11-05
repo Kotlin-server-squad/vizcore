@@ -163,7 +163,8 @@ describe('first-run CTAs go somewhere useful (#139)', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const router = renderAt('/sessions/scenario-old?scenarioId=nested&scenarioName=Nested%20Coroutines')
 
-    fireEvent.click(await screen.findByRole('button', { name: /reset/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /reset session/i }))
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe('/sessions/scenario-fresh-1'),
@@ -179,7 +180,8 @@ describe('first-run CTAs go somewhere useful (#139)', () => {
       init?.method === 'DELETE' ? { status: 503, body: { error: 'try later' } } : undefined
     const router = renderAt('/sessions/scenario-old?scenarioId=nested&scenarioName=Nested')
 
-    fireEvent.click(await screen.findByRole('button', { name: /reset/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /reset session/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not delete this session/i)
     expect(router.state.location.pathname).toBe('/sessions/scenario-old')

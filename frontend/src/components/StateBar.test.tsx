@@ -73,6 +73,13 @@ describe('StateBar waiting chip', () => {
 })
 
 describe('StateBar', () => {
+  it('drops its own box when it sits in a toolbar', () => {
+    render(<StateBar counts={counts} filter="all" onFilterChange={() => {}} bare />)
+    const bar = screen.getByRole('group', { name: 'Coroutine state' })
+    expect(bar.className).not.toContain('border')
+    expect(bar.className).not.toContain('bg-content1')
+  })
+
   it('shows a chip per non-zero state with its count', () => {
     renderBar()
     expect(screen.getByRole('button', { name: /active 47/i })).toBeInTheDocument()
