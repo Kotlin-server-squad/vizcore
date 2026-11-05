@@ -90,24 +90,60 @@ val demoCatalog: List<DemoCatalogEntry> =
             "basics",
             "Basics",
             "basic",
-            Demo("nested", "Nested Coroutines", "Demonstrates parent-child relationships and structured concurrency", "~5 seconds"),
-            Demo("parallel", "Parallel Execution", "Multiple coroutines running in parallel", "~3 seconds"),
-            Demo("cancellation", "Cancellation", "Demonstrates coroutine cancellation and cleanup", "~3 seconds"),
+            Demo(
+                "nested",
+                "Nested: Product Page",
+                "A product page loads the product, then three sections at once, each with requests of its own. " +
+                    "The page's code ends after 2.5 s, but it completes only with the last request below it: " +
+                    "a parent waits for its children (structured concurrency).",
+                "~16 seconds",
+            ),
+            Demo(
+                "parallel",
+                "Parallel: Dashboard",
+                "Five dashboard widgets load at the same time and finish one by one; the dashboard renders once " +
+                    "the slowest is in. 31 s of requests take 14 s.",
+                "~14 seconds",
+            ),
+            Demo(
+                "cancellation",
+                "Cancellation: User Closes the Screen",
+                "The profile screen loads the avatar, the friends and the activity feed. The user closes it after " +
+                    "6.5 s, which cancels the screen and every request still running under it; settings sync, " +
+                    "outside the screen, carries on.",
+                "~12 seconds",
+            ),
             Demo(
                 "deep-nesting",
-                "Deep Nesting",
-                "Deep hierarchy of nested coroutines (configurable depth)",
-                "~5 seconds",
+                "Deep Nesting: Search Indexer",
+                "A search indexer walks /home/ana/projects/vizcore/backend/src, one folder deeper at a time, and " +
+                    "completes the folders from the deepest up as each adds its subfolder's results " +
+                    "(configurable depth).",
+                "~16 seconds",
                 endpoint = "/api/scenarios/deep-nesting?depth=5",
             ),
-            Demo("mixed", "Mixed Sequential/Parallel", "Combination of sequential and parallel execution", "~1 second"),
-            Demo("exception", "Exception Handling", "Demonstrates exception tracking and failure states", "~1 second"),
+            Demo(
+                "mixed",
+                "Sequential and Parallel: Checkout",
+                "Checkout validates the cart; then reserves the stock, charges the card and calculates shipping " +
+                    "at once; then creates the order and sends the receipt, one after the other.",
+                "~14 seconds",
+            ),
+            Demo(
+                "exception",
+                "Exception: One Backend Call Fails",
+                "The account page loads five things at once. 12 s in, the loyalty service answers HTTP 500: the " +
+                    "failure cancels the requests still loading and fails the page, while what already arrived " +
+                    "stays done.",
+                "~12 seconds",
+            ),
             Demo(
                 "dispatcher",
-                "Dispatcher Switching",
-                "Runs work across Dispatchers.Default and Dispatchers.IO via VizDispatchers. " +
-                    "Feeds the Dispatcher Overview: see dispatcher selection and thread assignment.",
-                "~1 second",
+                "Dispatchers: Photo Thumbnails",
+                "Three photos arrive 2 s apart; each is downloaded on Dispatchers.IO, resized on " +
+                    "Dispatchers.Default and uploaded on IO again. Feeds the Dispatcher Overview: see dispatcher " +
+                    "selection and thread assignment.",
+                "~13 seconds",
             ),
         ) +
         group(

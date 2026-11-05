@@ -54,6 +54,7 @@ class DemoRunRoutesTest {
     private fun ApplicationTestBuilder.demoApp(
         maxConcurrent: Int,
         maxRunSeconds: Int? = null,
+        timeScale: String? = null,
     ) {
         environment {
             config =
@@ -61,6 +62,7 @@ class DemoRunRoutesTest {
                     *listOfNotNull(
                         "scenarios.maxConcurrent" to "$maxConcurrent",
                         maxRunSeconds?.let { "scenarios.maxRunSeconds" to "$it" },
+                        timeScale?.let { "scenarios.timeScale" to it },
                     ).toTypedArray(),
                 )
         }
@@ -112,9 +114,9 @@ class DemoRunRoutesTest {
     @Test
     fun `a demo that answers at once keeps its slot until its coroutines end`() =
         testApplication {
-            demoApp(maxConcurrent = 1)
+            demoApp(maxConcurrent = 1, timeScale = "1")
 
-            // The nested scenario answers right away and runs for about 5 s on the session's scope.
+            // The nested scenario answers right away and runs for about 16 s on the session's scope.
             val first = client.post("/api/scenarios/nested")
             assertEquals(HttpStatusCode.OK, first.status)
             assertEquals(HttpStatusCode.ServiceUnavailable, client.post("/api/scenarios/parallel").status)
@@ -267,4 +269,19 @@ class DemoRunRoutesTest {
                 }
             }
         }
+
+    @Test
+    fun `the demos' time scale comes from scenarios timeScale, and one that is too small or not a number runs them as scripted`() {
+        // Not configured, the scale comes from DEMO_TIME_SCALE, which the build sets for the tests.
+        val unconfigured = System.getenv("DEMO_TIME_SCALE")?.toDouble() ?: 1.0
+        val cases =
+            listOf("0.25" to 0.25, "0.01" to 0.01, null to unconfigured, "0" to 1.0, "0.001" to 1.0, "-2" to 1.0, "fast" to 1.0)
+        cases.forEach { (configured, expected) ->
+            testApplication {
+                demoApp(maxConcurrent = 1, timeScale = configured)
+                startApplication()
+                assertEquals(expected, demoRuns.timeScale, "scenarios.timeScale = $configured")
+            }
+        }
+    }
 }

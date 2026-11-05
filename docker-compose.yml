@@ -9,6 +9,11 @@ services:
       dockerfile: backend/Dockerfile
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      # The demo settings (docs/DEPLOYMENT.md), overridable from the shell like the ports.
+      - MAX_CONCURRENT_DEMOS=${MAX_CONCURRENT_DEMOS:-3}
+      - MAX_DEMO_RUN_SECONDS=${MAX_DEMO_RUN_SECONDS:-60}
+      - DEMO_TIME_SCALE=${DEMO_TIME_SCALE:-1.0}
     healthcheck:
       # /api/ready is the readiness probe (HealthRoutes); "/" is not a route and would make
       # `curl -f` fail forever. curl ships with the eclipse-temurin:21-jre runtime image.

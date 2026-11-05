@@ -1,10 +1,12 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.scenarios.DemoPace
 import com.jh.proj.coroutineviz.scenarios.DemoRuns
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.application.log
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -28,8 +30,27 @@ private const val DEMO_BUSY_RETRY_AFTER_SECONDS = 5
 internal val DemoRunsKey = AttributeKey<DemoRuns>("DemoRuns")
 
 /**
- * Reads `scenarios.maxConcurrent` (env `MAX_CONCURRENT_DEMOS`) and `scenarios.maxRunSeconds`
- * (env `MAX_DEMO_RUN_SECONDS`); call before configureRouting.
+ * How fast demos run, from `scenarios.timeScale`: 1 = as scripted. application.yaml maps it to env
+ * `DEMO_TIME_SCALE`; a configuration that does not name it (the tests' own, which the build runs
+ * with a small `DEMO_TIME_SCALE`) reads that variable directly. A value that is not a number of at
+ * least [DemoPace.MIN_SCALE] runs them as scripted.
+ */
+internal fun Application.demoTimeScale(): Double {
+    val configured =
+        environment.config.propertyOrNull("scenarios.timeScale")?.getString()
+            ?: System.getenv("DEMO_TIME_SCALE")
+            ?: return 1.0
+    val scale = configured.toDoubleOrNull()?.takeIf(DemoPace::isValid)
+    if (scale == null) {
+        log.warn("scenarios.timeScale (DEMO_TIME_SCALE) must be a number of at least {}, got '{}'; using 1", DemoPace.MIN_SCALE, configured)
+    }
+    return scale ?: 1.0
+}
+
+/**
+ * Reads `scenarios.maxConcurrent` (env `MAX_CONCURRENT_DEMOS`), `scenarios.maxRunSeconds`
+ * (env `MAX_DEMO_RUN_SECONDS`) and `scenarios.timeScale` (env `DEMO_TIME_SCALE`); call before
+ * configureRouting.
  */
 fun Application.configureDemoRuns() {
     fun setting(
@@ -44,6 +65,7 @@ fun Application.configureDemoRuns() {
             maxConcurrent = setting("scenarios.maxConcurrent", DEFAULT_MAX_CONCURRENT_DEMOS),
             maxRunMillis = setting("scenarios.maxRunSeconds", DEFAULT_MAX_DEMO_RUN_SECONDS) * 1_000L,
             awaitSessionRemoved = ::awaitSessionRemoved,
+            timeScale = demoTimeScale(),
         )
     attributes.put(DemoRunsKey, runs)
     monitor.subscribe(ApplicationStopped) { runs.close() }
@@ -63,7 +85,10 @@ fun Route.demoGet(
 
 private suspend fun RoutingContext.runDemo(body: suspend RoutingContext.() -> Unit) {
     // Routes registered without the module (some tests) run demos without a limit.
-    val runs = call.application.attributes.computeIfAbsent(DemoRunsKey) { DemoRuns(maxConcurrent = 0) }
+    val runs =
+        call.application.attributes.computeIfAbsent(DemoRunsKey) {
+            DemoRuns(maxConcurrent = 0, timeScale = call.application.demoTimeScale())
+        }
     val run = runs.tryStart()
     if (run == null) {
         // 503, not 429: the server as a whole is busy, this client is not over its own limit,

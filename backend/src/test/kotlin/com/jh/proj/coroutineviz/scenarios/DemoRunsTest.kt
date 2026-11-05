@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.scenarios
 
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -206,4 +207,35 @@ class DemoRunsTest {
             assertTrue(late.isCancelled, "the slot is free, so the demo must not run on")
             session.close()
         }
+
+    @Test
+    fun `a demo step paused with pause takes its scripted time times the run's time scale`() =
+        runBlocking {
+            val session = VizSession("demo-runs-pace")
+            val run = assertNotNull(DemoRuns(maxConcurrent = 0, timeScale = 0.1).tryStart())
+
+            val job = withContext(run) { session.demoScope().vizLaunch("step") { pause(2_000) } }
+            withTimeout(5.seconds) { job.join() }
+
+            val suspended =
+                session.store
+                    .all()
+                    .filterIsInstance<CoroutineSuspended>()
+                    .single()
+            assertEquals(200L, suspended.durationMillis, "2 s of scripted time at a time scale of 0.1")
+            session.close()
+        }
+
+    /**
+     * At a scale near zero every step rounds to no wait at all, and the steps run in whatever
+     * order the threads get to them: the screen could be closed before its requests start, or a
+     * failure come after its siblings finished. Such a scale would change what the demo shows.
+     */
+    @Test
+    fun `a time scale too small to keep the steps apart, or not a number, is refused`() {
+        listOf(-1.0, 0.0, 0.005, Double.NaN, Double.POSITIVE_INFINITY).forEach { scale ->
+            assertFailsWith<IllegalArgumentException>("time scale $scale") { DemoRuns(maxConcurrent = 0, timeScale = scale) }
+        }
+        assertEquals(0.01, DemoRuns(maxConcurrent = 0, timeScale = 0.01).timeScale)
+    }
 }

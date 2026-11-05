@@ -14,7 +14,7 @@
 #   FRONTEND_PORT         host port for the frontend (default 3000)
 #   CORS_ALLOWED_ORIGINS  comma-separated origins the backend accepts
 #   SESSION_MAX_AGE_MS, SESSION_MAX_COUNT, MAX_CONCURRENT_DEMOS,
-#   MAX_DEMO_RUN_SECONDS, JAVA_OPTS  backend tuning
+#   MAX_DEMO_RUN_SECONDS, DEMO_TIME_SCALE, JAVA_OPTS  backend tuning
 services:
   backend:
     image: ghcr.io/kotlin-server-squad/vizcore/backend:${TAG:-latest}
@@ -28,6 +28,7 @@ services:
       - SESSION_MAX_COUNT=${SESSION_MAX_COUNT:-100}
       - MAX_CONCURRENT_DEMOS=${MAX_CONCURRENT_DEMOS:-3}
       - MAX_DEMO_RUN_SECONDS=${MAX_DEMO_RUN_SECONDS:-60}
+      - DEMO_TIME_SCALE=${DEMO_TIME_SCALE:-1.0}
       - JAVA_OPTS=${JAVA_OPTS:--Xmx512m -Xms256m}
     healthcheck:
       # Same readiness probe as the dev stack; curl ships with eclipse-temurin:21-jre.

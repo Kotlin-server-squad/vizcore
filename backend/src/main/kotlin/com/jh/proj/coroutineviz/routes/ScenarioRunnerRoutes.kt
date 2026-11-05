@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarioDurationTimerRef
+import com.jh.proj.coroutineviz.scenarios.BasicScenarios
 import com.jh.proj.coroutineviz.scenarios.ScenarioConfigRequest
 import com.jh.proj.coroutineviz.scenarios.ScenarioExecutionResponse
 import com.jh.proj.coroutineviz.scenarios.ScenarioRunner
@@ -31,7 +32,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running nested coroutines scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runNestedCoroutines(session)
+            BasicScenarios.runNestedCoroutines(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -49,7 +50,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running parallel execution scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runParallelExecution(session)
+            BasicScenarios.runParallelExecution(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -67,7 +68,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running cancellation scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runCancellationScenario(session)
+            BasicScenarios.runCancellationScenario(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -86,7 +87,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running deep nesting scenario (depth=$depth) in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runDeepNesting(session, depth)
+            BasicScenarios.runDeepNesting(session, depth)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -104,7 +105,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running mixed scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runMixedScenario(session)
+            BasicScenarios.runMixedScenario(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -122,7 +123,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running exception scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runExceptionScenario(session)
+            BasicScenarios.runExceptionScenario(session)
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -140,7 +141,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running dispatcher scenario in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runDispatcherScenario(session).join()
+            BasicScenarios.runDispatcherScenario(session).join()
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
