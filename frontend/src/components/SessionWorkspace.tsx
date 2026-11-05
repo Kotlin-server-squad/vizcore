@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Card,
   CardBody,
@@ -38,7 +38,7 @@ import { RecordConfirmModal } from './replay/RecordConfirmModal'
 import { ManageShares } from './share/ManageShares'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
-import type { ThreadActivity } from '@/types/api'
+import type { ThreadActivity, VizEvent } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
 import { useDockLayout } from '@/hooks/use-dock-layout'
@@ -46,6 +46,9 @@ import { deriveRunOutcome } from '@/lib/run-outcome'
 import { useRecordedSpan } from '@/hooks/use-recorded-span'
 import { countEvidence, evidenceTabLabel } from '@/lib/evidence-summary'
 import { openingDockTab, rememberDockTab, rememberedDockTab } from '@/lib/dock-tab-memory'
+import { projectActivity } from '@/lib/activity'
+import { eventSubject, resourceIds, resourceNames, type Selection } from '@/lib/selection'
+import type { CoroutinePicker } from './sync/CoroutineName'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -95,11 +98,11 @@ export function SessionWorkspace({
   } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
-  // Selected coroutine for the source drawer (RCO-06, D-02/D-06). Lifted here so
-  // both live-view modes (graph/list) share one selection + one mounted drawer.
-  // Null = drawer closed. Wired ONLY at the live "What's running now" mount, so
-  // replay/shared node renders stay non-interactive.
-  const [selectedCoroutineId, setSelectedCoroutineId] = useState<string | null>(null)
+  // The page's one selection (S-2): a coroutine or a resource, read by the
+  // tree, the Inspector, Evidence and Events. Set only in the live view, so
+  // replay and shared renders stay non-interactive (PD-01).
+  const [selection, setSelection] = useState<Selection | null>(null)
+  const selectedCoroutineId = selection?.kind === 'coroutine' ? selection.id : null
   // Active-only "What's running now" view (D-08): completed coroutines collapse
   // into an expandable aggregate, toggled off by default.
   const [showCompleted, setShowCompleted] = useState(false)
@@ -181,7 +184,10 @@ export function SessionWorkspace({
     sessionId,
     scenarioId: scenarioId ?? '',
     scenarioName,
-    onClearEvents: clearEvents,
+    onClearEvents: () => {
+      clearEvents()
+      setSelection(null)
+    },
     onRefetch: () => void refetch(),
   })
   const hasScenario = !!scenarioId
@@ -282,6 +288,41 @@ export function SessionWorkspace({
 
   // What the Evidence tab holds, named on its label (S-4).
   const evidenceCounts = useMemo(() => countEvidence(panelEvents), [panelEvents])
+  // What each coroutine waits for or holds (S-6), and the resources' names,
+  // from the same events as the rest of the page: live, paused or at the
+  // replay cursor — so they refresh with every new event.
+  const activity = useMemo(() => projectActivity(panelEvents), [panelEvents])
+  const names = useMemo(() => resourceNames(panelEvents), [panelEvents])
+  const resources = useMemo(() => resourceIds(panelEvents), [panelEvents])
+  // A coroutine the snapshot does not hold is not offered as a selection:
+  // selecting it would be cleared at once.
+  const coroutineIds = useMemo(() => new Set(panelCoroutines.map(c => c.id)), [panelCoroutines])
+  const subjectOf = useCallback(
+    (event: VizEvent) => {
+      const subject = eventSubject(event)
+      return subject?.kind === 'coroutine' && !coroutineIds.has(subject.id) ? null : subject
+    },
+    [coroutineIds],
+  )
+  const picker = useMemo<CoroutinePicker>(
+    () => ({
+      select: (id: string) => setSelection({ kind: 'coroutine', id }),
+      canSelect: (id: string) => coroutineIds.has(id),
+    }),
+    [coroutineIds],
+  )
+  const selectionLabel =
+    selection === null
+      ? null
+      : selection.kind === 'coroutine'
+        ? (selectedCoroutine?.label ?? selection.id)
+        : (names.get(selection.id) ?? selection.id)
+  // A selection made inside a tab keeps you there; a resource opens its
+  // Evidence section (S-2), which EvidencePanels unfolds and scrolls to.
+  const selectFromEvent = (next: Selection) => {
+    setSelection(next)
+    if (next.kind === 'resource') selectDockTab('evidence')
+  }
   // "Time into the capture" for the thread table: the first retained event.
   const captureStartNanos = useMemo(() => {
     let first: number | null = null
@@ -294,11 +335,14 @@ export function SessionWorkspace({
   // capped-out coroutine still exists in panelCoroutines, so it keeps its drawer +
   // resolved label (WR-04); only a truly-absent id clears the selection so we stop
   // fetching a coroutine that no longer exists.
+  // The same for a resource no longer named by the page's events (Clear
+  // events, or a history trimmed past it): no Evidence target, no events.
   useEffect(() => {
-    if (selectedCoroutineId && !panelCoroutines.some(c => c.id === selectedCoroutineId)) {
-      setSelectedCoroutineId(null)
-    }
-  }, [selectedCoroutineId, panelCoroutines])
+    if (selection === null) return
+    const gone =
+      selection.kind === 'coroutine' ? !coroutineIds.has(selection.id) : !resources.has(selection.id)
+    if (gone) setSelection(null)
+  }, [selection, coroutineIds, resources])
 
   const panelThreadActivity: ThreadActivity | undefined = useMemo(() => {
     if (replayActive) return projectThreadActivity(replay.visibleEvents)
@@ -469,12 +513,13 @@ export function SessionWorkspace({
           }
           isDemo={isDemo}
           selectedCoroutineId={selectedCoroutineId}
+          activity={activity}
           // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
           // view stay presentational, with no added interactivity.
           onSelect={
             isLiveView
               ? (id: string) => {
-                  setSelectedCoroutineId(id)
+                  setSelection({ kind: 'coroutine', id })
                   // A selection is read in the Inspector: show it (S-4).
                   selectDockTab('inspector')
                 }
@@ -540,7 +585,8 @@ export function SessionWorkspace({
               }
               threadActivity={panelThreadActivity}
               // Back to the session summary (T-3) from a selection.
-              onClearSelection={isLiveView ? () => setSelectedCoroutineId(null) : undefined}
+              onClearSelection={isLiveView ? () => setSelection(null) : undefined}
+              activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}
             />
           </DockTabPanel>
           <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
@@ -556,6 +602,10 @@ export function SessionWorkspace({
               threadActivity={panelThreadActivity}
               captureStartNanos={captureStartNanos}
               history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
+              events={panelEvents}
+              selection={isLiveView ? selection : null}
+              picker={isLiveView ? picker : undefined}
+              onSelectResource={isLiveView ? setSelection : undefined}
             />
           </DockTabPanel>
           <DockTabPanel id="events" selected={dockTab === 'events'}>
@@ -566,8 +616,12 @@ export function SessionWorkspace({
             {dockTab === 'events' && (
               <EventsPanel
                 events={panelEvents}
-                selection={selectedCoroutine ? { kind: 'coroutine', id: selectedCoroutine.id } : null}
-                selectionLabel={selectedCoroutine?.label ?? null}
+                selection={isLiveView ? selection : null}
+                selectionLabel={selectionLabel}
+                subjectOf={isLiveView ? subjectOf : undefined}
+                onSelect={isLiveView ? selectFromEvent : undefined}
+                onShowAll={() => setSelection(null)}
+                resourceNames={names}
               />
             )}
           </DockTabPanel>

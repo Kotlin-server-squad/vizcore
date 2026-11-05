@@ -1,7 +1,7 @@
 /** Unit tests for the page's one selection (S-2): what each event is about, and what a selection's events are. */
 import { describe, it, expect } from 'vitest'
 import type { VizEvent } from '@/types/api'
-import { eventConcerns, eventSubject, eventTitle, namesCoroutine, resourceNames } from './selection'
+import { eventConcerns, eventSubject, eventTitle, namesCoroutine, resourceIds, resourceNames } from './selection'
 
 function ev(kind: string, fields: Record<string, unknown> = {}): VizEvent {
   return { sessionId: 's', seq: 1, tsNanos: 1, kind, ...fields } as unknown as VizEvent
@@ -110,6 +110,18 @@ describe('namesCoroutine', () => {
     expect(namesCoroutine('unknown')).toBe(false)
     expect(namesCoroutine('unknown-123')).toBe(false)
     expect(namesCoroutine(null)).toBe(false)
+  })
+})
+
+describe('resourceIds', () => {
+  it('lists every lock, semaphore and channel the events name, labelled or not', () => {
+    const ids = resourceIds([
+      ev('MutexCreated', { mutexId: 'm-2', mutexLabel: null }),
+      ev('SemaphoreStateChanged', { semaphoreId: 'sem-1' }),
+      ev('ChannelClosed', { channelId: 'ch-1' }),
+      ev('coroutine.started', { coroutineId: 'c-1' }),
+    ])
+    expect([...ids].sort()).toEqual(['ch-1', 'm-2', 'sem-1'])
   })
 })
 

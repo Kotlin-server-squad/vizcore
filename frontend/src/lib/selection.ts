@@ -80,6 +80,17 @@ export function resourceNames(events: readonly VizEvent[]): Map<string, string> 
   return names
 }
 
+/** Every lock, semaphore and channel the events name: a selected resource no longer among them is gone. */
+export function resourceIds(events: readonly VizEvent[]): Set<string> {
+  const ids = new Set<string>()
+  for (const event of events) {
+    const f = fieldsOf(event)
+    const id = f.mutexId ?? f.semaphoreId ?? f.channelId
+    if (id) ids.add(id)
+  }
+  return ids
+}
+
 /** A wrapper used outside any coroutine names no coroutine; the title says so rather than "unknown-123". */
 const OUTSIDE = 'outside any coroutine'
 
