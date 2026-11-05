@@ -1,0 +1,63 @@
+{
+  "about": "demo-pacing-audit.py results at DEMO_TIME_SCALE=1. 'before': origin/main before waits were recorded as suspensions (Channels after #287; Combined not paced yet). 'after': with waits recorded as suspensions (feat/waits-suspended, 2026-11-05).",
+  "before": {
+    "channel-rendezvous": {
+      "events": 80,
+      "coroutines": 3,
+      "duration_s": 17.1,
+      "moments": 12,
+      "busiest_share": 0.17
+    },
+    "channel-buffered": {
+      "events": 104,
+      "coroutines": 3,
+      "duration_s": 23.0,
+      "moments": 17,
+      "busiest_share": 0.13
+    },
+    "channel-fan-out": {
+      "events": 154,
+      "coroutines": 5,
+      "duration_s": 12.7,
+      "moments": 21,
+      "busiest_share": 0.14
+    },
+    "sync/combined/ecommerce": {
+      "events": 122,
+      "coroutines": 7,
+      "duration_s": 0.5,
+      "moments": 2,
+      "busiest_share": 0.89
+    }
+  },
+  "after": {
+    "channel-rendezvous": {
+      "events": 90,
+      "coroutines": 3,
+      "duration_s": 17.1,
+      "moments": 12,
+      "busiest_share": 0.17
+    },
+    "channel-buffered": {
+      "events": 108,
+      "coroutines": 3,
+      "duration_s": 23.0,
+      "moments": 17,
+      "busiest_share": 0.13
+    },
+    "channel-fan-out": {
+      "events": 170,
+      "coroutines": 5,
+      "duration_s": 12.7,
+      "moments": 21,
+      "busiest_share": 0.15
+    },
+    "sync/combined/ecommerce": {
+      "events": 143,
+      "coroutines": 7,
+      "duration_s": 0.7,
+      "moments": 2,
+      "busiest_share": 0.9
+    }
+  }
+}
