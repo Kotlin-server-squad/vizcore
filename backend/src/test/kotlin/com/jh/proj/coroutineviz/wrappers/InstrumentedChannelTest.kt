@@ -271,6 +271,31 @@ class InstrumentedChannelTest {
         }
 
     /**
+     * A receiver already waiting on a conflated channel takes a sent value at once. On
+     * [kotlinx.coroutines.Dispatchers.Unconfined] it even runs inside the send, so its update lands
+     * before the sender's; the channel is empty afterwards all the same.
+     */
+    @Test
+    @DisplayName("a conflated channel reads empty after a hand-over, whichever side updates first")
+    fun `conflated size after a hand-over`() =
+        runBlocking {
+            val scope = VizScope(session)
+            val channel = scope.vizChannel<String>(Channel.CONFLATED, "conflated-handover")
+
+            val receiver = launch(kotlinx.coroutines.Dispatchers.Unconfined) { channel.receive() }
+            delay(20)
+            channel.send("x")
+            receiver.join()
+
+            val sizes =
+                session.store
+                    .all()
+                    .filterIsInstance<ChannelBufferStateChanged>()
+                    .map { it.currentSize }
+            assertEquals(0, sizes.last(), "the channel is empty after the hand-over, got $sizes")
+        }
+
+    /**
      * When a receive frees a slot of a full channel, the sender waiting for that slot can count its
      * element before the receiver counts its own; the reported size must still stay within the
      * channel's capacity.
