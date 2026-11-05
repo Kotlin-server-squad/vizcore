@@ -18,15 +18,26 @@ export function readStoredTheme(): Theme {
   }
 }
 
+/**
+ * The theme chosen during this page visit, kept on <html> (`data-viz-theme`).
+ * Every route renders its own switch, so this is what a remounted switch starts
+ * from; storage, which may be blocked or full, only carries the choice across loads.
+ */
+function visitTheme(): Theme | null {
+  const chosen = document.documentElement.dataset.vizTheme
+  return chosen === 'light' || chosen === 'dark' ? chosen : null
+}
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement
   root.classList.remove('dark', 'light')
   root.classList.add(theme)
+  root.dataset.vizTheme = theme
 }
 
 /** The current theme and a toggle; the choice is applied to <html> and saved. */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(readStoredTheme)
+  const [theme, setTheme] = useState<Theme>(() => visitTheme() ?? readStoredTheme())
 
   useEffect(() => {
     applyTheme(theme)

@@ -33,9 +33,14 @@ export const palette = {
 } as const
 
 /**
- * The light theme's surfaces and text. Semantic colours (primary, success,
- * warning, danger, created) are shared with the dark theme, so a state reads
- * the same in both. Applied by the `html.light` block in `tokens.css`.
+ * The light theme's surfaces, text and status colours. Applied by the
+ * `html.light` block in `tokens.css` and the HeroUI light theme.
+ *
+ * The status colours are darker shades (HeroUI's 700 / 600 steps): the dark
+ * palette's green and amber are about 2:1 on white, too faint for text; these
+ * reach WCAG AA (4.5:1). Primary and `created` are shared. The coroutine-state
+ * colours in the visualizations come from `palette` via `stateColor()` and are
+ * the same in both themes.
  */
 export const lightPalette = {
   bg: '#fafafa',
@@ -47,6 +52,9 @@ export const lightPalette = {
   text: '#18181b',
   'text-muted': '#52525b',
   'text-faint': '#71717a',
+  success: '#0e793c',
+  warning: '#936316',
+  danger: '#c20e4d',
 } as const
 
 /**

@@ -6,6 +6,7 @@ import { ThemeSwitch } from './ThemeSwitch'
 beforeEach(() => {
   localStorage.clear()
   document.documentElement.className = 'dark'
+  delete document.documentElement.dataset.vizTheme
 })
 
 describe('ThemeSwitch', () => {

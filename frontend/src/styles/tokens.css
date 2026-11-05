@@ -42,7 +42,7 @@
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
 }
 
-/* Light theme: surfaces and text only; semantic colours are shared. */
+/* Light theme: surfaces, text, and text-safe status colours; primary is shared. */
 html.light {
   --bg: #fafafa;
   --surface: #ffffff;
@@ -53,5 +53,10 @@ html.light {
   --text: #18181b;
   --text-muted: #52525b;
   --text-faint: #71717a;
+  --success: #0e793c;
+  --warning: #936316;
+  --danger: #c20e4d;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  /* StateBar's active chip: body text, as a status colour on its own tint is too faint on white. */
+  --state-chip-text: var(--text);
 }

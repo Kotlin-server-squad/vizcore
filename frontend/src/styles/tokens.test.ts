@@ -37,9 +37,12 @@ describe('light tokens', () => {
     }
   })
 
-  it('overrides exactly the surface and text colours; semantic colours are shared', () => {
+  it('overrides the surfaces, the text and the status colours; primary is shared', () => {
     expect(Object.keys(lightPalette).sort()).toEqual(
-      ['bg', 'border', 'border-2', 'surface', 'surface-2', 'surface-3', 'text', 'text-faint', 'text-muted'].sort(),
+      [
+        'bg', 'border', 'border-2', 'surface', 'surface-2', 'surface-3', 'text', 'text-faint', 'text-muted',
+        'success', 'warning', 'danger',
+      ].sort(),
     )
   })
 

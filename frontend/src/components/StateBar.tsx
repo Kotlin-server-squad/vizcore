@@ -96,7 +96,9 @@ export function StateBar({
                 backgroundColor: active
                   ? `color-mix(in srgb, ${chip.color} 16%, transparent)`
                   : 'transparent',
-                color: active ? chip.color : 'var(--text-muted)',
+                // Light mode sets --state-chip-text to body text: a state colour on its own
+                // tint is too faint there. Dark mode keeps the state colour.
+                color: active ? `var(--state-chip-text, ${chip.color})` : 'var(--text-muted)',
               }}
             >
               <span

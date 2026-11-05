@@ -7,6 +7,7 @@ const html = () => document.documentElement
 beforeEach(() => {
   localStorage.clear()
   html().className = 'dark'
+  delete html().dataset.vizTheme
   vi.restoreAllMocks()
 })
 
@@ -67,4 +68,21 @@ describe('useTheme', () => {
     expect(second.result.current.theme).toBe('light')
     expect(html().classList.contains('light')).toBe(true)
   })
+
+  it.each([null, 'dark'])(
+    'keeps this visit\'s choice when saving fails but storage still reads %s',
+    (stale) => {
+      if (stale) localStorage.setItem(THEME_STORAGE_KEY, stale)
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('quota')
+      })
+      const first = renderHook(() => useTheme())
+      act(() => first.result.current.toggle())
+      first.unmount()
+
+      const second = renderHook(() => useTheme())
+      expect(second.result.current.theme).toBe('light')
+      expect(html().classList.contains('light')).toBe(true)
+    },
+  )
 })

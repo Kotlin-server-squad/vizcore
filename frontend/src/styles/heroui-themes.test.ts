@@ -35,6 +35,8 @@ describe('HeroUI themes', () => {
   // WCAG AA for normal text is 4.5:1. The dark palette's green and amber are about 2:1 on white.
   it.each(['success', 'warning', 'danger'] as const)('keeps %s text readable on light surfaces', (key) => {
     const { DEFAULT, foreground } = lightThemeColors[key]
+    // The same shade as the --success/--warning/--danger CSS variables in light mode (StateBar uses those).
+    expect(DEFAULT).toBe(lightPalette[key])
     expect(contrast(DEFAULT, lightPalette.bg)).toBeGreaterThanOrEqual(4.5)
     expect(contrast(DEFAULT, lightPalette.surface)).toBeGreaterThanOrEqual(4.5)
     expect(contrast(foreground, DEFAULT)).toBeGreaterThanOrEqual(4.5)
