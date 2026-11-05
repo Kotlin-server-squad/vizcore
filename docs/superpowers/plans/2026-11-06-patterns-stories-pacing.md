@@ -21,7 +21,7 @@ The new code isolates failures where the story says so:
 - **Retry and circuit breaker:** each try runs in `coroutineScope { }`, which rethrows the child's failure to the caller instead of cancelling it.
 - **Supervisor and circuit breaker:** independent work runs under `supervisorScope { }`.
 
-Failures are thrown with `demoFailure(...)`, so `demoFailureHandler` logs them in one line.
+Failures are marked as intended (`intendedByDemo()`), so where one reaches `demoFailureHandler` it is logged in one line.
 
 **Waiting on a channel:** a parallel branch (`feat/waits-suspended`) will show a coroutine waiting on a channel, mutex or semaphore as *suspended* instead of *active*. So:
 - every `will-see.json` picture is taken at a moment when no pictured coroutine waits inside a channel `send` or `receive`. They all sit in a `pause()` or are done;
@@ -36,6 +36,15 @@ Failures are thrown with `demoFailure(...)`, so `demoFailureHandler` logs them i
 **Gates:**
 - backend: `./gradlew ktlintCheck detekt test`. Restore `backend/docs/index.html` if a run rewrites it.
 - frontend: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test`, `pnpm build`.
+
+**Changes while building (after the Codex plan review and the first test runs):**
+- **Fan-Out / Fan-In timing:** the plan left the resize times open, and the first run ended at 10.3 s, just over the 10 s floor. The times are now fixed per photo (2.5, 1.5, 2, 3, 1, 2, 2.5, 1.5, 2 s), a photo is picked every 0.6 s and the album needs 1 s a photo. The album gets the photos as 2, 1, 3, 5, 4, …, the resizers are done at about 7.8 s, and the demo ends at about 11.7 s.
+- **The breaker on a test clock:** `CircuitBreaker` is a small internal class with a replaceable clock. `CircuitBreakerTest` checks open, reject, half-open, reopen and "cancellation is not a failure" without real time. The demo's own boundaries stay 1 s (scripted) away from every order.
+- **Retry backoff from the recorded steps:** the test reads `load-forecast`'s recorded delays, exactly 0.75, 1.5, 3 and 1 s. The real gaps between tries are only checked broadly (at least 80 % of the wait), since at test scale 0.3 s is 30 ms.
+- **A rejected order fails "at once":** this now means within 0.5 s (scripted), not 0.2 s. The main proof is that it has no `charge` child.
+- **The picture rule, enforced:** `GuideLabelsTest` now also tracks channel sends and receives. A picture only matches while no pictured coroutine is inside one; a coroutine that has ended counts as waiting for nothing. The two Channels pictures that show such a wait on purpose (`channel-rendezvous`, `channel-buffered`) are listed as exceptions. The new check was seen failing on exactly those two before they were listed.
+- **Logging:** the retry's caught failures never reach `demoFailureHandler`; the retry loop logs them at debug. Only the supervised failures (a backup, an order) reach the handler, and it logs them in one line.
+- **The gallery tests:** `GalleryPage.test.tsx` and `HowItWorksPage.test.tsx` used Patterns as their "no guide yet" example. They now use Sync: Mutex, and the "links every card" test also covers Channels and Patterns.
 
 ---
 
@@ -98,9 +107,10 @@ make-album                 joins the resizers, then closes `resized`
 ```
 
 - `photos` and `resized` are buffered (`Channel.BUFFERED`), so `pick-photos` and the resizers never wait in `send`.
+- Built with: a photo picked every 0.6 s, resize times 2.5, 1.5, 2, 3, 1, 2, 2.5, 1.5, 2 s, and 1 s per photo in the album (see the changes while building).
 - **One photo, one resizer:** every photo goes to exactly one resizer.
 - **Fan-in:** the album gets the photos in the order they are finished, not the order they were picked.
-- **The end:** at about 10–12 s, measured from a real run.
+- **The end:** at about 11.7 s.
 - **Labels:** `make-album`, `pick-photos`, `resizer-1` … `resizer-3`, `album`.
 - **Behaviour test:**
   - each photo is received by exactly one resizer, and each resizer gets at least 2;
