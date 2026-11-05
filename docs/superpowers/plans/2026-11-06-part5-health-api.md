@@ -65,7 +65,7 @@ need 5b, and Part 7 as specified also depends on Part 6 (rounds). Full Problems 
 | D-9b | Database sessions after a backend restart (until 5b) | Ingest state is process-local. A session row created before this JVM started, or events stored before the first connection this process saw, came through connections nobody here watched end, so such an ATTACHED database session's `transport` reads `deliveryUncertain` since seq 1, even with no stored event (failures "at least", possibly blocked `EVENTS_DROPPED`). 5b replaces this with the persisted transport and "ingest open" marker. |
 | D-9c | Order of a health read | The watermark is read **before** the session is resolved: in database mode resolving rebuilds the summaries from the store, and a watermark is recorded only after its poll's events were stored, so the summaries include every event the watermark vouches for. The transport facts are read again **after** the summaries are copied: they only grow, so a frame skipped or a connection lost during the read is never missed. |
 | D-10 | Replay of trimmed history | `SummaryFold.foldTo(events, atSeq, durable)` seeds every coroutine whose creation was trimmed from its durable summary (creation, and its terminal when that was trimmed too), in seq order through the table's own creation and terminal bookkeeping, then applies the retained events. Promotion and round anchoring depend only on creations and terminals, so they are exact at the cursor; failures known from the durable summaries count; states between a trimmed creation and the first retained event are not known and not invented. |
-| D-10b | Replay time inside trimmed history | A cursor before the oldest retained event only knows the seeded creations and terminals, so its `asOf.appNanos` is the latest of those at or before it: `AsOf.lowerBound = true` says so (new field, default `false`). |
+| D-10b | Replay time of trimmed history | Inside the trimmed range only the seeded creations and terminals are known, and appends are not in app-time order (a trimmed event can be later in app time than every retained one), so in a replay of a trimmed session `asOf.appNanos` is the latest time known at or before the cursor: `AsOf.lowerBound = true` says so (new field, default `false`). |
 | D-11 | `atSeq` out of range | Negative or not a number: `400`. Later than the last event: clamped to it (`asOfSeq` says which seq was used). |
 | D-12 | Summaries unavailable | `GET …/health` answers `503` `{"error":…,"code":"summaries-unavailable"}` (the table was abandoned after an apply failure); `GET /api/sessions/{id}` still answers, with `origin: UNKNOWN` and `captureStartAppNanos: null`. |
 | D-15 | Share payload | `SessionSnapshotResponse` is also the share payload's `session`, so both are built by one function and the share payload carries the new session fields too (a first piece of C-6; health at load time, the checks result and the one-cut guarantee are 5b). |
@@ -495,7 +495,7 @@ class SummaryFoldSeedTest {
     }
 
     @Test
-    fun `a cursor in trimmed history says its time is only a lower bound`() {
+    fun `a replay of trimmed history says its time is only a lower bound`() {
         val script = EventScript()
         script.created("a", at = sec(1))
         script.suspended("a", at = sec(20))
@@ -505,7 +505,10 @@ class SummaryFoldSeedTest {
         val retained = script.events.drop(3)
         val retention = RetentionInfo(oldestRetainedSeq = 4, oldestRetainedAppNanos = sec(31), trimmed = true)
 
-        fun asOfAt(seq: Long) =
+        fun asOfAt(
+            seq: Long,
+            retention: RetentionInfo = RetentionInfo(oldestRetainedSeq = 4, oldestRetainedAppNanos = sec(31), trimmed = true),
+        ) =
             SessionHealthDerivation
                 .derive(
                     HealthInput(
@@ -520,9 +523,9 @@ class SummaryFoldSeedTest {
         assertEquals(sec(1), inTrimmed.appNanos, "only the creation is known at or before seq 2")
         assertTrue(inTrimmed.lowerBound)
         assertEquals(2L, inTrimmed.seq)
-        val inRetained = asOfAt(4)
-        assertEquals(sec(31), inRetained.appNanos)
-        assertEquals(false, inRetained.lowerBound)
+        // Appends are not in app-time order: a trimmed event may be later in app time than every retained one.
+        assertTrue(asOfAt(4).lowerBound)
+        assertEquals(false, asOfAt(4, retention.copy(trimmed = false)).lowerBound)
     }
 }
 ```
@@ -867,13 +870,14 @@ data class RetentionInfo(
 ```
 
 2. `AsOf` gains `val lowerBound: Boolean = false` (KDoc: a replay cursor inside trimmed history; `appNanos` is the latest
-   time known at or before it), and `resolveAsOf`'s replay branch sets it when `input.retention` says the cursor is
-   before the oldest retained event:
+   time known at or before it), and `resolveAsOf`'s replay branch sets it whenever `input.retention` says events were
+   trimmed:
 
 ```kotlin
         if (mode is HealthMode.Replay) {
-            val inTrimmed = input.retention?.let { it.trimmed && mode.atSeq < (it.oldestRetainedSeq ?: Long.MAX_VALUE) } == true
-            return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq, lowerBound = inTrimmed) }
+            // Appends are not in app-time order, so once events were trimmed no cursor's latest time is known for sure.
+            val trimmed = input.retention?.trimmed == true
+            return lastNanos?.let { AsOf(AsOfKind.REPLAY_CURSOR, it, seq = mode.atSeq, lowerBound = trimmed) }
         }
 ```
 
@@ -1638,6 +1642,26 @@ class IngestWatermarkTest {
         }
 
     @Test
+    fun `a binary data frame makes delivery uncertain, even before a final watermark`() =
+        testApplication {
+            application { module() }
+            val client = wsClient()
+            val sessionId = client.createSessionNamed("wm-binary")
+
+            client.webSocket("/api/sessions/$sessionId/ingest") {
+                send(Frame.Text(HealthEvents.created(sessionId, "c1", at = sec(1)).frameText()))
+                send(Frame.Binary(true, HealthEvents.failed(sessionId, "c1", at = sec(2)).frameText().toByteArray()))
+                send(Frame.Text(HealthEvents.watermark(sessionId, at = sec(3), final = true).frameText()))
+                eventually { IngestStates.snapshot(sessionId).watermark != null }
+            }
+            eventually { !IngestConnections.isConnected(sessionId) }
+
+            val transport = IngestStates.snapshot(sessionId).transport
+            assertTrue(transport.deliveryUncertain, "the binary frame was not read")
+            assertEquals(1L, transport.sinceSeq)
+        }
+
+    @Test
     fun `origin and provenance arrive with the events`() =
         testApplication {
             application { module() }
@@ -1675,7 +1699,18 @@ Expected: FAIL — the watermark is stored as an event (2 events), `IngestStates
         val connection = IngestStates.connectionOpened(sessionId, firstSeq = session.lastSeq + 1)
 ```
 
-3. In the loop, `publishFrame(session, sessionId, frame.readText())` becomes `publishFrame(session, connection, frame.readText())`.
+3. In the loop, the `if (frame is Frame.Text) { publishFrame(session, sessionId, …) }` becomes (D-2: a frame the backend
+   does not read may have been an event):
+
+```kotlin
+                when (frame) {
+                    is Frame.Text -> publishFrame(session, connection, frame.readText())
+                    // Events travel as text; a binary data frame is not read, and may have been one.
+                    is Frame.Binary -> IngestStates.frameSkipped(connection)
+                    else -> Unit
+                }
+```
+
 4. The `finally` becomes:
 
 ```kotlin
