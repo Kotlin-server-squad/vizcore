@@ -62,7 +62,8 @@ class MutexStoriesTest {
         fun cancelled(label: String) = events.any { it is CoroutineCancelled && it.label == label }
 
         /** Who got [lock], in order. */
-        fun holders(lock: String): List<String?> = events.filterIsInstance<MutexLockAcquired>().filter { it.mutexId == lockId(lock) }.map { it.acquirerLabel }
+        fun holders(lock: String): List<String?> =
+            events.filterIsInstance<MutexLockAcquired>().filter { it.mutexId == lockId(lock) }.map { it.acquirerLabel }
 
         /** Who asked for [lock], in order, and whether it was held at that moment. */
         fun requests(lock: String): List<Pair<String?, Boolean>> =
@@ -75,6 +76,22 @@ class MutexStoriesTest {
         /** The first event after [wait] for the same coroutine. */
         fun nextAfter(wait: CoroutineSuspended): VizEvent? =
             events.firstOrNull { it.seq > wait.seq && it is CoroutineEvent && it.coroutineId == wait.coroutineId }
+
+        inline fun <reified T : CoroutineEvent> seqOf(label: String): Long = events.filterIsInstance<T>().single { it.label == label }.seq
+
+        /** Who held [lock] just before the event numbered [seq]. */
+        fun holderAt(
+            seq: Long,
+            lock: String,
+        ): String? {
+            val id = lockId(lock)
+            var holder: String? = null
+            for (event in events.takeWhile { it.seq < seq }) {
+                if (event is MutexLockAcquired && event.mutexId == id) holder = event.acquirerLabel
+                if (event is MutexUnlocked && event.mutexId == id) holder = null
+            }
+            return holder
+        }
 
         /** At most one holder at any moment: between a coroutine's Acquired and its Unlocked nobody else gets [lock]. */
         fun neverTwoHolders(lock: String): Boolean {
@@ -106,8 +123,17 @@ class MutexStoriesTest {
             val waits = story.waitsFor("visitor-count")
             assertEquals(8, waits.size, "each wait for the lock is a suspension")
             for (wait in waits) assertTrue(story.nextAfter(wait) is CoroutineResumed, "${wait.label} resumes when it gets the lock")
-            assertEquals(2, story.events.filterIsInstance<MutexQueueChanged>().maxOf { it.waitingCoroutineIds.size }, "two gates wait at once")
+            assertEquals(
+                2,
+                story.events.filterIsInstance<MutexQueueChanged>().maxOf { it.waitingCoroutineIds.size },
+                "two gates wait at once",
+            )
             assertTrue(story.neverTwoHolders("visitor-count"), "one gate at a time updates the count")
+            // The guide's picture: gate-1 is done, gate-2 holds the lock, and gate-3 waits for it.
+            val lastWait = story.waitsFor("visitor-count").last()
+            assertEquals("gate-3", lastWait.label)
+            assertTrue(story.seqOf<CoroutineCompleted>("gate-1") < lastWait.seq, "gate-1 is done before gate-3's last wait")
+            assertEquals("gate-2", story.holderAt(lastWait.seq, "visitor-count"), "gate-2 holds the lock while gate-3 waits")
             assertEquals(9, counted, "no visitor is lost")
             assertTrue(story.labels.all { story.completed(it) })
             assertEquals(14_000, story.scriptedMillis)
@@ -117,7 +143,13 @@ class MutexStoriesTest {
     fun `the transfers queue at Anna's account, which each locks first, and the holiday is declined`() =
         runTest {
             var balances: Pair<Int, Int>? = null
-            val story = runStory { session, context -> SyncScenarios.runBankTransfer(session, context) { anna, ben -> balances = anna to ben } }
+            val story =
+                runStory {
+                    session,
+                    context,
+                    ->
+                    SyncScenarios.runBankTransfer(session, context) { anna, ben -> balances = anna to ben }
+                }
             val transfers = listOf("pay-rent", "pay-back-dinner", "split-groceries", "book-holiday")
 
             assertEquals(setOf("transfers") + transfers, story.labels)
@@ -125,7 +157,11 @@ class MutexStoriesTest {
             assertEquals(transfers, story.holders("account-ben"), "each takes Ben's account second, with Anna's held")
             assertEquals(listOf("pay-back-dinner", "split-groceries", "book-holiday"), story.waitsFor("account-anna").map { it.label })
             for (wait in story.waitsFor("account-anna")) assertTrue(story.nextAfter(wait) is CoroutineResumed, "${wait.label} resumes")
-            assertEquals(emptyList(), story.requests("account-ben").filter { it.second }, "Ben's account is always free: it is locked second")
+            assertEquals(
+                emptyList(),
+                story.requests("account-ben").filter { it.second },
+                "Ben's account is always free: it is locked second",
+            )
             assertTrue(story.neverTwoHolders("account-anna") && story.neverTwoHolders("account-ben"))
             assertEquals(530 to 970, balances, "rent, dinner and groceries move; the holiday is declined; the total stays 1500")
             assertTrue(story.labels.all { story.completed(it) })
@@ -148,8 +184,16 @@ class MutexStoriesTest {
                 assertEquals(emptyList(), story.childrenOf(wait.label!!), "${wait.label} finds the price cached after the wait")
             }
             // Request 6 finds the espresso in the cache while request 5 holds the lock for the grinder.
-            val held = story.events.filterIsInstance<MutexLockAcquired>().single { it.acquirerLabel == "request-5" }.seq
-            val released = story.events.filterIsInstance<MutexUnlocked>().single { it.releaserLabel == "request-5" }.seq
+            val held =
+                story.events
+                    .filterIsInstance<MutexLockAcquired>()
+                    .single { it.acquirerLabel == "request-5" }
+                    .seq
+            val released =
+                story.events
+                    .filterIsInstance<MutexUnlocked>()
+                    .single { it.releaserLabel == "request-5" }
+                    .seq
             val served = story.events.single { it is CoroutineCompleted && it.label == "request-6" }.seq
             assertTrue(served in held..released, "request-6 is served while the lock is held")
             assertTrue(story.labels.all { story.completed(it) })
@@ -165,16 +209,27 @@ class MutexStoriesTest {
 
             assertEquals(setOf("month-end", "anna-pays-ben", "ben-pays-anna", "watchdog"), story.labels)
             assertEquals(listOf("anna-pays-ben"), story.holders("account-anna"))
+            val firstLocks = story.events.filterIsInstance<MutexLockAcquired>().maxOf { it.seq }
+            val firstSecondRequest =
+                story.events
+                    .filterIsInstance<MutexLockRequested>()
+                    .filter { it.isLocked }
+                    .minOf { it.seq }
+            assertTrue(firstLocks < firstSecondRequest, "both hold their payer's account before either asks for the other")
             assertEquals(listOf("ben-pays-anna"), story.holders("account-ben"))
             val waits = story.events.filterIsInstance<CoroutineSuspended>().filter { it.waitKind == WaitKind.MUTEX }
-            assertEquals(listOf("anna-pays-ben" to ben, "ben-pays-anna" to anna), waits.map { it.label to it.resourceId })
+            assertEquals(listOf("ben-pays-anna" to anna, "anna-pays-ben" to ben), waits.map { it.label to it.resourceId })
             for (wait in waits) {
                 val next = story.nextAfter(wait)
                 assertTrue(next !is CoroutineResumed, "${wait.label} never gets the lock it waits for, so it never resumes: $next")
                 assertNull(story.events.firstOrNull { it is CoroutineResumed && it.seq > wait.seq && it.coroutineId == wait.coroutineId })
                 assertTrue(story.cancelled(wait.label!!), "${wait.label} is cancelled while it waits")
             }
-            val unlocked = story.events.filterIsInstance<MutexUnlocked>().map { it.mutexId }.toSet()
+            val unlocked =
+                story.events
+                    .filterIsInstance<MutexUnlocked>()
+                    .map { it.mutexId }
+                    .toSet()
             assertEquals(setOf(anna, ben), unlocked, "cancelling the transfers releases both accounts")
             assertTrue(story.completed("watchdog") && story.completed("month-end"), "the watchdog ends the deadlock")
             assertEquals(11_000, story.scriptedMillis)

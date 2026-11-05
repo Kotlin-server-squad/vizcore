@@ -167,7 +167,11 @@ class MutexDemoPacingTest {
     @Test
     fun `each price is loaded from the database once`() {
         val run = run("sync/mutex/cache")
-        val loads = run.events.filterIsInstance<CoroutineCreated>().mapNotNull { it.label }.filter { it.startsWith("load-") }
+        val loads =
+            run.events
+                .filterIsInstance<CoroutineCreated>()
+                .mapNotNull { it.label }
+                .filter { it.startsWith("load-") }
 
         assertEquals(listOf("load-espresso", "load-grinder"), loads.sorted(), "one load per product, however many requests miss")
         assertTrue(run.labels.all { run.completed(it) })

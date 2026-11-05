@@ -4,11 +4,12 @@ import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarios.SyncScenarios
 import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.SessionManager
-import com.jh.proj.coroutineviz.wrappers.VizScope
+import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
 
@@ -38,36 +39,28 @@ fun Route.registerSyncScenarioRoutes() {
      * Thread-safe counter using Mutex
      */
     demoGet("/api/sync/mutex/counter") {
-        call.runSyncScenario("Thread-Safe Counter") { scope ->
-            SyncScenarios.threadSafeCounter(scope)
-        }
+        call.runSyncScenario("Thread-Safe Counter") { SyncScenarios.runCounter(it).join() }
     }
 
     /**
      * Bank account transfer with consistent lock ordering
      */
     demoGet("/api/sync/mutex/bank-transfer") {
-        call.runSyncScenario("Bank Account Transfer") { scope ->
-            SyncScenarios.bankAccountTransfer(scope)
-        }
+        call.runSyncScenario("Bank Account Transfer") { SyncScenarios.runBankTransfer(it).join() }
     }
 
     /**
      * Cache with thread-safe read-through pattern
      */
     demoGet("/api/sync/mutex/cache") {
-        call.runSyncScenario("Cache Read-Through") { scope ->
-            SyncScenarios.cacheWithReadThrough(scope)
-        }
+        call.runSyncScenario("Cache Read-Through") { SyncScenarios.runCache(it).join() }
     }
 
     /**
      * Deadlock demonstration (intentional)
      */
     demoGet("/api/sync/mutex/deadlock-demo") {
-        call.runSyncScenario("Deadlock Demonstration") { scope ->
-            SyncScenarios.deadlockDemonstration(scope)
-        }
+        call.runSyncScenario("Deadlock Demonstration") { SyncScenarios.runDeadlock(it).join() }
     }
 
     // ========================================================================
@@ -78,45 +71,35 @@ fun Route.registerSyncScenarioRoutes() {
      * Database connection pool limiting
      */
     demoGet("/api/sync/semaphore/connection-pool") {
-        call.runSyncScenario("Database Connection Pool") { scope ->
-            SyncScenarios.databaseConnectionPool(scope)
-        }
+        call.runSyncScenario("Database Connection Pool") { SyncScenarios.databaseConnectionPool(it.demoScope()) }
     }
 
     /**
      * API rate limiter
      */
     demoGet("/api/sync/semaphore/rate-limiter") {
-        call.runSyncScenario("API Rate Limiter") { scope ->
-            SyncScenarios.apiRateLimiter(scope)
-        }
+        call.runSyncScenario("API Rate Limiter") { SyncScenarios.apiRateLimiter(it.demoScope()) }
     }
 
     /**
      * Parallel file processor with I/O throttling
      */
     demoGet("/api/sync/semaphore/file-processor") {
-        call.runSyncScenario("Parallel File Processor") { scope ->
-            SyncScenarios.parallelFileProcessor(scope)
-        }
+        call.runSyncScenario("Parallel File Processor") { SyncScenarios.parallelFileProcessor(it.demoScope()) }
     }
 
     /**
      * Resource pool with timeout handling
      */
     demoGet("/api/sync/semaphore/resource-timeout") {
-        call.runSyncScenario("Resource Pool with Timeout") { scope ->
-            SyncScenarios.resourcePoolWithTimeout(scope)
-        }
+        call.runSyncScenario("Resource Pool with Timeout") { SyncScenarios.resourcePoolWithTimeout(it.demoScope()) }
     }
 
     /**
      * Producer-Consumer with bounded buffer
      */
     demoGet("/api/sync/semaphore/producer-consumer") {
-        call.runSyncScenario("Producer-Consumer Buffer") { scope ->
-            SyncScenarios.producerConsumerBuffer(scope)
-        }
+        call.runSyncScenario("Producer-Consumer Buffer") { SyncScenarios.producerConsumerBuffer(it.demoScope()) }
     }
 
     // ========================================================================
@@ -127,9 +110,7 @@ fun Route.registerSyncScenarioRoutes() {
      * E-commerce order processing (Mutex + Semaphore)
      */
     demoGet("/api/sync/combined/ecommerce") {
-        call.runSyncScenario("E-commerce Order Processing") { scope ->
-            SyncScenarios.ecommerceOrderProcessing(scope)
-        }
+        call.runSyncScenario("E-commerce Order Processing") { SyncScenarios.ecommerceOrderProcessing(it.demoScope()) }
     }
 
     // ========================================================================
@@ -164,34 +145,34 @@ fun Route.registerSyncScenarioRoutes() {
     // Gallery's Sync cards work like every other card.
     // ========================================================================
     demoPost("/api/scenarios/sync/mutex/counter") {
-        call.runSyncScenarioInSession("Thread-Safe Counter") { SyncScenarios.threadSafeCounter(it) }
+        call.runSyncScenarioInSession("Thread-Safe Counter") { SyncScenarios.runCounter(it).join() }
     }
     demoPost("/api/scenarios/sync/mutex/bank-transfer") {
-        call.runSyncScenarioInSession("Bank Account Transfer") { SyncScenarios.bankAccountTransfer(it) }
+        call.runSyncScenarioInSession("Bank Account Transfer") { SyncScenarios.runBankTransfer(it).join() }
     }
     demoPost("/api/scenarios/sync/mutex/cache") {
-        call.runSyncScenarioInSession("Cache Read-Through") { SyncScenarios.cacheWithReadThrough(it) }
+        call.runSyncScenarioInSession("Cache Read-Through") { SyncScenarios.runCache(it).join() }
     }
     demoPost("/api/scenarios/sync/mutex/deadlock-demo") {
-        call.runSyncScenarioInSession("Deadlock Demo") { SyncScenarios.deadlockDemonstration(it) }
+        call.runSyncScenarioInSession("Deadlock Demo") { SyncScenarios.runDeadlock(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/connection-pool") {
-        call.runSyncScenarioInSession("Connection Pool") { SyncScenarios.databaseConnectionPool(it) }
+        call.runSyncScenarioInSession("Connection Pool") { SyncScenarios.databaseConnectionPool(it.demoScope()) }
     }
     demoPost("/api/scenarios/sync/semaphore/rate-limiter") {
-        call.runSyncScenarioInSession("API Rate Limiter") { SyncScenarios.apiRateLimiter(it) }
+        call.runSyncScenarioInSession("API Rate Limiter") { SyncScenarios.apiRateLimiter(it.demoScope()) }
     }
     demoPost("/api/scenarios/sync/semaphore/file-processor") {
-        call.runSyncScenarioInSession("File Processor") { SyncScenarios.parallelFileProcessor(it) }
+        call.runSyncScenarioInSession("File Processor") { SyncScenarios.parallelFileProcessor(it.demoScope()) }
     }
     demoPost("/api/scenarios/sync/semaphore/resource-timeout") {
-        call.runSyncScenarioInSession("Resource Timeout") { SyncScenarios.resourcePoolWithTimeout(it) }
+        call.runSyncScenarioInSession("Resource Timeout") { SyncScenarios.resourcePoolWithTimeout(it.demoScope()) }
     }
     demoPost("/api/scenarios/sync/semaphore/producer-consumer") {
-        call.runSyncScenarioInSession("Producer-Consumer") { SyncScenarios.producerConsumerBuffer(it) }
+        call.runSyncScenarioInSession("Producer-Consumer") { SyncScenarios.producerConsumerBuffer(it.demoScope()) }
     }
     demoPost("/api/scenarios/sync/combined/ecommerce") {
-        call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.ecommerceOrderProcessing(it) }
+        call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.ecommerceOrderProcessing(it.demoScope()) }
     }
 }
 
@@ -208,7 +189,7 @@ data class ScenarioInfo(
  */
 private suspend fun ApplicationCall.runSyncScenario(
     scenarioName: String,
-    scenario: suspend (VizScope) -> Unit,
+    scenario: suspend (VizSession) -> Unit,
 ) {
     logger.info("┌─────────────────────────────────────────┐")
     logger.info("│  Running Sync Scenario                  │")
@@ -230,11 +211,8 @@ private suspend fun ApplicationCall.runSyncScenario(
                 SessionManager.createSession(name)
             }
 
-        // Create VizScope
-        val scope = session.demoScope()
-
-        // Run the scenario
-        scenario(scope)
+        // Run the scenario; a Mutex demo is joined, so this answers once it has ended
+        scenario(session)
 
         // Wait for any pending events
         kotlinx.coroutines.delay(100)
@@ -253,6 +231,8 @@ private suspend fun ApplicationCall.runSyncScenario(
                 eventCount = eventCount,
             ),
         )
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         logger.error("❌ Sync scenario '$scenarioName' failed", e)
         respond(
@@ -276,13 +256,12 @@ private suspend fun ApplicationCall.runSyncScenario(
  */
 private suspend fun ApplicationCall.runSyncScenarioInSession(
     scenarioName: String,
-    scenario: suspend (VizScope) -> Unit,
+    scenario: suspend (VizSession) -> Unit,
 ) {
     try {
         val sessionId = request.queryParameters["sessionId"]
         val session = getOrCreateSession(sessionId)
-        val scope = session.demoScope()
-        scenario(scope)
+        scenario(session)
         kotlinx.coroutines.delay(100)
         val eventCount = session.store.all().size
         logger.info("✅ Sync scenario '$scenarioName' completed in session ${session.sessionId} | Events: $eventCount")
@@ -296,6 +275,8 @@ private suspend fun ApplicationCall.runSyncScenarioInSession(
                 eventCount = eventCount,
             ),
         )
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         logger.error("❌ Sync scenario '$scenarioName' failed", e)
         respond(
