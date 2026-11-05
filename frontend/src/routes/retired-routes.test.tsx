@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { shouldRedirectBareCompare } from './compare/index'
 
 /**
- * Scenarios and Gallery are retired outright — they were pickers, with no
- * shareable state to preserve. Compare is different: `/compare?a=&b=` is a
- * shareable URL (D-10), so only the *bare* form is retired.
+ * Scenarios is retired outright — it was a picker, with no shareable state to
+ * preserve. (The Gallery is a page again, G-1.) Compare is different:
+ * `/compare?a=&b=` is a shareable URL (D-10), so only the *bare* form is retired.
  */
 describe('retired destinations', () => {
   it('redirects a bare /compare, which was a picker destination', () => {
