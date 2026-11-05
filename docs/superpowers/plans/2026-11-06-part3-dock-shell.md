@@ -36,17 +36,22 @@ Both PRs target `main`; 3a says it is stacked on #290 and 3b says it is stacked 
 
 ## Decisions taken while planning
 
-- **Export stays its own menu next to "⋯".** S-3 lists Export inside "⋯", but `ExportMenu` is itself a menu (PNG / SVG / JSON / Record) and HeroUI menus do not nest. "⋯" holds Share, Checks, Reset session, Clear events and Refresh.
+- **Export stays its own menu next to "⋯".** S-3 lists Export inside "⋯", but `ExportMenu` is itself a menu (PNG / SVG / JSON / Record) with its own logic (SVG detection on open, video support, toasts), and HeroUI menus do not nest. "⋯" holds Share, Checks, Refresh, Reset session and Clear events.
 - **Today's Run button keeps its labels and states** ("Run Scenario", "Scenario Running", "Scenario Finished", "Scenario Failed") and moves into the header; Reset and Clear move into "⋯" as "Reset session" and "Clear events". Part 9 replaces the button with Run again.
 - **The view pill** (T-2 / S-3): "Updating" (stream on and connected), "Connecting…" or the stream error with Reconnect (stream on, not connected), "View paused" (stream off), "Replay at 4.2 s" (replay; time from the first to the cursor's event), "Loaded at 14:02:31" (shared view). The stream toggle becomes "Pause view" / "Resume view".
 - **The dock's size and fold are remembered per browser** (`localStorage` `vizcore.dock`); Maximise is per visit, so nobody comes back to a page with no dock.
-- **Separator keys** follow the WAI-ARIA window-splitter pattern: ↑/↓ move it 24 px, PageUp/PageDown 96 px, Home/End to the largest/smallest dock, Enter folds or unfolds. The replay shortcuts (←/→/Space/Home/End) no longer fire while a tab or the separator has focus.
+- **Separator keys** follow the WAI-ARIA window-splitter pattern with the dock as the pane it sizes (`aria-controls="session-dock"`): ↑/↓ move it 24 px, PageUp/PageDown 96 px, Home gives the dock its smallest size and End its largest, Enter folds or unfolds; folded reads as collapsed (`aria-valuenow` 0). The replay shortcuts no longer fire while a tab or the separator has focus, and Space/Enter on a focused button, link or menu item press it instead of playing (so an Evidence disclosure opens).
+- **Nothing in the dock is unmounted by folding, maximising, switching tabs or folding an Evidence section — it is hidden.** The panels read `useSessionEvents` (30 s stale time): an observer mounted later would refetch the history, and in the shared view that read is protected (#124, T-03-22). Hiding keeps today's request profile and keeps every `aria-controls` target in the DOM. The one exception is the Events list, which needs no fetch and is the heaviest render: it mounts only while its tab is shown. A hidden element drops its `flex`/`grid` class, because Tailwind's preflight `[hidden]` rule loses to a display utility.
+- **The run's duration** in the outcome pill ("Finished · 12.9 s") is the span of every event the page holds (the history loaded with it plus the events streamed since), shown only once every coroutine is terminal, and reads "at least" when the backend dropped events.
+- **The workspace is keyed by session id** in the route, so nothing (selection, dock tab, stream state) carries over when Reset navigates to a fresh session.
 - **What opens first (S-5 without Problems):** a demo opened with its scenario (from the Gallery or the new-demo dialog) that has not finished → Learn; anything else (a finished or failed demo, an attached app) → Inspector, whose empty state is the session summary. Replay keeps the tab the user is on. A tab the user picks is remembered per session (`vizcore.dockTabs`, the 50 most recent sessions); an opening tab that was only chosen by the rule is not stored, so a demo opened again after it finished opens on the Inspector.
 - **Evidence sections:** Threads and Dispatchers are always disclosures; Locks and permits, Channels, Flows and Jobs are disclosures when captured and otherwise a static row "none captured", plus, for a real session, today's `LockedPanel` unlock line (D-5). The tab label names what was captured ("Evidence · 1 lock, 1 semaphore").
 - **The thread table** (T-5) groups thread activity by thread name: JVM threads, coroutines seen, assignments observed, last assignment as time into the capture (since the first retained event), ten rows then "Show all (N)".
 - **Learn** hosts today's "How to read the tree" content opened up, with T-6's qualified failure text and H-4's sampling note, marked as explanation; the order-processing and registration pipeline views move there too. The folded `StructuredConcurrencyInfo` and its `vizcore.howToReadTree` key are retired.
 - **Light link colour (S-14):** the light theme already uses `primary` `#006fee` for links (4.7:1 on white) and no component uses `#4da3ff`; nothing to change, checked in the browser.
-- **Replay slider announcing seconds (S-14)** waits for Part 8's seconds slider; today's slider seeks by event index.
+- **The replay slider announces its time (S-14)**: today's slider still seeks by event index (seconds arrive with Part 8), but its accessible value reads "4.2 seconds of 12.0" from the frozen replay snapshot (3b, Task 25).
+- **"Last data" and the start time of T-2 wait for the health API.** The session payload carries no wall-clock observation time (only app-clock `tsNanos`), and the browser's response time must not pass for the app's observation time. The ownership table gives Part 3 the view pill; last data and start time join the connection pill in Part 7, from the health payload's `asOf`.
+- **Export stays its own menu next to "⋯"** (see above) — a deviation from S-3 for the user to confirm; flattening its four items into "⋯" is possible if preferred.
 
 ## File structure
 
@@ -251,7 +256,7 @@ const session = (...states: string[]) =>
 
 describe('deriveRunOutcome', () => {
   it('is not started before any coroutine is seen', () => {
-    expect(deriveRunOutcome(session())).toEqual({ outcome: 'notStarted', failedCount: 0 })
+    expect(deriveRunOutcome(session())).toEqual({ outcome: 'notStarted', failedCount: 0, ended: false })
   })
 
   it('is running while any coroutine is not terminal', () => {
@@ -259,12 +264,12 @@ describe('deriveRunOutcome', () => {
   })
 
   it('is finished when every coroutine completed or was cancelled', () => {
-    expect(deriveRunOutcome(session('COMPLETED', 'CANCELLED')).outcome).toBe('finished')
+    expect(deriveRunOutcome(session('COMPLETED', 'CANCELLED'))).toEqual({ outcome: 'finished', failedCount: 0, ended: true })
   })
 
   it('is failed as soon as one coroutine failed, even while others run (S-3)', () => {
-    expect(deriveRunOutcome(session('FAILED', 'ACTIVE'))).toEqual({ outcome: 'failed', failedCount: 1 })
-    expect(deriveRunOutcome(session('FAILED', 'FAILED', 'CANCELLED')).failedCount).toBe(2)
+    expect(deriveRunOutcome(session('FAILED', 'ACTIVE'))).toEqual({ outcome: 'failed', failedCount: 1, ended: false })
+    expect(deriveRunOutcome(session('FAILED', 'FAILED', 'CANCELLED'))).toEqual({ outcome: 'failed', failedCount: 2, ended: true })
   })
 })
 
@@ -273,6 +278,10 @@ describe('recordedSpanNanos', () => {
 
   it('is the time from the first to the last recorded event', () => {
     expect(recordedSpanNanos([ev(1, 5_000), ev(2, 12_000), ev(3, 9_000)])).toBe(7_000)
+  })
+
+  it('spans every list it is given: the history loaded with the page and the events streamed since', () => {
+    expect(recordedSpanNanos([ev(1, 5_000), ev(2, 6_000)], [ev(3, 9_000)])).toBe(4_000)
   })
 
   it('is unknown with fewer than two events', () => {
@@ -310,29 +319,38 @@ const TERMINAL_STATES = new Set<string>([
  */
 export type RunOutcome = 'notStarted' | 'running' | 'finished' | 'failed'
 
-export function deriveRunOutcome(session: SessionSnapshot): { outcome: RunOutcome; failedCount: number } {
+export interface RunOutcomeFacts {
+  outcome: RunOutcome
+  failedCount: number
+  /** Every coroutine is terminal: nothing more will happen in this run. */
+  ended: boolean
+}
+
+export function deriveRunOutcome(session: SessionSnapshot): RunOutcomeFacts {
   if (session.coroutineCount === 0 || session.coroutines.length === 0) {
-    return { outcome: 'notStarted', failedCount: 0 }
+    return { outcome: 'notStarted', failedCount: 0, ended: false }
   }
   const failedCount = session.coroutines.filter(c => c.state === CoroutineState.FAILED).length
-  if (failedCount > 0) return { outcome: 'failed', failedCount }
-  const allTerminal = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
-  return { outcome: allTerminal ? 'finished' : 'running', failedCount: 0 }
+  const ended = session.coroutines.every(c => TERMINAL_STATES.has(c.state))
+  if (failedCount > 0) return { outcome: 'failed', failedCount, ended }
+  return { outcome: ended ? 'finished' : 'running', failedCount: 0, ended }
 }
 
 /**
- * From the first to the last recorded event, on the app's own clock. Null when
- * there is nothing to measure. Event timestamps are compared with each other
- * only, never with the browser's clock.
+ * From the first to the last event the page holds, across every list given
+ * (the history loaded with the page and the events streamed since), on the
+ * app's own clock. Null when there is nothing to measure. Event timestamps are
+ * compared with each other only, never with the browser's clock.
  */
-export function recordedSpanNanos(events: readonly VizEvent[]): number | null {
-  if (events.length < 2) return null
+export function recordedSpanNanos(...lists: ReadonlyArray<readonly VizEvent[]>): number | null {
   let first = Infinity
   let last = -Infinity
-  for (const e of events) {
-    if (!Number.isFinite(e.tsNanos)) continue
-    if (e.tsNanos < first) first = e.tsNanos
-    if (e.tsNanos > last) last = e.tsNanos
+  for (const events of lists) {
+    for (const e of events) {
+      if (!Number.isFinite(e.tsNanos)) continue
+      if (e.tsNanos < first) first = e.tsNanos
+      if (e.tsNanos > last) last = e.tsNanos
+    }
   }
   return last > first ? last - first : null
 }
@@ -684,7 +702,7 @@ function renderSeparator(props: Partial<Parameters<typeof DockSeparator>[0]> = {
   const onResize = vi.fn()
   const onToggleFold = vi.fn()
   render(
-    <DockSeparator height={300} maxHeight={500} folded={false} onResize={onResize} onToggleFold={onToggleFold} {...props} />,
+    <DockSeparator controls="session-dock" height={300} maxHeight={500} folded={false} onResize={onResize} onToggleFold={onToggleFold} {...props} />,
   )
   return { separator: screen.getByRole('separator', { name: 'Resize the dock' }), onResize, onToggleFold }
 }
@@ -695,9 +713,16 @@ describe('DockSeparator', () => {
     expect(separator).toHaveAttribute('tabindex', '0')
     expect(separator).toHaveAttribute('aria-orientation', 'horizontal')
     expect(separator).toHaveAttribute('aria-valuenow', '300')
-    expect(separator).toHaveAttribute('aria-valuemin', '120')
+    expect(separator).toHaveAttribute('aria-valuemin', '0')
+    expect(separator).toHaveAttribute('aria-controls', 'session-dock')
     expect(separator).toHaveAttribute('aria-valuemax', '500')
     expect(separator).toHaveAttribute('aria-valuetext', 'Dock 300 pixels tall')
+  })
+
+  it('reports a folded dock as collapsed', () => {
+    const { separator } = renderSeparator({ folded: true })
+    expect(separator).toHaveAttribute('aria-valuenow', '0')
+    expect(separator).toHaveAttribute('aria-valuetext', 'Dock folded')
   })
 
   it('omits the maximum until the space is measured', () => {
@@ -705,7 +730,7 @@ describe('DockSeparator', () => {
     expect(separator).not.toHaveAttribute('aria-valuemax')
   })
 
-  it('moves with the arrow and page keys, and jumps with Home and End', async () => {
+  it('moves with the arrow and page keys; Home gives the dock its smallest size, End its largest (APG)', async () => {
     const { separator, onResize } = renderSeparator()
     separator.focus()
     await userEvent.keyboard('{ArrowUp}')
@@ -717,9 +742,9 @@ describe('DockSeparator', () => {
     await userEvent.keyboard('{PageDown}')
     expect(onResize).toHaveBeenLastCalledWith(204)
     await userEvent.keyboard('{Home}')
-    expect(onResize).toHaveBeenLastCalledWith(500)
-    await userEvent.keyboard('{End}')
     expect(onResize).toHaveBeenLastCalledWith(120)
+    await userEvent.keyboard('{End}')
+    expect(onResize).toHaveBeenLastCalledWith(500)
   })
 
   it('folds and unfolds with Enter', async () => {
@@ -753,6 +778,8 @@ import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from 'react'
 import { DOCK_MIN_PX, DOCK_STEP_PX } from '@/lib/dock-layout'
 
 interface DockSeparatorProps {
+  /** The id of the pane it sizes: the dock. */
+  controls: string
   /** The dock's current height in px. */
   height: number
   /** The largest the dock may be; Infinity until the page has been measured. */
@@ -764,11 +791,12 @@ interface DockSeparatorProps {
 
 /**
  * The handle between the main view and the dock (spec S-1, S-14): a focusable
- * `separator` following the WAI-ARIA window-splitter pattern. Up makes the dock
- * taller, down smaller; Home and End go to the largest and smallest dock;
- * Enter folds or unfolds it. Dragging follows the pointer.
+ * `separator` following the WAI-ARIA window-splitter pattern, with the dock as
+ * the pane it sizes. Up makes the dock taller, down smaller; Home gives the
+ * dock its smallest size and End its largest; Enter folds or unfolds it, and a
+ * folded dock reads as collapsed (0). Dragging follows the pointer.
  */
-export function DockSeparator({ height, maxHeight, folded, onResize, onToggleFold }: DockSeparatorProps) {
+export function DockSeparator({ controls, height, maxHeight, folded, onResize, onToggleFold }: DockSeparatorProps) {
   const drag = useRef<{ startY: number; startHeight: number } | null>(null)
   const detach = useRef<(() => void) | null>(null)
   useEffect(() => () => detach.current?.(), [])
@@ -780,12 +808,12 @@ export function DockSeparator({ height, maxHeight, folded, onResize, onToggleFol
     if (step !== undefined) {
       e.preventDefault()
       onResize(height + step)
-    } else if (e.key === 'Home' && Number.isFinite(maxHeight)) {
-      e.preventDefault()
-      onResize(maxHeight)
-    } else if (e.key === 'End') {
+    } else if (e.key === 'Home') {
       e.preventDefault()
       onResize(DOCK_MIN_PX)
+    } else if (e.key === 'End' && Number.isFinite(maxHeight)) {
+      e.preventDefault()
+      onResize(maxHeight)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       onToggleFold()
@@ -818,8 +846,10 @@ export function DockSeparator({ height, maxHeight, folded, onResize, onToggleFol
       role="separator"
       aria-orientation="horizontal"
       aria-label="Resize the dock"
-      aria-valuenow={height}
-      aria-valuemin={DOCK_MIN_PX}
+      aria-controls={controls}
+      // Folded is the collapsed position; unfolded, the dock is at least DOCK_MIN_PX.
+      aria-valuenow={folded ? 0 : height}
+      aria-valuemin={0}
       aria-valuemax={Number.isFinite(maxHeight) ? maxHeight : undefined}
       aria-valuetext={folded ? 'Dock folded' : `Dock ${height} pixels tall`}
       tabIndex={0}
@@ -885,6 +915,8 @@ describe('SessionDock', () => {
   it('is a labelled region with a separator, its bar and its body at the size asked', () => {
     renderDock()
     const dock = screen.getByRole('region', { name: 'Dock' })
+    expect(dock).toHaveAttribute('id', 'session-dock')
+    expect(screen.getByRole('separator')).toHaveAttribute('aria-controls', 'session-dock')
     expect(dock).toHaveStyle({ height: '300px' })
     expect(screen.getByRole('separator', { name: 'Resize the dock' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument()
@@ -904,10 +936,21 @@ describe('SessionDock', () => {
     renderDock(true)
     const dock = screen.getByRole('region', { name: 'Dock' })
     expect(dock.style.height).toBe('')
-    expect(screen.queryByText('dock body')).not.toBeInTheDocument()
+    // Hidden, not unmounted: panels keep their state and fetch nothing again (D-17, #124).
+    expect(screen.getByText('dock body')).not.toBeVisible()
     const unfold = screen.getByRole('button', { name: 'Unfold the dock' })
     expect(unfold).toHaveAttribute('aria-expanded', 'false')
-    expect(unfold).not.toHaveAttribute('aria-controls')
+    expect(unfold).toHaveAttribute('aria-controls', 'dock-body')
+  })
+
+  it('is hidden, not unmounted, while the main view is maximised', () => {
+    render(
+      <SessionDock height={300} maxHeight={500} folded={false} hidden onResize={vi.fn()} onToggleFold={vi.fn()} bar={null}>
+        <p>dock body</p>
+      </SessionDock>,
+    )
+    expect(screen.queryByRole('region', { name: 'Dock' })).toBeNull()
+    expect(screen.getByText('dock body')).not.toBeVisible()
   })
 })
 ```
@@ -929,6 +972,8 @@ interface SessionDockProps {
   height: number
   maxHeight: number
   folded: boolean
+  /** The main view is maximised: the dock is hidden, not unmounted. */
+  hidden?: boolean
   onResize: (height: number) => void
   onToggleFold: () => void
   /** The dock's bar: the tab row (3b), with the Fold button added on the right. */
@@ -939,16 +984,34 @@ interface SessionDockProps {
 /**
  * The dock under the main view (spec S-1): a separator to resize it, a bar
  * that stays when the dock is folded, and a body that scrolls on its own.
- * Maximise is the caller's business: a maximised page does not mount the dock.
+ *
+ * Folding and maximising hide the body rather than unmount it: the panels keep
+ * their state, and none of them re-subscribes to a query that has gone stale
+ * meanwhile — a stale `/events` read would refetch history, and in the shared
+ * view it would be a protected request (#124, T-03-22).
  */
-export function SessionDock({ height, maxHeight, folded, onResize, onToggleFold, bar, children }: SessionDockProps) {
+export function SessionDock({
+  height,
+  maxHeight,
+  folded,
+  hidden = false,
+  onResize,
+  onToggleFold,
+  bar,
+  children,
+}: SessionDockProps) {
   return (
     <section
+      id="session-dock"
       aria-label="Dock"
-      className="flex shrink-0 flex-col rounded-xl border border-default-200 bg-content1"
+      hidden={hidden}
+      // `flex` would beat the `[hidden]` rule of Tailwind's preflight, so a
+      // hidden dock drops it.
+      className={hidden ? 'hidden' : 'flex shrink-0 flex-col rounded-xl border border-default-200 bg-content1'}
       style={folded ? undefined : { height }}
     >
       <DockSeparator
+        controls="session-dock"
         height={height}
         maxHeight={maxHeight}
         folded={folded}
@@ -962,20 +1025,16 @@ export function SessionDock({ height, maxHeight, folded, onResize, onToggleFold,
           variant="light"
           aria-label={folded ? 'Unfold the dock' : 'Fold the dock'}
           aria-expanded={!folded}
-          // Only while the body is mounted: an id that resolves to nothing is a
-          // broken relationship for assistive tech.
-          aria-controls={folded ? undefined : 'dock-body'}
+          aria-controls="dock-body"
           startContent={folded ? <FiChevronUp aria-hidden /> : <FiChevronDown aria-hidden />}
           onPress={onToggleFold}
         >
           {folded ? 'Unfold' : 'Fold'}
         </Button>
       </div>
-      {!folded && (
-        <div id="dock-body" className="min-h-0 flex-1 overflow-auto p-4">
-          {children}
-        </div>
-      )}
+      <div id="dock-body" hidden={folded} className="min-h-0 flex-1 overflow-auto p-4">
+        {children}
+      </div>
     </section>
   )
 }
@@ -1028,29 +1087,32 @@ git commit -m "feat(frontend): the session dock frame with Fold"
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `pnpm vitest run src/components/replay/ReplayController.test.tsx`
-Expected: FAIL — `stepForward` was called.
+Expected: FAIL — `stepForward` was called; `play` was called.
 
-- [ ] **Step 3: Implement** — in `src/components/replay/ReplayController.tsx`, rename `isFormFieldFocused` to `focusOwnsKeys` and extend it:
+- [ ] **Step 3: Implement** — in `src/components/replay/ReplayController.tsx`, replace `isFormFieldFocused` with:
 
 ```tsx
 /**
- * True when the focused element handles these keys itself, so replay
- * shortcuts must be suppressed: a text-entry surface (T-02-13, mirrors
- * standard log-viewer behavior), the dock's separator (arrows resize it) or a
- * tab (arrows move between tabs).
+ * True when the focused element handles this key itself, so the replay
+ * shortcut must be suppressed: a text-entry surface (T-02-13, mirrors
+ * standard log-viewer behavior), the dock's separator (arrows resize it), a
+ * tab (arrows move between tabs), or — for Space and Enter — a button, link or
+ * menu item, which those keys press.
  */
-function focusOwnsKeys(): boolean {
+function focusOwnsKey(key: string): boolean {
   const el = document.activeElement
   if (!el) return false
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   if ((el as HTMLElement).isContentEditable) return true
   const role = el.getAttribute('role')
-  return role === 'separator' || role === 'tab'
+  if (role === 'separator' || role === 'tab') return true
+  const pressable = tag === 'BUTTON' || tag === 'A' || role === 'button' || role === 'menuitem'
+  return pressable && (key === ' ' || key === 'Enter')
 }
 ```
 
-and in the handler replace `if (isFormFieldFocused()) return` with `if (focusOwnsKeys()) return`. Update the comment above the effect ("caught by isFormFieldFocused's INPUT guard") to say `focusOwnsKeys`.
+and in the handler replace `if (isFormFieldFocused()) return` with `if (focusOwnsKey(e.key)) return`. Add a second test: Space on a focused `<button aria-expanded>` presses it and does not call `play`; ArrowRight from the same button still steps.
 
 - [ ] **Step 4: Run it and see it pass**
 
@@ -1080,7 +1142,7 @@ git commit -m "fix(frontend): replay shortcuts leave a focused separator or tab 
     const canvas = screen.getByTestId('graph-canvas')
     expect(canvas.className).toContain('h-full')
     expect(canvas.className).not.toContain('70vh')
-    expect(canvas.className).not.toContain('min-h-[480px]')
+    expect(canvas.className).not.toContain('min-h-')
   })
 ```
 
@@ -1092,14 +1154,14 @@ Expected: FAIL — the class contains `h-[70vh]`.
 - [ ] **Step 3: Implement** — replace the non-fullscreen branch:
 
 ```tsx
-          : 'relative h-full min-h-[240px] w-full overflow-hidden rounded-lg border border-default-200 bg-default-50'
+          : 'relative h-full w-full overflow-hidden rounded-lg border border-default-200 bg-default-50'
 ```
 
 and above the `className` prop add the comment:
 
 ```tsx
-      // The main view sizes the canvas (S-1): it fills that box. `min-h` only
-      // keeps it usable if a parent forgets to give it a height.
+      // The main view sizes the canvas (S-1): it fills that box, however small
+      // the dock leaves it — a minimum of its own would overflow the box.
 ```
 
 - [ ] **Step 4: Run it and see it pass**
@@ -1725,20 +1787,30 @@ describe('SessionHeader', () => {
     })
 
     it('reads Finished with how long the run took', () => {
-      renderHeader({ outcome: { outcome: 'finished', failedCount: 0 }, runSpanNanos: 12e9 })
+      renderHeader({ outcome: { outcome: 'finished', failedCount: 0, ended: true }, runSpanNanos: 12e9 })
       expect(screen.getByTestId('run-outcome')).toHaveTextContent('Finished · 12.0 s')
     })
 
     it('reads Failed in red with how many failed — never green Completed (S-3)', () => {
-      renderHeader({ outcome: { outcome: 'failed', failedCount: 2 }, runSpanNanos: 3e9 })
+      renderHeader({ outcome: { outcome: 'failed', failedCount: 2, ended: true }, runSpanNanos: 3e9 })
       const pill = screen.getByTestId('run-outcome')
       expect(pill).toHaveTextContent('Failed · 2 coroutines failed · 3.0 s')
       expect(pill.className).toContain('danger')
     })
 
-    it('reads Running and Not run yet', () => {
-      renderHeader({ outcome: { outcome: 'running', failedCount: 0 } })
-      expect(screen.getByTestId('run-outcome')).toHaveTextContent('Running')
+    it('reads Running', () => {
+      renderHeader({ outcome: { outcome: 'running', failedCount: 0, ended: false }, runSpanNanos: 4e9 })
+      expect(screen.getByTestId('run-outcome')).toHaveTextContent(/^Running$/)
+    })
+
+    it('gives a failed run no duration while some of it still runs', () => {
+      renderHeader({ outcome: { outcome: 'failed', failedCount: 1, ended: false }, runSpanNanos: 3e9 })
+      expect(screen.getByTestId('run-outcome')).toHaveTextContent(/^Failed · 1 coroutine failed$/)
+    })
+
+    it('says "at least" when the backend dropped events', () => {
+      renderHeader({ outcome: { outcome: 'finished', failedCount: 0, ended: true }, runSpanNanos: 12e9, droppedCount: 2 })
+      expect(screen.getByTestId('run-outcome')).toHaveTextContent('Finished · at least 12.0 s')
     })
   })
 
@@ -1803,7 +1875,7 @@ describe('SessionHeader', () => {
 
     it('adds Reset session and Clear events to "⋯" for a demo, and the Run button', async () => {
       const scenario = { run: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isResetPending: false, errorText: null }
-      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0 } })
+      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
       expect(screen.getByRole('button', { name: 'Run Scenario' })).toBeEnabled()
       await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
       await userEvent.click(await screen.findByRole('menuitem', { name: /clear events/i }))
@@ -1815,7 +1887,7 @@ describe('SessionHeader', () => {
         run: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isResetPending: false,
         errorText: 'Could not run the scenario: Server busy',
       }
-      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0 } })
+      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
       expect(screen.getByRole('alert')).toHaveTextContent('Could not run the scenario: Server busy')
     })
 
@@ -1844,7 +1916,7 @@ import { FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
 import { formatDuration } from '@/lib/format-duration'
-import type { RunOutcome } from '@/lib/run-outcome'
+import type { RunOutcome, RunOutcomeFacts } from '@/lib/run-outcome'
 import { ExportMenu } from '../export/ExportMenu'
 import { RunScenarioButton } from './RunScenarioButton'
 import type { ScenarioActions } from './use-scenario-actions'
@@ -1859,8 +1931,8 @@ interface SessionHeaderProps {
   rung: Rung
   readOnly: boolean
   /** A demo run's outcome (S-3); null for an attached app. */
-  outcome: { outcome: RunOutcome; failedCount: number } | null
-  /** From the first to the last recorded event, for a run that has ended. */
+  outcome: RunOutcomeFacts | null
+  /** From the first to the last event the page holds; shown once the run has ended. */
   runSpanNanos: number | null
   /** Live SSE stream state + toggle. */
   streamEnabled: boolean
@@ -1948,7 +2020,14 @@ export function SessionHeader({
         <Chip size="sm" variant="flat" color={rung === 'demo' ? 'default' : 'primary'} data-testid="rung-badge">
           {RUNG_LABEL[rung]}
         </Chip>
-        {outcome && <OutcomePill outcome={outcome.outcome} failedCount={outcome.failedCount} spanNanos={runSpanNanos} />}
+        {outcome && (
+          <OutcomePill
+            facts={outcome}
+            spanNanos={runSpanNanos}
+            // Events the backend shed may have been the first or the last.
+            spanIsFloor={droppedCount > 0}
+          />
+        )}
         <ViewPill
           readOnly={readOnly}
           replayActive={replayActive}
@@ -2079,31 +2158,34 @@ export function SessionHeader({
 }
 
 function OutcomePill({
-  outcome,
-  failedCount,
+  facts: { outcome, failedCount, ended },
   spanNanos,
+  spanIsFloor,
 }: {
-  outcome: RunOutcome
-  failedCount: number
+  facts: RunOutcomeFacts
   spanNanos: number | null
+  spanIsFloor: boolean
 }) {
-  const span = spanNanos !== null && (outcome === 'finished' || outcome === 'failed') ? ` · ${formatDuration(spanNanos)}` : ''
+  // A duration only once nothing runs any more: a failed run whose other
+  // coroutines still run has no length yet.
+  const span = ended && spanNanos !== null ? ` · ${formatDuration(spanNanos, { atLeast: spanIsFloor })}` : ''
   const failed = `${failedCount} ${failedCount === 1 ? 'coroutine' : 'coroutines'} failed`
-  const text = {
+  const text: Record<RunOutcome, string> = {
     notStarted: 'Not run yet',
     running: 'Running',
     finished: `Finished${span}`,
     failed: `Failed · ${failed}${span}`,
-  }[outcome]
+  }
   return (
     <Chip
       size="sm"
       variant="dot"
       color={outcome === 'failed' ? 'danger' : outcome === 'running' ? 'primary' : 'default'}
       data-testid="run-outcome"
+      title={span ? 'From the first to the last event this page holds' : undefined}
       className={outcome === 'failed' ? 'border-danger text-danger' : undefined}
     >
-      {text}
+      {text[outcome]}
     </Chip>
   )
 }
@@ -2142,7 +2224,7 @@ function ViewPill({
 }
 ```
 
-Notes for the implementer: `OutcomePill`'s `className` uses literal classes (IN-12); if HeroUI's `dot` variant already colours the text for `danger`, drop the `className` and assert on the `color` instead (check `pill.className` in the test against what HeroUI renders, e.g. `border-danger`). HeroUI `DropdownMenu` accepts an array of `DropdownItem` children; keep `key` on each.
+HeroUI `DropdownMenu` accepts an array of `DropdownItem` children; keep `key` on each.
 
 - [ ] **Step 4: Run it and see it pass**
 
@@ -2251,7 +2333,34 @@ Then update the existing tests that assert the old layout (each is a one-line ch
 | `'offers the checks report from the header …'` (~1192) | open `More actions`, click menu item `Checks` |
 | `'mounts the metric strip below the live canvas'`, `'puts the tree above the explanation'`, `'mounts SessionMetrics exactly once'` | unchanged (the dock body keeps that order) |
 
-In `SessionWorkspace.reachability.test.tsx`, the test `'renders the workspace body (metric strip + canvas) in the live view, with a single inline leak list'` keeps its assertions; only its title changes to "renders the main view and the dock (metric strip + canvas) …".
+In `SessionWorkspace.reachability.test.tsx`: add `useCreateSession` to its `@/hooks/use-sessions` mock (the workspace now calls `useScenarioActions` unconditionally — mutation hooks only, inert until used); the list button is now `'List'` (was `/list view/i`, five places); the test `'renders the workspace body (metric strip + canvas) …'` keeps its assertions and is retitled "renders the main view and the dock (metric strip + canvas) …".
+
+In `SessionWorkspace.request-budget.test.tsx` add, with the file's helpers (real hooks, fake timers):
+
+```tsx
+  it('folding, unfolding, maximising and restoring the dock long after load refetch nothing', async () => {
+    renderWorkspace()
+    await advance(MINUTE)
+    const afterLoad = requestCount()
+
+    // Past every query's stale time: a panel that re-subscribed now would refetch.
+    fireEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
+    await advance(5_000)
+    fireEvent.click(screen.getByRole('button', { name: 'Unfold the dock' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Maximise' }))
+    await advance(5_000)
+    fireEvent.click(screen.getByRole('button', { name: 'Restore dock' }))
+    await advance(5_000)
+
+    expect(requestCount() - afterLoad).toBe(0)
+  })
+```
+
+(it fails with 2 extra requests if the dock unmounts its body); and the four `getByText('Enable Live Stream')` become `getByRole('button', { name: 'Resume view' })`, and `stream-status` becomes `view-status`; the request counts and limits stay as they are.
+
+In `src/routes/first-run-ctas.test.tsx`: the two Reset tests open `More actions` and click the menu item `Reset session`.
+
+The fold test asserts `getByTestId('inspector-slot')` is **not visible** (the body is hidden, not unmounted).
 
 - [ ] **Step 2: Run them and see them fail**
 
@@ -2287,7 +2396,12 @@ In `src/components/SessionWorkspace.tsx`:
   // A demo's run outcome (S-3); an attached app has none.
   const isDemo = hasScenario || isDemoSessionId(sessionId)
   const outcome = useMemo(() => (isDemo && session ? deriveRunOutcome(session) : null), [isDemo, session])
-  const runSpanNanos = useMemo(() => recordedSpanNanos(allEvents), [allEvents])
+  // The run's length over everything the page holds: the history loaded with
+  // it and whatever streamed in since (either may be missing the other's part).
+  const runSpanNanos = useMemo(
+    () => recordedSpanNanos(storedEvents ?? [], streamEnabled ? liveEvents : []),
+    [storedEvents, streamEnabled, liveEvents],
+  )
   // Where the replay cursor is, as time since the first event (the view pill).
   const replayAtNanos = useMemo(() => {
     const visible = replay.visibleEvents
@@ -2392,12 +2506,13 @@ In `src/components/SessionWorkspace.tsx`:
         />
 
         {/* The dock (S-1). In this PR it holds today's panels in one scrolling
-            body; Part 3b gives them tabs. Maximise unmounts it. */}
-        {!dock.maximised && (
+            body; Part 3b gives them tabs. Maximise hides it, never unmounts it. */}
+        {(
           <SessionDock
             height={dock.height}
             maxHeight={dock.maxHeight}
             folded={dock.folded}
+            hidden={dock.maximised}
             onResize={dock.resize}
             onToggleFold={dock.toggleFold}
             bar={<h2 className="px-2 text-sm font-semibold">Details</h2>}
@@ -2467,7 +2582,7 @@ In `src/components/SessionWorkspace.tsx`:
   )
 ```
 
-   The loading spinner and error branches stay; wrap them so they still centre in a flex column (`<div className="flex flex-1 items-center justify-center py-20">`).
+   (The `{( … )}` wrapper above is only to show the change; write `<SessionDock …>` directly, un-nested.) The loading spinner branch centres in the flex column (`<div className="flex flex-1 items-center justify-center py-20">`).
 
 5. `git rm src/components/workspace/WorkspaceBody.tsx src/components/workspace/WorkspaceBody.test.tsx`. Its guarantees move with it: the metric strip is mounted once and only in the live view; the leak list once (covered by the existing `SessionWorkspace` tests `mounts SessionMetrics exactly once` and the reachability test).
 
@@ -2476,10 +2591,13 @@ In `src/components/SessionWorkspace.tsx`:
 ```tsx
   return (
     <Layout>
-      {/* Full width, full height under the 64 px navbar (S-1): the main view
-          and the dock share the window instead of scrolling a long page. */}
-      <div className="flex h-[calc(100dvh-4rem)] flex-col px-4 py-3 sm:px-6">
-        <SessionWorkspace … unchanged props … />
+      {/* Full width, full height under the navbar (64 px and its 1 px border,
+          S-1): the main view and the dock share the window instead of
+          scrolling a long page. */}
+      <div className="flex h-[calc(100dvh-65px)] flex-col px-4 py-3 sm:px-6">
+        {/* key: a new session is a new page — no selection, dock tab or stream
+            state carries over (Reset navigates between sessions). */}
+        <SessionWorkspace key={sessionId} … unchanged props … />
       </div>
     </Layout>
   )
@@ -3275,10 +3393,11 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
     const sync = screen.getByRole('button', { name: /Locks and permits/ })
     expect(sync).toHaveAttribute('aria-expanded', 'false')
     expect(sync).toHaveTextContent('1 lock, 1 semaphore')
-    expect(screen.queryByTestId('sync-panel')).toBeNull()
+    // Mounted from the start (its query subscribes at page load), only hidden.
+    expect(screen.getByTestId('sync-panel')).not.toBeVisible()
     await userEvent.click(sync)
     expect(sync).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByTestId('sync-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('sync-panel')).toBeVisible()
   })
 
   it('says "none captured" and what unlocks it, on a real session (D-5)', () => {
@@ -3309,7 +3428,7 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
     const threads = screen.getByRole('button', { name: /Threads/ })
     expect(threads).toHaveTextContent('1 name (1 JVM thread)')
     await userEvent.click(threads)
-    expect(screen.getByTestId('thread-table')).toBeInTheDocument()
+    expect(screen.getByTestId('thread-table')).toBeVisible()
   })
 
   it('summarises the dispatchers named in thread activity', async () => {
@@ -3317,7 +3436,7 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
     const dispatchers = screen.getByRole('button', { name: /Dispatchers/ })
     expect(dispatchers).toHaveTextContent('1 dispatcher')
     await userEvent.click(dispatchers)
-    expect(screen.getByTestId('dispatcher-overview')).toBeInTheDocument()
+    expect(screen.getByTestId('dispatcher-overview')).toBeVisible()
   })
 
   it('warns that an opened panel is not following the replay cursor (D-17)', async () => {
@@ -3330,6 +3449,16 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
     renderPanels()
     await userEvent.click(screen.getByRole('button', { name: /Dispatchers/ }))
     expect(screen.queryByTestId('live-data-notice')).toBeNull()
+  })
+
+  it('opens and closes with Space and Enter, like any disclosure button', async () => {
+    renderPanels()
+    const threads = screen.getByRole('button', { name: /Threads/ })
+    threads.focus()
+    await userEvent.keyboard(' ')
+    expect(threads).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.keyboard('{Enter}')
+    expect(threads).toHaveAttribute('aria-expanded', 'false')
   })
 })
 ```
@@ -3397,7 +3526,8 @@ interface Capability {
  * (D-5). Nothing is locked on a demo: it has full fidelity already, and
  * telling its user to swap in `VizMutex` names code that is not theirs.
  *
- * Folded sections mount nothing, so a panel's fetch waits until it is opened.
+ * Folded sections are hidden, not unmounted: every panel subscribes at page
+ * load, exactly as before, so opening one later never refetches.
  */
 export function EvidencePanels({
   sessionId,
@@ -3554,9 +3684,7 @@ function Section({
       <button
         type="button"
         aria-expanded={open}
-        // Only while the body is mounted: an id that resolves to nothing is a
-        // broken relationship for assistive tech.
-        aria-controls={open ? bodyId : undefined}
+        aria-controls={bodyId}
         onClick={onToggle}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
       >
@@ -3564,12 +3692,13 @@ function Section({
         <span className="font-semibold">{title}</span>
         <span className="text-default-500">· {summary}</span>
       </button>
-      {open && (
-        <div id={bodyId} className="space-y-2 px-3 pb-3">
-          {replayActive && <LiveDataNotice />}
-          {children}
-        </div>
-      )}
+      {/* Hidden, not unmounted: the panels subscribe to the session's events
+          at page load, as before, and never re-subscribe to a stale query (a
+          protected refetch in the shared view, T-03-22). */}
+      <div id={bodyId} hidden={!open} className="space-y-2 px-3 pb-3">
+        {replayActive && <LiveDataNotice />}
+        {children}
+      </div>
     </div>
   )
 }
@@ -3746,28 +3875,29 @@ vi.mock('../SessionMetrics', () => ({ SessionMetrics: () => <div data-testid="se
 import { SessionSummary } from './SessionSummary'
 
 describe('SessionSummary — the Inspector with nothing selected (T-3)', () => {
-  it('invites a selection and shows the metric tiles', () => {
+  it('invites a selection, says what was captured and shows the metric tiles', () => {
     metrics.mockReturnValue({ data: { leaks: [], leakThresholdMs: 60_000 } })
-    render(<SessionSummary sessionId="s-1" enabled />)
+    render(<SessionSummary sessionId="s-1" enabled coroutineCount={7} eventCount={54} />)
     expect(screen.getByText('Select a coroutine to inspect it')).toBeInTheDocument()
+    expect(screen.getByTestId('session-captured')).toHaveTextContent('7 coroutines and 54 events captured')
     expect(screen.getAllByTestId('session-metrics')).toHaveLength(1)
   })
 
   it('lists long-lived coroutines once, with their age in words', () => {
     metrics.mockReturnValue({ data: { leaks: [{ coroutineId: 'c-1', label: 'poll', aliveMs: 46_000 }], leakThresholdMs: 30_000 } })
-    render(<SessionSummary sessionId="s-1" enabled />)
+    render(<SessionSummary sessionId="s-1" enabled coroutineCount={1} eventCount={2} />)
     expect(screen.getByText(/poll · alive 46\.0 s/)).toBeInTheDocument()
   })
 
   it('passes the protected-fetch flag through (no /metrics without a Bearer)', () => {
     metrics.mockReturnValue({ data: undefined })
-    render(<SessionSummary sessionId="s-1" enabled={false} />)
+    render(<SessionSummary sessionId="s-1" enabled={false} coroutineCount={0} eventCount={0} />)
     expect(metrics).toHaveBeenCalledWith('s-1', false, false)
   })
 })
 ```
 
-In `Inspector.test.tsx`, add:
+In `Inspector.test.tsx`, change the D-7 ordering test to read the cards' headings only (`within(inspector).getAllByRole('heading', { level: 4 })`), since the new `<h2>` names the coroutine, and add:
 
 ```tsx
   it('heads the inspector with the coroutine\'s name and state', async () => {
@@ -3809,12 +3939,31 @@ import { LeakList } from '../LeakList'
  * the tiles use (React Query dedupes the key; PD-02). The health payload's
  * counts join it with Part 7.
  */
-export function SessionSummary({ sessionId, enabled }: { sessionId: string; enabled: boolean }) {
+export function SessionSummary({
+  sessionId,
+  enabled,
+  coroutineCount,
+  eventCount,
+}: {
+  sessionId: string
+  enabled: boolean
+  /** From the session snapshot: everything captured, vizcore's own connection included. */
+  coroutineCount: number
+  eventCount: number
+}) {
   // A pure observer: the workspace owns the refresh cadence (#124).
   const { data: metrics } = useSessionMetrics(sessionId, false, enabled)
   return (
     <div data-testid="session-summary" className="space-y-4">
       <p className="text-sm text-default-400">Select a coroutine to inspect it</p>
+      <p data-testid="session-captured" className="text-sm">
+        {coroutineCount} coroutines and {eventCount} events captured
+        <span className="text-default-500">
+          {' '}
+          — what vizcore captured; which are your app's and which its own connection's arrives with the
+          health API (Part 7).
+        </span>
+      </p>
       <SessionMetrics sessionId={sessionId} enabled={enabled} showLeaks={false} />
       {metrics && metrics.leaks.length > 0 && (
         <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
@@ -3885,19 +4034,43 @@ git commit -m "feat(frontend): the Inspector heads with the coroutine and sums u
 - Create: `src/components/workspace/EventsPanel.tsx`, `src/components/workspace/EventsPanel.test.tsx` (from `EventsDrawer` and its test)
 - Delete: `src/components/workspace/EventsDrawer.tsx`, `src/components/workspace/EventsDrawer.test.tsx`
 
-- [ ] **Step 1: Write the failing test** — `git mv` the drawer test to `EventsPanel.test.tsx`, import `EventsPanel`, and replace its tests with:
+- [ ] **Step 1: Write the failing test** — `git mv` the drawer test to `EventsPanel.test.tsx` and replace it with:
 
 ```tsx
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import type { VizEvent } from '@/types/api'
+
+vi.mock('../EventsList', () => ({
+  EventsList: ({ events }: { events: VizEvent[] }) => <div data-testid="events-list" data-count={events.length} />,
+}))
+
+import { EventsPanel } from './EventsPanel'
+
+function event(seq: number, coroutineId?: string): VizEvent {
+  return {
+    sessionId: 's-1',
+    seq,
+    tsNanos: seq * 1_000,
+    kind: 'coroutine.created',
+    ...(coroutineId
+      ? { coroutineId, jobId: `job-${coroutineId}`, parentCoroutineId: null, scopeId: 'scope-1', label: `label-${seq}` }
+      : {}),
+  } as VizEvent
+}
+
+const EVENTS: VizEvent[] = [event(1, 'c-1'), event(2, 'c-2'), event(3, 'c-1'), event(4)]
+
 describe('EventsPanel', () => {
   it('lists the whole session when nothing is selected', () => {
     render(<EventsPanel events={EVENTS} selectedCoroutine={null} />)
-    expect(screen.getByTestId('events-scope')).toHaveTextContent(`All ${EVENTS.length} events in this session`)
-    expect(screen.getByTestId('events-list')).toHaveAttribute('data-count', String(EVENTS.length))
+    expect(screen.getByTestId('events-scope')).toHaveTextContent('All 4 events in this session')
+    expect(screen.getByTestId('events-list')).toHaveAttribute('data-count', '4')
   })
 
   it('narrows to the selected coroutine and says whose events these are', () => {
     render(<EventsPanel events={EVENTS} selectedCoroutine={{ id: 'c-1', label: 'fetchUser' }} />)
-    expect(screen.getByTestId('events-scope')).toHaveTextContent('Events for fetchUser')
+    expect(screen.getByTestId('events-scope')).toHaveTextContent('Events for fetchUser · 2')
     expect(screen.getByTestId('events-list')).toHaveAttribute('data-count', '2')
   })
 
@@ -3907,8 +4080,6 @@ describe('EventsPanel', () => {
   })
 })
 ```
-
-(`EVENTS` is the drawer test's fixture; keep its `EventsList` mock. Adjust the `'2'` to however many of its events belong to `c-1`.)
 
 - [ ] **Step 2: Run it and see it fail**
 
@@ -4154,12 +4325,12 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
     expect(screen.getByRole('tab', { name: 'Evidence · 1 lock, 1 semaphore' })).toBeInTheDocument()
   })
 
-  it('opens the Inspector when a coroutine is selected in the tree', async () => {
-    // (uses the reachability suite's real graph; see SessionWorkspace.reachability.test.tsx)
-  })
-
-  it('never invites a selection that cannot work: replay and shared views say why (#145)', async () => {
-    // … the existing test body, unchanged: both texts are in the Inspector tab, which is selected …
+  it('unfolds a folded dock when a tab is chosen', async () => {
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'Fold the dock' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Learn' }))
+    expect(screen.getByRole('button', { name: 'Fold the dock' })).toBeInTheDocument()
+    expect(screen.getByTestId('learn-legend')).toBeVisible()
   })
 
   it('reaches the dispatchers in replay through Evidence', async () => {
@@ -4172,15 +4343,19 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
 })
 ```
 
-Drop the empty placeholder `it('opens the Inspector when a coroutine is selected…')` here and add it to `SessionWorkspace.reachability.test.tsx` instead (that suite renders the real graph):
+Keep the existing `'never invites a selection that cannot work …(#145)'` test as it is (both texts are in the Inspector tab, which is selected). In `SessionWorkspace.reachability.test.tsx` add, with that file's helpers (its first test already clicks a live node in the real list):
 
 ```tsx
   it('switches the dock to the Inspector when a coroutine is selected', async () => {
-    // mount a session started as a demo (opens on Learn), click a node, expect the Inspector tab selected
+    render(<SessionWorkspace sessionId="session-1" scenarioId="basics/launch" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('tab', { name: 'Learn' })).toHaveAttribute('aria-selected', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
+    await userEvent.click(screen.getAllByRole('button', { name: /^Open source for/ })[0]!)
+    expect(screen.getByRole('tab', { name: 'Inspector' })).toHaveAttribute('aria-selected', 'true')
   })
 ```
 
-written with that file's existing helpers (its first test already clicks a live node).
+(with a session whose coroutines are still running, so it opens on Learn).
 
 Update the other existing tests:
 
@@ -4217,6 +4392,8 @@ Expected: FAIL — no tabs.
   const selectDockTab = (tab: DockTabId) => {
     setPickedTab(tab)
     rememberDockTab(sessionId, tab)
+    // A tab chosen on a folded dock is a tab you want to read.
+    if (dock.folded) dock.toggleFold()
   }
 
   // What the Evidence tab holds, named on its label (S-4).
@@ -4275,7 +4452,16 @@ Expected: FAIL — no tabs.
                 coroutine={isLiveView ? selectedCoroutine : null}
                 readOnly={readOnly}
                 // T-3's session summary, live view only (M-4).
-                emptyState={isLiveView ? <SessionSummary sessionId={sessionId} enabled={!readOnly} /> : undefined}
+                emptyState={
+                  isLiveView ? (
+                    <SessionSummary
+                      sessionId={sessionId}
+                      enabled={!readOnly}
+                      coroutineCount={session.coroutineCount}
+                      eventCount={session.eventCount}
+                    />
+                  ) : undefined
+                }
                 // Selection is live-only, so outside the live view the inspector
                 // must not invite a click that cannot work (#145).
                 placeholder={
@@ -4303,7 +4489,8 @@ Expected: FAIL — no tabs.
             <DockTabPanel id="events" selected={dockTab === 'events'}>
               {/* Mounted only while shown: a long event list is the heaviest
                   render on the page, and a hidden one would re-render on every
-                  live flush. */}
+                  live flush. It fetches nothing, so mounting later costs no
+                  request. Every other panel stays mounted and is hidden. */}
               {dockTab === 'events' && <EventsPanel events={panelEvents} selectedCoroutine={selectedCoroutine} />}
             </DockTabPanel>
             <DockTabPanel id="learn" selected={dockTab === 'learn'}>
@@ -4341,7 +4528,83 @@ git commit -m "feat(frontend): the dock's tabs re-host the inspector, evidence, 
 
 ---
 
-### Task 25: Narrow widths (S-14)
+### Task 25: The replay slider announces its time (S-14)
+
+**Files:**
+- Modify: `src/hooks/use-replay.ts` (return the frozen `events` it replays)
+- Create: `src/lib/replay-time.ts`, `src/lib/replay-time.test.ts`
+- Modify: `src/components/replay/ReplayController.tsx` (the slider's accessible value)
+- Test: `src/components/replay/ReplayController.test.tsx`
+
+- [ ] **Step 1: Write the failing tests**
+
+`src/lib/replay-time.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { replayTimeText } from './replay-time'
+import type { VizEvent } from '@/types/api'
+
+const ev = (tsNanos: number) => ({ seq: 1, tsNanos, sessionId: 's', kind: 'CoroutineCreated' }) as unknown as VizEvent
+
+describe('replayTimeText', () => {
+  it('reads the cursor as seconds of the whole replay', () => {
+    expect(replayTimeText([ev(1e9), ev(5.2e9), ev(13e9)], 1)).toBe('4.2 seconds of 12.0')
+  })
+
+  it('reads zero at the start and the whole length at the end', () => {
+    expect(replayTimeText([ev(0), ev(12e9)], 0)).toBe('0.0 seconds of 12.0')
+    expect(replayTimeText([ev(0), ev(12e9)], 1)).toBe('12.0 seconds of 12.0')
+  })
+
+  it('is undefined with nothing to replay', () => {
+    expect(replayTimeText([], 0)).toBeUndefined()
+  })
+})
+```
+
+In `ReplayController.test.tsx` add: rendering with `makeReplay({ events: [ev(0), ev(4.2e9), ev(12e9)], currentIndex: 1, totalEvents: 3 })` gives the slider's input (`screen.getByRole('slider')`) `aria-valuetext` "4.2 seconds of 12.0".
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `pnpm vitest run src/lib/replay-time.test.ts src/components/replay/ReplayController.test.tsx`
+Expected: FAIL.
+
+- [ ] **Step 3: Implement**
+
+`src/lib/replay-time.ts`:
+
+```ts
+import type { VizEvent } from '@/types/api'
+
+/**
+ * What the replay slider announces (S-14): "4.2 seconds of 12.0", from the
+ * first event of the frozen replay to the cursor's, over the whole replay.
+ * The slider still steps by event (seconds arrive with Part 8); this only
+ * says where in time each step is.
+ */
+export function replayTimeText(events: readonly VizEvent[], index: number): string | undefined {
+  const first = events[0]
+  const last = events[events.length - 1]
+  const at = events[Math.min(Math.max(index, 0), events.length - 1)]
+  if (!first || !last || !at) return undefined
+  const s = (nanos: number) => (nanos / 1e9).toFixed(1)
+  return `${s(at.tsNanos - first.tsNanos)} seconds of ${s(last.tsNanos - first.tsNanos)}`
+}
+```
+
+`use-replay.ts`: add `events: VizEvent[]` to `ReplayState` and return the `events` argument (the frozen snapshot) from the hook. `ReplayController`: compute `const timeText = replayTimeText(replay.events, currentIndex)` and give it to the slider — HeroUI's `Slider` forwards `getValue` to the visible output only, so pass the text to the thumb input through react-aria's `aria-valuetext` (check `@heroui/slider`'s `getThumbProps`; if no prop reaches the input, set it in an effect on `sliderRef.current?.querySelector('input[type=range]')`). Keep the visible "Event N / M" counter. Update `makeReplay` in the test file with `events: []`.
+
+- [ ] **Step 4: Run them and see them pass**, then commit:
+
+```bash
+git add src/lib/replay-time.ts src/lib/replay-time.test.ts src/hooks/use-replay.ts src/components/replay
+git commit -m "feat(frontend): the replay slider says where in time it is"
+```
+
+---
+
+### Task 26: Narrow widths (S-14)
 
 Most of S-14 is already in place after Task 24: the tab row scrolls sideways (`flex-nowrap overflow-x-auto`), the Inspector stacks below `lg` (1,024 px), the thread table scrolls in its own box, graph cards are buttons (Tab, Enter) and the list's cards are pressable. What remains is checked in the browser:
 
@@ -4351,7 +4614,7 @@ Most of S-14 is already in place after Task 24: the tab row scrolls sideways (`f
 
 ---
 
-### Task 26: Browser check (3a + 3b), reviews and PRs
+### Task 27: Browser check (3a + 3b), reviews and PRs
 
 - [ ] **Servers** (only these ports):
 
