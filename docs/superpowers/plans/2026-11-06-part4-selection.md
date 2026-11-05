@@ -38,8 +38,14 @@ One PR. It is about half of Part 3b's size and every task leaves a working page,
   - permit: "waits for a payment-gateway permit · 2nd", "holds a payment-gateway permit", "holds 2 payment-gateway permits" — a permit is never numbered;
   - channel: "waits to send to orders", "waits to receive from orders";
   - a wait whose resource the producer did not name: "waits for a lock", "waits for a permit", "waits to send", "waits to receive".
-  A wait comes from the suspension the wrapper recorded (`waitKind`, Part 2); an older producer records none, so the latest queue also says who waits. A resource is named by its label, else its id. A wait line uses the Suspended colour (`text-warning`, readable in both themes); a hold alone is neutral (`text-default-600`): a held lock is normal work (S-6).
-- **"holder unknown"** (S-6/S-7): in Locks and permits, a semaphore lists its holders with their permit counts and, when permits came back from a coroutine that held none, "1 permit, holder unknown". No node gets that line: nobody is the holder.
+  A wait comes from the suspension the wrapper recorded (`waitKind`, Part 2), until the coroutine's next resume, suspension or end. **A queue alone is not taken for a wait**: a waiter that has resumed stays listed until the next queue event, and an older producer records no wait kind — no line is better than a wrong one (its queue still shows in Evidence). A resource is named by its label, else its id. A wait line uses the Suspended colour (`text-warning`, readable in both themes); a hold alone is neutral (`text-default-600`): a held lock is normal work (S-6).
+- **"holder unknown"** (S-6/S-7). `unknownHolderPermits` counts *listed* permits beyond those in use: a permit came back from a coroutine that held none, so one of the listed holders no longer holds one, and which is unknown. Then Locks and permits reads "Held by holder unknown — 1 of 3 permits in use; last recorded holders order-3, order-4. A permit came back from a coroutine that held none.", and each listed holder's second line reads "may hold a payment-gateway permit · holder unknown". Otherwise the holders are listed with their counts ("order-3 (2 permits), order-4").
+- **The projections read events in seq order** (`inSeqOrder`), not arrival order: the live stream accepts an event whose seq is lower than one it holds, and a suspension that arrives after its own resume must not read as a wait. Already-ordered input (the usual case) is not copied.
+- **A late release keeps the new holder.** `VizMutex.unlock` releases the lock before it records `MutexUnlocked`, so the waiter it woke can record `MutexLockAcquired` first. The previous holder's release recorded after the next acquisition does not free the lock; a release by any other coroutine does.
+- **Permit operations count between snapshots.** A semaphore's `SemaphoreStateChanged` follows each acquire and release, but a stream flush or a replay cursor can fall between the two: `SemaphorePermitAcquired` adds a permit to its acquirer (and takes it out of the queue), an attributed release takes one back, an unattributed one (`holderUnknown`, or a releaser holding none) adds to `unknownHolderPermits`; the next snapshot replaces all of it.
+- **One selection, also for channels.** The Channels section's own channel picker selects the channel on the page (Events then shows its events); the page's selection decides which channel the section shows.
+- **A selection that is gone is cleared:** a coroutine no longer in the snapshot (as before), and a resource no longer named by the page's events (Clear events, a history trimmed past it). Clear events also clears the selection.
+- **Only what the page can select is a button.** Holder and waiter names in Locks and permits are buttons only for coroutines in the snapshot (a `CoroutinePicker` with `canSelect`), like event rows; a wrapper used outside any coroutine records "unknown…", which reads "outside any coroutine", in rows and in Evidence. Channel rows are named by the channel's name.
 - **Evidence follows the page's events.** `useSyncEvents`, `useChannelEvents`, `useFlowEvents` and `useJobEvents` take the events the workspace passes (`panelEvents`), falling back to the stored history when none are passed; they still subscribe to it, so the request profile (#124) is unchanged. In replay these sections therefore follow the cursor, like Threads, and lose their "showing current data" notice; Dispatchers, still a server read, keeps it.
 - **The graph card grows 16 px** (224 → 240) to hold the second line under the state; the list view adds it under the id line.
 - **Not in this part:** the paused view still reads the history loaded with the page (as Evidence did before); "Refresh" re-reads the snapshot only. Part 8 binds every read to one moment.
@@ -49,24 +55,29 @@ One PR. It is about half of Part 3b's size and every task leaves a working page,
 - **Metric tiles** read "Active0", "Peak6": label and value sit in a `justify-between` row with no gap inside a card that shrinks to its content. The tile becomes a `<dl>` (term, definition) with a gap.
 - **Design doc, S-3**, amended with two decisions made while building Part 3: Export stays its own menu next to "⋯" (a menu inside a menu is awkward); T-2's "last data" and start time wait for Part 7, because they need the health API's wall-clock observation time, not the browser's clock.
 
+## Review history
+
+- **Codex plan review R1 — request changes** (8 P1, 2 P2), all taken: unknown-holder permits read the wrong way round; a queue alone resurrected ended waits; a late `MutexUnlocked` freed a lock already handed over; arrival order was trusted; permit operations did not move holders between snapshots; the Channels picker kept a second selection; a resource selection never went stale; an optional `selection` did not type-check in `useState`; channel rows had empty titles; Evidence names offered unselectable coroutines. The decisions above and Tasks 3, 5, 6, 8, 9, 10, 11 and 13 carry the fixes; Tasks 1–13 are already built on `feat/session-selection`, so this plan shows the code as built.
+
 ## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
 | `src/components/SessionMetrics.tsx` (+ test) | modify | tiles as `<dl>` with a gap |
 | `docs/superpowers/specs/2026-11-05-session-dock-design.md` | modify | S-3 amendment, ownership row |
-| `src/lib/projections/project-sync.ts` (+ test) | create | pure mutex/semaphore reducer; holder permit counts; unknown-holder permits |
+| `src/lib/projections/project-sync.ts` (+ test) | create | pure mutex/semaphore reducer, in seq order; holder permit counts; unknown-holder permits; late release; permit operations |
+| `src/lib/projections/in-seq-order.ts` | create | events in seq order, without copying ordered input |
 | `src/hooks/use-sync-events.ts` (+ test) | modify | thin hook over `projectSync`; optional `events` |
 | `src/hooks/use-channel-events.ts`, `use-flow-events.ts`, `use-job-events.ts` (+ tests) | modify | optional `events` |
-| `src/lib/projections/project-waits.ts` | modify | accepts a readonly list |
-| `src/lib/selection.ts` (+ test) | create | `Selection`, what an event is about, which events concern a selection, resource names, a row's title |
+| `src/lib/projections/project-waits.ts` (+ test) | modify | accepts a readonly list; reduces in seq order |
+| `src/lib/selection.ts` (+ test) | create | `Selection`, what an event is about, which events concern a selection, resource names and ids, a row's title, `namesCoroutine` |
 | `src/lib/activity.ts` (+ test) | create | the second line per coroutine; `ordinal` |
 | `src/components/CoroutineTreeGraph.tsx` (+ test) | modify | second line on the card; card 240 px |
 | `src/components/CoroutineTree.tsx` (+ test) | modify | second line in the list |
 | `src/components/workspace/CoroutineCanvas.tsx` (+ test) | modify | passes `activity` through |
-| `src/components/sync/CoroutineName.tsx` | create | a coroutine's name as a select button, highlighted when selected |
+| `src/components/sync/CoroutineName.tsx` | create | a coroutine's name as a select button when the page can select it, marked when selected; `CoroutinePicker` |
 | `src/components/sync/SyncPanel.tsx`, `MutexStateIndicator.tsx`, `SemaphoreGauge.tsx`, `WaitQueueList.tsx` (+ test) | modify | events in; selected resource ringed and scrolled to; names select; holders with permit counts and "holder unknown" |
-| `src/components/channels/ChannelPanel.tsx`, `flow/FlowPanel.tsx`, `jobs/JobPanel.tsx` (+ tests) | modify | events in; ChannelPanel follows a focused channel |
+| `src/components/channels/ChannelPanel.tsx`, `flow/FlowPanel.tsx`, `jobs/JobPanel.tsx` (+ tests) | modify | events in; ChannelPanel shows the page's channel and selects on the page |
 | `src/components/workspace/EvidencePanels.tsx` (+ test) | modify | passes events and selection; a selected resource unfolds its section; notice only on Dispatchers |
 | `src/components/EventsList.tsx` (+ new test) | modify | rows are buttons selecting what they are about; a title for lock and permit rows |
 | `src/components/workspace/EventsPanel.tsx` (+ test) | modify | scoped by `Selection`; "All events" |
@@ -178,7 +189,7 @@ git commit -m "docs: amend S-3 — Export beside the menu; last data and start t
 - Modify: `frontend/src/hooks/use-sync-events.ts` (whole file)
 - Modify: `frontend/src/hooks/use-sync-events.test.ts:255-258` (holders gain `permits`), add one test
 
-- [ ] **Step 1: Write the failing tests** — `project-sync.test.ts`:
+- [ ] **Step 1: Write the failing tests** — `src/lib/projections/project-sync.test.ts`:
 
 ```ts
 /** Unit tests for projectSync — what each mutex and semaphore looks like after a list of events (S-6). */
@@ -228,7 +239,10 @@ describe('projectSync', () => {
 
   it('keeps the permits whose holder is unknown (S-7), zero by default', () => {
     expect(projectSync([created]).semaphores[0]!.unknownHolderPermits).toBe(0)
-    const { semaphores } = projectSync([created, stateChanged({ activeHolders: ['c-1'], activeHolderLabels: ['order-1'], unknownHolderPermits: 1 })])
+    const { semaphores } = projectSync([
+      created,
+      stateChanged({ activeHolders: ['c-1'], activeHolderLabels: ['order-1'], unknownHolderPermits: 1 }),
+    ])
     expect(semaphores[0]!.unknownHolderPermits).toBe(1)
   })
 
@@ -238,21 +252,87 @@ describe('projectSync', () => {
       event('MutexLockAcquired', { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'c-1', acquirerLabel: 'order-1', waitDurationNanos: 0 }),
       event('MutexQueueChanged', { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-2', 'c-3'], waitingLabels: ['order-2', 'order-3'] }),
     ])
-    expect(mutexes[0]).toMatchObject({ isLocked: true, currentHolder: 'c-1', waitQueue: [{ id: 'c-2', label: 'order-2' }, { id: 'c-3', label: 'order-3' }] })
+    expect(mutexes[0]).toMatchObject({
+      isLocked: true,
+      currentHolder: 'c-1',
+      waitQueue: [{ id: 'c-2', label: 'order-2' }, { id: 'c-3', label: 'order-3' }],
+    })
+  })
+
+  describe('a lock handed over', () => {
+    const m = { mutexId: 'm-1', mutexLabel: 'inventory-lock' }
+    const acquired = (who: string) => event('MutexLockAcquired', { ...m, acquirerId: who, acquirerLabel: who, waitDurationNanos: 0 })
+    const unlocked = (who: string) => event('MutexUnlocked', { ...m, releaserId: who, releaserLabel: who, nextWaiterId: null, holdDurationNanos: 0 })
+
+    it('the ordinary handoff: released, then acquired by the next', () => {
+      const [mutex] = projectSync([acquired('c-1'), unlocked('c-1'), acquired('c-2')]).mutexes
+      expect(mutex).toMatchObject({ isLocked: true, currentHolder: 'c-2' })
+    })
+
+    it('the previous holder\'s release recorded after the next acquisition does not free the lock', () => {
+      // VizMutex unlocks before it records the release, so the waiter it woke can record its acquisition first.
+      const [mutex] = projectSync([acquired('c-1'), acquired('c-2'), unlocked('c-1')]).mutexes
+      expect(mutex).toMatchObject({ isLocked: true, currentHolder: 'c-2' })
+    })
+
+    it('a release by some other coroutine frees it', () => {
+      const [mutex] = projectSync([acquired('c-1'), unlocked('c-9')]).mutexes
+      expect(mutex).toMatchObject({ isLocked: false, currentHolder: null })
+    })
+  })
+
+  it('reduces in seq order whatever order the events arrived in', () => {
+    const m = { mutexId: 'm-1', mutexLabel: 'inventory-lock' }
+    const a = event('MutexLockAcquired', { ...m, acquirerId: 'c-1', acquirerLabel: 'c-1', waitDurationNanos: 0 })
+    const u = event('MutexUnlocked', { ...m, releaserId: 'c-1', releaserLabel: 'c-1', nextWaiterId: null, holdDurationNanos: 0 })
+    const arrived = [u, a]
+    expect(projectSync(arrived).mutexes[0]).toMatchObject({ isLocked: false })
+    expect(arrived).toEqual([u, a])
+  })
+
+  describe('permits between two state snapshots', () => {
+    const s = { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway' }
+    const acquired = (who: string) => event('SemaphorePermitAcquired', { ...s, acquirerId: who, acquirerLabel: who, remainingPermits: 1, waitDurationNanos: 0 })
+    const released = (who: string, holderUnknown = false) =>
+      event('SemaphorePermitReleased', { ...s, releaserId: who, releaserLabel: who, newAvailablePermits: 2, holdDurationNanos: 0, holderUnknown })
+
+    it('an acquisition counts before its snapshot arrives, and leaves the queue', () => {
+      const queued = stateChanged({ activeHolders: [], activeHolderLabels: [], waitingCoroutines: ['c-1'], waitingLabels: ['c-1'] })
+      const [sem] = projectSync([created, queued, acquired('c-1')]).semaphores
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
+      expect(sem!.waitQueue).toEqual([])
+    })
+
+    it('a coroutine acquiring twice holds two', () => {
+      const [sem] = projectSync([created, acquired('c-1'), acquired('c-1')]).semaphores
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 2 }])
+    })
+
+    it('its own release takes one back', () => {
+      const [sem] = projectSync([created, acquired('c-1'), acquired('c-2'), released('c-1')]).semaphores
+      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-2'])
+      expect(sem!.unknownHolderPermits).toBe(0)
+    })
+
+    it('a release by a coroutine that held none leaves the holders unknown, not shorter', () => {
+      const [sem] = projectSync([created, acquired('c-1'), acquired('c-2'), released('c-9', true)]).semaphores
+      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-1', 'c-2'])
+      expect(sem!.unknownHolderPermits).toBe(1)
+    })
+
+    it('the next snapshot replaces what the operations implied', () => {
+      const [sem] = projectSync([
+        created, acquired('c-1'), released('c-9', true),
+        stateChanged({ activeHolders: [], activeHolderLabels: [], unknownHolderPermits: 0 }),
+      ]).semaphores
+      expect(sem!.activeHolders).toEqual([])
+      expect(sem!.unknownHolderPermits).toBe(0)
+    })
   })
 })
 ```
 
-And in `use-sync-events.test.ts`, change the expectation at lines 255-258 to:
-
-```ts
-    expect(semaphore.activeHolders).toEqual([
-      { id: 'c1', label: 'Worker-1', permits: 1 },
-      { id: 'c2', label: 'Worker-2', permits: 1 },
-    ])
-```
-
-and add, inside `describe('useSyncEvents', …)`:
+In `use-sync-events.test.ts`, the holders gain `permits: 1` in the "updates semaphore state" expectation, and a new test:
 
 ```ts
   it('reads the events it is given, not the stored history, when given some', () => {
@@ -267,12 +347,33 @@ and add, inside `describe('useSyncEvents', …)`:
   })
 ```
 
+`project-waits.test.ts` "keeps each coroutine apart…" builds its events in seq order (it built the later suspension first and relied on array order).
+
 - [ ] **Step 2: Run them and see them fail**
 
 Run: `pnpm exec vitest run src/lib/projections/project-sync.test.ts src/hooks/use-sync-events.test.ts`
 Expected: FAIL — `Failed to resolve import "./project-sync"`; the hook tests fail on `permits` and on the `live` list being ignored.
 
-- [ ] **Step 3: Implement** — `project-sync.ts` is today's reducer from `use-sync-events.ts`, moved verbatim, with these changes: the module header; `Holder` / `SemaphoreHolder` types; `SemaphoreState` gains `activeHolders: SemaphoreHolder[]` and `unknownHolderPermits`; the `SemaphoreCreated`, `SemaphoreStateChanged` and `ensureSemaphore` branches fill them; the function takes `readonly VizEvent[] | undefined`.
+- [ ] **Step 3: Implement.** `src/lib/projections/in-seq-order.ts`:
+
+```ts
+import type { VizEvent } from '@/types/api'
+
+/**
+ * The events in seq order. The live stream appends events as they arrive, and accepts one whose seq is lower
+ * than one already held (use-event-stream.ts); the projections reduce in order, so an earlier event that
+ * arrived late must not undo a later one (a suspension after its own resume). Returns the same array, not a
+ * copy, when it is already in order — the usual case — and never sorts the caller's array in place.
+ */
+export function inSeqOrder(events: readonly VizEvent[]): readonly VizEvent[] {
+  for (let i = 1; i < events.length; i++) {
+    if (events[i]!.seq < events[i - 1]!.seq) return [...events].sort((a, b) => a.seq - b.seq)
+  }
+  return events
+}
+```
+
+`src/lib/projections/project-sync.ts` (today's reducer from `use-sync-events.ts`, moved, with the changes the header names):
 
 ```ts
 /**
@@ -282,8 +383,15 @@ Expected: FAIL — `Failed to resolve import "./project-sync"`; the hook tests f
  * whichever events the page shows: the live stream's, the stored history's, or the replay cursor's.
  * Queues are the latest observed queue. Permits are counted per holder, never numbered; permits that came
  * back from a coroutine that held none have no known holder (S-7) and are counted apart.
+ *
+ * Reduced in seq order, whatever order the events arrived in. Two orderings the wrappers produce are handled:
+ * VizMutex unlocks before it records the release, so the waiter it woke can record its acquisition first,
+ * and the previous holder's late release must not free the lock; and a semaphore's state snapshot follows
+ * each acquire and release, so the operation events themselves update the holders in between (a stream
+ * flush or a replay cursor can fall between the two), and the next snapshot replaces what they implied.
  */
 import { SYNC_EVENT_KINDS } from '@/types/api'
+import { inSeqOrder } from './in-seq-order'
 import type {
   VizEvent,
   MutexCreated,
@@ -348,24 +456,227 @@ export interface SyncProjection {
 }
 
 export function projectSync(events: readonly VizEvent[] | undefined): SyncProjection {
-  // … the body of today's useMemo callback in use-sync-events.ts, unchanged except:
-  //   case 'SemaphoreCreated': the new state also gets `unknownHolderPermits: 0`
-  //   case 'SemaphoreStateChanged':
-  //     state.activeHolders = e.activeHolders.map((id, i) => ({
-  //       id,
-  //       label: e.activeHolderLabels[i] ?? null,
-  //       // An older producer sends no counts: each listed holder held one.
-  //       permits: e.activeHolderPermits?.[i] ?? 1,
-  //     }))
-  //     state.unknownHolderPermits = e.unknownHolderPermits ?? 0
+  const syncEvents: SyncEvent[] = []
+  const mutexStates = new Map<string, MutexState>()
+  const semaphoreStates = new Map<string, SemaphoreState>()
+  const deadlocks: DeadlockDetected[] = []
+  const warnings: PotentialDeadlockWarning[] = []
+
+  if (!events || events.length === 0) {
+    return {
+      syncEvents: [],
+      mutexes: [],
+      semaphores: [],
+      deadlocks: [],
+      warnings: [],
+      hasDeadlock: false,
+    }
+  }
+
+  // The holder each lock had before its current one: its release may be recorded after the handover.
+  const previousHolders = new Map<string, string | null>()
+
+  for (const event of inSeqOrder(events)) {
+    if (!SYNC_EVENT_KINDS.has(event.kind)) continue
+
+    const syncEvent = event as unknown as SyncEvent
+    syncEvents.push(syncEvent)
+
+    switch (syncEvent.kind) {
+      case 'MutexCreated': {
+        const e = syncEvent as MutexCreated
+        mutexStates.set(e.mutexId, {
+          mutexId: e.mutexId,
+          label: e.mutexLabel,
+          isLocked: false,
+          currentHolder: e.ownerCoroutineId,
+          currentHolderLabel: null,
+          waitQueue: [],
+          contentionCount: 0,
+          lockAcquisitions: 0,
+        })
+        break
+      }
+      case 'MutexLockRequested': {
+        const e = syncEvent as MutexLockRequested
+        ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
+        const state = mutexStates.get(e.mutexId)!
+        if (e.isLocked) {
+          state.contentionCount++
+        }
+        break
+      }
+      case 'MutexLockAcquired': {
+        const e = syncEvent as MutexLockAcquired
+        ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
+        const state = mutexStates.get(e.mutexId)!
+        previousHolders.set(e.mutexId, state.currentHolder)
+        state.isLocked = true
+        state.currentHolder = e.acquirerId
+        state.currentHolderLabel = e.acquirerLabel
+        state.lockAcquisitions++
+        // Remove from wait queue
+        state.waitQueue = state.waitQueue.filter((w) => w.id !== e.acquirerId)
+        break
+      }
+      case 'MutexUnlocked': {
+        const e = syncEvent as MutexUnlocked
+        ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
+        const state = mutexStates.get(e.mutexId)!
+        // The previous holder's release, recorded after the next holder's acquisition: the lock is not free.
+        const lateRelease =
+          state.currentHolder !== null &&
+          e.releaserId !== state.currentHolder &&
+          e.releaserId === previousHolders.get(e.mutexId)
+        if (lateRelease) {
+          previousHolders.set(e.mutexId, null)
+          break
+        }
+        state.isLocked = false
+        state.currentHolder = null
+        state.currentHolderLabel = null
+        break
+      }
+      case 'MutexTryLockFailed': {
+        const e = syncEvent as MutexTryLockFailed
+        ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
+        mutexStates.get(e.mutexId)!.contentionCount++
+        break
+      }
+      case 'MutexQueueChanged': {
+        const e = syncEvent as MutexQueueChanged
+        ensureMutex(mutexStates, e.mutexId, e.mutexLabel)
+        const state = mutexStates.get(e.mutexId)!
+        state.waitQueue = e.waitingCoroutineIds.map((id, i) => ({
+          id,
+          label: e.waitingLabels[i] ?? null,
+        }))
+        break
+      }
+      case 'SemaphoreCreated': {
+        const e = syncEvent as SemaphoreCreated
+        semaphoreStates.set(e.semaphoreId, {
+          semaphoreId: e.semaphoreId,
+          label: e.semaphoreLabel,
+          totalPermits: e.totalPermits,
+          availablePermits: e.totalPermits,
+          activeHolders: [],
+          unknownHolderPermits: 0,
+          waitQueue: [],
+        })
+        break
+      }
+      case 'SemaphoreAcquireRequested': {
+        const e = syncEvent as SemaphoreAcquireRequested
+        ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
+        break
+      }
+      case 'SemaphorePermitAcquired': {
+        const e = syncEvent as SemaphorePermitAcquired
+        ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
+        const state = semaphoreStates.get(e.semaphoreId)!
+        state.availablePermits = e.remainingPermits
+        // Counted now; the snapshot that follows replaces the list (a flush or a cursor can fall between).
+        const held = state.activeHolders.find(h => h.id === e.acquirerId)
+        state.activeHolders = held
+          ? state.activeHolders.map(h => (h === held ? { ...h, permits: h.permits + 1 } : h))
+          : [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
+        state.waitQueue = state.waitQueue.filter(w => w.id !== e.acquirerId)
+        break
+      }
+      case 'SemaphorePermitReleased': {
+        const e = syncEvent as SemaphorePermitReleased
+        ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
+        const state = semaphoreStates.get(e.semaphoreId)!
+        state.availablePermits = e.newAvailablePermits
+        const held = e.holderUnknown ? undefined : state.activeHolders.find(h => h.id === e.releaserId)
+        if (held) {
+          state.activeHolders = state.activeHolders
+            .map(h => (h === held ? { ...h, permits: h.permits - 1 } : h))
+            .filter(h => h.permits > 0)
+        } else {
+          // Released by a coroutine that held none (S-7): one of the listed permits is free, whose is unknown.
+          const listed = state.activeHolders.reduce((sum, h) => sum + h.permits, 0)
+          state.unknownHolderPermits = Math.min(state.unknownHolderPermits + 1, listed)
+        }
+        break
+      }
+      case 'SemaphoreTryAcquireFailed': {
+        const e = syncEvent as SemaphoreTryAcquireFailed
+        ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
+        break
+      }
+      case 'SemaphoreStateChanged': {
+        const e = syncEvent as SemaphoreStateChanged
+        ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
+        const state = semaphoreStates.get(e.semaphoreId)!
+        state.availablePermits = e.availablePermits
+        state.totalPermits = e.totalPermits
+        state.activeHolders = e.activeHolders.map((id, i) => ({
+          id,
+          label: e.activeHolderLabels[i] ?? null,
+          // An older producer sends no counts: each listed holder held one.
+          permits: e.activeHolderPermits?.[i] ?? 1,
+        }))
+        state.unknownHolderPermits = e.unknownHolderPermits ?? 0
+        state.waitQueue = e.waitingCoroutines.map((id, i) => ({
+          id,
+          label: e.waitingLabels[i] ?? null,
+        }))
+        break
+      }
+      case 'DeadlockDetected': {
+        deadlocks.push(syncEvent as DeadlockDetected)
+        break
+      }
+      case 'PotentialDeadlockWarning': {
+        warnings.push(syncEvent as PotentialDeadlockWarning)
+        break
+      }
+    }
+  }
+
+  return {
+    syncEvents,
+    mutexes: Array.from(mutexStates.values()),
+    semaphores: Array.from(semaphoreStates.values()),
+    deadlocks,
+    warnings,
+    hasDeadlock: deadlocks.length > 0,
+  }
 }
 
-// ensureMutex: unchanged. ensureSemaphore: its new state also gets `unknownHolderPermits: 0`.
+function ensureMutex(map: Map<string, MutexState>, id: string, label: string | null) {
+  if (!map.has(id)) {
+    map.set(id, {
+      mutexId: id,
+      label,
+      isLocked: false,
+      currentHolder: null,
+      currentHolderLabel: null,
+      waitQueue: [],
+      contentionCount: 0,
+      lockAcquisitions: 0,
+    })
+  }
+}
+
+function ensureSemaphore(map: Map<string, SemaphoreState>, id: string, label: string | null) {
+  if (!map.has(id)) {
+    map.set(id, {
+      semaphoreId: id,
+      label,
+      totalPermits: 0,
+      availablePermits: 0,
+      activeHolders: [],
+      unknownHolderPermits: 0,
+      waitQueue: [],
+    })
+  }
+}
 ```
 
-The engineer moves the body for real (copy the `useMemo` callback body into `projectSync`, with `events` in place of the hook's `events`) — it is ~150 lines and is not re-typed here to keep the diff a move.
-
-`use-sync-events.ts` becomes:
+`src/hooks/use-sync-events.ts`:
 
 ```ts
 import { useMemo } from 'react'
@@ -392,7 +703,36 @@ export function useSyncEvents(sessionId: string, events?: readonly VizEvent[]): 
 }
 ```
 
-Also change `projectWaits(events: VizEvent[])` to `projectWaits(events: readonly VizEvent[])` in `src/lib/projections/project-waits.ts` (no behaviour change; Task 5 calls it with a readonly list).
+`project-waits.ts` reduces `inSeqOrder(events)` and takes a readonly list:
+
+```diff
+diff --git a/frontend/src/lib/projections/project-waits.ts b/frontend/src/lib/projections/project-waits.ts
+index 406640dd..17a86d84 100644
+--- a/frontend/src/lib/projections/project-waits.ts
++++ b/frontend/src/lib/projections/project-waits.ts
+@@ -10,6 +10,7 @@
+  */
+ 
+ import type { CoroutineSuspendedEvent, VizEvent, WaitKind } from '@/types/api'
++import { inSeqOrder } from './in-seq-order'
+ 
+ export interface WaitFact {
+   waitKind: WaitKind
+@@ -33,10 +34,11 @@ const ENDS_WAIT: ReadonlySet<string> = new Set([
+  * @param events - VizEvents in seq order (typically the replay `visibleEvents` slice)
+  * @returns coroutineId -> its current wait, for coroutines waiting on a wrapper now
+  */
+-export function projectWaits(events: VizEvent[]): Map<string, WaitFact> {
++export function projectWaits(events: readonly VizEvent[]): Map<string, WaitFact> {
+   const waits = new Map<string, WaitFact>()
+ 
+-  for (const event of events) {
++  // In seq order: a suspension that arrived after its own resume is over (inSeqOrder).
++  for (const event of inSeqOrder(events)) {
+     if (!ENDS_WAIT.has(event.kind) || !('coroutineId' in event)) continue
+     waits.delete(event.coroutineId)
+ 
+```
 
 - [ ] **Step 4: Run the tests**
 
@@ -493,7 +833,7 @@ git commit -m "feat(frontend): channel, flow and job evidence read the events th
 /** Unit tests for the page's one selection (S-2): what each event is about, and what a selection's events are. */
 import { describe, it, expect } from 'vitest'
 import type { VizEvent } from '@/types/api'
-import { eventConcerns, eventSubject, eventTitle, resourceNames } from './selection'
+import { eventConcerns, eventSubject, eventTitle, namesCoroutine, resourceIds, resourceNames } from './selection'
 
 function ev(kind: string, fields: Record<string, unknown> = {}): VizEvent {
   return { sessionId: 's', seq: 1, tsNanos: 1, kind, ...fields } as unknown as VizEvent
@@ -582,6 +922,39 @@ describe('eventTitle', () => {
     expect(eventTitle(ev('MutexCreated', lock))).toBe('inventory-lock')
     expect(eventTitle(ev('SemaphorePermitReleased', { semaphoreId: 'sem-1', semaphoreLabel: null, releaserId: 'c-3', releaserLabel: null }))).toBe('c-3 · sem-1')
   })
+
+  it('names a channel event by its channel, from the page\'s names', () => {
+    const names = new Map([['ch-1', 'orders']])
+    expect(eventTitle(ev('ChannelCreated', { channelId: 'ch-1', name: 'orders' }))).toBe('orders')
+    expect(eventTitle(ev('ChannelClosed', { channelId: 'ch-1', cause: null }), names)).toBe('orders')
+    expect(eventTitle(ev('ChannelBufferStateChanged', { channelId: 'ch-1', currentSize: 1, capacity: 2 }))).toBe('ch-1')
+    expect(eventTitle(ev('ChannelSendStarted', { channelId: 'ch-1', coroutineId: 'c-1' }), names)).toBe('c-1 · orders')
+  })
+
+  it('says "outside any coroutine" for a wrapper used outside one', () => {
+    expect(eventTitle(ev('MutexUnlocked', { ...lock, releaserId: 'unknown', releaserLabel: null }))).toBe('outside any coroutine · inventory-lock')
+  })
+})
+
+describe('namesCoroutine', () => {
+  it('is false for the ids the wrappers write when there was no coroutine', () => {
+    expect(namesCoroutine('c-1')).toBe(true)
+    expect(namesCoroutine('unknown')).toBe(false)
+    expect(namesCoroutine('unknown-123')).toBe(false)
+    expect(namesCoroutine(null)).toBe(false)
+  })
+})
+
+describe('resourceIds', () => {
+  it('lists every lock, semaphore and channel the events name, labelled or not', () => {
+    const ids = resourceIds([
+      ev('MutexCreated', { mutexId: 'm-2', mutexLabel: null }),
+      ev('SemaphoreStateChanged', { semaphoreId: 'sem-1' }),
+      ev('ChannelClosed', { channelId: 'ch-1' }),
+      ev('coroutine.started', { coroutineId: 'c-1' }),
+    ])
+    expect([...ids].sort()).toEqual(['ch-1', 'm-2', 'sem-1'])
+  })
 })
 ```
 
@@ -632,7 +1005,7 @@ interface Fields {
 const fieldsOf = (event: VizEvent) => event as unknown as Fields
 
 /** A coroutine id that names a coroutine; the wrappers write "unknown…" when there was none. */
-function namesCoroutine(id: string | null | undefined): id is string {
+export function namesCoroutine(id: string | null | undefined): id is string {
   return !!id && id !== 'unknown' && !id.startsWith('unknown-')
 }
 
@@ -675,12 +1048,31 @@ export function resourceNames(events: readonly VizEvent[]): Map<string, string> 
   return names
 }
 
-/** A row's title in the event list: its coroutine, and for lock and permit events the resource too. */
-export function eventTitle(event: VizEvent): string {
+/** Every lock, semaphore and channel the events name: a selected resource no longer among them is gone. */
+export function resourceIds(events: readonly VizEvent[]): Set<string> {
+  const ids = new Set<string>()
+  for (const event of events) {
+    const f = fieldsOf(event)
+    const id = f.mutexId ?? f.semaphoreId ?? f.channelId
+    if (id) ids.add(id)
+  }
+  return ids
+}
+
+/** A wrapper used outside any coroutine names no coroutine; the title says so rather than "unknown-123". */
+const OUTSIDE = 'outside any coroutine'
+
+/**
+ * A row's title in the event list: its coroutine, and for lock, permit and channel events the resource too.
+ * A channel is named from `names` (the page's resource names, `resourceNames`), else by its id.
+ */
+export function eventTitle(event: VizEvent, names: ReadonlyMap<string, string> = new Map()): string {
   const f = fieldsOf(event)
-  const who =
-    f.label ?? f.requesterLabel ?? f.acquirerLabel ?? f.releaserLabel ?? f.coroutineId ?? f.requesterId ?? f.acquirerId ?? f.releaserId
-  const what = f.mutexLabel ?? f.mutexId ?? f.semaphoreLabel ?? f.semaphoreId
+  const id = f.coroutineId ?? f.requesterId ?? f.acquirerId ?? f.releaserId
+  const label = f.label ?? f.requesterLabel ?? f.acquirerLabel ?? f.releaserLabel
+  const who = label ?? (id == null ? null : namesCoroutine(id) ? id : OUTSIDE)
+  const channel = f.channelId ? (f.kind === 'ChannelCreated' && f.name ? f.name : (names.get(f.channelId) ?? f.channelId)) : null
+  const what = f.mutexLabel ?? f.mutexId ?? f.semaphoreLabel ?? f.semaphoreId ?? channel
   return [who, what].filter(Boolean).join(' · ')
 }
 ```
@@ -758,9 +1150,19 @@ describe('projectActivity', () => {
     expect(lines.get('c-2')).toEqual({ text: 'holds inventory-lock', waiting: false })
   })
 
-  it('reads the queue alone from an older producer that records no wait kind', () => {
+  it('a queue alone is no wait: the line needs the suspension the wrapper recorded', () => {
+    // An older producer records no wait kind; and a waiter that has resumed can still be listed until the
+    // next queue event. Neither may read as waiting.
     const lines = projectActivity([ev('MutexCreated', lock), queue(['c-2'])])
-    expect(lines.get('c-2')?.text).toBe('waits for inventory-lock · 1st')
+    expect(lines.has('c-2')).toBe(false)
+    const resumed = projectActivity([ev('MutexCreated', lock), queue(['c-2']), waitFor('c-2', 'MUTEX', 'm-1'), ev('coroutine.resumed', { coroutineId: 'c-2' })])
+    expect(resumed.has('c-2')).toBe(false)
+  })
+
+  it('a wait that arrived after its own resume is still over (seq order, not arrival order)', () => {
+    const suspended = waitFor('c-2', 'MUTEX', 'm-1')
+    const resumed = ev('coroutine.resumed', { coroutineId: 'c-2' })
+    expect(projectActivity([resumed, suspended]).has('c-2')).toBe(false)
   })
 
   it('names a lock by its id when it has no label', () => {
@@ -824,6 +1226,18 @@ describe('projectActivity', () => {
   it('a delay is no wait', () => {
     expect(projectActivity([ev('coroutine.suspended', { coroutineId: 'c-1', reason: 'delay' })]).has('c-1')).toBe(false)
   })
+
+  it('when a permit came back from a coroutine that held none, its holder is unknown', () => {
+    const lines = projectActivity([
+      ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
+      ev('SemaphoreStateChanged', {
+        ...sem, availablePermits: 2, totalPermits: 3, activeHolders: ['c-1', 'c-2'], activeHolderLabels: ['c-1', 'c-2'],
+        activeHolderPermits: [1, 1], waitingCoroutines: [], waitingLabels: [], unknownHolderPermits: 1,
+      }),
+    ])
+    expect(lines.get('c-1')).toEqual({ text: 'may hold a payment-gateway permit · holder unknown', waiting: false })
+    expect(lines.get('c-2')?.text).toBe('may hold a payment-gateway permit · holder unknown')
+  })
 })
 ```
 
@@ -839,10 +1253,13 @@ Expected: FAIL — `Failed to resolve import "./activity"`.
  * A node's second line (spec S-6): what a coroutine waits for or holds, as the lock, permit and channel
  * events show it — "waits for inventory-lock · 1st", "holds a payment-gateway permit".
  *
- * A wait is the suspension a wrapper recorded with its kind and resource (S-7, `projectWaits`); an older
- * producer records none, so the latest observed queue also says who waits. The place in the queue is the
- * latest observed one. Permits are counted, never numbered. A wait is drawn in the Suspended colour; a hold
- * alone is neutral, because a held lock is normal work.
+ * A wait is the suspension a wrapper recorded with its kind and resource (S-7, `projectWaits`), until the
+ * coroutine's next resume, suspension or end. A queue alone is not taken for a wait: a waiter that has resumed
+ * stays listed until the next queue event, and an older producer records no wait kind — no line is better
+ * than a wrong one. The place in the queue is the latest observed one. Permits are counted, never numbered;
+ * when a permit came back from a coroutine that held none, which listed holder still holds one is unknown,
+ * and the line says so. A wait is drawn in the Suspended colour; a hold alone is neutral, because a held
+ * lock is normal work.
  */
 import type { VizEvent, WaitKind } from '@/types/api'
 import { projectSync, type Holder } from './projections/project-sync'
@@ -911,17 +1328,6 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   for (const [coroutineId, wait] of projectWaits(events)) {
     waits.set(coroutineId, describeWait(coroutineId, wait.waitKind, wait.resourceId))
   }
-  // An older producer records no wait kind: the latest queue still says who waits, and where.
-  for (const m of sync.mutexes) {
-    m.waitQueue.forEach((w, i) => {
-      if (!waits.has(w.id)) waits.set(w.id, `waits for ${nameOf(m.mutexId)} · ${ordinal(i + 1)}`)
-    })
-  }
-  for (const s of sync.semaphores) {
-    s.waitQueue.forEach((w, i) => {
-      if (!waits.has(w.id)) waits.set(w.id, `waits for ${aPermit(nameOf(s.semaphoreId))} · ${ordinal(i + 1)}`)
-    })
-  }
 
   const holds = new Map<string, string[]>()
   const hold = (coroutineId: string, text: string) => holds.set(coroutineId, [...(holds.get(coroutineId) ?? []), text])
@@ -930,8 +1336,11 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   }
   for (const s of sync.semaphores) {
     const name = nameOf(s.semaphoreId)
+    // A permit came back from a coroutine that held none (S-7): which listed holder still holds one is unknown.
+    const ambiguous = s.unknownHolderPermits > 0
     for (const h of s.activeHolders) {
-      hold(h.id, h.permits === 1 ? `holds ${aPermit(name)}` : `holds ${h.permits} ${name} permits`)
+      const permits = h.permits === 1 ? aPermit(name) : `${h.permits} ${name} permits`
+      hold(h.id, ambiguous ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
     }
   }
 
@@ -1105,7 +1514,7 @@ git commit -m "feat(frontend): every node says what it waits for or holds, on a 
 - Modify: `frontend/src/components/sync/SyncPanel.tsx`, `MutexStateIndicator.tsx`, `SemaphoreGauge.tsx`, `WaitQueueList.tsx`
 - Test: `frontend/src/components/sync/SyncPanel.test.tsx`
 
-- [ ] **Step 1: Write the failing tests** — append to `SyncPanel.test.tsx` (it already wraps in a `QueryClientProvider` and mocks `apiClient.getSessionEvents`; `mockedApiClient.getSessionEvents.mockResolvedValue([])` keeps the stored history empty):
+- [ ] **Step 1: Write the failing tests** — append to `SyncPanel.test.tsx` (import `userEvent`; the semaphore fixture in the `SemaphoreGauge` test gains `unknownHolderPermits: 0`):
 
 ```tsx
 describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
@@ -1114,14 +1523,15 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     makeSyncEvent('MutexLockAcquired', 2, { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'c-1', acquirerLabel: 'order-1', waitDurationNanos: 0 }),
     makeSyncEvent('MutexQueueChanged', 3, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-2'], waitingLabels: ['order-2'] }),
   ]
-  const permitEvents = [
+  const permits = (fields: Record<string, unknown>) => [
     makeSyncEvent('SemaphoreCreated', 4, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
     makeSyncEvent('SemaphoreStateChanged', 5, {
-      semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', availablePermits: 0, totalPermits: 3,
-      activeHolders: ['c-3'], activeHolderLabels: ['order-3'], activeHolderPermits: [2], unknownHolderPermits: 1,
-      waitingCoroutines: [], waitingLabels: [],
+      semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3,
+      activeHolders: ['c-3', 'c-4'], activeHolderLabels: ['order-3', 'order-4'], waitingCoroutines: [], waitingLabels: [],
+      ...fields,
     }),
   ]
+  const anyone = (select = vi.fn()) => ({ select, canSelect: () => true })
 
   beforeEach(() => {
     mockedApiClient.getSessionEvents.mockResolvedValue([])
@@ -1132,24 +1542,60 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(screen.getByTestId('mutex-state')).toHaveTextContent('order-1')
   })
 
-  it('lists a semaphore\'s holders with their permits, and permits whose holder is unknown', () => {
-    render(<SyncPanel sessionId="session-1" events={permitEvents} />, { wrapper: createWrapper() })
+  it('lists a semaphore\'s holders with their permits', () => {
+    render(<SyncPanel sessionId="session-1" events={permits({ availablePermits: 0, activeHolderPermits: [2, 1] })} />, {
+      wrapper: createWrapper(),
+    })
     const held = screen.getByTestId('semaphore-holders')
     expect(held).toHaveTextContent('order-3 (2 permits)')
-    expect(held).toHaveTextContent('1 permit, holder unknown')
+    expect(held).toHaveTextContent('order-4')
+    expect(held).not.toHaveTextContent('holder unknown')
+  })
+
+  it('says "holder unknown" when a permit came back from a coroutine that held none (S-6, S-7)', () => {
+    // Two permits listed, one in use: one of the two was released by somebody else, and which is unknown.
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 2, activeHolderPermits: [1, 1], unknownHolderPermits: 1 })} />,
+      { wrapper: createWrapper() },
+    )
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown')
+    expect(held).toHaveTextContent('1 of 3 permits in use')
+    expect(held).toHaveTextContent('last recorded holders order-3, order-4')
   })
 
   it('selects a holder or a waiter by name', async () => {
-    const onSelectCoroutine = vi.fn()
-    render(<SyncPanel sessionId="session-1" events={lockEvents} onSelectCoroutine={onSelectCoroutine} />, { wrapper: createWrapper() })
+    const select = vi.fn()
+    render(<SyncPanel sessionId="session-1" events={lockEvents} picker={anyone(select)} />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: 'order-1' }))
     await userEvent.click(screen.getByRole('button', { name: 'order-2' }))
-    expect(onSelectCoroutine.mock.calls).toEqual([['c-1'], ['c-2']])
+    expect(select.mock.calls).toEqual([['c-1'], ['c-2']])
+  })
+
+  it('offers no button for a coroutine the page cannot select, and names no coroutine for "unknown"', () => {
+    const events = [
+      makeSyncEvent('MutexCreated', 1, { mutexId: 'm-1', mutexLabel: 'inventory-lock', ownerCoroutineId: null }),
+      makeSyncEvent('MutexLockAcquired', 2, { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'unknown-42', acquirerLabel: null, waitDurationNanos: 0 }),
+      makeSyncEvent('MutexQueueChanged', 3, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-gone'], waitingLabels: ['gone'] }),
+    ]
+    render(
+      <SyncPanel sessionId="session-1" events={events} picker={{ select: vi.fn(), canSelect: id => id === 'c-1' }} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('mutex-state')).toHaveTextContent('outside any coroutine')
+    expect(screen.getByText('gone')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'gone' })).toBeNull()
   })
 
   it('marks the selected coroutine and rings the selected resource', () => {
     render(
-      <SyncPanel sessionId="session-1" events={[...lockEvents, ...permitEvents]} selectedCoroutineId="c-1" selectedResourceId="sem-1" onSelectCoroutine={vi.fn()} />,
+      <SyncPanel
+        sessionId="session-1"
+        events={[...lockEvents, ...permits({ availablePermits: 0, activeHolderPermits: [2, 1] })]}
+        selectedCoroutineId="c-1"
+        selectedResourceId="sem-1"
+        picker={anyone()}
+      />,
       { wrapper: createWrapper() },
     )
     expect(screen.getByRole('button', { name: 'order-1' })).toHaveAttribute('aria-current', 'true')
@@ -1160,38 +1606,48 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
 })
 ```
 
-(import `userEvent` from `@testing-library/user-event` if the file does not.)
-
 - [ ] **Step 2: Run them and see them fail**
 
 Run: `pnpm exec vitest run src/components/sync/SyncPanel.test.tsx`
 Expected: FAIL — the stored (empty) history is read; no `semaphore-holders`; no name buttons.
 
-- [ ] **Step 3: Implement.**
-
-`CoroutineName.tsx`:
+- [ ] **Step 3: Implement.** `CoroutineName.tsx`:
 
 ```tsx
+import { namesCoroutine } from '@/lib/selection'
+
+/** How Locks and permits selects a coroutine by its name (S-2): only one the page can select. */
+export interface CoroutinePicker {
+  select: (id: string) => void
+  /** False for a coroutine the session snapshot does not hold: selecting it would be cleared at once. */
+  canSelect: (id: string) => boolean
+}
+
 interface CoroutineNameProps {
   id: string
   label: string | null
-  /** Selects this coroutine (S-2); without it the name is plain text. */
-  onSelect?: (id: string) => void
+  /** Without it (replay, the shared view) the name is plain text. */
+  picker?: CoroutinePicker
   /** It is the page's selection. */
   selected?: boolean
 }
 
-/** A coroutine's name in the Locks and permits section: a button that selects it, marked when selected. */
-export function CoroutineName({ id, label, onSelect, selected = false }: CoroutineNameProps) {
-  const name = label || id
-  const marked = selected ? 'rounded-small bg-primary/10 px-1 font-semibold' : ''
-  if (!onSelect) return <span className={`font-mono ${marked}`}>{name}</span>
+/**
+ * A coroutine's name in the Locks and permits section: a button that selects it when the page can, marked
+ * when selected. A wrapper used outside any coroutine records "unknown…": that names nobody, and says so.
+ */
+export function CoroutineName({ id, label, picker, selected = false }: CoroutineNameProps) {
+  const name = label || (namesCoroutine(id) ? id : 'outside any coroutine')
+  const marked = selected ? ' rounded-small bg-primary/10 px-1 font-semibold' : ''
+  if (!picker || !namesCoroutine(id) || !picker.canSelect(id)) {
+    return <span className={`font-mono${marked}`}>{name}</span>
+  }
   return (
     <button
       type="button"
       aria-current={selected ? 'true' : undefined}
-      onClick={() => onSelect(id)}
-      className={`font-mono text-primary hover:underline ${marked}`}
+      onClick={() => picker.select(id)}
+      className={`font-mono text-primary hover:underline${marked}`}
     >
       {name}
     </button>
@@ -1199,80 +1655,455 @@ export function CoroutineName({ id, label, onSelect, selected = false }: Corouti
 }
 ```
 
-`WaitQueueList.tsx`: props gain `onSelect?: (id: string) => void` and `selectedId?: string | null`; the entry's `<span className="font-mono truncate">{entry.label || entry.id}</span>` becomes `<span className="truncate"><CoroutineName id={entry.id} label={entry.label} onSelect={onSelect} selected={entry.id === selectedId} /></span>`.
+The other four files:
 
-`MutexStateIndicator.tsx`: props gain `selected?: boolean`, `selectedCoroutineId?: string | null`, `onSelectCoroutine?: (id: string) => void`. The outer `motion.div` gets `data-testid={`resource-${mutex.mutexId}`}`, `data-selected={selected ? 'true' : 'false'}`, and `className={selected ? 'rounded-xl ring-2 ring-primary' : 'rounded-xl'}`. The holder value becomes:
-
-```tsx
-              <div className="font-semibold">
-                {mutex.currentHolder ? (
-                  <CoroutineName
-                    id={mutex.currentHolder}
-                    label={mutex.currentHolderLabel}
-                    onSelect={onSelectCoroutine}
-                    selected={mutex.currentHolder === selectedCoroutineId}
-                  />
-                ) : (
-                  'None'
-                )}
-              </div>
+```diff
+diff --git a/frontend/src/components/sync/MutexStateIndicator.tsx b/frontend/src/components/sync/MutexStateIndicator.tsx
+index 08b432b2..754bb3de 100644
+--- a/frontend/src/components/sync/MutexStateIndicator.tsx
++++ b/frontend/src/components/sync/MutexStateIndicator.tsx
+@@ -1,12 +1,24 @@
+ import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
+ import { motion } from 'framer-motion'
+ import type { MutexState } from '@/hooks/use-sync-events'
++import { CoroutineName, type CoroutinePicker } from './CoroutineName'
+ 
+ interface MutexStateIndicatorProps {
+   mutex: MutexState
++  /** The page selected this lock (S-2): ringed. */
++  selected?: boolean
++  /** The page's selected coroutine, marked when it holds the lock. */
++  selectedCoroutineId?: string | null
++  /** Selects the holder, when the page can (S-2). */
++  picker?: CoroutinePicker
+ }
+ 
+-export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
++export function MutexStateIndicator({
++  mutex,
++  selected = false,
++  selectedCoroutineId = null,
++  picker,
++}: MutexStateIndicatorProps) {
+   // A held lock is normal work, not an error (spec S-6): neutral grey, never red.
+   return (
+     <motion.div
+@@ -28,7 +40,9 @@ export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
+             }
+       }
+       transition={{ duration: 2, repeat: Infinity }}
+-      className="rounded-xl"
++      data-testid={`resource-${mutex.mutexId}`}
++      data-selected={selected ? 'true' : 'false'}
++      className={selected ? 'rounded-xl ring-2 ring-primary' : 'rounded-xl'}
+     >
+       <Card shadow="sm" data-testid="mutex-state">
+         <CardHeader className="pb-2">
+@@ -59,10 +73,17 @@ export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
+           <div className="grid grid-cols-3 gap-3 text-xs">
+             <div>
+               <div className="text-default-500">Holder</div>
+-              <div className="font-mono font-semibold">
+-                {mutex.currentHolder
+-                  ? mutex.currentHolderLabel || mutex.currentHolder
+-                  : 'None'}
++              <div className="font-semibold">
++                {mutex.currentHolder ? (
++                  <CoroutineName
++                    id={mutex.currentHolder}
++                    label={mutex.currentHolderLabel}
++                    picker={picker}
++                    selected={mutex.currentHolder === selectedCoroutineId}
++                  />
++                ) : (
++                  'None'
++                )}
+               </div>
+             </div>
+             <div>
+diff --git a/frontend/src/components/sync/SemaphoreGauge.tsx b/frontend/src/components/sync/SemaphoreGauge.tsx
+index 017dabec..18e265aa 100644
+--- a/frontend/src/components/sync/SemaphoreGauge.tsx
++++ b/frontend/src/components/sync/SemaphoreGauge.tsx
+@@ -1,9 +1,16 @@
+ import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
+ import { motion } from 'framer-motion'
+ import type { SemaphoreState } from '@/hooks/use-sync-events'
++import { CoroutineName, type CoroutinePicker } from './CoroutineName'
+ 
+ interface SemaphoreGaugeProps {
+   semaphore: SemaphoreState
++  /** The page selected this semaphore (S-2): ringed. */
++  selected?: boolean
++  /** The page's selected coroutine, marked when it holds a permit. */
++  selectedCoroutineId?: string | null
++  /** Selects a holder, when the page can (S-2). */
++  picker?: CoroutinePicker
+ }
+ 
+ function getGaugeColor(available: number, total: number): 'success' | 'warning' | 'danger' {
+@@ -14,11 +21,14 @@ function getGaugeColor(available: number, total: number): 'success' | 'warning'
+   return 'success'
+ }
+ 
+-export function SemaphoreGauge({ semaphore }: SemaphoreGaugeProps) {
++export function SemaphoreGauge({
++  semaphore,
++  selected = false,
++  selectedCoroutineId = null,
++  picker,
++}: SemaphoreGaugeProps) {
+   const usedPermits = semaphore.totalPermits - semaphore.availablePermits
+-  const percent = semaphore.totalPermits > 0
+-    ? (usedPermits / semaphore.totalPermits) * 100
+-    : 0
++  const percent = semaphore.totalPermits > 0 ? (usedPermits / semaphore.totalPermits) * 100 : 0
+   const color = getGaugeColor(semaphore.availablePermits, semaphore.totalPermits)
+ 
+   // SVG arc calculation
+@@ -27,80 +37,133 @@ export function SemaphoreGauge({ semaphore }: SemaphoreGaugeProps) {
+   const dashOffset = circumference - dashArray
+ 
+   return (
+-    <Card shadow="sm" data-testid="semaphore-gauge">
+-      <CardHeader className="pb-2">
+-        <div className="flex w-full items-center justify-between">
+-          <div>
+-            <div className="font-semibold text-sm">
+-              {semaphore.label || semaphore.semaphoreId}
++    <div
++      data-testid={`resource-${semaphore.semaphoreId}`}
++      data-selected={selected ? 'true' : 'false'}
++      className={selected ? 'rounded-large ring-2 ring-primary' : undefined}
++    >
++      <Card shadow="sm" data-testid="semaphore-gauge">
++        <CardHeader className="pb-2">
++          <div className="flex w-full items-center justify-between">
++            <div>
++              <div className="font-semibold text-sm">
++                {semaphore.label || semaphore.semaphoreId}
++              </div>
++              <div className="text-xs text-default-500 font-mono">{semaphore.semaphoreId}</div>
+             </div>
+-            <div className="text-xs text-default-500 font-mono">{semaphore.semaphoreId}</div>
++            <Chip size="sm" variant="flat" color={color}>
++              {semaphore.availablePermits} / {semaphore.totalPermits} available
++            </Chip>
+           </div>
+-          <Chip size="sm" variant="flat" color={color}>
+-            {semaphore.availablePermits} / {semaphore.totalPermits} available
+-          </Chip>
+-        </div>
+-      </CardHeader>
+-      <CardBody className="pt-0 space-y-3">
+-        {/* Circular gauge representation using progress bar */}
+-        <div className="flex items-center justify-center" data-testid="gauge-visual">
+-          <div className="relative w-24 h-24">
+-            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+-              {/* Background circle */}
+-              <circle
+-                cx="50"
+-                cy="50"
+-                r="40"
+-                fill="none"
+-                stroke="currentColor"
+-                strokeWidth="8"
+-                className="text-default-200"
+-              />
+-              {/* Used permits arc - animated */}
+-              <motion.circle
+-                cx="50"
+-                cy="50"
+-                r="40"
+-                fill="none"
+-                stroke="currentColor"
+-                strokeWidth="8"
+-                strokeDasharray={circumference}
+-                initial={{ strokeDashoffset: circumference }}
+-                animate={{ strokeDashoffset: dashOffset }}
+-                transition={{ duration: 0.8, ease: 'easeOut' }}
+-                className={
+-                  color === 'danger'
+-                    ? 'text-danger'
+-                    : color === 'warning'
+-                      ? 'text-warning'
+-                      : 'text-success'
+-                }
+-                strokeLinecap="round"
+-              />
+-            </svg>
+-            <div className="absolute inset-0 flex flex-col items-center justify-center">
+-              <motion.div
+-                className="text-lg font-bold"
+-                initial={{ scale: 0.8, opacity: 0 }}
+-                animate={{ scale: 1, opacity: 1 }}
+-                transition={{ type: 'spring', stiffness: 300, damping: 25, delay: 0.3 }}
+-              >
+-                {usedPermits}
+-              </motion.div>
+-              <div className="text-[10px] text-default-400">used</div>
++        </CardHeader>
++        <CardBody className="pt-0 space-y-3">
++          {/* Circular gauge representation using progress bar */}
++          <div className="flex items-center justify-center" data-testid="gauge-visual">
++            <div className="relative w-24 h-24">
++              <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
++                {/* Background circle */}
++                <circle
++                  cx="50"
++                  cy="50"
++                  r="40"
++                  fill="none"
++                  stroke="currentColor"
++                  strokeWidth="8"
++                  className="text-default-200"
++                />
++                {/* Used permits arc - animated */}
++                <motion.circle
++                  cx="50"
++                  cy="50"
++                  r="40"
++                  fill="none"
++                  stroke="currentColor"
++                  strokeWidth="8"
++                  strokeDasharray={circumference}
++                  initial={{ strokeDashoffset: circumference }}
++                  animate={{ strokeDashoffset: dashOffset }}
++                  transition={{ duration: 0.8, ease: 'easeOut' }}
++                  className={
++                    color === 'danger'
++                      ? 'text-danger'
++                      : color === 'warning'
++                        ? 'text-warning'
++                        : 'text-success'
++                  }
++                  strokeLinecap="round"
++                />
++              </svg>
++              <div className="absolute inset-0 flex flex-col items-center justify-center">
++                <motion.div
++                  className="text-lg font-bold"
++                  initial={{ scale: 0.8, opacity: 0 }}
++                  animate={{ scale: 1, opacity: 1 }}
++                  transition={{ type: 'spring', stiffness: 300, damping: 25, delay: 0.3 }}
++                >
++                  {usedPermits}
++                </motion.div>
++                <div className="text-[10px] text-default-400">used</div>
++              </div>
+             </div>
+           </div>
+-        </div>
+ 
+-        {/* Waiting info */}
+-        {semaphore.waitQueue.length > 0 && (
+-          <div className="text-xs">
+-            <Chip size="sm" variant="flat" color="warning">
+-              {semaphore.waitQueue.length} waiting
+-            </Chip>
++          {/* Who holds the permits (S-6): counted, never numbered. When a permit came back from a
++              coroutine that held none (S-7), more permits are listed than are in use, and which listed
++              holder still holds one is unknown: the line says "holder unknown", not a guess. */}
++          <div data-testid="semaphore-holders" className="text-xs">
++            <span className="text-default-500">Held by </span>
++            {semaphore.unknownHolderPermits > 0 ? (
++              <>
++                <span className="font-semibold">holder unknown</span>
++                <span className="text-default-500">
++                  {' '}
++                  — {usedPermits} of {semaphore.totalPermits} permits in use; last recorded holders{' '}
++                </span>
++                <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} />
++                <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
++              </>
++            ) : semaphore.activeHolders.length === 0 ? (
++              <span>none</span>
++            ) : (
++              <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} counts />
++            )}
+           </div>
+-        )}
+-      </CardBody>
+-    </Card>
++
++          {/* Waiting info */}
++          {semaphore.waitQueue.length > 0 && (
++            <div className="text-xs">
++              <Chip size="sm" variant="flat" color="warning">
++                {semaphore.waitQueue.length} waiting
++              </Chip>
++            </div>
++          )}
++        </CardBody>
++      </Card>
++    </div>
++  )
++}
++
++/** The listed holders, comma-separated; with `counts`, a holder of several permits says how many. */
++function HolderNames({
++  semaphore,
++  picker,
++  selectedCoroutineId,
++  counts = false,
++}: {
++  semaphore: SemaphoreState
++  picker?: CoroutinePicker
++  selectedCoroutineId: string | null
++  counts?: boolean
++}) {
++  return (
++    <>
++      {semaphore.activeHolders.map((h, i) => (
++        <span key={h.id}>
++          {i > 0 && ', '}
++          <CoroutineName id={h.id} label={h.label} picker={picker} selected={h.id === selectedCoroutineId} />
++          {counts && h.permits > 1 && <span className="text-default-500"> ({h.permits} permits)</span>}
++        </span>
++      ))}
++    </>
+   )
+ }
+diff --git a/frontend/src/components/sync/SyncPanel.tsx b/frontend/src/components/sync/SyncPanel.tsx
+index 10d5c6a1..09fdfe5e 100644
+--- a/frontend/src/components/sync/SyncPanel.tsx
++++ b/frontend/src/components/sync/SyncPanel.tsx
+@@ -1,3 +1,4 @@
++import { useEffect, useRef } from 'react'
+ import { Card, CardBody, Divider } from '@heroui/react'
+ import { motion } from 'framer-motion'
+ import { useSyncEvents } from '@/hooks/use-sync-events'
+@@ -5,13 +6,36 @@ import { MutexStateIndicator } from './MutexStateIndicator'
+ import { SemaphoreGauge } from './SemaphoreGauge'
+ import { WaitQueueList } from './WaitQueueList'
+ import { DeadlockWarning } from './DeadlockWarning'
++import type { CoroutinePicker } from './CoroutineName'
++import type { VizEvent } from '@/types/api'
+ 
+ interface SyncPanelProps {
+   sessionId: string
++  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
++  events?: readonly VizEvent[]
++  /** A lock or semaphore the page selected: ringed and scrolled into view (S-2). */
++  selectedResourceId?: string | null
++  /** The selected coroutine, marked where it holds or waits. */
++  selectedCoroutineId?: string | null
++  /** Selects a coroutine by its name, when the page can (S-2). */
++  picker?: CoroutinePicker
+ }
+ 
+-export function SyncPanel({ sessionId }: SyncPanelProps) {
+-  const { mutexes, semaphores, deadlocks, warnings } = useSyncEvents(sessionId)
++export function SyncPanel({
++  sessionId,
++  events,
++  selectedResourceId = null,
++  selectedCoroutineId = null,
++  picker,
++}: SyncPanelProps) {
++  const { mutexes, semaphores, deadlocks, warnings } = useSyncEvents(sessionId, events)
++  // Bring a selected resource into view; its section was unfolded in the same render.
++  const panelRef = useRef<HTMLDivElement>(null)
++  useEffect(() => {
++    if (!selectedResourceId) return
++    const el = panelRef.current?.querySelector(`[data-testid="resource-${CSS.escape(selectedResourceId)}"]`)
++    el?.scrollIntoView?.({ block: 'nearest' })
++  }, [selectedResourceId])
+ 
+   if (mutexes.length === 0 && semaphores.length === 0 && deadlocks.length === 0 && warnings.length === 0) {
+     return (
+@@ -36,6 +60,7 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
+ 
+   return (
+     <motion.div
++      ref={panelRef}
+       className="space-y-4 mt-2"
+       data-testid="sync-panel"
+       initial={{ opacity: 0 }}
+@@ -64,10 +89,20 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
+               animate={{ opacity: 1, y: 0 }}
+               transition={{ duration: 0.3, delay: index * 0.05 }}
+             >
+-              <MutexStateIndicator mutex={mutex} />
++              <MutexStateIndicator
++                mutex={mutex}
++                selected={mutex.mutexId === selectedResourceId}
++                selectedCoroutineId={selectedCoroutineId}
++                picker={picker}
++              />
+               {mutex.waitQueue.length > 0 && (
+                 <div className="ml-4">
+-                  <WaitQueueList queue={mutex.waitQueue} title="Mutex Wait Queue" />
++                  <WaitQueueList
++                    queue={mutex.waitQueue}
++                    title="Mutex Wait Queue"
++                    picker={picker}
++                    selectedId={selectedCoroutineId}
++                  />
+                 </div>
+               )}
+             </motion.div>
+@@ -97,10 +132,20 @@ export function SyncPanel({ sessionId }: SyncPanelProps) {
+                 animate={{ opacity: 1, y: 0 }}
+                 transition={{ duration: 0.3, delay: index * 0.05 }}
+               >
+-                <SemaphoreGauge semaphore={sem} />
++                <SemaphoreGauge
++                  semaphore={sem}
++                  selected={sem.semaphoreId === selectedResourceId}
++                  selectedCoroutineId={selectedCoroutineId}
++                  picker={picker}
++                />
+                 {sem.waitQueue.length > 0 && (
+                   <div className="ml-4">
+-                    <WaitQueueList queue={sem.waitQueue} title="Semaphore Wait Queue" />
++                    <WaitQueueList
++                      queue={sem.waitQueue}
++                      title="Semaphore Wait Queue"
++                      picker={picker}
++                      selectedId={selectedCoroutineId}
++                    />
+                   </div>
+                 )}
+               </motion.div>
+diff --git a/frontend/src/components/sync/WaitQueueList.tsx b/frontend/src/components/sync/WaitQueueList.tsx
+index 20ceb1b1..0986257a 100644
+--- a/frontend/src/components/sync/WaitQueueList.tsx
++++ b/frontend/src/components/sync/WaitQueueList.tsx
+@@ -1,5 +1,6 @@
+ import { Chip } from '@heroui/react'
+ import { motion, AnimatePresence } from 'framer-motion'
++import { CoroutineName, type CoroutinePicker } from './CoroutineName'
+ 
+ interface WaitQueueEntry {
+   id: string
+@@ -9,9 +10,13 @@ interface WaitQueueEntry {
+ interface WaitQueueListProps {
+   queue: WaitQueueEntry[]
+   title?: string
++  /** Selects a waiter, when the page can (S-2). */
++  picker?: CoroutinePicker
++  /** The page's selected coroutine, marked in the queue. */
++  selectedId?: string | null
+ }
+ 
+-export function WaitQueueList({ queue, title = 'Wait Queue' }: WaitQueueListProps) {
++export function WaitQueueList({ queue, title = 'Wait Queue', picker, selectedId = null }: WaitQueueListProps) {
+   if (queue.length === 0) {
+     return (
+       <div className="text-xs text-default-400" data-testid="wait-queue-empty">
+@@ -36,7 +41,9 @@ export function WaitQueueList({ queue, title = 'Wait Queue' }: WaitQueueListProp
+               transition={{ duration: 0.2, delay: idx * 0.03 }}
+             >
+               <Chip size="sm" variant="flat" color="warning">#{idx + 1}</Chip>
+-              <span className="font-mono truncate">{entry.label || entry.id}</span>
++              <span className="truncate">
++                <CoroutineName id={entry.id} label={entry.label} picker={picker} selected={entry.id === selectedId} />
++              </span>
+             </motion.div>
+           ))}
+         </AnimatePresence>
 ```
-
-`SemaphoreGauge.tsx`: the same three props; the `Card` is wrapped in `<div data-testid={`resource-${semaphore.semaphoreId}`} data-selected={…} className={selected ? 'rounded-large ring-2 ring-primary' : ''}>`; in `CardBody`, before the waiting chip:
-
-```tsx
-        {/* Who holds the permits (S-6): counted, never numbered; a permit that came back from a
-            coroutine that held none has no known holder (S-7). */}
-        <div data-testid="semaphore-holders" className="text-xs">
-          <span className="text-default-500">Held by </span>
-          {semaphore.activeHolders.length === 0 && semaphore.unknownHolderPermits === 0 ? (
-            <span>none</span>
-          ) : (
-            <span className="inline-flex flex-wrap items-baseline gap-x-2">
-              {semaphore.activeHolders.map(h => (
-                <span key={h.id}>
-                  <CoroutineName id={h.id} label={h.label} onSelect={onSelectCoroutine} selected={h.id === selectedCoroutineId} />
-                  {h.permits > 1 && <span className="text-default-500"> ({h.permits} permits)</span>}
-                </span>
-              ))}
-              {semaphore.unknownHolderPermits > 0 && (
-                <span className="text-default-500">
-                  {semaphore.unknownHolderPermits === 1 ? '1 permit' : `${semaphore.unknownHolderPermits} permits`}, holder unknown
-                </span>
-              )}
-            </span>
-          )}
-        </div>
-```
-
-`SyncPanel.tsx`:
-
-```tsx
-interface SyncPanelProps {
-  sessionId: string
-  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
-  events?: readonly VizEvent[]
-  /** A lock or semaphore the page selected: ringed and scrolled into view (S-2). */
-  selectedResourceId?: string | null
-  /** The selected coroutine, marked where it holds or waits. */
-  selectedCoroutineId?: string | null
-  /** Selects a coroutine by its name (S-2). */
-  onSelectCoroutine?: (id: string) => void
-}
-
-export function SyncPanel({ sessionId, events, selectedResourceId = null, selectedCoroutineId = null, onSelectCoroutine }: SyncPanelProps) {
-  const { mutexes, semaphores, deadlocks, warnings } = useSyncEvents(sessionId, events)
-  // Bring a selected resource into view; the section was unfolded in the same render.
-  const panelRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!selectedResourceId) return
-    const el = panelRef.current?.querySelector(`[data-testid="resource-${CSS.escape(selectedResourceId)}"]`)
-    el?.scrollIntoView?.({ block: 'nearest' })
-  }, [selectedResourceId])
-  …
-```
-
-`ref={panelRef}` goes on the non-empty `motion.div` root. Each `MutexStateIndicator` gets `selected={mutex.mutexId === selectedResourceId} selectedCoroutineId={selectedCoroutineId} onSelectCoroutine={onSelectCoroutine}`; each `WaitQueueList` gets `onSelect={onSelectCoroutine} selectedId={selectedCoroutineId}`; each `SemaphoreGauge` the same three as the mutex. (`CSS.escape` exists in jsdom ≥ 20 and every browser; if `tsc` or jsdom objects, fall back to a `Map<string, HTMLElement>` of refs.)
 
 - [ ] **Step 4: Run the tests**
 
@@ -1312,15 +2143,117 @@ git commit -m "feat(frontend): locks and permits follow the page's events; names
 Run: `pnpm exec vitest run src/components/channels src/components/flow src/components/jobs`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement.** Each panel's props gain `events?: readonly VizEvent[]` (doc as in `SyncPanel`) passed as the hook's second argument. `ChannelPanel` also gains `focusChannelId?: string | null` ("A channel the page selected (S-2): shown until the user picks another here.") and follows it with the render-phase pattern the workspace uses:
+- [ ] **Step 3: Implement.** The page's selection decides which channel is shown; a pick in the panel goes to the page (`onSelectChannel`), so there is one selection; without it (replay, shared view) the pick stays local:
 
-```tsx
-  const [seenFocus, setSeenFocus] = useState<string | null>(null)
-  if ((focusChannelId ?? null) !== seenFocus) {
-    setSeenFocus(focusChannelId ?? null)
-    if (focusChannelId) setSelectedChannelId(focusChannelId)
-  }
+```diff
+diff --git a/frontend/src/components/channels/ChannelPanel.tsx b/frontend/src/components/channels/ChannelPanel.tsx
+index 44c357fa..9dae97dd 100644
+--- a/frontend/src/components/channels/ChannelPanel.tsx
++++ b/frontend/src/components/channels/ChannelPanel.tsx
+@@ -6,19 +6,34 @@ import { useChannelEvents } from '@/hooks/use-channel-events'
+ import { ChannelBufferGauge } from './ChannelBufferGauge'
+ import { ChannelTimeline } from './ChannelTimeline'
+ import { ChannelProducerConsumer } from './ChannelProducerConsumer'
++import type { VizEvent } from '@/types/api'
+ 
+ interface ChannelPanelProps {
+   sessionId: string
++  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
++  events?: readonly VizEvent[]
++  /** The channel the page selected (S-2). While set it is the one shown: the page holds one selection. */
++  focusChannelId?: string | null
++  /**
++   * Picking a channel here selects it on the page (S-2). Without it (replay,
++   * the shared view) the pick stays local to this panel.
++   */
++  onSelectChannel?: (channelId: string) => void
+ }
+ 
+-export function ChannelPanel({ sessionId }: ChannelPanelProps) {
+-  const { channels, eventsByChannel, bufferStates } = useChannelEvents(sessionId)
+-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
++export function ChannelPanel({ sessionId, events, focusChannelId = null, onSelectChannel }: ChannelPanelProps) {
++  const { channels, eventsByChannel, bufferStates } = useChannelEvents(sessionId, events)
++  const [pickedChannelId, setPickedChannelId] = useState<string | null>(null)
++  const pick = (channelId: string) => {
++    setPickedChannelId(channelId)
++    onSelectChannel?.(channelId)
++  }
+ 
+-  // Auto-select first channel when data arrives
++  // The page's selection wins; then the last pick here; then the first channel.
++  const wanted = focusChannelId ?? pickedChannelId
+   const effectiveSelectedId =
+-    selectedChannelId && channels.some((c) => c.channelId === selectedChannelId)
+-      ? selectedChannelId
++    wanted && channels.some((c) => c.channelId === wanted)
++      ? wanted
+       : channels.length > 0
+         ? channels[0]!.channelId
+         : null
+@@ -77,7 +92,7 @@ export function ChannelPanel({ sessionId }: ChannelPanelProps) {
+               return (
+                 <motion.button
+                   key={ch.channelId}
+-                  onClick={() => setSelectedChannelId(ch.channelId)}
++                  onClick={() => pick(ch.channelId)}
+                   className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                     isSelected
+                       ? 'border-primary bg-primary/10'
+diff --git a/frontend/src/components/flow/FlowPanel.tsx b/frontend/src/components/flow/FlowPanel.tsx
+index 401cf95d..d77ec28e 100644
+--- a/frontend/src/components/flow/FlowPanel.tsx
++++ b/frontend/src/components/flow/FlowPanel.tsx
+@@ -8,9 +8,12 @@ import { FlowBackpressureIndicator } from './FlowBackpressureIndicator'
+ import { FlowValueTrace } from './FlowValueTrace'
+ import { SharedFlowPanel } from './SharedFlowPanel'
+ import { StateFlowPanel } from './StateFlowPanel'
++import type { VizEvent } from '@/types/api'
+ 
+ interface FlowPanelProps {
+   sessionId: string
++  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
++  events?: readonly VizEvent[]
+ }
+ 
+ function getFlowTypeColor(flowType: string): 'primary' | 'secondary' | 'warning' | 'success' {
+@@ -23,8 +26,8 @@ function getFlowTypeColor(flowType: string): 'primary' | 'secondary' | 'warning'
+   }
+ }
+ 
+-export function FlowPanel({ sessionId }: FlowPanelProps) {
+-  const { flows, hasBackpressure } = useFlowEvents(sessionId)
++export function FlowPanel({ sessionId, events }: FlowPanelProps) {
++  const { flows, hasBackpressure } = useFlowEvents(sessionId, events)
+   const [visualMode, setVisualMode] = useState<'chips' | 'svg'>('chips')
+ 
+   if (flows.length === 0) {
+diff --git a/frontend/src/components/jobs/JobPanel.tsx b/frontend/src/components/jobs/JobPanel.tsx
+index 3d1230f5..0aa067a8 100644
+--- a/frontend/src/components/jobs/JobPanel.tsx
++++ b/frontend/src/components/jobs/JobPanel.tsx
+@@ -4,13 +4,16 @@ import { useJobEvents } from '@/hooks/use-job-events'
+ import { JobStateBadge } from './JobStateBadge'
+ import { WaitingForChildrenCard } from './WaitingForChildrenCard'
+ import { JobHierarchyView } from './JobHierarchyView'
++import type { VizEvent } from '@/types/api'
+ 
+ interface JobPanelProps {
+   sessionId: string
++  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
++  events?: readonly VizEvent[]
+ }
+ 
+-export function JobPanel({ sessionId }: JobPanelProps) {
+-  const { jobs, roots, waitingForChildren } = useJobEvents(sessionId)
++export function JobPanel({ sessionId, events }: JobPanelProps) {
++  const { jobs, roots, waitingForChildren } = useJobEvents(sessionId, events)
+ 
+   if (jobs.length === 0) {
+     return (
 ```
+
+(The channel tests wait with `findByText` for the detail to swap: it animates out first, `AnimatePresence mode="wait"`. A third channel test checks that a pick calls `onSelectChannel` and that the shown channel follows `focusChannelId`.)
 
 - [ ] **Step 4: Run the tests**
 
@@ -1343,29 +2276,63 @@ git commit -m "feat(frontend): channel, flow and job evidence follow the page's 
 - [ ] **Step 1: Write the failing tests.** Make the four panel mocks record their props:
 
 ```tsx
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { EventCategories } from '@/hooks/use-event-categories'
+import type { EvidenceCounts } from '@/lib/evidence-summary'
+import type { ThreadActivity, VizEvent } from '@/types/api'
+import { EvidencePanels } from './EvidencePanels'
+
 vi.mock('../channels/ChannelPanel', () => ({
-  ChannelPanel: (p: { events?: unknown[]; focusChannelId?: string | null }) => (
-    <div data-testid="channel-panel" data-events={p.events?.length ?? 'stored'} data-focus={p.focusChannelId ?? ''} />
+  ChannelPanel: (p: { events?: unknown[]; focusChannelId?: string | null; onSelectChannel?: (id: string) => void }) => (
+    <button
+      type="button"
+      data-testid="channel-panel"
+      data-events={p.events?.length ?? 'stored'}
+      data-focus={p.focusChannelId ?? ''}
+      onClick={() => p.onSelectChannel?.('ch-2')}
+    />
   ),
+}))
+vi.mock('../flow/FlowPanel', () => ({
+  FlowPanel: (p: { events?: unknown[] }) => <div data-testid="flow-panel" data-events={p.events?.length ?? 'stored'} />,
 }))
 vi.mock('../sync/SyncPanel', () => ({
-  SyncPanel: (p: { events?: unknown[]; selectedResourceId?: string | null; selectedCoroutineId?: string | null }) => (
-    <div data-testid="sync-panel" data-events={p.events?.length ?? 'stored'} data-resource={p.selectedResourceId ?? ''} data-coroutine={p.selectedCoroutineId ?? ''} />
+  SyncPanel: (p: { events?: unknown[]; selectedResourceId?: string | null; selectedCoroutineId?: string | null; picker?: unknown }) => (
+    <div
+      data-testid="sync-panel"
+      data-events={p.events?.length ?? 'stored'}
+      data-resource={p.selectedResourceId ?? ''}
+      data-coroutine={p.selectedCoroutineId ?? ''}
+      data-picker={String(!!p.picker)}
+    />
   ),
 }))
+vi.mock('../jobs/JobPanel', () => ({
+  JobPanel: (p: { events?: unknown[] }) => <div data-testid="job-panel" data-events={p.events?.length ?? 'stored'} />,
+}))
+vi.mock('../ThreadTable', () => ({ ThreadTable: () => <div data-testid="thread-table" /> }))
+vi.mock('../DispatcherOverview', () => ({ DispatcherOverview: () => <div data-testid="dispatcher-overview" /> }))
+
+const none: EvidenceCounts = { locks: 0, semaphores: 0, channels: 0, flows: 0, jobEvents: 0 }
 ```
 
 (FlowPanel and JobPanel the same with `data-events`.) Then:
 
 ```tsx
 describe('EvidencePanels — the page\'s events and selection (S-2)', () => {
-  const synced = { categories: categories({ hasSyncPrimitives: true, hasChannels: true }), counts: { ...none, locks: 1, channels: 1 } }
+  const synced = {
+    categories: categories({ hasSyncPrimitives: true, hasChannels: true, hasFlowOps: true, hasJobs: true }),
+    counts: { ...none, locks: 1, channels: 1, flows: 1, jobEvents: 1 },
+  }
   const events = [{ seq: 1 }, { seq: 2 }] as unknown as VizEvent[]
 
   it('gives every event-backed panel the page\'s events', () => {
     renderPanels({ ...synced, events })
-    expect(screen.getByTestId('sync-panel')).toHaveAttribute('data-events', '2')
-    expect(screen.getByTestId('channel-panel')).toHaveAttribute('data-events', '2')
+    for (const id of ['sync-panel', 'channel-panel', 'flow-panel', 'job-panel']) {
+      expect(screen.getByTestId(id)).toHaveAttribute('data-events', '2')
+    }
   })
 
   it('unfolds Locks and permits for a selected lock, and passes the lock on', () => {
@@ -1376,16 +2343,28 @@ describe('EvidencePanels — the page\'s events and selection (S-2)', () => {
     expect(screen.getByTestId('sync-panel')).toHaveAttribute('data-resource', 'm-1')
   })
 
-  it('unfolds Channels for a selected channel and shows it', () => {
-    const { rerender } = renderPanels({ ...synced, events })
-    rerender(panels({ ...synced, events, selection: { kind: 'resource', resource: 'channel', id: 'ch-1' } }))
+  it('re-opens the section when the same lock is selected again after folding it', async () => {
+    const { rerender } = renderPanels({ ...synced, events, selection: { kind: 'resource', resource: 'mutex', id: 'm-1' } })
+    await userEvent.click(screen.getByRole('button', { name: /Locks and permits/ }))
+    expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'false')
+    rerender(panels({ ...synced, events, selection: { kind: 'resource', resource: 'mutex', id: 'm-1' } }))
+    expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('unfolds Channels for a selected channel, shows it, and a pick there selects on the page', async () => {
+    const onSelectResource = vi.fn()
+    const { rerender } = renderPanels({ ...synced, events, onSelectResource })
+    rerender(panels({ ...synced, events, onSelectResource, selection: { kind: 'resource', resource: 'channel', id: 'ch-1' } }))
     expect(screen.getByRole('button', { name: /Channels/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByTestId('channel-panel')).toHaveAttribute('data-focus', 'ch-1')
+    await userEvent.click(screen.getByTestId('channel-panel'))
+    expect(onSelectResource).toHaveBeenCalledWith({ kind: 'resource', resource: 'channel', id: 'ch-2' })
   })
 
   it('passes a selected coroutine to Locks and permits without unfolding anything', () => {
-    renderPanels({ ...synced, events, selection: { kind: 'coroutine', id: 'c-1' } })
+    renderPanels({ ...synced, events, selection: { kind: 'coroutine', id: 'c-1' }, picker: { select: vi.fn(), canSelect: () => true } })
     expect(screen.getByTestId('sync-panel')).toHaveAttribute('data-coroutine', 'c-1')
+    expect(screen.getByTestId('sync-panel')).toHaveAttribute('data-picker', 'true')
     expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'false')
   })
 
@@ -1404,53 +2383,161 @@ Refactor `renderPanels` into `panels(props)` (returns the element) and `renderPa
 Run: `pnpm exec vitest run src/components/workspace/EvidencePanels.test.tsx`
 Expected: FAIL — `data-events` reads `stored`; sections stay folded; the notice is shown.
 
-- [ ] **Step 3: Implement** — `EvidencePanels.tsx`. Props gain:
+- [ ] **Step 3: Implement** — `EvidencePanels.tsx`:
 
-```ts
-  /** The events the page shows: live, paused, or at the replay cursor. The panels follow them. */
-  events?: readonly VizEvent[]
-  /** The page's one selection (S-2). A resource unfolds its section; a coroutine is marked in it. */
-  selection?: Selection | null
-  /** Selects a coroutine named in Locks and permits. */
-  onSelectCoroutine?: (id: string) => void
+```diff
+diff --git a/frontend/src/components/workspace/EvidencePanels.tsx b/frontend/src/components/workspace/EvidencePanels.tsx
+index 587a5f94..1bb2b6d2 100644
+--- a/frontend/src/components/workspace/EvidencePanels.tsx
++++ b/frontend/src/components/workspace/EvidencePanels.tsx
+@@ -12,7 +12,9 @@ import { plural, resourceSummary, type EvidenceCounts } from '@/lib/evidence-sum
+ import { groupThreadsByName, threadSummary } from '@/lib/thread-groups'
+ import type { EventCategories } from '@/hooks/use-event-categories'
+ import type { Rung } from '@/lib/fidelity-rung'
+-import type { ThreadActivity } from '@/types/api'
++import type { ThreadActivity, VizEvent } from '@/types/api'
++import type { Selection } from '@/lib/selection'
++import type { CoroutinePicker } from '../sync/CoroutineName'
+ 
+ interface EvidencePanelsProps {
+   sessionId: string
+@@ -32,6 +34,24 @@ interface EvidencePanelsProps {
+    * loading, and after a failed read, unavailable.
+    */
+   history?: 'ready' | 'loading' | 'unavailable'
++  /**
++   * The events the page shows: live, paused, or at the replay cursor. Locks
++   * and permits, Channels, Flows and Jobs follow them, so their facts refresh
++   * with each new event; without them each reads the stored history.
++   */
++  events?: readonly VizEvent[]
++  /** The page's one selection (S-2). A resource unfolds its section; a coroutine is marked in it. */
++  selection?: Selection | null
++  /** Selects a coroutine named in Locks and permits, when the page can (S-2). */
++  picker?: CoroutinePicker
++  /** Selects a resource on the page: a channel picked in Channels (S-2). */
++  onSelectResource?: (selection: Selection) => void
++}
++
++/** The section a selected resource lives in. */
++function sectionOf(selection: Selection | null): string | null {
++  if (selection?.kind !== 'resource') return null
++  return selection.resource === 'channel' ? 'Channels' : 'Locks and permits'
+ }
+ 
+ /**
+@@ -60,7 +80,10 @@ interface Capability {
+  * telling its user to swap in `VizMutex` names code that is not theirs.
+  *
+  * Folded sections are hidden, not unmounted: every panel subscribes at page
+- * load, exactly as before, so opening one later never refetches.
++ * load, exactly as before, so opening one later never refetches. Locks and
++ * permits, Channels, Flows and Jobs read the events the page shows, so they
++ * refresh live and follow the replay cursor; a selected resource unfolds its
++ * section (S-2).
+  */
+ export function EvidencePanels({
+   sessionId,
+@@ -72,8 +95,16 @@ export function EvidencePanels({
+   threadActivity,
+   captureStartNanos,
+   history = 'ready',
++  events,
++  selection = null,
++  picker,
++  onSelectResource,
+ }: EvidencePanelsProps) {
+-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
++  // A resource already selected when Evidence mounts has its section open.
++  const [open, setOpen] = useState<ReadonlySet<string>>(() => {
++    const section = sectionOf(selection)
++    return new Set(section ? [section] : [])
++  })
+   const toggle = (title: string) =>
+     setOpen(prev => {
+       const next = new Set(prev)
+@@ -82,6 +113,17 @@ export function EvidencePanels({
+       return next
+     })
+ 
++  // A resource selected anywhere on the page unfolds its section (S-2). Each
++  // selection is a new object, so choosing the same lock again re-opens it.
++  const [seenSelection, setSeenSelection] = useState<Selection | null>(selection)
++  if (selection !== seenSelection) {
++    setSeenSelection(selection)
++    const section = sectionOf(selection)
++    if (section && !open.has(section)) setOpen(prev => new Set(prev).add(section))
++  }
++  const selectedResource = selection?.kind === 'resource' ? selection : null
++  const selectedCoroutineId = selection?.kind === 'coroutine' ? selection.id : null
++
+   const groups = useMemo(() => groupThreadsByName(threadActivity), [threadActivity])
+   const dispatchers = useMemo(() => {
+     const names = new Set<string>()
+@@ -98,7 +140,15 @@ export function EvidencePanels({
+       summary: resourceSummary([plural(counts.locks, 'lock'), plural(counts.semaphores, 'semaphore')]) ?? 'captured',
+       whatYouWouldSee: 'Who holds each mutex and semaphore, who is queued behind it, and for how long.',
+       unlockWith: 'Swap Mutex() for VizMutex() in the code you want to watch.',
+-      panel: <SyncPanel sessionId={sessionId} />,
++      panel: (
++        <SyncPanel
++          sessionId={sessionId}
++          events={events}
++          selectedResourceId={selectedResource && selectedResource.resource !== 'channel' ? selectedResource.id : null}
++          selectedCoroutineId={selectedCoroutineId}
++          picker={picker}
++        />
++      ),
+     },
+     {
+       title: 'Channels',
+@@ -106,7 +156,16 @@ export function EvidencePanels({
+       summary: resourceSummary([plural(counts.channels, 'channel')]) ?? 'captured',
+       whatYouWouldSee: 'Send and receive pairs, buffer occupancy, and which side is waiting.',
+       unlockWith: 'Create the channel with InstrumentedChannel(...).',
+-      panel: <ChannelPanel sessionId={sessionId} />,
++      panel: (
++        <ChannelPanel
++          sessionId={sessionId}
++          events={events}
++          focusChannelId={selectedResource?.resource === 'channel' ? selectedResource.id : null}
++          onSelectChannel={
++            onSelectResource ? id => onSelectResource({ kind: 'resource', resource: 'channel', id }) : undefined
++          }
++        />
++      ),
+     },
+     {
+       title: 'Flows',
+@@ -114,7 +173,7 @@ export function EvidencePanels({
+       summary: resourceSummary([plural(counts.flows, 'flow')]) ?? 'captured',
+       whatYouWouldSee: 'Emissions, operator stages, and where a slow collector is stalling the producer.',
+       unlockWith: 'Wrap the flow you care about with .instrumented().',
+-      panel: <FlowPanel sessionId={sessionId} />,
++      panel: <FlowPanel sessionId={sessionId} events={events} />,
+     },
+     {
+       title: 'Jobs',
+@@ -125,7 +184,7 @@ export function EvidencePanels({
+       // does not promote a session to instrumented), so there is no honest
+       // one-line unlock to offer for them.
+       unlockWith: '',
+-      panel: <JobPanel sessionId={sessionId} />,
++      panel: <JobPanel sessionId={sessionId} events={events} />,
+     },
+   ]
+ 
+@@ -168,7 +227,8 @@ export function EvidencePanels({
+             summary={c.summary}
+             open={open.has(c.title)}
+             onToggle={() => toggle(c.title)}
+-            replayActive={replayActive}
++            // Read from the page's events, so it follows the replay cursor like Threads (D-17).
++            replayActive={false}
+           >
+             {c.panel}
+           </Section>
 ```
-
-After the `open` state, the render-phase sync (the pattern `SessionWorkspace` uses for its opening tab):
-
-```ts
-  // A resource selected anywhere on the page unfolds its section (S-2). Each
-  // selection is a new object, so choosing the same lock again re-opens it.
-  const [seenSelection, setSeenSelection] = useState<Selection | null>(selection)
-  if (selection !== seenSelection) {
-    setSeenSelection(selection)
-    const section = selection?.kind === 'resource' ? (selection.resource === 'channel' ? 'Channels' : 'Locks and permits') : null
-    if (section && !open.has(section)) setOpen(prev => new Set(prev).add(section))
-  }
-  const selectedResourceId = selection?.kind === 'resource' ? selection.id : null
-  const selectedCoroutineId = selection?.kind === 'coroutine' ? selection.id : null
-```
-
-The capability panels become:
-
-```tsx
-      panel: (
-        <SyncPanel
-          sessionId={sessionId}
-          events={events}
-          selectedResourceId={selection?.kind === 'resource' && selection.resource !== 'channel' ? selectedResourceId : null}
-          selectedCoroutineId={selectedCoroutineId}
-          onSelectCoroutine={onSelectCoroutine}
-        />
-      ),
-      …
-      panel: <ChannelPanel sessionId={sessionId} events={events} focusChannelId={selection?.kind === 'resource' && selection.resource === 'channel' ? selection.id : null} />,
-      …
-      panel: <FlowPanel sessionId={sessionId} events={events} />,
-      …
-      panel: <JobPanel sessionId={sessionId} events={events} />,
-```
-
-and the captured `Section` gets `replayActive={false}` with the comment `{/* Read from the page's events, so it follows the replay cursor like Threads (D-17). */}`. The `Dispatchers` section keeps `replayActive={replayActive}`. Update the component's doc comment: "Folded sections are hidden, not unmounted: every panel subscribes at page load … Locks and permits, Channels, Flows and Jobs read the events the page shows, so they refresh live and follow the replay cursor."
 
 - [ ] **Step 4: Run the tests**
 
@@ -1478,25 +2565,20 @@ git commit -m "feat(frontend): a selected lock, permit or channel opens its Evid
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactNode } from 'react'
 import type { VizEvent } from '@/types/api'
 import { eventSubject } from '@/lib/selection'
 import { EventsList } from './EventsList'
 
-vi.mock('framer-motion', async () => {
-  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
-  return {
-    ...actual,
-    motion: { div: ({ children, ...p }: Record<string, unknown>) => <div {...(p as object)}>{children as ReactNode}</div> },
-    AnimatePresence: ({ children }: { children: ReactNode }) => <>{children}</>,
-  }
-})
+vi.mock('@/lib/animation-throttle', () => ({ useAnimationSlot: () => false }))
 
 const acquired = {
   sessionId: 's', seq: 7, tsNanos: 7, kind: 'MutexLockAcquired',
   mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'c-2', acquirerLabel: 'order-2', waitDurationNanos: 0,
 } as unknown as VizEvent
-const created = { sessionId: 's', seq: 6, tsNanos: 6, kind: 'MutexCreated', mutexId: 'm-1', mutexLabel: 'inventory-lock', ownerCoroutineId: null } as unknown as VizEvent
+const created = {
+  sessionId: 's', seq: 6, tsNanos: 6, kind: 'MutexCreated', mutexId: 'm-1', mutexLabel: 'inventory-lock', ownerCoroutineId: null,
+} as unknown as VizEvent
+const closed = { sessionId: 's', seq: 9, tsNanos: 9, kind: 'ChannelClosed', channelId: 'ch-1', cause: null } as unknown as VizEvent
 const deadlock = { sessionId: 's', seq: 8, tsNanos: 8, kind: 'DeadlockDetected', involvedCoroutines: [] } as unknown as VizEvent
 
 describe('EventsList', () => {
@@ -1505,17 +2587,31 @@ describe('EventsList', () => {
     expect(screen.getByText('order-2 · inventory-lock')).toBeInTheDocument()
   })
 
+  it('names a channel-only event by the channel\'s name', () => {
+    render(<EventsList events={[closed]} resourceNames={new Map([['ch-1', 'orders']])} />)
+    expect(screen.getByText('orders')).toBeInTheDocument()
+  })
+
   it('makes each row about something selectable a button that selects it (S-2)', async () => {
     const onSelect = vi.fn()
-    render(<EventsList events={[created, acquired, deadlock]} subjectOf={eventSubject} onSelect={onSelect} />)
-    await userEvent.click(screen.getByRole('button', { name: /Select order-2 · inventory-lock/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Select inventory-lock/ }))
+    render(
+      <EventsList
+        events={[created, acquired, deadlock, closed]}
+        subjectOf={eventSubject}
+        onSelect={onSelect}
+        resourceNames={new Map([['ch-1', 'orders']])}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Select order-2 · inventory-lock (event #7)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Select inventory-lock (event #6)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Select orders (event #9)' }))
     expect(onSelect.mock.calls).toEqual([
       [{ kind: 'coroutine', id: 'c-2' }],
       [{ kind: 'resource', resource: 'mutex', id: 'm-1' }],
+      [{ kind: 'resource', resource: 'channel', id: 'ch-1' }],
     ])
     // A deadlock is about no one thing: not a button.
-    expect(screen.getAllByRole('button', { name: /^Select / })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /^Select / })).toHaveLength(3)
   })
 
   it('keeps rows presentational without onSelect', () => {
@@ -1528,11 +2624,30 @@ describe('EventsList', () => {
 `EventsPanel.test.tsx` — replace the three tests with:
 
 ```tsx
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { VizEvent } from '@/types/api'
+
 vi.mock('../EventsList', () => ({
   EventsList: ({ events, onSelect }: { events: VizEvent[]; onSelect?: unknown }) => (
     <div data-testid="events-list" data-count={events.length} data-selectable={String(!!onSelect)} />
   ),
 }))
+
+import { EventsPanel } from './EventsPanel'
+
+function event(seq: number, coroutineId?: string): VizEvent {
+  return {
+    sessionId: 's-1',
+    seq,
+    tsNanos: seq * 1_000,
+    kind: 'coroutine.created',
+    ...(coroutineId
+      ? { coroutineId, jobId: `job-${coroutineId}`, parentCoroutineId: null, scopeId: 'scope-1', label: `label-${seq}` }
+      : {}),
+  } as VizEvent
+}
 
 const lockEvent = { sessionId: 's-1', seq: 5, tsNanos: 5, kind: 'MutexLockAcquired', mutexId: 'm-1', acquirerId: 'c-1' } as unknown as VizEvent
 const EVENTS: VizEvent[] = [event(1, 'c-1'), event(2, 'c-2'), event(3, 'c-1'), event(4), lockEvent]
@@ -1552,8 +2667,15 @@ describe('EventsPanel', () => {
   })
 
   it('narrows to a selected resource', () => {
-    render(<EventsPanel events={EVENTS} selection={{ kind: 'resource', resource: 'mutex', id: 'm-1' }} selectionLabel="inventory-lock" />)
+    render(
+      <EventsPanel events={EVENTS} selection={{ kind: 'resource', resource: 'mutex', id: 'm-1' }} selectionLabel="inventory-lock" />,
+    )
     expect(screen.getByTestId('events-scope')).toHaveTextContent('Events about inventory-lock · 1')
+  })
+
+  it('falls back to the id when the selection has no label', () => {
+    render(<EventsPanel events={EVENTS} selection={{ kind: 'coroutine', id: 'c-1' }} selectionLabel={null} />)
+    expect(screen.getByTestId('events-scope')).toHaveTextContent('Events for c-1')
   })
 
   it('goes back to all events, clearing the selection', async () => {
@@ -1581,37 +2703,117 @@ Expected: FAIL — no title, no buttons, unknown props.
 
 - [ ] **Step 3: Implement.**
 
-`EventsList.tsx`: import `eventTitle` and `type Selection` from `@/lib/selection`. Props:
+`EventsList.tsx`:
 
-```ts
-interface EventsListProps {
-  events: VizEvent[]
-  /** What a row is about (S-2); null keeps that row presentational. */
-  subjectOf?: (event: VizEvent) => Selection | null
-  /** Selects what a row is about. Without it every row is presentational. */
-  onSelect?: (selection: Selection) => void
-}
-```
-
-In the row, compute `const subject = onSelect && subjectOf ? subjectOf(event) : null` and `const title = eventTitle(event)`. The `Card` gains, when `subject` is non-null:
-
-```tsx
-                {...(subject && onSelect
-                  ? { isPressable: true, 'aria-label': `Select ${title} (event #${event.seq})`, onPress: () => onSelect(subject) }
-                  : {})}
-```
-
-(plus `w-full` on its className so a pressable card keeps the row's width). The title fallback `{event.label || event.coroutineId}` becomes `{title}`, and the `ID:` line renders only when `event.coroutineId` is set:
-
-```tsx
-                        {event.coroutineId && (
-                          <div className="text-xs text-default-500 mt-1">
-                            ID: <code className="font-mono">{event.coroutineId}</code>
-                            {event.parentCoroutineId && (
-                              <> • Parent: <code className="font-mono">{event.parentCoroutineId}</code></>
-                            )}
-                          </div>
-                        )}
+```diff
+diff --git a/frontend/src/components/EventsList.tsx b/frontend/src/components/EventsList.tsx
+index 52b8dc37..1c1be241 100644
+--- a/frontend/src/components/EventsList.tsx
++++ b/frontend/src/components/EventsList.tsx
+@@ -19,11 +19,20 @@ import { formatNanoTime, formatRelativeTime } from '@/lib/utils'
+ import { useAnimatedInView } from '@/hooks/use-animated-in-view'
+ import { FiSearch, FiClock, FiServer, FiDatabase, FiMail, FiCloud, FiActivity } from 'react-icons/fi'
+ import { DispatcherBadge } from './DispatcherBadge'
++import { eventTitle, type Selection } from '@/lib/selection'
+ 
+ interface EventsListProps {
+   events: VizEvent[]
++  /** What a row is about (S-2); null keeps that row presentational. */
++  subjectOf?: (event: VizEvent) => Selection | null
++  /** Selects what a row is about. Without it every row is presentational. */
++  onSelect?: (selection: Selection) => void
++  /** Resource id -> name, for rows about a channel whose creation is not in the list. */
++  resourceNames?: ReadonlyMap<string, string>
+ }
+ 
++const NO_NAMES: ReadonlyMap<string, string> = new Map()
++
+ /**
+  * Parse a service label like "OrderService.processOrder" into parts
+  */
+@@ -96,7 +105,7 @@ function AnimatedEventItem({
+   )
+ }
+ 
+-export function EventsList({ events }: EventsListProps) {
++export function EventsList({ events, subjectOf, onSelect, resourceNames = NO_NAMES }: EventsListProps) {
+   const [filter, setFilter] = useState('')
+ 
+   const filteredEvents = useMemo(() => {
+@@ -139,7 +148,10 @@ export function EventsList({ events }: EventsListProps) {
+ 
+       <div className="space-y-2">
+         <AnimatePresence mode="popLayout">
+-          {sortedEvents.map((event, idx) => (
++          {sortedEvents.map((event, idx) => {
++            const title = eventTitle(event, resourceNames)
++            const subject = onSelect && subjectOf ? subjectOf(event) : null
++            return (
+             <AnimatedEventItem
+               key={`${event.sessionId}-${event.seq}`}
+               initial={{ opacity: 0, y: -10 }}
+@@ -147,17 +159,22 @@ export function EventsList({ events }: EventsListProps) {
+               exit={{ opacity: 0, y: -10 }}
+               transition={{ delay: idx * 0.02 }}
+             >
+-              <Card 
++              <Card
+                 shadow="sm"
+                 className={
+-                  event.kind?.includes('failed')
++                  'w-full ' +
++                  (event.kind?.includes('failed')
+                     ? 'border-l-4 border-danger'
+                     : event.kind?.includes('cancelled')
+                     ? 'border-l-4 border-default-400'
+                     : event.kind?.includes('body-completed')
+                     ? 'border-l-4 border-secondary/50'
+-                    : ''
++                    : '')
+                 }
++                // A row selects what it is about (S-2): its coroutine, or a resource.
++                {...(subject && onSelect
++                  ? { isPressable: true, 'aria-label': `Select ${title} (event #${event.seq})`, onPress: () => onSelect(subject) }
++                  : {})}
+               >
+                 <CardBody className="py-3">
+                   <div className="flex items-center justify-between">
+@@ -203,16 +220,18 @@ export function EventsList({ events }: EventsListProps) {
+                           }
+                           return (
+                             <div className="font-semibold">
+-                              {event.label || event.coroutineId}
++                              {title}
+                             </div>
+                           )
+                         })()}
+-                        <div className="text-xs text-default-500 mt-1">
+-                          ID: <code className="font-mono">{event.coroutineId}</code>
+-                          {event.parentCoroutineId && (
+-                            <> • Parent: <code className="font-mono">{event.parentCoroutineId}</code></>
+-                          )}
+-                        </div>
++                        {event.coroutineId && (
++                          <div className="text-xs text-default-500 mt-1">
++                            ID: <code className="font-mono">{event.coroutineId}</code>
++                            {event.parentCoroutineId && (
++                              <> • Parent: <code className="font-mono">{event.parentCoroutineId}</code></>
++                            )}
++                          </div>
++                        )}
+                       </div>
+                     </div>
+                     <div className="text-right text-xs text-default-400 flex flex-col items-end gap-1">
+@@ -401,7 +420,8 @@ export function EventsList({ events }: EventsListProps) {
+                 </CardBody>
+               </Card>
+             </AnimatedEventItem>
+-          ))}
++            )
++          })}
+         </AnimatePresence>
+       </div>
+     </div>
 ```
 
 `EventsPanel.tsx`:
@@ -1634,6 +2836,8 @@ interface EventsPanelProps {
   onSelect?: (selection: Selection) => void
   /** Clears the selection, back to every event. */
   onShowAll?: () => void
+  /** Resource id -> name, so a row about a channel can name it. */
+  resourceNames?: ReadonlyMap<string, string>
 }
 
 /**
@@ -1641,7 +2845,15 @@ interface EventsPanelProps {
  * selection — a coroutine's events, the lock and permit events about it
  * included, or a resource's. A row selects what it is about (S-2).
  */
-export function EventsPanel({ events, selection, selectionLabel, subjectOf, onSelect, onShowAll }: EventsPanelProps) {
+export function EventsPanel({
+  events,
+  selection,
+  selectionLabel,
+  subjectOf,
+  onSelect,
+  onShowAll,
+  resourceNames,
+}: EventsPanelProps) {
   const scoped = useMemo(
     () => (selection ? events.filter(e => eventConcerns(e, selection)) : events),
     [events, selection],
@@ -1667,7 +2879,7 @@ export function EventsPanel({ events, selection, selectionLabel, subjectOf, onSe
           </button>
         )}
       </div>
-      <EventsList events={scoped} subjectOf={subjectOf} onSelect={onSelect} />
+      <EventsList events={scoped} subjectOf={subjectOf} onSelect={onSelect} resourceNames={resourceNames} />
     </div>
   )
 }
@@ -1905,6 +3117,36 @@ describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
     expect(card('order-1').className).toContain('ring-2')
     expect(screen.getByRole('tab', { name: /Evidence/ })).toHaveAttribute('aria-selected', 'true')
   })
+
+  it('a selected lock that leaves the page\'s events is no longer selected', async () => {
+    stream(contended)
+    const { rerender } = render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Events' }))
+    await userEvent.click(screen.getByRole('button', { name: /Select inventory-lock \(event #1\)/ }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Events' }))
+    expect(screen.getByTestId('events-scope')).toHaveTextContent('Events about inventory-lock')
+    // The view's events cleared (Clear events, or the history trimmed past it).
+    stream([co('coroutine.started', 'c-1')])
+    rerender(<SessionWorkspace sessionId="session-1" startLive />)
+    expect(screen.getByTestId('events-scope')).toHaveTextContent('All 1 events in this session')
+  })
+
+  it('a channel picked in Evidence becomes the page\'s selection', async () => {
+    const channels = [
+      ev('ChannelCreated', { channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' }),
+      ev('ChannelCreated', { channelId: 'ch-2', name: 'invoices', capacity: 0, channelType: 'RENDEZVOUS' }),
+      co('coroutine.suspended', 'c-1', { waitKind: 'CHANNEL_SEND', resourceId: 'ch-2', reason: 'channel' }),
+    ]
+    stream(channels)
+    render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await openList()
+    expect(within(card('order-1')).getByTestId('activity-line')).toHaveTextContent('waits to send to invoices')
+    await userEvent.click(screen.getByRole('tab', { name: /Evidence/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Channels/ }))
+    await userEvent.click(screen.getByTestId('channel-selector-ch-2'))
+    await userEvent.click(screen.getByRole('tab', { name: 'Events' }))
+    expect(screen.getByTestId('events-scope')).toHaveTextContent('Events about invoices · 2')
+  })
 })
 ```
 
@@ -1915,84 +3157,184 @@ describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
 Run: `pnpm exec vitest run src/components/SessionWorkspace.selection.test.tsx`
 Expected: FAIL — no second lines, no selectable rows, Evidence reads the (empty) stored history.
 
-- [ ] **Step 3: Implement** — `SessionWorkspace.tsx`:
+- [ ] **Step 3: Implement** — `src/lib/selection.ts` gains `resourceIds` (Task 5's listing includes it, with its test), and `SessionWorkspace.tsx`:
 
-Imports: `useCallback`; `{ projectActivity }` from `@/lib/activity`; `{ eventSubject, resourceNames, type Selection }` from `@/lib/selection`.
-
-Replace the `selectedCoroutineId` state (and its comment) with:
-
-```ts
-  // The page's one selection (S-2): a coroutine or a resource, read by the
-  // tree, the Inspector, Evidence and Events. Set only in the live view (PD-01).
-  const [selection, setSelection] = useState<Selection | null>(null)
-  const selectedCoroutineId = selection?.kind === 'coroutine' ? selection.id : null
+```diff
+diff --git a/frontend/src/components/SessionWorkspace.tsx b/frontend/src/components/SessionWorkspace.tsx
+index 6c9dbeb7..7b47621f 100644
+--- a/frontend/src/components/SessionWorkspace.tsx
++++ b/frontend/src/components/SessionWorkspace.tsx
+@@ -1,4 +1,4 @@
+-import { useState, useEffect, useMemo, useRef } from 'react'
++import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+ import {
+   Card,
+   CardBody,
+@@ -38,7 +38,7 @@ import { RecordConfirmModal } from './replay/RecordConfirmModal'
+ import { ManageShares } from './share/ManageShares'
+ import { OrderProcessingView } from './scenarios/OrderProcessingView'
+ import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
+-import type { ThreadActivity } from '@/types/api'
++import type { ThreadActivity, VizEvent } from '@/types/api'
+ import { CoroutineState } from '@/types/api'
+ import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
+ import { useDockLayout } from '@/hooks/use-dock-layout'
+@@ -46,6 +46,9 @@ import { deriveRunOutcome } from '@/lib/run-outcome'
+ import { useRecordedSpan } from '@/hooks/use-recorded-span'
+ import { countEvidence, evidenceTabLabel } from '@/lib/evidence-summary'
+ import { openingDockTab, rememberDockTab, rememberedDockTab } from '@/lib/dock-tab-memory'
++import { projectActivity } from '@/lib/activity'
++import { eventSubject, resourceIds, resourceNames, type Selection } from '@/lib/selection'
++import type { CoroutinePicker } from './sync/CoroutineName'
+ 
+ /** Terminal coroutine states — no further transitions expected. */
+ const TERMINAL_STATES = new Set<CoroutineState>([
+@@ -95,11 +98,11 @@ export function SessionWorkspace({
+   } = useSessionEvents(sessionId)
+   const [streamEnabled, setStreamEnabled] = useState(false)
+   const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
+-  // Selected coroutine for the source drawer (RCO-06, D-02/D-06). Lifted here so
+-  // both live-view modes (graph/list) share one selection + one mounted drawer.
+-  // Null = drawer closed. Wired ONLY at the live "What's running now" mount, so
+-  // replay/shared node renders stay non-interactive.
+-  const [selectedCoroutineId, setSelectedCoroutineId] = useState<string | null>(null)
++  // The page's one selection (S-2): a coroutine or a resource, read by the
++  // tree, the Inspector, Evidence and Events. Set only in the live view, so
++  // replay and shared renders stay non-interactive (PD-01).
++  const [selection, setSelection] = useState<Selection | null>(null)
++  const selectedCoroutineId = selection?.kind === 'coroutine' ? selection.id : null
+   // Active-only "What's running now" view (D-08): completed coroutines collapse
+   // into an expandable aggregate, toggled off by default.
+   const [showCompleted, setShowCompleted] = useState(false)
+@@ -181,7 +184,10 @@ export function SessionWorkspace({
+     sessionId,
+     scenarioId: scenarioId ?? '',
+     scenarioName,
+-    onClearEvents: clearEvents,
++    onClearEvents: () => {
++      clearEvents()
++      setSelection(null)
++    },
+     onRefetch: () => void refetch(),
+   })
+   const hasScenario = !!scenarioId
+@@ -282,6 +288,41 @@ export function SessionWorkspace({
+ 
+   // What the Evidence tab holds, named on its label (S-4).
+   const evidenceCounts = useMemo(() => countEvidence(panelEvents), [panelEvents])
++  // What each coroutine waits for or holds (S-6), and the resources' names,
++  // from the same events as the rest of the page: live, paused or at the
++  // replay cursor — so they refresh with every new event.
++  const activity = useMemo(() => projectActivity(panelEvents), [panelEvents])
++  const names = useMemo(() => resourceNames(panelEvents), [panelEvents])
++  const resources = useMemo(() => resourceIds(panelEvents), [panelEvents])
++  // A coroutine the snapshot does not hold is not offered as a selection:
++  // selecting it would be cleared at once.
++  const coroutineIds = useMemo(() => new Set(panelCoroutines.map(c => c.id)), [panelCoroutines])
++  const subjectOf = useCallback(
++    (event: VizEvent) => {
++      const subject = eventSubject(event)
++      return subject?.kind === 'coroutine' && !coroutineIds.has(subject.id) ? null : subject
++    },
++    [coroutineIds],
++  )
++  const picker = useMemo<CoroutinePicker>(
++    () => ({
++      select: (id: string) => setSelection({ kind: 'coroutine', id }),
++      canSelect: (id: string) => coroutineIds.has(id),
++    }),
++    [coroutineIds],
++  )
++  const selectionLabel =
++    selection === null
++      ? null
++      : selection.kind === 'coroutine'
++        ? (selectedCoroutine?.label ?? selection.id)
++        : (names.get(selection.id) ?? selection.id)
++  // A selection made inside a tab keeps you there; a resource opens its
++  // Evidence section (S-2), which EvidencePanels unfolds and scrolls to.
++  const selectFromEvent = (next: Selection) => {
++    setSelection(next)
++    if (next.kind === 'resource') selectDockTab('evidence')
++  }
+   // "Time into the capture" for the thread table: the first retained event.
+   const captureStartNanos = useMemo(() => {
+     let first: number | null = null
+@@ -294,11 +335,14 @@ export function SessionWorkspace({
+   // capped-out coroutine still exists in panelCoroutines, so it keeps its drawer +
+   // resolved label (WR-04); only a truly-absent id clears the selection so we stop
+   // fetching a coroutine that no longer exists.
++  // The same for a resource no longer named by the page's events (Clear
++  // events, or a history trimmed past it): no Evidence target, no events.
+   useEffect(() => {
+-    if (selectedCoroutineId && !panelCoroutines.some(c => c.id === selectedCoroutineId)) {
+-      setSelectedCoroutineId(null)
+-    }
+-  }, [selectedCoroutineId, panelCoroutines])
++    if (selection === null) return
++    const gone =
++      selection.kind === 'coroutine' ? !coroutineIds.has(selection.id) : !resources.has(selection.id)
++    if (gone) setSelection(null)
++  }, [selection, coroutineIds, resources])
+ 
+   const panelThreadActivity: ThreadActivity | undefined = useMemo(() => {
+     if (replayActive) return projectThreadActivity(replay.visibleEvents)
+@@ -469,12 +513,13 @@ export function SessionWorkspace({
+           }
+           isDemo={isDemo}
+           selectedCoroutineId={selectedCoroutineId}
++          activity={activity}
+           // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
+           // view stay presentational, with no added interactivity.
+           onSelect={
+             isLiveView
+               ? (id: string) => {
+-                  setSelectedCoroutineId(id)
++                  setSelection({ kind: 'coroutine', id })
+                   // A selection is read in the Inspector: show it (S-4).
+                   selectDockTab('inspector')
+                 }
+@@ -540,7 +585,8 @@ export function SessionWorkspace({
+               }
+               threadActivity={panelThreadActivity}
+               // Back to the session summary (T-3) from a selection.
+-              onClearSelection={isLiveView ? () => setSelectedCoroutineId(null) : undefined}
++              onClearSelection={isLiveView ? () => setSelection(null) : undefined}
++              activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}
+             />
+           </DockTabPanel>
+           <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
+@@ -556,6 +602,10 @@ export function SessionWorkspace({
+               threadActivity={panelThreadActivity}
+               captureStartNanos={captureStartNanos}
+               history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
++              events={panelEvents}
++              selection={isLiveView ? selection : null}
++              picker={isLiveView ? picker : undefined}
++              onSelectResource={isLiveView ? setSelection : undefined}
+             />
+           </DockTabPanel>
+           <DockTabPanel id="events" selected={dockTab === 'events'}>
+@@ -564,7 +614,15 @@ export function SessionWorkspace({
+                 live flush. It fetches nothing, so mounting later costs no
+                 request. Every other panel stays mounted and is hidden. */}
+             {dockTab === 'events' && (
+-              <EventsPanel events={panelEvents} selectedCoroutine={selectedCoroutine} />
++              <EventsPanel
++                events={panelEvents}
++                selection={isLiveView ? selection : null}
++                selectionLabel={selectionLabel}
++                subjectOf={isLiveView ? subjectOf : undefined}
++                onSelect={isLiveView ? selectFromEvent : undefined}
++                onShowAll={() => setSelection(null)}
++                resourceNames={names}
++              />
+             )}
+           </DockTabPanel>
+           <DockTabPanel id="learn" selected={dockTab === 'learn'}>
 ```
 
-The clearing effect becomes:
-
-```ts
-  useEffect(() => {
-    if (selectedCoroutineId && !panelCoroutines.some(c => c.id === selectedCoroutineId)) {
-      setSelection(null)
-    }
-  }, [selectedCoroutineId, panelCoroutines])
-```
-
-After `evidenceCounts`:
-
-```ts
-  // What each coroutine waits for or holds (S-6), and every resource's name,
-  // from the same events as the rest of the page: live, paused or at the replay cursor.
-  const activity = useMemo(() => projectActivity(panelEvents), [panelEvents])
-  const names = useMemo(() => resourceNames(panelEvents), [panelEvents])
-  // An event about a coroutine the snapshot does not hold selects nothing:
-  // the selection would be cleared at once.
-  const coroutineIds = useMemo(() => new Set(panelCoroutines.map(c => c.id)), [panelCoroutines])
-  const subjectOf = useCallback(
-    (event: VizEvent) => {
-      const subject = eventSubject(event)
-      return subject?.kind === 'coroutine' && !coroutineIds.has(subject.id) ? null : subject
-    },
-    [coroutineIds],
-  )
-  const selectionLabel =
-    selection === null
-      ? null
-      : selection.kind === 'coroutine'
-        ? (selectedCoroutine?.label ?? selection.id)
-        : (names.get(selection.id) ?? selection.id)
-```
-
-(import `VizEvent` as a type alongside `ThreadActivity`; place `selectionLabel` after `selectedCoroutine`.)
-
-After `selectDockTab`:
-
-```ts
-  // A selection made inside a tab keeps you there; a resource opens its
-  // Evidence section (S-2), which EvidencePanels unfolds and scrolls to.
-  const selectFromEvent = (next: Selection) => {
-    setSelection(next)
-    if (next.kind === 'resource') selectDockTab('evidence')
-  }
-  const selectCoroutine = (id: string) => setSelection({ kind: 'coroutine', id })
-```
-
-Wiring:
-- `CoroutineCanvas`: `activity={activity}`; the `onSelect` callback body becomes `selectCoroutine(id); selectDockTab('inspector')`.
-- `Inspector`: `activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}`; `onClearSelection={isLiveView ? () => setSelection(null) : undefined}`.
-- `EvidencePanels`: `events={panelEvents} selection={isLiveView ? selection : null} onSelectCoroutine={isLiveView ? selectCoroutine : undefined}`.
-- `EventsPanel`:
-
-```tsx
-              <EventsPanel
-                events={panelEvents}
-                selection={isLiveView ? selection : null}
-                selectionLabel={selectionLabel}
-                subjectOf={isLiveView ? subjectOf : undefined}
-                onSelect={isLiveView ? selectFromEvent : undefined}
-                onShowAll={() => setSelection(null)}
-              />
-```
+(Task 11 left an interim `EventsPanel` wiring so its commit compiles; this replaces it.)
 
 - [ ] **Step 4: Run the workspace tests**
 
