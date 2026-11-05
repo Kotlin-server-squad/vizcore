@@ -147,8 +147,9 @@ export function SharedSessionPage() {
   // The subtle "Read-only shared view" banner sits above the viewer, subordinate
   // to the visualization canvas (UI-SPEC focal hierarchy).
   return (
-    <div className="container-custom py-8 pt-20">
-      <div className="mb-4 flex justify-end">
+    // Full width and height, like the session page (S-1).
+    <div className="flex h-dvh flex-col px-4 py-3 sm:px-6">
+      <div className="mb-2 flex justify-end">
         <Chip color="default" variant="flat" startContent={<FiEye />}>
           {COPY.banner}
         </Chip>

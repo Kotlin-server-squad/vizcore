@@ -26,7 +26,9 @@ function SessionDetailPage() {
 
   return (
     <Layout>
-      <div className="container-custom py-8">
+      {/* Full width, full height under the 64 px navbar (S-1): the main view
+          and the dock share the window instead of scrolling a long page. */}
+      <div className="flex h-[calc(100dvh-4rem)] flex-col px-4 py-3 sm:px-6">
         <SessionWorkspace
           sessionId={sessionId}
           scenarioId={search.scenarioId}

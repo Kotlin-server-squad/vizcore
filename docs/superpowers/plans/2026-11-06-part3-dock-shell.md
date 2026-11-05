@@ -1713,7 +1713,7 @@ describe('SessionHeader', () => {
   it('names the session, its rung and its counts', () => {
     renderHeader()
     expect(screen.getByRole('heading', { name: 'Deadlock' })).toBeInTheDocument()
-    expect(screen.getByTestId('rung-badge')).toHaveTextContent('Demo')
+    expect(screen.getByTestId('rung-badge')).toHaveTextContent('DEMO')
     expect(screen.getByText('5 coroutines')).toBeInTheDocument()
     expect(screen.getByText('42 events')).toBeInTheDocument()
   })
