@@ -25,6 +25,10 @@
 - **The Lock contention panel's hand-off:** `VizMutex.unlock` released the delegate before reporting `MutexUnlocked`; on several threads the next holder could report `MutexLockAcquired` first, and the late unlock then cleared the new holder in the panel. It now reports the release first. A `MutexWaitTest` case with 8 × 400 hand-offs on Default was seen failing before the fix.
 - **The bank test** expects all four transfers on Ben's account: the declined holiday locks both before it checks.
 
+**Changes while building:**
+- **The deadlock guide** first kept the old timing (a 0.5 s start delay, a watchdog every 2.5 s); the browser check caught it, and it now matches the code.
+- **Measured live** (scale 1, `scripts/demo-pacing-audit.py`, backend 18701): counter 14.1 s, bank 12.0 s, cache 11.5 s, deadlock 11.0 s, with 19, 13, 14 and 9 half-second moments. Each picture equals the live tree at its moment, and the session events confirm its caption (holders suspended in `delay`, waiters with `waitKind = MUTEX`, request-6 in `delay`).
+
 **Model:** #287 (Channels) and #289 (Patterns). Follow their patterns, test style and wording.
 
 **Working directory:** worktree `/Users/jirihermann/Documents/workspace-vizcore/vizcore-mutex`, branch `feat/mutex-stories-pacing`.
