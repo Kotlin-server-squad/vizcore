@@ -17,7 +17,7 @@ export const FLOW_GUIDES: DemoGuide[] = [
     level: 'beginner',
     tags: ['cold flow', 'flow { }', 'collect'],
     story:
-      'A stock ticker sends the Acme share price, one price every 1.5 seconds. A price chart starts to collect the prices at once. Four seconds later a price alert starts to collect them too. Each screen gets every price, from the first one, because the flow runs again for each collector.',
+      'A stock ticker sends the Acme share price. It waits 1.5 seconds before each price, and the next price waits until the screen has drawn the last one, so each screen gets a price every 2 seconds. A price chart starts to collect the prices at once. Four seconds later a price alert starts to collect them too. Each screen gets every price, from the first one, because the flow runs again for each collector.',
     code: `val prices = flow {                       // 1: acme-prices
     for (price in acmePrices) {
         delay(1500)                       // takes 1.5 s
@@ -48,19 +48,19 @@ launch { prices.collect { check(it) } }   // 3: price-alert`,
   {
     demoId: 'flow/operators',
     level: 'intermediate',
-    tags: ['debounce', 'filter', 'map', 'take'],
+    tags: ['debounce', 'filter', 'map', 'transformWhile'],
     story:
       'A search box searches while you type. It must not ask the server on every key. So it waits until you stop typing, skips queries that are too short, and only then asks for results. The user types "ko", thinks, types "tlin", thinks again, and types " flow".',
     code: `keystrokes                                // show-results
     .debounce(1200)                       // 1
     .filter { it.length >= 3 }            // 2
     .map { query -> search(query) }       // 3, takes 1.5 s
-    .take(2)                              // 4
+    .transformWhile { emit(it); it.query != "kotlin flow" }   // 4
     .collect { show(it) }                 // takes 0.5 s`,
     steps: [
       {
         title: 'Wait for a pause in typing',
-        text: 'type-query sends the text after each key, every 0.5 s. debounce lets a text through only when no new key comes for 1.2 s. So "k" is never searched, but "ko" is, when the user stops to think.',
+        text: 'type-query sends the text after each key, every 0.5 s. debounce lets a text through only when no new key comes for 1.2 s. So "k" never gets through, but "ko" does, when the user stops to think.',
       },
       {
         title: 'Skip short queries',
@@ -71,8 +71,8 @@ launch { prices.collect { check(it) } }   // 3: price-alert`,
         text: 'map turns a query into search results. It takes 1.5 s, and show-results is suspended while it waits. Here it runs for "kotlin" and later for "kotlin flow".',
       },
       {
-        title: 'Stop after two searches',
-        text: 'take(2) ends the collection after two results, so show-results completes at about 14 s. The operators always work in this order, on one value at a time.',
+        title: 'Stop after the whole query',
+        text: 'The keystrokes never end on their own, so the screen decides when to stop: after it has shown the results for "kotlin flow", the whole query. show-results completes at about 14 s. The operators always work in this order, on one value at a time.',
       },
     ],
     keyIdea:
@@ -86,7 +86,7 @@ launch { prices.collect { check(it) } }   // 3: price-alert`,
       'A shopping cart keeps its total in a StateFlow. The cart badge shows the total from the start. The user adds an item every few seconds. Later the user opens the checkout page, and it shows the current total at once, without waiting for the next change.',
     code: `val total = MutableStateFlow(0)           // 1: cart-total
 
-launch { total.collect { showBadge(it) } }        // cart-badge
+launch { total.collect { showBadge(it) } }        // cart-badge, until the final total
 launch {                                          // add-items
     for (newTotal in listOf(25, 40, 52)) {
         delay(2000)                               // takes 2 s
@@ -94,6 +94,7 @@ launch {                                          // add-items
     }
     // later: 64, then 70
 }
+delay(7000)                                       // the user opens the checkout later
 launch { total.collect { showCheckout(it) } }     // 3: checkout-summary`,
     steps: [
       {
@@ -102,7 +103,7 @@ launch { total.collect { showCheckout(it) } }     // 3: checkout-summary`,
       },
       {
         title: 'Every change reaches the badge',
-        text: 'add-items sets the total to 25, 40 and 52, two seconds apart. Each time, cart-badge gets the new total. Between changes the badge waits, and the tree shows it as active.',
+        text: 'add-items sets the total to 25, 40 and 52, two seconds apart. Each time, cart-badge gets the new total. A StateFlow keeps only the latest value, so a collector that is still busy can skip one; this badge draws in 0.5 s, so it sees them all. Between changes the badge waits, and the tree shows it as active.',
       },
       {
         title: 'A late collector gets the latest value',
@@ -110,7 +111,7 @@ launch { total.collect { showCheckout(it) } }     // 3: checkout-summary`,
       },
     ],
     keyIdea:
-      'A StateFlow always holds one current value. A new collector gets that value at once, then every change after it.',
+      'A StateFlow always holds one current value. A new collector gets that value at once, then newer values as they come. A busy collector may skip a value and see only the latest.',
     mistakeId: 'SHARED_MUTABLE_STATE',
   },
   {
@@ -122,7 +123,7 @@ launch { total.collect { showCheckout(it) } }     // 3: checkout-summary`,
     code: `val notifications = MutableSharedFlow<String>()       // 1
 
 for (screen in openScreens) {
-    launch { notifications.collect { draw(it) } }     // home, chat, settings
+    launch { notifications.collect { draw(it) } }     // home, chat, settings: 5 each
 }
 launch {                                              // push-server
     for (n in pushNotifications) {
@@ -130,6 +131,7 @@ launch {                                              // push-server
         notifications.emit(n)                         // 2
     }
 }
+delay(6000)                                           // the user opens the profile later
 launch { notifications.collect { draw(it) } }         // 3: profile-screen`,
     steps: [
       {

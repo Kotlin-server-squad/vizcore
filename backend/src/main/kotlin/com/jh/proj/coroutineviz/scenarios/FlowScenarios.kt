@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.transformWhile
  * missed the value it waits for would wait for ever.
  */
 object FlowScenarios {
-    /** The Acme share prices the ticker sends, one every 1.5 s. */
+    /** The Acme share prices the ticker sends to each collector, 2 s apart. */
     private val ACME_PRICES = listOf(101.2, 101.8, 100.9, 102.4, 103.1, 102.7)
 
     /** The cart total after each item the user adds. */
@@ -35,9 +35,16 @@ object FlowScenarios {
     /** How long the search box waits after the last keystroke before it searches. */
     private const val DEBOUNCE_MILLIS = 1200L
 
+    /** What the user ends up typing; the results screen stops once it shows its results. */
+    private const val FINAL_QUERY = "kotlin flow"
+
+    /** What the search service answers for [query]. */
+    internal fun resultsFor(query: String) = "results for \"$query\""
+
     /**
-     * A cold flow, as a stock ticker: the flow `acme-prices` sends six prices, one every 1.5 s,
-     * and each screen draws a price for 0.5 s. The price chart collects from the start, the price
+     * A cold flow, as a stock ticker: the flow `acme-prices` waits 1.5 s before each of six
+     * prices, and each screen draws a price for 0.5 s before the flow goes on, so a screen gets a
+     * price every 2 s. The price chart collects from the start, the price
      * alert from 4 s; the flow runs again for the alert, from the first price, because a cold flow
      * runs once for every collector. Ends at about 16 s.
      */
@@ -69,8 +76,9 @@ object FlowScenarios {
      * Flow operators, as search as you type: the user types "ko", thinks, types "tlin", thinks,
      * then types " flow", a key every 0.5 s. The search box debounces the keystrokes (it waits
      * 1.2 s after the last one), filters out queries shorter than three letters, maps each query
-     * to results (the search service takes 1.5 s) and stops after two searches. "ko" is debounced
-     * and filtered out; "kotlin" and "kotlin flow" are searched. Ends at about 14 s.
+     * to results (the search service takes 1.5 s) and stops once it shows the results for the
+     * whole query. "ko" is debounced and filtered out; "kotlin" and "kotlin flow" are searched.
+     * Ends at about 14 s.
      */
     suspend fun flowOperators(session: VizSession): Job =
         coroutineScope {
@@ -84,8 +92,8 @@ object FlowScenarios {
                         .vizFilter { it.length >= 3 }
                         .vizMap { query ->
                             pause(1500)
-                            "results for \"$query\""
-                        }.vizTake(2)
+                            resultsFor(query)
+                        }.untilResultsFor(FINAL_QUERY)
                         .collect { pause(500) }
                 }
                 vizLaunch("type-query") {
@@ -95,7 +103,7 @@ object FlowScenarios {
                     pause(2500)
                     type(keystrokes, "ko", "kotlin")
                     pause(2500)
-                    type(keystrokes, "kotlin", "kotlin flow")
+                    type(keystrokes, "kotlin", FINAL_QUERY)
                 }
             }
         }
@@ -198,3 +206,14 @@ object FlowScenarios {
             }
         }
 }
+
+/**
+ * The search results up to and including those for [finalQuery]. The keystrokes are a SharedFlow,
+ * which never completes, so the screen must stop on a value. A count of searches would wait for
+ * ever if two typing pauses blurred into one search, which happens at a small time scale.
+ */
+internal fun Flow<String>.untilResultsFor(finalQuery: String): Flow<String> =
+    transformWhile {
+        emit(it)
+        it != FlowScenarios.resultsFor(finalQuery)
+    }

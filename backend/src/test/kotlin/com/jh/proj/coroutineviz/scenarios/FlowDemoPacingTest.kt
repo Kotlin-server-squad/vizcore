@@ -12,9 +12,13 @@ import com.jh.proj.coroutineviz.events.flow.FlowValueEmitted
 import com.jh.proj.coroutineviz.events.flow.FlowValueFiltered
 import com.jh.proj.coroutineviz.events.flow.FlowValueTransformed
 import com.jh.proj.coroutineviz.events.flow.SharedFlowEmission
+import com.jh.proj.coroutineviz.events.flow.StateFlowValueChanged
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -188,6 +192,39 @@ class FlowDemoPacingTest {
         )
     }
 
+    /**
+     * At the smallest time scale a keystroke gap (5 ms) is close to the debounce timeout (12 ms),
+     * so "kotlin" can be merged with the keys after it and only one search happens. The demo must
+     * still end: it stops after the results for the whole query, not after a count of searches.
+     */
+    @Test
+    fun `search as you type ends even when the typing pauses blur together`() =
+        runBlocking {
+            repeat(10) {
+                val session = VizSession("pacing-operators-fast-$it")
+                try {
+                    val run = assertNotNull(DemoRuns(maxConcurrent = 0, timeScale = DemoPace.MIN_SCALE).tryStart())
+                    withTimeout(3.seconds) { withContext(run) { FlowScenarios.flowOperators(session) }.join() }
+                } finally {
+                    session.close()
+                }
+            }
+        }
+
+    /** The case that hung with take(2): "kotlin" merged into the later typing, so only one search came. */
+    @Test
+    fun `the results screen stops after the results for the whole query, however many searches came before`() =
+        runBlocking {
+            val onlyTheLastSearch =
+                flow<String> {
+                    emit(FlowScenarios.resultsFor("kotlin flow"))
+                    awaitCancellation() // the keystrokes are a SharedFlow: they never complete
+                }
+
+            val shown = withTimeout(5.seconds) { onlyTheLastSearch.untilResultsFor("kotlin flow").toList() }
+            assertEquals(listOf(FlowScenarios.resultsFor("kotlin flow")), shown)
+        }
+
     @Test
     fun `the cart total always has a value, and a checkout opened later gets the latest total at once`() {
         val run = run("flow/stateflow")
@@ -195,8 +232,9 @@ class FlowDemoPacingTest {
         assertEquals(listOf("0", "25", "40", "52", "64", "70"), run.received("cart-badge").map { it.valuePreview })
         val checkout = run.received("checkout-summary")
         assertEquals(listOf("52", "64", "70"), checkout.map { it.valuePreview })
-        val waited = run.at(checkout.first()) - run.startedAt("checkout-summary")
-        assertTrue(waited < 300, "the checkout gets the current total at once, not with the next change ($waited ms)")
+        // At once: before the next total is set, which the user does about 2 s after the checkout opens.
+        val next = run.events.filterIsInstance<StateFlowValueChanged>().single { it.newValuePreview == "64" }
+        assertTrue(checkout.first().seq < next.seq, "the checkout gets the current total before the next change")
     }
 
     @Test
@@ -209,7 +247,8 @@ class FlowDemoPacingTest {
         screens.forEach { assertEquals(notifications, run.received(it).map { e -> e.valuePreview }, it) }
         notifications.indices.forEach { i ->
             val times = screens.map { run.at(run.received(it)[i]) }
-            assertTrue(times.max() - times.min() < 200, "notification ${i + 1} reaches the screens together: $times")
+            // Together: well within the 2.5 s between notifications, with room for the threads' scheduling.
+            assertTrue(times.max() - times.min() < 1_000, "notification ${i + 1} reaches the screens together: $times")
         }
         assertEquals(notifications.takeLast(3), run.received("profile-screen").map { it.valuePreview })
     }
