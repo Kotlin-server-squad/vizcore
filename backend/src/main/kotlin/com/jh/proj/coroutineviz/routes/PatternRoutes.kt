@@ -77,48 +77,49 @@ fun Route.registerPatternRoutes() {
                     listOf(
                         PatternInfo(
                             id = "retry",
-                            name = "Retry with Exponential Backoff",
+                            name = "Retry with Backoff: Weather Forecast",
                             description =
-                                "Retry a failing operation 3 times with exponential backoff " +
-                                    "(100ms, 200ms, 400ms). Shows structured retry pattern for transient failures.",
+                                "The weather server is overloaded and turns down the first three tries. The app retries with " +
+                                    "exponential backoff, waiting 0.75 s, 1.5 s and 3 s, and the fourth try gets the forecast.",
                             endpoint = "/api/scenarios/patterns/retry",
-                            duration = "~1-2 seconds",
+                            duration = "~12 seconds",
                         ),
                         PatternInfo(
                             id = "producer-consumer",
-                            name = "Producer-Consumer",
+                            name = "Producer-Consumer: Coffee Bar",
                             description =
-                                "Producer sends items to a buffered channel (capacity 5), " +
-                                    "consumer processes them with delay. Shows channel-based communication.",
+                                "The cashier puts orders on a rail with room for 3 and the barista makes them, each at their own " +
+                                    "pace. In the morning rush the rail fills and the cashier waits; in the quiet spell the barista " +
+                                    "waits for orders.",
                             endpoint = "/api/scenarios/patterns/producer-consumer",
-                            duration = "~1-2 seconds",
+                            duration = "~18 seconds",
                         ),
                         PatternInfo(
                             id = "fan-out-fan-in",
-                            name = "Fan-Out / Fan-In",
+                            name = "Fan-Out / Fan-In: Holiday Album",
                             description =
-                                "One producer, 3 worker coroutines that process in parallel, " +
-                                    "results collected via channel. Shows work distribution pattern.",
+                                "9 photos go to 3 resizers, each photo to exactly one (fan-out). The album collects the finished " +
+                                    "photos through one channel in the order they are done, not the order they were picked (fan-in).",
                             endpoint = "/api/scenarios/patterns/fan-out-fan-in",
-                            duration = "~1-2 seconds",
+                            duration = "~12 seconds",
                         ),
                         PatternInfo(
                             id = "supervisor",
-                            name = "Supervisor Pattern",
+                            name = "Supervisor: Nightly Backup",
                             description =
-                                "Launch children where one fails but siblings continue. " +
-                                    "Shows error isolation with structured concurrency.",
+                                "Photos, contacts and messages back up side by side under supervisorScope. The message backup " +
+                                    "fails, and photos and contacts keep going: one child's failure does not cancel its siblings.",
                             endpoint = "/api/scenarios/patterns/supervisor",
-                            duration = "~1-2 seconds",
+                            duration = "~14 seconds",
                         ),
                         PatternInfo(
                             id = "circuit-breaker",
-                            name = "Circuit Breaker",
+                            name = "Circuit Breaker: Payment Provider",
                             description =
-                                "After N consecutive failures, stop trying for a cooldown period. " +
-                                    "Shows resilience pattern for protecting downstream services.",
+                                "The payment provider is down. After 3 failed charges the breaker opens and rejects orders at " +
+                                    "once for 5 s, then lets one trial order through; the provider is back, so the breaker closes.",
                             endpoint = "/api/scenarios/patterns/circuit-breaker",
-                            duration = "~1-2 seconds",
+                            duration = "~22 seconds",
                         ),
                     ),
             ),

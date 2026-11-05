@@ -212,37 +212,39 @@ val demoCatalog: List<DemoCatalogEntry> =
             "pattern",
             Demo(
                 "patterns/retry",
-                "Retry with Exponential Backoff",
-                "Retry a failing operation 3 times with exponential backoff (100ms, 200ms, 400ms). " +
-                    "Shows structured retry pattern for transient failures.",
-                "~1 second",
+                "Retry with Backoff: Weather Forecast",
+                "The weather server is overloaded and turns down the first three tries. The app retries with " +
+                    "exponential backoff, waiting 0.75 s, 1.5 s and 3 s, and the fourth try gets the forecast.",
+                "~12 seconds",
             ),
             Demo(
                 "patterns/producer-consumer",
-                "Producer-Consumer",
-                "Producer sends items to a buffered channel (capacity 5), consumer processes them with delay. " +
-                    "Shows channel-based communication.",
-                "~1-2 seconds",
+                "Producer-Consumer: Coffee Bar",
+                "The cashier puts orders on a rail with room for 3 and the barista makes them, each at their own " +
+                    "pace. In the morning rush the rail fills and the cashier waits; in the quiet spell the barista " +
+                    "waits for orders.",
+                "~18 seconds",
             ),
             Demo(
                 "patterns/fan-out-fan-in",
-                "Fan-Out / Fan-In",
-                "Distribute work to multiple workers in parallel, results collected via channel. " +
-                    "Shows work distribution pattern.",
-                "~1 second",
+                "Fan-Out / Fan-In: Holiday Album",
+                "9 photos go to 3 resizers, each photo to exactly one (fan-out). The album collects the finished " +
+                    "photos through one channel in the order they are done, not the order they were picked (fan-in).",
+                "~12 seconds",
             ),
             Demo(
                 "patterns/supervisor",
-                "Supervisor Pattern",
-                "Launch children where one fails but siblings continue. Shows error isolation with structured concurrency.",
-                "~1 second",
+                "Supervisor: Nightly Backup",
+                "Photos, contacts and messages back up side by side under supervisorScope. The message backup " +
+                    "fails, and photos and contacts keep going: one child's failure does not cancel its siblings.",
+                "~14 seconds",
             ),
             Demo(
                 "patterns/circuit-breaker",
-                "Circuit Breaker",
-                "After N consecutive failures, stop trying for a cooldown period. " +
-                    "Shows resilience pattern for protecting downstream services.",
-                "~1 second",
+                "Circuit Breaker: Payment Provider",
+                "The payment provider is down. After 3 failed charges the breaker opens and rejects orders at " +
+                    "once for 5 s, then lets one trial order through; the provider is back, so the breaker closes.",
+                "~22 seconds",
             ),
         ) +
         group(

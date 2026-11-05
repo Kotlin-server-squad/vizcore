@@ -1084,9 +1084,10 @@ paths:
       tags: [Scenarios - Patterns]
       summary: Run retry with exponential backoff scenario
       description: >
-        Retries a failing operation 3 times with exponential backoff
-        (100ms, 200ms, 400ms). Shows the structured retry pattern for
-        handling transient failures.
+        A weather app retries an overloaded server with exponential backoff:
+        the first three tries fail (HTTP 503), the app waits 0.75 s, 1.5 s
+        and 3 s between them, and the fourth try gets the forecast. Paced to
+        about 12 seconds; answers once the demo has ended.
       operationId: runRetryScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
@@ -1109,9 +1110,10 @@ paths:
       tags: [Scenarios - Patterns]
       summary: Run producer-consumer scenario
       description: >
-        Producer sends items to a buffered channel (capacity 5), consumer
-        processes them with delay. Shows channel-based communication between
-        coroutines.
+        A cashier puts orders on a rail (a channel with room for 3) and a
+        barista makes them, each at their own pace: in the rush the rail
+        fills and the cashier waits; in the quiet spell the barista waits.
+        Paced to about 18 seconds; answers once the demo has ended.
       operationId: runProducerConsumerScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
@@ -1134,9 +1136,10 @@ paths:
       tags: [Scenarios - Patterns]
       summary: Run fan-out/fan-in scenario
       description: >
-        One producer distributes work to 3 worker coroutines that process
-        in parallel; results are collected via channel. Demonstrates the
-        work distribution pattern.
+        9 photos go to 3 resizers, each to exactly one (fan-out); the album
+        collects the finished photos through one channel in the order they
+        are done (fan-in). Paced to about 12 seconds; answers once the demo
+        has ended.
       operationId: runFanOutFanInScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
@@ -1159,9 +1162,9 @@ paths:
       tags: [Scenarios - Patterns]
       summary: Run supervisor pattern scenario
       description: >
-        Launches child coroutines where one fails but siblings continue
-        executing. Shows error isolation with structured concurrency using
-        SupervisorJob.
+        Photos, contacts and messages back up side by side under
+        supervisorScope; the message backup fails and the other two keep
+        going. Paced to about 14 seconds; answers once the demo has ended.
       operationId: runSupervisorScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
@@ -1184,9 +1187,11 @@ paths:
       tags: [Scenarios - Patterns]
       summary: Run circuit breaker scenario
       description: >
-        After N consecutive failures, stops attempting calls for a cooldown
-        period. Demonstrates the resilience pattern for protecting
-        downstream services.
+        A shop charges orders through a payment provider that is down: after
+        3 failed charges the breaker opens and rejects orders at once for
+        5 s, then lets one trial order through (half-open), which succeeds
+        and closes it. Paced to about 22 seconds; answers once the demo has
+        ended.
       operationId: runCircuitBreakerScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
