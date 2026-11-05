@@ -139,6 +139,19 @@ describe('projectActivity', () => {
     expect(lines.get('c-2')?.text).toBe('may hold a payment-gateway permit · holder unknown')
   })
 
+  it('a release since the last snapshot leaves every listed holder "may hold": who released is not settled', () => {
+    const lines = projectActivity([
+      ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),
+      ev('SemaphoreStateChanged', {
+        ...sem, availablePermits: 1, totalPermits: 3, activeHolders: ['c-1', 'c-2'], activeHolderLabels: ['c-1', 'c-2'],
+        activeHolderPermits: [1, 1], waitingCoroutines: [], waitingLabels: [],
+      }),
+      ev('SemaphorePermitReleased', { ...sem, releaserId: 'c-1', releaserLabel: 'c-1', newAvailablePermits: 2, holdDurationNanos: 0 }),
+    ])
+    expect(lines.get('c-1')?.text).toBe('may hold a payment-gateway permit · holder unknown')
+    expect(lines.get('c-2')?.text).toBe('may hold a payment-gateway permit · holder unknown')
+  })
+
   it('a holder listed only by its acquisition, before a snapshot confirms it, may hold the permit', () => {
     const lines = projectActivity([
       ev('SemaphoreCreated', { ...sem, totalPermits: 3 }),

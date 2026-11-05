@@ -182,6 +182,7 @@ describe('SemaphoreGauge', () => {
           availablePermits: 3,
           activeHolders: [],
           unknownHolderPermits: 0,
+          unsettled: false,
           waitQueue: [],
         }}
       />,
@@ -310,15 +311,27 @@ describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
     expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3, and 1 permit with no recorded holder')
   })
 
-  it('marks a holder listed only by its acquisition as unconfirmed until the next snapshot', () => {
+  it('after an acquire or release since the last snapshot, says "holder unknown" and counts nothing per holder', () => {
+    // A acquires twice between snapshots: two permits in use, both acquisitions name order-3; no
+    // "no recorded holder" count is guessed.
+    const acquire = (seq: number, remainingPermits: number) =>
+      makeSyncEvent('SemaphorePermitAcquired', seq, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits, waitDurationNanos: 0,
+      })
     const events = [
       makeSyncEvent('SemaphoreCreated', 1, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
-      makeSyncEvent('SemaphorePermitAcquired', 2, {
-        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits: 2, waitDurationNanos: 0,
+      makeSyncEvent('SemaphoreStateChanged', 2, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3, availablePermits: 3,
+        activeHolders: [], activeHolderLabels: [], waitingCoroutines: [], waitingLabels: [],
       }),
+      acquire(3, 2),
+      acquire(4, 1),
     ]
     render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
-    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3 (may hold · holder unknown)')
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown — 2 of 3 permits in use; last recorded holders order-3')
+    expect(held).not.toHaveTextContent('no recorded holder')
+    expect(held).not.toHaveTextContent('permits)')
   })
 
   it('selects a holder or a waiter by name', async () => {

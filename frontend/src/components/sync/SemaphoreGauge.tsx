@@ -118,15 +118,18 @@ export function SemaphoreGauge({
             <span className="text-default-500">Held by </span>
             {usedPermits <= 0 ? (
               <span>none</span>
-            ) : semaphore.unknownHolderPermits > 0 ? (
+            ) : semaphore.unknownHolderPermits > 0 || semaphore.unsettled ? (
               <>
                 <span className="font-semibold">holder unknown</span>
                 <span className="text-default-500">
                   {' '}
-                  — {usedPermits} of {semaphore.totalPermits} permits in use; last recorded holders{' '}
+                  — {usedPermits} of {semaphore.totalPermits} permits in use;{' '}
+                  {semaphore.activeHolders.length > 0 ? 'last recorded holders ' : 'no holder recorded yet'}
                 </span>
                 <HolderNames semaphore={semaphore} picker={picker} selectedCoroutineId={selectedCoroutineId} />
-                <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
+                {semaphore.unknownHolderPermits > 0 && (
+                  <span className="text-default-500">. A permit came back from a coroutine that held none.</span>
+                )}
               </>
             ) : semaphore.activeHolders.length === 0 ? (
               <>
@@ -181,8 +184,6 @@ function HolderNames({
           {i > 0 && ', '}
           <CoroutineName id={h.id} label={h.label} picker={picker} selected={h.id === selectedCoroutineId} />
           {counts && h.permits > 1 && <span className="text-default-500"> ({h.permits} permits)</span>}
-          {/* Listed by its acquisition only: a snapshot has not confirmed it yet. */}
-          {h.unconfirmed && <span className="text-default-500"> (may hold · holder unknown)</span>}
         </span>
       ))}
     </>

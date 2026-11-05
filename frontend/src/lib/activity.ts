@@ -6,8 +6,8 @@
  * coroutine's next resume, suspension or end. A queue alone is not taken for a wait: a waiter that has resumed
  * stays listed until the next queue event, and an older producer records no wait kind — no line is better
  * than a wrong one. The place in the queue is the latest observed one. Permits are counted, never numbered;
- * when a permit came back from a coroutine that held none, which listed holder still holds one is unknown,
- * and the line says so. A wait is drawn in the Suspended colour; a hold alone is neutral, because a held
+ * when a permit came back from a coroutine that held none, or an acquire or release since the last state
+ * snapshot left the holders unsettled, which listed holder holds what is unknown, and the line says so. A wait is drawn in the Suspended colour; a hold alone is neutral, because a held
  * lock is normal work.
  */
 import type { VizEvent, WaitKind } from '@/types/api'
@@ -85,12 +85,12 @@ export function projectActivity(events: readonly VizEvent[]): Map<string, Activi
   }
   for (const s of sync.semaphores) {
     const name = nameOf(s.semaphoreId)
-    // A permit came back from a coroutine that held none (S-7): which listed holder still holds one is unknown.
-    // A holder listed only by its acquisition is unknown too until a snapshot confirms it.
-    const ambiguous = s.unknownHolderPermits > 0
+    // A permit came back from a coroutine that held none (S-7), or an acquire or release since the last
+    // snapshot left the list unsettled: which listed holder holds what is unknown, so none is named for certain.
+    const ambiguous = s.unknownHolderPermits > 0 || s.unsettled
     for (const h of s.activeHolders) {
       const permits = h.permits === 1 ? aPermit(name) : `${h.permits} ${name} permits`
-      hold(h.id, ambiguous || h.unconfirmed ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
+      hold(h.id, ambiguous ? `may hold ${permits} · holder unknown` : `holds ${permits}`)
     }
   }
 

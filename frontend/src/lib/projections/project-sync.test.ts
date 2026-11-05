@@ -110,7 +110,7 @@ describe('projectSync', () => {
 
   describe('permits between two state snapshots', () => {
     // A snapshot is the only source of permit counts. An acquire or release between two snapshots only lists
-    // an acquirer not listed yet, as unconfirmed: whether a snapshot already counted an operation cannot be told
+    // an acquirer not listed yet and unsettles the list: whether a snapshot already counted an operation cannot be told
     // from the totals (VizSemaphore records a holder before the acquisition event, and drops it before the
     // release event; a semaphore can start with permits taken).
     const s = { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway' }
@@ -119,11 +119,27 @@ describe('projectSync', () => {
     const released = (who: string, holderUnknown = false, newAvailablePermits = 2) =>
       event('SemaphorePermitReleased', { ...s, releaserId: who, releaserLabel: who, newAvailablePermits, holdDurationNanos: 0, holderUnknown })
 
-    it('an acquirer not listed yet is listed, unconfirmed, and leaves the queue', () => {
+    it('an acquirer not listed yet is listed, the list is unsettled, and it leaves the queue', () => {
       const queued = stateChanged({ activeHolders: [], activeHolderLabels: [], waitingCoroutines: ['c-1'], waitingLabels: ['c-1'] })
       const [sem] = projectSync([created, queued, acquired('c-1')]).semaphores
-      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1, unconfirmed: true }])
+      expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
+      expect(sem!.unsettled).toBe(true)
       expect(sem!.waitQueue).toEqual([])
+    })
+
+    it('a release while A and B are listed unsettles the list: who still holds is unknown', () => {
+      const [sem] = projectSync([
+        created,
+        stateChanged({ availablePermits: 1, activeHolderPermits: [1, 1] }),
+        released('c-1', false, 2),
+      ]).semaphores
+      expect(sem!.unsettled).toBe(true)
+    })
+
+    it('a snapshot settles the list again', () => {
+      expect(projectSync([created]).semaphores[0]!.unsettled).toBe(false)
+      const [sem] = projectSync([created, acquired('c-1'), stateChanged({ availablePermits: 1, activeHolderPermits: [1, 1] })]).semaphores
+      expect(sem!.unsettled).toBe(false)
     })
 
     it('a listed acquirer keeps its count: the snapshot may have counted this permit already', () => {
@@ -184,6 +200,7 @@ describe('projectSync', () => {
         stateChanged({ availablePermits: 2, activeHolders: ['c-1'], activeHolderLabels: ['c-1'], activeHolderPermits: [1] }),
       ]).semaphores
       expect(sem!.activeHolders).toEqual([{ id: 'c-1', label: 'c-1', permits: 1 }])
+      expect(sem!.unsettled).toBe(false)
     })
   })
 })

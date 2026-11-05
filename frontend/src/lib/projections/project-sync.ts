@@ -12,8 +12,9 @@
  * VizSemaphore records a holder before the acquisition event and drops it before the release event, and a
  * semaphore can start with permits taken, so whether a snapshot already counted an operation cannot be told
  * from the totals. An acquire or release between two snapshots (a stream flush or a replay cursor can fall
- * there) therefore only lists an acquirer not listed yet, as unconfirmed, and changes no count; the next
- * snapshot replaces the list. With every permit free, nobody holds one.
+ * there) therefore only lists an acquirer not listed yet and changes no count, and marks the list unsettled:
+ * no holder is named for certain until the next snapshot replaces the list. With every permit free, nobody
+ * holds one.
  */
 import { SYNC_EVENT_KINDS } from '@/types/api'
 import { inSeqOrder } from './in-seq-order'
@@ -45,11 +46,6 @@ export interface Holder {
 /** A semaphore holder and how many permits it holds. */
 export interface SemaphoreHolder extends Holder {
   permits: number
-  /**
-   * Listed by its acquisition event, not yet by a state snapshot: it may hold a permit, but whether a snapshot
-   * already counted it cannot be told, so its count is not trusted until the next snapshot.
-   */
-  unconfirmed?: true
 }
 
 /** Tracked state for a single mutex. */
@@ -76,6 +72,12 @@ export interface SemaphoreState {
    * listed holder no longer holds one, and which is unknown. Not permits held by nobody known.
    */
   unknownHolderPermits: number
+  /**
+   * An acquire or release was recorded since the last state snapshot: who holds what is not settled (whether
+   * that snapshot already counted the operation cannot be told), so no holder is named for certain and no
+   * count is trusted until the next snapshot.
+   */
+  unsettled: boolean
   waitQueue: Holder[]
 }
 
@@ -197,6 +199,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
           availablePermits: e.totalPermits,
           activeHolders: [],
           unknownHolderPermits: 0,
+          unsettled: false,
           waitQueue: [],
         })
         break
@@ -211,14 +214,12 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.remainingPermits
-        // Only an acquirer not listed yet is listed, unconfirmed; a listed one keeps its count (a snapshot may
-        // already have counted this permit). The next snapshot replaces the list.
+        // An acquirer not listed yet is listed; no count changes (a snapshot may already have counted this
+        // permit), and the list is unsettled until the next snapshot replaces it.
         if (!state.activeHolders.some(h => h.id === e.acquirerId)) {
-          state.activeHolders = [
-            ...state.activeHolders,
-            { id: e.acquirerId, label: e.acquirerLabel, permits: 1, unconfirmed: true },
-          ]
+          state.activeHolders = [...state.activeHolders, { id: e.acquirerId, label: e.acquirerLabel, permits: 1 }]
         }
+        state.unsettled = true
         state.waitQueue = state.waitQueue.filter(w => w.id !== e.acquirerId)
         clearWhenAllFree(state)
         break
@@ -228,8 +229,9 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const state = semaphoreStates.get(e.semaphoreId)!
         state.availablePermits = e.newAvailablePermits
-        // No count changes until the next snapshot (a snapshot may already have taken this permit back);
-        // only a release that frees every permit is certain: then nobody holds one.
+        // No count changes (a snapshot may already have taken this permit back): the list is unsettled until
+        // the next snapshot. Only a release that frees every permit is certain: then nobody holds one.
+        state.unsettled = true
         clearWhenAllFree(state)
         break
       }
@@ -251,6 +253,7 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
           permits: e.activeHolderPermits?.[i] ?? 1,
         }))
         state.unknownHolderPermits = e.unknownHolderPermits ?? 0
+        state.unsettled = false
         clearWhenAllFree(state)
         state.waitQueue = e.waitingCoroutines.map((id, i) => ({
           id,
@@ -288,6 +291,7 @@ function clearWhenAllFree(state: SemaphoreState) {
   if (state.totalPermits > 0 && state.availablePermits >= state.totalPermits) {
     state.activeHolders = []
     state.unknownHolderPermits = 0
+    state.unsettled = false
   }
 }
 
@@ -315,6 +319,7 @@ function ensureSemaphore(map: Map<string, SemaphoreState>, id: string, label: st
       availablePermits: 0,
       activeHolders: [],
       unknownHolderPermits: 0,
+      unsettled: false,
       waitQueue: [],
     })
   }
