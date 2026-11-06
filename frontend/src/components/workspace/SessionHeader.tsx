@@ -11,7 +11,7 @@ import {
 } from '@heroui/react'
 import { FiCheck, FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
-import { useLook } from '@/looks/look-context'
+import { useLook, useLookSlot } from '@/looks/look-context'
 import { parseLook } from '@/looks/registry'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
 import { formatDuration } from '@/lib/format-duration'
@@ -112,6 +112,8 @@ export function SessionHeader({
   const sharingDisabled = capabilities?.sharingEnabled === false
   // The Look switch (PR L0): offered only where the page has one (not the shared view).
   const { look, setLook, looks } = useLook()
+  // A line under the title, if the look has one (Classic: none).
+  const headerSummary = useLookSlot('HeaderSummary')
   // The page's own actions in "⋯".
   const actionItems = [
     // Owner only: a shared link can never re-share (ADR-019, T-03-22).
@@ -144,6 +146,14 @@ export function SessionHeader({
     <header data-look-part="header" className="space-y-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="text-xl font-bold">{title}</h1>
+        {headerSummary({
+          outcome,
+          runSpanNanos,
+          spanIsFloor: droppedCount > 0,
+          replayActive,
+          replayAtNanos,
+          events: panelEvents,
+        })}
         {/* Which fidelity rung this session is on (D-6). */}
         <Chip size="sm" variant="flat" color={rung === 'demo' ? 'default' : 'primary'} data-testid="rung-badge">
           {RUNG_LABEL[rung]}
@@ -196,7 +206,7 @@ export function SessionHeader({
 
         <div className="flex-1" />
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-look-part="header-actions" className="flex flex-wrap items-center gap-2">
           {scenario && outcome && (
             <RunScenarioButton outcome={outcome.outcome} isPending={scenario.isRunPending} onRun={() => void scenario.run()} />
           )}

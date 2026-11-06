@@ -9,4 +9,4 @@ export const classic = {
 } as const satisfies LookDefinition
 
 /** Every slot as Classic draws it; a look that leaves a slot out gets this one. */
-export const classicSlots: LookSlots = { SessionBody: classicSessionBody }
+export const classicSlots: LookSlots = { SessionBody: classicSessionBody, HeaderSummary: () => null }

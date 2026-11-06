@@ -462,6 +462,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
 
   return (
     <div
+      data-look-part="node"
       className={className}
       {...(onSelect
         ? {
@@ -519,10 +520,14 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
           )}
           <div className="min-w-0 flex-1">
             {/* Names like dashboard.notifications.unread have no spaces: let them break anywhere, over two lines. */}
-            <div className="line-clamp-2 text-base font-bold leading-6 [overflow-wrap:anywhere]" title={node.label || node.id}>
+            <div
+              data-look-part="node-name"
+              className="line-clamp-2 text-base font-bold leading-6 [overflow-wrap:anywhere]"
+              title={node.label || node.id}
+            >
               {node.label || node.id}
             </div>
-            <div className="text-xs text-default-500">
+            <div data-look-part="node-state" className="text-xs text-default-500">
               {stateLabel(node.state)}
               {node.state === 'ACTIVE' && <span className="ml-2 inline-block">●</span>}
             </div>
@@ -540,7 +545,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
         </div>
 
         {/* Details */}
-        <div className="space-y-1 text-sm">
+        <div data-look-part="node-details" className="space-y-1 text-sm">
           <DetailRow label="ID" value={node.id} />
           <DetailRow label="Job" value={node.jobId} />
           <DetailRow label="Scope" value={node.scopeId} />
