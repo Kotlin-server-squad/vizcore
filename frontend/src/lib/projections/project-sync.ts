@@ -247,8 +247,12 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const e = syncEvent as SemaphoreTryAcquireFailed
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const failed = semaphoreStates.get(e.semaphoreId)!
+        // It reads the free permits as they are now: if that differs from what was known, some permit moved
+        // since the last snapshot, so who holds what is unsettled (unknown, not inferred).
+        if (!failed.availableKnown || failed.availablePermits !== e.availablePermits) failed.unsettled = true
         failed.availablePermits = e.availablePermits
         failed.availableKnown = true
+        clearWhenAllFree(failed)
         break
       }
       case 'SemaphoreStateChanged': {

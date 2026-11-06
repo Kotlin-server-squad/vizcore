@@ -208,4 +208,30 @@ describe('projectSync', () => {
     expect(projectSync([created]).semaphores[0]!.availableKnown).toBe(false)
     expect(projectSync([created, stateChanged({ availablePermits: 1 })]).semaphores[0]!.availableKnown).toBe(true)
   })
+
+  describe('a failed try-acquire reports the free permits', () => {
+    const one = event('SemaphoreCreated', { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 2 })
+    const held = stateChanged({ totalPermits: 2, availablePermits: 0, activeHolderPermits: [1, 1] })
+    const failed = (availablePermits: number) =>
+      event('SemaphoreTryAcquireFailed', {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', requesterId: 'c-9', requesterLabel: 'c-9', availablePermits, permitsRequested: 1,
+      })
+
+    it('when it reports fewer permits in use than listed, who still holds is unknown', () => {
+      const [sem] = projectSync([one, held, failed(1)]).semaphores
+      expect(sem!.unsettled).toBe(true)
+    })
+
+    it('when it reports every permit free, nobody holds one', () => {
+      const [sem] = projectSync([one, held, failed(2)]).semaphores
+      expect(sem!.activeHolders).toEqual([])
+    })
+
+    it('when it reports what the snapshot said, the holders stay settled', () => {
+      const [sem] = projectSync([one, held, failed(0)]).semaphores
+      expect(sem!.unsettled).toBe(false)
+      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-1', 'c-2'])
+    })
+  })
 })
+
