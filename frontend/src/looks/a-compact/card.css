@@ -62,8 +62,9 @@
    right, the second line under both. */
 [data-card-look='a'] [data-look-part='node-text'] {
   display: grid;
-  /* The name keeps at least half the row; a long state ("Waiting for children") is cut short instead. */
-  grid-template-columns: minmax(50%, 1fr) minmax(0, max-content);
+  /* The name first: it takes the width it needs (up to the whole row), and the state
+     has what is left, cut short if need be. Its colour is also the name's dot. */
+  grid-template-columns: fit-content(100%) minmax(0, 1fr);
   align-items: center;
   column-gap: 6px;
   row-gap: 2px;
@@ -91,6 +92,8 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  justify-self: end;
+  max-width: 100%;
   padding: 0 4px;
   border-radius: 3px;
   font-size: 12px;
