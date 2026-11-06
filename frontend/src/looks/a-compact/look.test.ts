@@ -134,6 +134,8 @@ function wrapper({ children }: { children: ReactNode }) {
   )
 }
 
+let page: HTMLDivElement | null = null
+
 /** The session page as a demo shows it: header with every pill, main view, dock, a node selected. */
 async function renderPage() {
   const events = [
@@ -156,6 +158,9 @@ async function renderPage() {
     isLoading: false,
     refetch: vi.fn(),
   } as unknown as ReturnType<typeof useSession>)
+  // Inside the page wrapper the route draws around the workspace.
+  page = document.body.appendChild(document.createElement('div'))
+  page.setAttribute('data-look-part', 'page')
   render(
     createElement(SessionWorkspace, {
       sessionId: 'session-1',
@@ -163,13 +168,8 @@ async function renderPage() {
       scenarioName: 'E-commerce Orders',
       startLive: true,
     }),
-    { wrapper }
+    { wrapper, container: page.appendChild(document.createElement('div')) }
   )
-  // The page wrapper the route draws around the workspace.
-  const page = document.createElement('div')
-  page.setAttribute('data-look-part', 'page')
-  document.body.prepend(page)
-  page.append(...[...document.body.children].filter(child => child !== page))
   await userEvent.click(screen.getByRole('button', { name: 'Open source for order-2' }))
 }
 
@@ -181,6 +181,8 @@ describe('A · Compact on the real page', () => {
   })
   afterEach(() => {
     document.documentElement.removeAttribute('data-look')
+    page?.remove()
+    page = null
   })
 
   it('every rule of the look matches something on the page (a renamed hook fails here, not silently)', async () => {
