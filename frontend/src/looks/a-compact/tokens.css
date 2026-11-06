@@ -216,6 +216,9 @@ html[data-look='a'] [data-look-part='node'] {
   background: transparent;
   font-size: 0.8rem;
   font-weight: 400;
+  /* The tab row scrolls sideways, so it clips anything drawn outside a tab:
+     the focus ring goes inside. */
+  --tw-ring-inset: inset;
 }
 
 [data-look='a'] [data-look-part='dock-tabs'] > [role='tab'][aria-selected='true'] {

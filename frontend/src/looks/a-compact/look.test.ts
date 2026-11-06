@@ -223,6 +223,7 @@ describe('A · Compact on the real page', () => {
     const second = document.querySelector(
       "[data-look='a'] [data-look-part='dock'] [data-testid='inspector'] > div:last-child > div + div"
     )
-    expect(second?.querySelector("[data-testid='events-card']")).not.toBeNull()
+    expect(second).toBeInstanceOf(HTMLElement)
+    expect(second!.querySelector("[data-testid='events-card']")).toBeInstanceOf(HTMLElement)
   })
 })
