@@ -112,10 +112,18 @@ describe('A · Compact', () => {
     expect(compactCard.fitMinZoom).toBe(1)
   })
 
-  it('keeps every word on the card at 12 px or more', () => {
+  it('keeps every word on the card at 12 px or more, each part sizing its own text', () => {
+    // A part left to the shared classes would inherit text-xs: 11.25 px at A's 15 px root.
     const sizes = [...cardCss.matchAll(/font-size:\s*([\d.]+)px/g)].map(m => Number(m[1]))
-    expect(sizes.length).toBeGreaterThan(0)
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(12)
+    const rulesOf = parseRules(cardCss)
+    for (const part of ['node-name', 'node-state', 'node-activity', 'node-children']) {
+      const own = rulesOf
+        .filter(rule => rule.selectors.some(sel => sel.endsWith(`[data-look-part='${part}']`)))
+        .map(rule => rule.body)
+        .join(';')
+      expect(own, part).toMatch(/font-size:\s*(1[2-9]|[2-9]\d)px/)
+    }
   })
 
   it('never hides keyboard focus', () => {
