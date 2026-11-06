@@ -34,7 +34,8 @@ data class IngestSnapshot(
 object IngestStates {
     private const val WATERMARK_BUFFER = 16
 
-    private val states = ConcurrentHashMap<String, State>()
+    // Internal so tests can check a session holds no state.
+    internal val states = ConcurrentHashMap<String, State>()
 
     /** Guarded by itself. */
     internal class State {
@@ -100,12 +101,13 @@ object IngestStates {
             if (current == null || observation.appNanos >= current.appNanos) state.watermark = observation
             val doubt = watermark.lostEvents > 0 || watermark.deliveryUncertain
             val t = state.transport
-            state.transport =
+            state.updateTransport(
                 t.copy(
                     lostEvents = maxOf(t.lostEvents, watermark.lostEvents),
                     deliveryUncertain = t.deliveryUncertain || watermark.deliveryUncertain,
                     sinceSeq = if (doubt) earliest(t.sinceSeq, connection.firstSeq) else t.sinceSeq,
-                )
+                ),
+            )
         }
         if (watermark.final) connection.finalWatermarkReceived = true
         state.watermarks.tryEmit(observation)
@@ -134,9 +136,23 @@ object IngestStates {
         states.remove(sessionId)
     }
 
-    internal fun clear() = states.clear()
+    internal fun clear() {
+        states.clear()
+        beforeStateAllocatedForTest = null
+    }
 
-    private fun stateOf(sessionId: String): State = states.computeIfAbsent(sessionId) { State() }
+    /**
+     * Test seam: runs just before a session's state is first allocated, so a test can delete the session in the window
+     * where the delete's [forget] has already run and the allocation comes after it.
+     */
+    @Volatile
+    internal var beforeStateAllocatedForTest: ((String) -> Unit)? = null
+
+    private fun stateOf(sessionId: String): State {
+        states[sessionId]?.let { return it }
+        beforeStateAllocatedForTest?.invoke(sessionId)
+        return states.computeIfAbsent(sessionId) { State() }
+    }
 }
 
 /** Delivery is uncertain from [connection]'s first seq on; sticky, like every transport fact. */
@@ -144,7 +160,7 @@ private fun markUncertain(connection: IngestStates.Connection) {
     val state = connection.state
     synchronized(state) {
         val t = state.transport
-        state.transport = t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq))
+        state.updateTransport(t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq)))
     }
 }
 
@@ -152,3 +168,13 @@ private fun earliest(
     current: Long?,
     candidate: Long,
 ): Long = minOf(current ?: Long.MAX_VALUE, candidate)
+
+/** Replaces the transport facts with [next]'s, bumping the revision only when they differ. Caller holds the state's lock. */
+private fun IngestStates.State.updateTransport(next: TransportStatus) {
+    val current = transport
+    val changed =
+        next.lostEvents != current.lostEvents ||
+            next.deliveryUncertain != current.deliveryUncertain ||
+            next.sinceSeq != current.sinceSeq
+    if (changed) transport = next.copy(revision = current.revision + 1)
+}

@@ -56,7 +56,7 @@ class IngestStatesTest {
 
         val snapshot = IngestStates.snapshot("s")
         assertEquals(20_000_000_000, snapshot.watermark?.appNanos)
-        assertEquals(TransportStatus(lostEvents = 1, sinceSeq = 5), snapshot.transport)
+        assertEquals(TransportStatus(lostEvents = 1, sinceSeq = 5, revision = 1), snapshot.transport)
         assertEquals(1L, snapshot.firstConnectionSeq, "the first connection this process saw")
     }
 
@@ -77,7 +77,7 @@ class IngestStatesTest {
         IngestStates.watermarkReceived(second, watermark(appNanos = 1, final = true), receivedEpochMs = 1)
         IngestStates.connectionClosed(second)
 
-        assertEquals(TransportStatus(deliveryUncertain = true, sinceSeq = 1), IngestStates.snapshot("s").transport)
+        assertEquals(TransportStatus(deliveryUncertain = true, sinceSeq = 1, revision = 1), IngestStates.snapshot("s").transport)
     }
 
     @Test
@@ -88,7 +88,7 @@ class IngestStatesTest {
         val second = IngestStates.connectionOpened("s", firstSeq = 20)
         IngestStates.watermarkReceived(second, watermark(appNanos = 2, lost = 2), receivedEpochMs = 2)
 
-        assertEquals(TransportStatus(lostEvents = 3, sinceSeq = 10), IngestStates.snapshot("s").transport)
+        assertEquals(TransportStatus(lostEvents = 3, sinceSeq = 10, revision = 1), IngestStates.snapshot("s").transport)
     }
 
     @Test
@@ -96,7 +96,7 @@ class IngestStatesTest {
         val connection = IngestStates.connectionOpened("s", firstSeq = 7)
         IngestStates.frameSkipped(connection)
 
-        assertEquals(TransportStatus(deliveryUncertain = true, sinceSeq = 7), IngestStates.snapshot("s").transport)
+        assertEquals(TransportStatus(deliveryUncertain = true, sinceSeq = 7, revision = 1), IngestStates.snapshot("s").transport)
     }
 
     @Test
@@ -125,4 +125,20 @@ class IngestStatesTest {
             assertEquals(9L, received?.appNanos)
             assertTrue(subscriber.isCompleted)
         }
+
+    @Test
+    fun `every transport change bumps the revision, a frame that changes nothing does not`() {
+        val c = IngestStates.connectionOpened("s", firstSeq = 1)
+        assertEquals(0, IngestStates.snapshot("s").transport.revision)
+        IngestStates.watermarkReceived(c, watermark(appNanos = 1), receivedEpochMs = 1)
+        assertEquals(0, IngestStates.snapshot("s").transport.revision, "no loss: no change")
+        IngestStates.watermarkReceived(c, watermark(appNanos = 2, lost = 3), receivedEpochMs = 2)
+        assertEquals(1, IngestStates.snapshot("s").transport.revision)
+        IngestStates.watermarkReceived(c, watermark(appNanos = 3, lost = 3), receivedEpochMs = 3)
+        assertEquals(1, IngestStates.snapshot("s").transport.revision, "the same facts again")
+        IngestStates.frameSkipped(c)
+        assertEquals(2, IngestStates.snapshot("s").transport.revision)
+        IngestStates.connectionClosed(c)
+        assertEquals(2, IngestStates.snapshot("s").transport.revision, "already uncertain since seq 1")
+    }
 }
