@@ -462,6 +462,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
 
   return (
     <div
+      data-look-part="node"
       className={className}
       {...(onSelect
         ? {
