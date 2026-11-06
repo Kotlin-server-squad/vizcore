@@ -83,4 +83,12 @@ export interface LookDefinition<Id extends string = string> {
 export interface LookCard {
   width: number
   height: number
+  /**
+   * The smallest zoom the graph's own fit may use, so the cards stay readable
+   * (card text × this ≥ 12 px). When the whole tree does not fit at this zoom,
+   * the fit keeps it and frames the root and the top of the tree; panning and
+   * scrolling reach the rest, and "Fit to view" still shows everything.
+   * Leave it out to fit the whole tree however small (Classic).
+   */
+  fitMinZoom?: number
 }
