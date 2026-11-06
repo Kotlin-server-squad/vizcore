@@ -2,36 +2,39 @@
  * A · Compact: the default graph card (per-look cards). The card markup is
  * shared by every look; this styles it through its data-look-part hooks and
  * the wrapper's data-state. The size the layout reserves is in card.ts.
+ * Rules are keyed on the graph's own data-card-look, not on <html>'s
+ * data-look: an export sets the page's look aside (Classic dark), and the
+ * cards must keep the styling that fits their size.
  * Shown: the name, a state pill and the second line. Hidden: the icon, the
  * running tint, the progress bar and the ID / Job / Scope rows (the Inspector
  * shows those for the selected coroutine).
  */
 
 /* The state's colour, from the shared state mapping (coroutine-state-colors). */
-[data-look='a'] [data-state] {
+[data-card-look='a'] [data-state] {
   --card-hue: var(--heroui-default-400);
   --card-ink: var(--heroui-default-600);
 }
-[data-look='a'] [data-state='ACTIVE'],
-[data-look='a'] [data-state='WAITING_FOR_CHILDREN'] {
+[data-card-look='a'] [data-state='ACTIVE'],
+[data-card-look='a'] [data-state='WAITING_FOR_CHILDREN'] {
   --card-hue: var(--heroui-primary);
   --card-ink: var(--heroui-primary-600);
 }
-[data-look='a'] [data-state='SUSPENDED'],
-[data-look='a'] [data-state='CANCELLED'] {
+[data-card-look='a'] [data-state='SUSPENDED'],
+[data-card-look='a'] [data-state='CANCELLED'] {
   --card-hue: var(--heroui-warning);
   --card-ink: var(--heroui-warning-600);
 }
-[data-look='a'] [data-state='COMPLETED'] {
+[data-card-look='a'] [data-state='COMPLETED'] {
   --card-hue: var(--heroui-success);
   --card-ink: var(--heroui-success-600);
 }
-[data-look='a'] [data-state='FAILED'] {
+[data-card-look='a'] [data-state='FAILED'] {
   --card-hue: var(--heroui-danger);
   --card-ink: var(--heroui-danger-600);
 }
 
-[data-look='a'] [data-look-part='node'] {
+[data-card-look='a'] [data-look-part='node'] {
   padding: 6px 8px;
   border-width: 1px;
   border-color: hsl(var(--heroui-default-200));
@@ -41,16 +44,16 @@
   --tw-shadow: 0 0 #0000;
   --tw-shadow-colored: 0 0 #0000;
 }
-[data-look='a'] [data-look-part='node-tint'],
-[data-look='a'] [data-look-part='node-icon'],
-[data-look='a'] [data-look-part='node-progress'],
-[data-look='a'] [data-look-part='node-details'] {
+[data-card-look='a'] [data-look-part='node-tint'],
+[data-card-look='a'] [data-look-part='node-icon'],
+[data-card-look='a'] [data-look-part='node-progress'],
+[data-card-look='a'] [data-look-part='node-details'] {
   display: none;
 }
-[data-look='a'] [data-look-part='node-head'] {
+[data-card-look='a'] [data-look-part='node-head'] {
   margin: 0;
 }
-[data-look='a'] [data-look-part='node-text'] {
+[data-card-look='a'] [data-look-part='node-text'] {
   display: grid;
   /* The name keeps at least half the row; a long state ("Waiting for children") is cut short instead. */
   grid-template-columns: minmax(50%, 1fr) minmax(0, max-content);
@@ -58,14 +61,14 @@
   column-gap: 6px;
   row-gap: 3px;
 }
-[data-look='a'] [data-look-part='node-name'] {
+[data-card-look='a'] [data-look-part='node-name'] {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
   -webkit-line-clamp: 1;
 }
-[data-look='a'] [data-look-part='node-state'] {
+[data-card-look='a'] [data-look-part='node-state'] {
   display: block;
   overflow: hidden;
   white-space: nowrap;
@@ -77,7 +80,7 @@
   background: hsl(var(--card-hue) / 0.16);
   color: hsl(var(--card-ink));
 }
-[data-look='a'] [data-look-part='node-state']::before {
+[data-card-look='a'] [data-look-part='node-state']::before {
   content: '';
   display: inline-block;
   margin-right: 4px;
@@ -88,15 +91,15 @@
   background: hsl(var(--card-hue));
 }
 /* The pill has its own dot. */
-[data-look='a'] [data-look-part='node-state'] > span {
+[data-card-look='a'] [data-look-part='node-state'] > span {
   display: none;
 }
-[data-look='a'] [data-look-part='node-activity'] {
+[data-card-look='a'] [data-look-part='node-activity'] {
   grid-column: 1 / -1;
   font-size: 11px;
   line-height: 15px;
 }
-[data-look='a'] [data-look-part='node-children'] {
+[data-card-look='a'] [data-look-part='node-children'] {
   padding: 0 6px;
   border-radius: 3px;
   font-size: 11px;

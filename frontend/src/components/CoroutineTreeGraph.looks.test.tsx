@@ -5,6 +5,7 @@ import { CoroutineTreeGraph } from './CoroutineTreeGraph'
 import { LOOK_STORAGE_KEY, LookProvider, forgetVisitLook } from '@/looks/look-context'
 import { CARDS, LOOKS } from '@/looks/registry'
 import type { ActivityLine } from '@/lib/activity'
+import { withDarkTheme } from '@/lib/export-theme'
 import { CoroutineState, type CoroutineNode } from '@/types/api'
 
 // The per-look graph cards: every look draws the same card markup (so click,
@@ -174,4 +175,26 @@ describe('graph cards per look', () => {
       expect(card.querySelector('[data-look-part="node-icon"]')).not.toBeNull()
     }
   )
+
+  it.each(LOOKS.map(l => l.id))(
+    'look %s: an export keeps the card styling that fits the card size (data-card-look on the graph, not <html>)',
+    id => {
+      const { getByTestId } = renderIn(id)
+      const canvas = getByTestId('graph-canvas')
+      expect(canvas).toHaveAttribute('data-card-look', id)
+      document.documentElement.className = 'light'
+      const during = withDarkTheme(() => ({
+        look: document.documentElement.dataset.look,
+        cards: canvas.getAttribute('data-card-look'),
+      }))
+      // The page's look is set aside for the capture (Classic dark), the cards' is not.
+      expect(during).toEqual({ look: undefined, cards: id })
+      document.documentElement.className = 'dark'
+    }
+  )
+
+  it('marks Classic’s graph as Classic outside the session page', () => {
+    const { getByTestId } = renderIn(null)
+    expect(getByTestId('graph-canvas')).toHaveAttribute('data-card-look', 'classic')
+  })
 })

@@ -14,7 +14,7 @@ import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
 import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state-colors'
 import { chooseRowWidth, layoutTree, type TreeLayout } from '@/lib/tree-layout'
-import { useLookCard } from '@/looks/look-context'
+import { useLook, useLookCard } from '@/looks/look-context'
 import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize2, FiMinimize2, FiCrosshair } from 'react-icons/fi'
 
 interface CoroutineTreeGraphProps {
@@ -98,6 +98,7 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
   const [followFit, setFollowFit] = useState(true)
   // The look's card size; the layout reserves exactly this box for each card.
   const { width: cardWidth, height: cardHeight } = useLookCard()
+  const { look } = useLook()
 
   const layout = useMemo<TreeLayout>(
     () =>
@@ -277,6 +278,9 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
     <div
       ref={canvasRef}
       data-testid="graph-canvas"
+      // Whose cards these are: the look's card.css keys on it. On the graph, not only on <html>,
+      // so an export (which sets the page's look aside) keeps the cards that fit their size.
+      data-card-look={look}
       data-fullscreen={isFullscreen ? 'true' : 'false'}
       // HTML cards over an SVG layer: export it as a picture, not as one of its svgs
       data-export-raster="true"

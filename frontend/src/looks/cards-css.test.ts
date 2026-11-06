@@ -37,15 +37,19 @@ describe('the looks’ graph cards', () => {
     expect(existsSync(join(looksDir, 'classic', 'card.css'))).toBe(false)
   })
 
-  it.each(folders)('$name scopes every card rule to its own look', ({ id, css }) => {
+  // Keyed on the graph's own data-card-look, not on <html>'s data-look: an export
+  // sets the page's look aside for the capture, but the cards keep their size.
+  it.each(folders)('$name scopes every card rule to its own look’s cards', ({ id, css }) => {
     const selectors = css
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('}')
       .map(rule => (rule.split('{')[0] ?? '').trim())
       .filter(Boolean)
-      .flatMap(s => s.split(','))
+      .flatMap(s => s.split(',').map(part => part.trim()))
     expect(selectors.length).toBeGreaterThan(5)
-    for (const selector of selectors) expect(selector, selector).toContain(`[data-look='${id}']`)
+    for (const selector of selectors) {
+      expect(selector, selector).toMatch(new RegExp(`^\\[data-card-look='${id}'\\]`))
+    }
   })
 
   it.each(folders)(
