@@ -1,5 +1,8 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.wrappers.VizCoroutineElement
+import com.jh.proj.coroutineviz.models.RuntimeSnapshot
+import com.jh.proj.coroutineviz.models.CoroutineState
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.EventSampler
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -85,7 +88,11 @@ class DebugProbesSource(
         // lastObservedThread, so the Java bridge maps the unwrapped impl dump
         // straight into RawInfo — keeping the observed thread for ThreadAssigned
         // synthesis.
-        adapter.toSnapshots(excludeSdkOwned(DebugProbesImplBridge.dumpRawInfos(), internalDispatchers, transportRoots))
+        //
+        // Coroutines a VizScope of this session launched are created and ended by their wrapper events; DebugProbes add
+        // only what they sample, under the wrapper's id (spec "Origin": captured once).
+        val raws = excludeSdkOwned(DebugProbesImplBridge.dumpRawInfos(), internalDispatchers, transportRoots)
+        attributeToWrappers(raws, adapter.toSnapshots(raws), session)
     },
 ) : InstrumentationSource {
     private val logger = LoggerFactory.getLogger(DebugProbesSource::class.java)
@@ -119,6 +126,20 @@ class DebugProbesSource(
     override val isRunning: Boolean get() = loop?.isActive == true
 
     /**
+     * Called after every poll whose events were all sent, also when the poll found no change, with the poll's time on
+     * the app clock ([System.nanoTime], the clock events carry) and its wall-clock time, both taken right before the
+     * dump: the poll observed the app no earlier than that. Runs on the poll loop after the poll's last `send`, so what
+     * it sends on the session's bus follows those events (the SDK's watermark, spec 2026-10-21 C-7). Not called for a
+     * failed poll or once the source stopped.
+     */
+    @Volatile
+    var onPollCompleted: ((pollNanos: Long, pollEpochMs: Long) -> Unit)? = null
+
+    // True between start() and stop(); a poll still running when stop() returns reports nothing.
+    @Volatile
+    private var polling = false
+
+    /**
      * Install DebugProbes now, without starting the poll loop. DebugProbes only track
      * coroutines created after installation, so a caller that starts the loop
      * asynchronously (the SDK's `VizcoreClient`) installs first: otherwise work the app
@@ -145,6 +166,7 @@ class DebugProbesSource(
         prev = emptyMap()
         adapter.reset()
 
+        polling = true
         loop =
             scope.launch {
                 while (isActive) {
@@ -160,6 +182,9 @@ class DebugProbesSource(
         // the already-delivered prefix (WR-02) nor loses the un-emitted suffix:
         // the suffix stays pending against the old state and recovers next tick.
         val committed = prev.toMutableMap()
+        // Taken before the dump: the poll observed the app no earlier than this (spec C-7, H-1).
+        val pollNanos = System.nanoTime()
+        val pollEpochMs = System.currentTimeMillis()
         try {
             val next = dump().associateBy { it.key }
             diff(prev, next).forEach { delta ->
@@ -174,8 +199,10 @@ class DebugProbesSource(
                 // This delta's events are all out — fold it into the committed state.
                 applyDelta(committed, delta)
             }
+            next.values.forEach { snapshot -> snapshot.wrapper?.let { reconcileWrapper(snapshot, it) } }
             // Fully successful tick: committed == next.
             prev = next
+            if (polling) onPollCompleted?.invoke(pollNanos, pollEpochMs)
         } catch (ce: CancellationException) {
             // Cooperative cancellation (stop()/scope cancel) must propagate. Do NOT
             // commit partial progress: the loop is stopping.
@@ -189,6 +216,37 @@ class DebugProbesSource(
             logger.warn("DebugProbesSource poll tick failed; loop continues, prev advanced past emitted deltas", t)
         }
     }
+
+    /**
+     * A wrapper coroutine ([CoroutineSnapshot.wrapper]) gets its creation, start and end from its wrapper events, and so
+     * do the suspensions the wrappers instrument; a plain suspension (a `delay()` outside them) has no wrapper event, and
+     * without one the coroutine would read as running. Each poll therefore compares what DebugProbes sampled with the
+     * state the session last recorded for the wrapper's id, from either source, and adds only the missing change: a
+     * suspension while the session records it running, a resume while it records it suspended. The check and the append
+     * are one step under the session's send lock ([VizSession.sendIf]), so nothing is added after the wrapper's end and
+     * nothing is sent twice.
+     */
+    private fun reconcileWrapper(
+        snapshot: CoroutineSnapshot,
+        element: VizCoroutineElement,
+    ) {
+        if (loop?.isActive == false) return
+        val id = element.coroutineId
+        fun recorded(state: CoroutineState) = { s: RuntimeSnapshot -> s.coroutines[id]?.state == state }
+        when (snapshot.state) {
+            CoroState.SUSPENDED -> sendSampled(synthesizer.wrapperSuspended(session, snapshot, element), recorded(CoroutineState.ACTIVE))
+            CoroState.RUNNING ->
+                if (sendSampled(synthesizer.wrapperResumed(session, element), recorded(CoroutineState.SUSPENDED))) {
+                    synthesizer.wrapperThreadEvents(session, snapshot, element).forEach { sendSampled(it, recorded(CoroutineState.ACTIVE)) }
+                }
+            CoroState.CREATED -> Unit
+        }
+    }
+
+    private fun sendSampled(
+        event: VizEvent,
+        condition: (RuntimeSnapshot) -> Boolean,
+    ): Boolean = (sampler == null || sampler.shouldKeep(event)) && session.sendIf(event, condition)
 
     /** Fold a fully-emitted delta into the running committed snapshot. */
     private fun applyDelta(
@@ -224,6 +282,7 @@ class DebugProbesSource(
     }
 
     override fun stop() {
+        polling = false
         // Idempotent: a close-hook firing after an explicit stop() is a no-op.
         loop?.cancel()
         loop = null

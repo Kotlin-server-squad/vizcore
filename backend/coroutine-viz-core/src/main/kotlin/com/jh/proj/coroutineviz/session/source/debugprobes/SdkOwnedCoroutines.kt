@@ -36,8 +36,10 @@ object VizcoreInternal : CoroutineContext.Element {
  * Pass the same [transportRoots] on every poll: it remembers those request Jobs.
  *
  * Still visible, because nothing ties them to the SDK: Ktor's socket reader and writer for the
- * SDK's connection (no parent Job, on `Dispatchers.IO`), `cio-request-timeout` while the SDK
- * makes an HTTP request, and Ktor's process-wide nonce generator.
+ * SDK's connection (no parent Job, on `Dispatchers.IO`) and Ktor's process-wide nonce generator.
+ * The CIO engine's own request timer (`cio-request-timeout`, a `GlobalScope` coroutine) would be
+ * too; the SDK's client times requests with the HttpTimeout plugin instead, whose timer runs on
+ * the client's dispatcher.
  */
 internal fun excludeSdkOwned(
     raws: List<CoroutineInfoAdapter.RawInfo>,

@@ -34,6 +34,8 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    // Real DebugProbes in the fresh-JVM tests (creation-stack flag).
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.10.2")
 
     // In-process server for the round-trip test: stand up the real ingest route
     // shape (configureWebSockets + webSocket) without a live network.
@@ -43,8 +45,21 @@ dependencies {
 }
 
 tasks.named<Test>("test") {
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags("fresh-jvm") }
 }
+
+// Tests that read process-wide state — which JVM-wide coroutines exist (Ktor's nonce generator), DebugProbes'
+// creation-stack flag — each get a JVM of their own.
+val freshJvmTest by tasks.registering(Test::class) {
+    description = "Runs the @Tag(\"fresh-jvm\") tests, one JVM per test class."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("fresh-jvm") }
+    forkEvery = 1
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
+}
+tasks.named("check") { dependsOn(freshJvmTest) }
 
 // Target JVM 17 exactly like coroutine-viz-core: the client is consumed by JVM apps
 // and must stay on the lowest common denominator that core publishes against.

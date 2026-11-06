@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.jupiter.api.Test
@@ -134,5 +135,26 @@ class SourceAttributionTest {
     @Test
     fun `dispatcherName is null when no interceptor present`() {
         assertNull(SourceAttribution.dispatcherName(EmptyCoroutineContext))
+    }
+
+
+    private fun frame(cls: String) = StackTraceElement(cls, "run", "X.kt", 1)
+
+    @Test
+    fun `a creation stack through the SDK client package is vizcore's`() {
+        val stack = listOf(frame("kotlinx.coroutines.BuildersKt"), frame("com.jh.proj.coroutineviz.client.IngestTransportKt"))
+        assertEquals(CoroutineOrigin.VIZCORE, SourceAttribution.origin(stack))
+    }
+
+    @Test
+    fun `any other creation stack is the app's, the wrapper package included`() {
+        assertEquals(CoroutineOrigin.APP, SourceAttribution.origin(listOf(frame("com.acme.Service"))))
+        assertEquals(CoroutineOrigin.APP, SourceAttribution.origin(listOf(frame("com.jh.proj.coroutineviz.wrappers.VizScope"))))
+        assertEquals(CoroutineOrigin.APP, SourceAttribution.origin(listOf(frame("com.jh.proj.coroutineviz.clientele.X"))))
+    }
+
+    @Test
+    fun `no creation stack means the origin is unknown`() {
+        assertEquals(CoroutineOrigin.UNKNOWN, SourceAttribution.origin(emptyList()))
     }
 }

@@ -24,6 +24,7 @@ class ClientBinaryCompatibilityTest {
         assertEquals(string, client.getMethod("getCurrentSessionId").returnType)
         client.getMethod("start")
         client.getMethod("stop")
+        client.getMethod("stop", long)
     }
 
     @Test
