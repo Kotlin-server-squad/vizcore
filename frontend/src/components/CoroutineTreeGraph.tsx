@@ -97,7 +97,9 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
   // Fit the tree to the canvas until the user pans or zooms; "Fit to view" goes back to that.
   const [followFit, setFollowFit] = useState(true)
   // The look's card size; the layout reserves exactly this box for each card.
-  const { width: cardWidth, height: cardHeight } = useLookCard()
+  const { width: cardWidth, height: cardHeight, fitMinZoom } = useLookCard()
+  // "Fit to view" was pressed: fit the whole tree even below the look's fit floor.
+  const [fitWhole, setFitWhole] = useState(false)
   const { look } = useLook()
 
   const layout = useMemo<TreeLayout>(
@@ -171,13 +173,30 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
   // The view fit() last set: following stops once the view differs from it.
   const fitted = useRef<{ x: number; y: number; scale: number } | null>(null)
 
+  // The look's fit floor (card.ts fitMinZoom; Classic has none): below it the
+  // cards are too small to read, so the fit keeps the floor and frames the root
+  // and the top of the tree. "Fit to view" still shows the whole tree.
+  const floored = fitMinZoom !== undefined && !fitWhole && fitScale < fitMinZoom
+  const firstRoot = layout.nodes.get(tree[0]?.id ?? '')
+
   const fit = useCallback(() => {
     const api = transformRef.current
     if (!api || canvasWidth === 0) return
-    const view = { x: (canvasWidth - contentWidth * fitScale) / 2, y: TOOLBAR_INSET, scale: fitScale }
+    let view = { x: (canvasWidth - contentWidth * fitScale) / 2, y: TOOLBAR_INSET, scale: fitScale }
+    if (floored && fitMinZoom !== undefined) {
+      const scale = fitMinZoom
+      const rootCentre = PADDING + (firstRoot?.x ?? 0) + cardWidth / 2
+      // Centre the root, without leaving empty canvas beside the tree when it is wider than the view.
+      const centred = canvasWidth / 2 - rootCentre * scale
+      const x =
+        contentWidth * scale <= canvasWidth
+          ? (canvasWidth - contentWidth * scale) / 2
+          : Math.min(0, Math.max(canvasWidth - contentWidth * scale, centred))
+      view = { x, y: TOOLBAR_INSET, scale }
+    }
     fitted.current = view
     api.setTransform(view.x, view.y, view.scale, 0)
-  }, [canvasWidth, contentWidth, fitScale])
+  }, [canvasWidth, contentWidth, fitScale, floored, fitMinZoom, firstRoot?.x, cardWidth])
 
   useEffect(() => {
     if (followFit) fit()
@@ -201,7 +220,9 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
   const toggleFullscreen = () => setFullscreen(!isFullscreen)
   const fitToView = () => {
     setFollowFit(true)
-    fit()
+    // The fit that follows this render shows the whole tree (the effect below re-fits on the change).
+    setFitWhole(true)
+    if (!floored) fit()
   }
   const stopFollowing = () => setFollowFit(false)
 
