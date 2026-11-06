@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.events.MutexTryLockFailed
 import com.jh.proj.coroutineviz.events.MutexUnlocked
 import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.session.VizSession
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.ConcurrentHashMap
@@ -162,7 +163,7 @@ class VizMutex(
         val coroutineElement =
             try {
                 // This might fail if called from non-coroutine context
-                kotlinx.coroutines.runBlocking { currentCoroutineContext()[VizCoroutineElement] }
+                kotlinx.coroutines.runBlocking(VizcoreInternal) { currentCoroutineContext()[VizCoroutineElement] }
             } catch (_: Exception) {
                 null
             }
@@ -209,7 +210,7 @@ class VizMutex(
     fun tryLock(owner: Any? = null): Boolean {
         val coroutineElement =
             try {
-                kotlinx.coroutines.runBlocking { currentCoroutineContext()[VizCoroutineElement] }
+                kotlinx.coroutines.runBlocking(VizcoreInternal) { currentCoroutineContext()[VizCoroutineElement] }
             } catch (_: Exception) {
                 null
             }

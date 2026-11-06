@@ -26,6 +26,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -147,4 +148,32 @@ class VizcoreClientStartTest {
             }
         assertTrue("at least ${VizcoreClient.MIN_POLL_INTERVAL_MILLIS}" in failure.message.orEmpty())
     }
+
+    @Test
+    fun `start fails and releases everything when it cannot start capturing`() =
+        testApplication {
+            routing {
+                post("/api/sessions") {
+                    call.respondText("""{"sessionId":"capture-test","message":"ok"}""", ContentType.Application.Json, HttpStatusCode.Created)
+                }
+            }
+            val httpClient = createClient { install(WebSockets) }
+            val before = DebugProbesInstall.count()
+            val failure =
+                withContext(Dispatchers.IO) {
+                    assertFailsWith<IllegalStateException> {
+                        // A zero wait never sees the feed subscribed: the branch an app would hit if it never did.
+                        VizcoreClient.start(
+                            appName = "capture-test",
+                            backendUrl = "",
+                            token = "t",
+                            correlation = null,
+                            httpClient = httpClient,
+                            captureTimeout = Duration.ZERO,
+                        )
+                    }
+                }
+            assertTrue(failure.message.orEmpty().contains("could not start capturing"), failure.message)
+            assertEquals(before, DebugProbesInstall.count(), "the probes are released again")
+        }
 }

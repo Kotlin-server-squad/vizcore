@@ -1,6 +1,7 @@
 package com.jh.vizcore.demo
 
 import com.jh.proj.coroutineviz.client.VizcoreClient
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -44,6 +45,8 @@ class VizcoreDemoRunner(
 	@param:Value("\${vizcore.token:demo-token}") private val token: String,
 	@param:Value("\${vizcore.continuous:false}") private val continuous: Boolean,
 	@param:Value("\${vizcore.embedded-client:true}") private val embeddedClient: Boolean,
+	// > 0: one coroutine holds a Default thread this long without suspending (the session's "possibly blocked").
+	@param:Value("\${vizcore.busy-ms:0}") private val busyMs: Long,
 ) : CommandLineRunner {
 	private val logger = LoggerFactory.getLogger(VizcoreDemoRunner::class.java)
 
@@ -55,6 +58,13 @@ class VizcoreDemoRunner(
 			logger.info("Starting embedded VizcoreClient: app='{}' -> {}", appName, backendUrl)
 			val client = VizcoreClient.start(appName = appName, backendUrl = backendUrl, token = token)
 			Runtime.getRuntime().addShutdownHook(Thread { client.stop() })
+			if (busyMs > 0) {
+				// Holds a Default thread without suspending: what the session calls "possibly blocked" (over 10 s running).
+				CoroutineScope(Dispatchers.Default).launch(CoroutineName("busy-worker")) {
+					logger.info("busy-worker blocks its thread for {} ms", busyMs)
+					Thread.sleep(busyMs)
+				}
+			}
 		} else {
 			logger.info("Embedded VizcoreClient DISABLED (vizcore.embedded-client=false) — expecting an external -javaagent to capture this JVM.")
 		}

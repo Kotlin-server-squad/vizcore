@@ -12,6 +12,7 @@ import com.jh.proj.coroutineviz.session.channelReceiveCompleted
 import com.jh.proj.coroutineviz.session.channelReceiveStarted
 import com.jh.proj.coroutineviz.session.channelSendCompleted
 import com.jh.proj.coroutineviz.session.channelSendStarted
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ChannelIterator
@@ -131,7 +132,7 @@ class InstrumentedChannel<T>(
             val currentSize = reportedSize(bufferCount.incrementAndGet())
             val coroutineId =
                 runCatching {
-                    kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.runBlocking(VizcoreInternal) {
                         currentCoroutineContext()[VizCoroutineElement]?.coroutineId
                     }
                 }.getOrNull() ?: "unknown"
@@ -201,7 +202,7 @@ class InstrumentedChannel<T>(
             val currentSize = reportedSize(bufferCount.decrementAndGet())
             val coroutineId =
                 runCatching {
-                    kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.runBlocking(VizcoreInternal) {
                         currentCoroutineContext()[VizCoroutineElement]?.coroutineId
                     }
                 }.getOrNull() ?: "unknown"

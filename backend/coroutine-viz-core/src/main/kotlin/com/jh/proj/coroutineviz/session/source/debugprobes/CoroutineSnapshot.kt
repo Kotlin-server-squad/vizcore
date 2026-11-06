@@ -1,5 +1,8 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.wrappers.VizCoroutineElement
+
 /**
  * The three coroutine states DebugProbes exposes, modelled locally so the pure
  * diff/synthesize layers never depend on `kotlinx.coroutines.debug` types
@@ -80,7 +83,20 @@ data class CoroutineSnapshot(
     val threadId: Long? = null,
     /** Name of that thread; see [threadId]. */
     val threadName: String? = null,
-)
+) {
+    /**
+     * Who launched it, from the creation stack ([SourceAttribution.origin]); `null` when not determined. Set by
+     * [CoroutineInfoAdapter], read by [DebugProbesEventSynthesizer]. Kept out of the constructor so the published
+     * constructors and `copy` keep their JVM signatures; not part of equality, and `copy` does not carry it.
+     */
+    internal var origin: CoroutineOrigin? = null
+
+    /** Set when the parent is a wrapper coroutine, whose events use its own id rather than a `dp-` one. Like [origin]. */
+    internal var parentCoroutineId: String? = null
+
+    /** Set when this is a wrapper coroutine ([attributeToWrappers]): the element its wrapper events use. Like [origin]. */
+    internal var wrapper: VizCoroutineElement? = null
+}
 
 /**
  * The pure result of comparing two snapshot maps (Research Pattern 2). Each

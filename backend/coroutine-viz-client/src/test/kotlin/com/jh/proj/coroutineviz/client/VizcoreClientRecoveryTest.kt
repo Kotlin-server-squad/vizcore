@@ -402,7 +402,8 @@ class VizcoreClientRecoveryTest {
             // Four 6 s sockets with the base 500 ms between them.
             testScheduler.advanceTimeBy(19_600L)
             testScheduler.runCurrent()
-            client.stop()
+            // Its fake socket never drains the buffer: stop without waiting for delivery.
+            client.stop(0)
             testScheduler.advanceUntilIdle()
 
             assertTrue(callTimes.size >= 4, "expected four connect attempts, got ${callTimes.size}")

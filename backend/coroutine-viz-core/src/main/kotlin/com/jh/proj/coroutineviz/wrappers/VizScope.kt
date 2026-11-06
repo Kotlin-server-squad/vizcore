@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.wrappers
 
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.deferred.DeferredValueAvailable
@@ -114,7 +115,7 @@ class VizScope(
                 parentCoroutineId = parentCoroutineId,
                 scopeId = scopeId,
                 jobId = jobId,
-            )
+            ).also { it.owner = session }
 
         // ✅ Create EventContext once for this coroutine
         val ctx =
@@ -204,9 +205,13 @@ class VizScope(
                 session.sent(ctx.coroutineBodyCompleted())
             }
 
+        // Before job.start(): the body, and so any coroutine inheriting the element, runs after this.
+        vizElement.ownerJob = job
+
         // A: emit CoroutineCreated synchronously at launch, before the job is dispatched, so it
         // precedes the launching coroutine's BodyCompleted and orders by launch among siblings.
-        session.send(ctx.coroutineCreated())
+        // The public wrapper API is app code (spec 2026-10-21, "Origin").
+        session.send(ctx.coroutineCreated().copy(origin = CoroutineOrigin.APP))
 
         // B1: emit this coroutine's terminal event only AFTER all of its children have emitted
         // theirs. This fires AFTER the job and all children complete; cause classifies the outcome
@@ -324,7 +329,7 @@ class VizScope(
                 parentCoroutineId = parentCoroutineId,
                 scopeId = scopeId,
                 jobId = jobId,
-            )
+            ).also { it.owner = session }
 
         val ctx =
             EventContext(
@@ -352,12 +357,15 @@ class VizScope(
             targetScope.async(mergedContext) {
                 val currentJob = coroutineContext[Job] ?: throw IllegalArgumentException("Missing job")
 
+                // Before the body can launch a coroutine that inherits the element.
+                vizElement.ownerJob = currentJob
+
                 // ✨ Register job for tracking (must happen inside async where Job exists)
                 session.snapshot.registerJob(currentJob, coroutineId)
                 session.jobMonitor.track(currentJob, jobId, coroutineId)
 
-                // Emit lifecycle events (similar to vizLaunch)
-                session.send(ctx.coroutineCreated())
+                // Emit lifecycle events (similar to vizLaunch); the public wrapper API is app code (spec "Origin").
+                session.send(ctx.coroutineCreated().copy(origin = CoroutineOrigin.APP))
                 session.send(ctx.coroutineStarted())
 
                 session.sent(
