@@ -21,11 +21,13 @@ internal fun isWrapperOwned(
 }
 
 /**
- * Marks the snapshots of wrapper-owned coroutines ([isWrapperOwned]) with their wrapper's element, and points the
- * DebugProbes-captured children of a wrapper at the wrapper's own id ([VizCoroutineElement.coroutineId], the id its
- * wrapper events use), so ancestry and rounds stay intact. A marked snapshot stays in the diff: its wrapper events give
- * its creation, start and end, and DebugProbes add, under the wrapper's id, only the state changes the wrapper cannot see
- * (a plain `delay()` suspends without a wrapper event), see [DebugProbesEventSynthesizer]. [snapshots] are [raws] mapped
+ * Marks the snapshots of wrapper-owned coroutines ([isWrapperOwned]) with their wrapper's element, and keeps the wrapper
+ * as the parent of the coroutines that inherited its element (launched from its body with the body's context), under
+ * the wrapper's own id ([VizCoroutineElement.coroutineId], the id its wrapper events use), so ancestry and rounds stay
+ * intact. That holds also once the wrapper's body has returned while such a child still runs (DebugProbes no longer
+ * list the wrapper then, though its Job waits for the child), and it does not replace a nearer observed parent that
+ * inherited the same element (a descendant of the wrapper). A marked snapshot stays in the diff: its wrapper events
+ * give its creation, start and end, and [DebugProbesSource] reconciles its sampled state. [snapshots] are [raws] mapped
  * one to one by [CoroutineInfoAdapter.toSnapshots].
  */
 internal fun attributeToWrappers(
@@ -33,14 +35,20 @@ internal fun attributeToWrappers(
     snapshots: List<CoroutineSnapshot>,
     session: VizSession,
 ): List<CoroutineSnapshot> {
-    val owned = raws.indices.filter { isWrapperOwned(raws[it], session) }
-    if (owned.isEmpty()) return snapshots
-    val wrapperIds = HashMap<CoroKey, String>()
-    for (i in owned) {
-        val element = raws[i].context[VizCoroutineElement]!!
-        snapshots[i].wrapper = element
-        wrapperIds[snapshots[i].key] = element.coroutineId
+    val elements = raws.map { raw -> raw.context[VizCoroutineElement]?.takeIf { it.owner === session } }
+    if (elements.all { it == null }) return snapshots
+    val indexByKey = snapshots.indices.associateBy { snapshots[it].key }
+    for (i in raws.indices) {
+        val element = elements[i] ?: continue
+        if (isWrapperOwned(raws[i], session)) {
+            snapshots[i].wrapper = element
+            continue
+        }
+        // Inherited: the wrapper is an ancestor. Its id is the parent unless the nearest observed parent is a nearer
+        // descendant of the same wrapper (it carries the same element), which keeps its own id.
+        val parent = snapshots[i].parentKey?.let(indexByKey::get)
+        val parentIsDescendant = parent != null && elements[parent] === element && !isWrapperOwned(raws[parent], session)
+        if (!parentIsDescendant) snapshots[i].parentCoroutineId = element.coroutineId
     }
-    snapshots.forEach { snapshot -> snapshot.parentKey?.let(wrapperIds::get)?.let { snapshot.parentCoroutineId = it } }
     return snapshots
 }

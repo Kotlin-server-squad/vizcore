@@ -5,6 +5,8 @@ import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesInstall
 import com.jh.proj.coroutineviz.wrappers.VizScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
@@ -44,8 +46,13 @@ class WrapperCapturedOnceTest {
                 viz.vizAsync(label = "wrapped-async", context = CoroutineName("wrapped-async")) { awaitCancellation() }
                 // A plain delay() suspends without a wrapper event: DebugProbes must say so, or it reads as running.
                 viz.vizLaunch(label = "wrapped-delay", context = CoroutineName("wrapped-delay")) { delay(60_000) }
+                // The body returns at once; its Job waits for the child, which DebugProbes see without the wrapper.
+                viz.vizLaunch(label = "short-body", context = CoroutineName("short-body")) {
+                    CoroutineScope(currentCoroutineContext()).launch(CoroutineName("outliving-child")) { awaitCancellation() }
+                }
             }
-            listOf("wrapped-launch", "wrapped-async", "inheriting-child", "wrapped-delay").forEach(backend::awaitLabel)
+            listOf("wrapped-launch", "wrapped-async", "inheriting-child", "wrapped-delay", "short-body", "outliving-child")
+                .forEach(backend::awaitLabel)
             Thread.sleep(500) // several more polls: a dp- duplicate would have arrived by now
 
             val byLabel = backend.created.groupBy { it.label }
@@ -59,6 +66,9 @@ class WrapperCapturedOnceTest {
             assertTrue(child.coroutineId.startsWith("dp-"), "captured by DebugProbes: $child")
             val wrapperId = byLabel.getValue("wrapped-launch").single().coroutineId
             assertEquals(wrapperId, child.parentCoroutineId, "and keeps the wrapper as its parent")
+
+            val shortBody = byLabel.getValue("short-body").single().coroutineId
+            assertEquals(shortBody, byLabel.getValue("outliving-child").single().parentCoroutineId, "its parent outlives its body")
 
             val delayed = byLabel.getValue("wrapped-delay").single()
             assertEquals(1, byLabel.getValue("wrapped-delay").size)

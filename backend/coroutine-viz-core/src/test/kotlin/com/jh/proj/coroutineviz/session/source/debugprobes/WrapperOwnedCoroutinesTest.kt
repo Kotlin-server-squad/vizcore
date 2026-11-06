@@ -93,4 +93,32 @@ class WrapperOwnedCoroutinesTest {
         assertEquals(emptyList(), synthesizer.synthesize(CoroutineDelta.StateChanged(CoroState.RUNNING, CoroState.SUSPENDED, wrapper), session))
         assertEquals(emptyList(), synthesizer.synthesize(CoroutineDelta.Vanished(wrapper), session), "its end is the wrapper's")
     }
+
+    @Test
+    fun `a child keeps its wrapper as parent after the wrapper's body returned and DebugProbes no longer list it`() {
+        val wrapperJob = Job() // still active: it waits for the child, but its body has returned
+        val e = element(session, wrapperJob)
+        val raws = listOf(raw("child", Job(wrapperJob), e))
+        val snapshots = attributeToWrappers(raws, CoroutineInfoAdapter().toSnapshots(raws), session)
+        assertEquals("coroutine-1", snapshots.single().parentCoroutineId)
+    }
+
+    @Test
+    fun `a nearer descendant of the wrapper stays the parent, an ancestor above the wrapper does not`() {
+        val top = Job()
+        val wrapperJob = Job(top) // the wrapper, not in the dump
+        val e = element(session, wrapperJob)
+        val child = Job(wrapperJob)
+        val grandchild = Job(child)
+        val raws =
+            listOf(
+                raw("top", top, CoroutineName("top")),
+                raw("child", child, e),
+                raw("grandchild", grandchild, e),
+            )
+        val snapshots = attributeToWrappers(raws, CoroutineInfoAdapter().toSnapshots(raws), session)
+        assertEquals("coroutine-1", snapshots[1].parentCoroutineId, "the wrapper, not the observed coroutine above it")
+        assertNull(snapshots[2].parentCoroutineId, "its observed parent is a descendant of the wrapper: kept as dp-")
+        assertEquals(snapshots[1].key, snapshots[2].parentKey)
+    }
 }
