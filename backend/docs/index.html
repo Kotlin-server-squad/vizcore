@@ -696,223 +696,17 @@
     "type" : {
       "type" : "string",
       "description" : "Action type: \"delay\" (pause execution), \"throw\"/\"exception\" (throw an exception), \"log\" (log a message), \"custom\" (execute custom code)\n",
-      "enum" : [ "delay", "throw", "exception", "log", "custom" ],
-      "default" : null
+      "enum" : [ "delay", "throw", "exception", "log", "custom" ]
     },
     "params" : {
       "type" : "object",
       "additionalProperties" : {
-        "type" : "string",
-        "default" : null
+        "type" : "string"
       },
-      "description" : "Action-specific parameters. For \"delay\": durationMs (long). For \"throw\": exceptionType (string), message (string). For \"log\": message (string). For \"custom\": code (string).\n",
-      "default" : null
+      "description" : "Action-specific parameters. For \"delay\": durationMs (long). For \"throw\": exceptionType (string), message (string). For \"log\": message (string). For \"custom\": code (string).\n"
     }
   },
-  "description" : "An action to execute inside a coroutine. Supported types are \"delay\", \"throw\"/\"exception\", \"log\", and \"custom\".\n",
-  "default" : null
-};
-            defs["AllOfPossiblyBlockedEvaluationReason"] = {
-  "description" : "Set if and only if NOT_EVALUATED; the highest-precedence reason",
-  "nullable" : true,
-  "allOf" : [ {
-    "$ref" : "#/components/schemas/NotEvaluatedReason"
-  } ],
-  "default" : null
-};
-            defs["AllOfPossiblyBlockedIncidentLastSuspension"] = {
-  "nullable" : true,
-  "allOf" : [ {
-    "$ref" : "#/components/schemas/SuspensionPoint"
-  } ],
-  "default" : null
-};
-            defs["AllOfPossiblyBlockedIncidentLastThread"] = {
-  "description" : "The thread assigned in the current run, null when none was observed",
-  "nullable" : true,
-  "allOf" : [ {
-    "$ref" : "#/components/schemas/ThreadObservation"
-  } ],
-  "default" : null
-};
-            defs["AllOfSessionHealthAsOf"] = {
-  "description" : "Null before the first observation",
-  "nullable" : true,
-  "allOf" : [ {
-    "$ref" : "#/components/schemas/AsOf"
-  } ],
-  "default" : null
-};
-            defs["AllOfSessionHealthAsOfWatermark"] = {
-  "description" : "The watermark the health used (live attached sessions only)",
-  "nullable" : true,
-  "allOf" : [ {
-    "$ref" : "#/components/schemas/WatermarkObservation"
-  } ],
-  "default" : null
-};
-            defs["AllOfSessionHealthRetention"] = {
-  "nullable" : true,
-  "allOf" : [ {
-    "$ref" : "#/components/schemas/RetentionInfo"
-  } ],
-  "default" : null
-};
-            defs["AllOfSessionSnapshotResponseLastWatermark"] = {
-  "description" : "The app's latest poll watermark",
-  "nullable" : true,
-  "allOf" : [ {
-    "$ref" : "#/components/schemas/WatermarkObservation"
-  } ],
-  "default" : null
-};
-            defs["AsOf"] = {
-  "required" : [ "appEpochMs", "appNanos", "kind", "lowerBound", "receivedEpochMs", "seq" ],
-  "type" : "object",
-  "properties" : {
-    "kind" : {
-      "$ref" : "#/components/schemas/AsOfKind"
-    },
-    "appNanos" : {
-      "type" : "integer",
-      "description" : "Latest app-clock time observed in the events up to seq",
-      "format" : "int64",
-      "default" : null
-    },
-    "appEpochMs" : {
-      "type" : "integer",
-      "description" : "The app's wall-clock time of the observation, when known",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "receivedEpochMs" : {
-      "type" : "integer",
-      "description" : "The backend's receipt time",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "seq" : {
-      "type" : "integer",
-      "description" : "Last event seq the health reflects",
-      "format" : "int64",
-      "default" : null
-    },
-    "lowerBound" : {
-      "type" : "boolean",
-      "description" : "A replay of trimmed history: appNanos is the latest time known at or before the cursor, a lower bound",
-      "default" : null
-    }
-  },
-  "description" : "The observation a health statement is about (spec H-2)",
-  "default" : null
-};
-            defs["AsOfKind"] = {
-  "type" : "string",
-  "enum" : [ "WATERMARK", "INGEST", "LAST_EVENT", "REPLAY_CURSOR" ],
-  "default" : null
-};
-            defs["CappedFailureEntries"] = {
-  "required" : [ "items", "total" ],
-  "type" : "object",
-  "properties" : {
-    "items" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/components/schemas/FailureEntry"
-      },
-      "default" : null
-    },
-    "total" : {
-      "type" : "integer",
-      "description" : "Entries before the cap of 50",
-      "default" : null
-    }
-  },
-  "description" : "Failures, newest first, capped at 50",
-  "default" : null
-};
-            defs["CappedIncidents"] = {
-  "required" : [ "items", "total" ],
-  "type" : "object",
-  "properties" : {
-    "items" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/components/schemas/Incident"
-      },
-      "default" : null
-    },
-    "total" : {
-      "type" : "integer",
-      "description" : "Entries before the cap of 50",
-      "default" : null
-    }
-  },
-  "description" : "Incidents by kind (failures first), newest first, capped at 50",
-  "default" : null
-};
-            defs["CappedObservedAges"] = {
-  "required" : [ "items", "total" ],
-  "type" : "object",
-  "properties" : {
-    "items" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/components/schemas/ObservedAge"
-      },
-      "default" : null
-    },
-    "total" : {
-      "type" : "integer",
-      "description" : "Entries before the cap of 50",
-      "default" : null
-    }
-  },
-  "description" : "Newest first, capped at 50",
-  "default" : null
-};
-            defs["CappedProblemRounds"] = {
-  "required" : [ "items", "total" ],
-  "type" : "object",
-  "properties" : {
-    "items" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/components/schemas/ProblemRound"
-      },
-      "default" : null
-    },
-    "total" : {
-      "type" : "integer",
-      "description" : "Entries before the cap of 50",
-      "default" : null
-    }
-  },
-  "description" : "Capped at 50",
-  "default" : null
-};
-            defs["CappedStrings"] = {
-  "required" : [ "items", "total" ],
-  "type" : "object",
-  "properties" : {
-    "items" : {
-      "type" : "array",
-      "items" : {
-        "type" : "string",
-        "default" : null
-      },
-      "default" : null
-    },
-    "total" : {
-      "type" : "integer",
-      "description" : "Entries before the cap of 50",
-      "default" : null
-    }
-  },
-  "description" : "Coroutine ids, newest first, capped at 50",
-  "default" : null
+  "description" : "An action to execute inside a coroutine. Supported types are \"delay\", \"throw\"/\"exception\", \"log\", and \"custom\".\n"
 };
             defs["CoroutineComparison"] = {
   "required" : [ "coroutineId", "eventCountA", "eventCountB", "stateA", "stateB" ],
@@ -920,38 +714,31 @@
   "properties" : {
     "coroutineId" : {
       "type" : "string",
-      "description" : "Shared coroutine identifier",
-      "default" : null
+      "description" : "Shared coroutine identifier"
     },
     "label" : {
       "type" : "string",
       "description" : "Coroutine label (taken from session A if available)",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "stateA" : {
       "type" : "string",
-      "description" : "Coroutine state in session A",
-      "default" : null
+      "description" : "Coroutine state in session A"
     },
     "stateB" : {
       "type" : "string",
-      "description" : "Coroutine state in session B",
-      "default" : null
+      "description" : "Coroutine state in session B"
     },
     "eventCountA" : {
       "type" : "integer",
-      "description" : "Number of events for this coroutine in session A",
-      "default" : null
+      "description" : "Number of events for this coroutine in session A"
     },
     "eventCountB" : {
       "type" : "integer",
-      "description" : "Number of events for this coroutine in session B",
-      "default" : null
+      "description" : "Number of events for this coroutine in session B"
     }
   },
-  "description" : "Comparison of a single coroutine that exists in both sessions.\n",
-  "default" : null
+  "description" : "Comparison of a single coroutine that exists in both sessions.\n"
 };
             defs["CoroutineConfigDTO"] = {
   "required" : [ "id", "label" ],
@@ -959,39 +746,33 @@
   "properties" : {
     "id" : {
       "type" : "string",
-      "description" : "Unique identifier for this coroutine within the scenario",
-      "default" : null
+      "description" : "Unique identifier for this coroutine within the scenario"
     },
     "label" : {
       "type" : "string",
-      "description" : "Display label for the coroutine",
-      "default" : null
+      "description" : "Display label for the coroutine"
     },
     "parentId" : {
       "type" : "string",
       "description" : "Parent coroutine ID (for flat configuration style)",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "actions" : {
       "type" : "array",
       "description" : "Actions to execute inside this coroutine",
       "items" : {
         "$ref" : "#/components/schemas/ActionDTO"
-      },
-      "default" : null
+      }
     },
     "children" : {
       "type" : "array",
       "description" : "Child coroutines launched within this coroutine",
       "items" : {
         "$ref" : "#/components/schemas/CoroutineConfigDTO"
-      },
-      "default" : null
+      }
     }
   },
-  "description" : "Configuration for a single coroutine in a custom scenario tree. Coroutines can have actions and nested children.\n",
-  "default" : null
+  "description" : "Configuration for a single coroutine in a custom scenario tree. Coroutines can have actions and nested children.\n"
 };
             defs["CoroutineNodeDto"] = {
   "required" : [ "id", "jobId", "scopeId", "state" ],
@@ -999,40 +780,33 @@
   "properties" : {
     "id" : {
       "type" : "string",
-      "description" : "Unique coroutine identifier",
-      "default" : null
+      "description" : "Unique coroutine identifier"
     },
     "jobId" : {
       "type" : "string",
-      "description" : "Associated Job identifier",
-      "default" : null
+      "description" : "Associated Job identifier"
     },
     "parentId" : {
       "type" : "string",
       "description" : "Parent coroutine ID, null for root coroutines",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "scopeId" : {
       "type" : "string",
-      "description" : "Owning VizScope identifier",
-      "default" : null
+      "description" : "Owning VizScope identifier"
     },
     "label" : {
       "type" : "string",
       "description" : "Human-readable label (if assigned)",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "state" : {
       "type" : "string",
       "description" : "Current coroutine state",
-      "enum" : [ "CREATED", "ACTIVE", "SUSPENDED", "WAITING_FOR_CHILDREN", "COMPLETED", "CANCELLED", "FAILED" ],
-      "default" : null
+      "enum" : [ "CREATED", "RUNNING", "SUSPENDED", "COMPLETED", "CANCELLED", "FAILED" ]
     }
   },
-  "description" : "Serializable representation of a coroutine's current state within a session snapshot.\n",
-  "default" : null
+  "description" : "Serializable representation of a coroutine's current state within a session snapshot.\n"
 };
             defs["CoroutineTimeline"] = {
   "required" : [ "coroutineId", "name", "state" ],
@@ -1040,102 +814,56 @@
   "properties" : {
     "coroutineId" : {
       "type" : "string",
-      "description" : "Unique coroutine identifier",
-      "default" : null
+      "description" : "Unique coroutine identifier"
     },
     "name" : {
       "type" : "string",
-      "description" : "Display name of the coroutine",
-      "default" : null
+      "description" : "Display name of the coroutine"
     },
     "state" : {
       "type" : "string",
       "description" : "Current coroutine state",
-      "enum" : [ "CREATED", "ACTIVE", "SUSPENDED", "WAITING_FOR_CHILDREN", "COMPLETED", "CANCELLED", "FAILED" ],
-      "default" : null
+      "enum" : [ "CREATED", "RUNNING", "SUSPENDED", "COMPLETED", "CANCELLED", "FAILED" ]
     },
     "totalDuration" : {
       "type" : "integer",
       "description" : "Total time from creation to completion in nanoseconds",
       "format" : "int64",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "activeDuration" : {
       "type" : "integer",
       "description" : "Time spent actively running (not suspended) in nanoseconds",
       "format" : "int64",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "suspendedDuration" : {
       "type" : "integer",
       "description" : "Time spent in suspended state in nanoseconds",
       "format" : "int64",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "parentId" : {
       "type" : "string",
       "description" : "Parent coroutine ID",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "childrenIds" : {
       "type" : "array",
       "description" : "IDs of child coroutines",
       "items" : {
-        "type" : "string",
-        "default" : null
-      },
-      "default" : null
+        "type" : "string"
+      }
     },
     "events" : {
       "type" : "array",
       "description" : "Ordered list of event summaries for this coroutine",
       "items" : {
         "$ref" : "#/components/schemas/TimelineEventSummary"
-      },
-      "default" : null
-    },
-    "openPhase" : {
-      "type" : "string",
-      "description" : "For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished.",
-      "nullable" : true,
-      "enum" : [ "ACTIVE", "SUSPENDED" ],
-      "default" : null
-    },
-    "openPhaseSinceNanos" : {
-      "type" : "integer",
-      "description" : "tsNanos of the transition that opened openPhase (the emitting JVM's monotonic clock).",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "createdAtNanos" : {
-      "type" : "integer",
-      "description" : "Creation time on the emitting JVM's monotonic clock (tsNanos).",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "createdAtEpochMs" : {
-      "type" : "integer",
-      "description" : "Creation time on the emitting JVM's wall clock, in epoch milliseconds.",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "observedAtEpochMs" : {
-      "type" : "integer",
-      "description" : "The backend's wall clock when it built this timeline. With createdAtNanos and createdAtEpochMs a client can estimate the emitting JVM's current tsNanos, assuming both hosts' wall clocks agree.",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
+      }
     }
   },
-  "description" : "Detailed timeline for a single coroutine with duration breakdown and ordered event summaries.\n",
-  "default" : null
+  "description" : "Detailed timeline for a single coroutine with duration breakdown and ordered event summaries.\n"
 };
             defs["ErrorResponse"] = {
   "required" : [ "error" ],
@@ -1143,148 +871,34 @@
   "properties" : {
     "error" : {
       "type" : "string",
-      "description" : "Human-readable error message",
-      "default" : null
-    },
-    "code" : {
-      "type" : "string",
-      "description" : "Machine-readable reason, present only where a client acts on it: demo-limit (every MAX_CONCURRENT_DEMOS slot is taken) and demo-time-limit (the demo ran past MAX_DEMO_RUN_SECONDS) on the demo limit's 503s; summaries-unavailable and history-trimmed on the session health's 503\n",
-      "enum" : [ "demo-limit", "demo-time-limit", "summaries-unavailable", "history-trimmed" ],
-      "default" : null
+      "description" : "Human-readable error message"
     }
   },
-  "description" : "Standard error envelope returned on 4xx/5xx responses",
-  "default" : null
-};
-            defs["EvaluationStatus"] = {
-  "type" : "string",
-  "enum" : [ "EVALUATED", "NOT_EVALUATED" ],
-  "default" : null
-};
-            defs["FailedRoundIncident"] = {
-  "required" : [ "anchorId", "cancelledAfter", "failures", "firstFailureSeq", "id", "roundId", "sortSeq", "type" ],
-  "type" : "object",
-  "properties" : {
-    "type" : {
-      "type" : "string",
-      "enum" : [ "FAILED_ROUND" ],
-      "default" : null
-    },
-    "id" : {
-      "type" : "string",
-      "default" : null
-    },
-    "roundId" : {
-      "type" : "string",
-      "default" : null
-    },
-    "anchorId" : {
-      "type" : "string",
-      "default" : null
-    },
-    "failures" : {
-      "$ref" : "#/components/schemas/CappedFailureEntries"
-    },
-    "cancelledAfter" : {
-      "$ref" : "#/components/schemas/CappedStrings"
-    },
-    "firstFailureSeq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    },
-    "sortSeq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "description" : "All failed coroutines of one round (spec 'Incidents'); cancellations after the first failure are context",
-  "default" : null
-};
-            defs["FailureEntry"] = {
-  "required" : [ "coroutineId", "detailsDropped", "exceptionType", "failedAtSeq", "message", "name" ],
-  "type" : "object",
-  "properties" : {
-    "coroutineId" : {
-      "type" : "string",
-      "default" : null
-    },
-    "name" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "exceptionType" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "message" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "failedAtSeq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    },
-    "detailsDropped" : {
-      "type" : "boolean",
-      "description" : "The summary was reduced: type and message are no longer known",
-      "default" : null
-    }
-  },
-  "default" : null
-};
-            defs["HealthState"] = {
-  "type" : "string",
-  "description" : "The health strip's state (spec 'Health strip states')",
-  "enum" : [ "AWAITING_FIRST_DATA", "PROBLEMS", "NO_PROBLEMS", "NO_FAILURES_PARTIAL", "NO_APP_COROUTINES" ],
-  "default" : null
+  "description" : "Standard error envelope returned on 4xx/5xx responses"
 };
             defs["HealthStatus"] = {
-  "required" : [ "memory", "sessions", "status", "uptimeMs", "version" ],
+  "required" : [ "memory", "sessions", "status", "uptimeMs" ],
   "type" : "object",
   "properties" : {
     "status" : {
       "type" : "string",
       "description" : "Health status: UP or DEGRADED",
-      "enum" : [ "UP", "DEGRADED" ],
-      "default" : null
-    },
-    "version" : {
-      "type" : "string",
-      "description" : "Application version (e.g. \"0.0.1\")",
-      "default" : null
+      "enum" : [ "UP", "DEGRADED" ]
     },
     "sessions" : {
       "type" : "integer",
-      "description" : "Number of currently active visualization sessions",
-      "default" : null
+      "description" : "Number of currently active visualization sessions"
     },
     "uptimeMs" : {
       "type" : "integer",
       "description" : "Milliseconds since the application started",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "memory" : {
       "$ref" : "#/components/schemas/MemoryInfo"
-    },
-    "components" : {
-      "type" : "object",
-      "additionalProperties" : {
-        "type" : "string",
-        "default" : null
-      },
-      "description" : "Map of component name to its status string (e.g. \"UP\" or \"DEGRADED\"). Included components: sessionManager, memory.\n",
-      "default" : null
     }
   },
-  "description" : "Application health report including uptime, active session count, JVM memory usage, application version, and a component status map.\n",
-  "default" : null
+  "description" : "Application health report including uptime, active session count, and JVM memory usage.\n"
 };
             defs["HierarchyNode"] = {
   "required" : [ "createdAtNanos", "id", "jobId", "name", "scopeId", "state" ],
@@ -1292,124 +906,92 @@
   "properties" : {
     "id" : {
       "type" : "string",
-      "description" : "Unique coroutine identifier",
-      "default" : null
+      "description" : "Unique coroutine identifier"
     },
     "parentId" : {
       "type" : "string",
       "description" : "Parent coroutine ID, null for root coroutines",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "children" : {
       "type" : "array",
       "description" : "Child coroutine IDs",
       "items" : {
-        "type" : "string",
-        "default" : null
-      },
-      "default" : null
+        "type" : "string"
+      }
     },
     "name" : {
       "type" : "string",
-      "description" : "Display name (label or auto-generated)",
-      "default" : null
+      "description" : "Display name (label or auto-generated)"
     },
     "scopeId" : {
       "type" : "string",
-      "description" : "Owning VizScope identifier",
-      "default" : null
+      "description" : "Owning VizScope identifier"
     },
     "state" : {
       "type" : "string",
       "description" : "Current coroutine state",
-      "enum" : [ "CREATED", "ACTIVE", "SUSPENDED", "WAITING_FOR_CHILDREN", "COMPLETED", "CANCELLED", "FAILED" ],
-      "default" : null
+      "enum" : [ "CREATED", "RUNNING", "SUSPENDED", "COMPLETED", "CANCELLED", "FAILED" ]
     },
     "createdAtNanos" : {
       "type" : "integer",
       "description" : "Nanosecond timestamp when the coroutine was created",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "completedAtNanos" : {
       "type" : "integer",
       "description" : "Nanosecond timestamp when the coroutine finished (null if still active)",
       "format" : "int64",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "dispatcherId" : {
       "type" : "string",
       "description" : "Assigned dispatcher identifier",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "dispatcherName" : {
       "type" : "string",
       "description" : "Human-readable dispatcher name (e.g. \"Dispatchers.Default\")",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "currentThreadId" : {
       "type" : "integer",
       "description" : "System thread ID currently executing this coroutine",
       "format" : "int64",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "currentThreadName" : {
       "type" : "string",
       "description" : "Name of the thread currently executing this coroutine",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "jobId" : {
       "type" : "string",
-      "description" : "Associated Job identifier",
-      "default" : null
+      "description" : "Associated Job identifier"
     },
     "exceptionType" : {
       "type" : "string",
       "description" : "Exception class name if the coroutine failed",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "exceptionMessage" : {
       "type" : "string",
       "description" : "Exception message if the coroutine failed",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "activeChildrenIds" : {
       "type" : "array",
       "description" : "IDs of children that are still active",
       "items" : {
-        "type" : "string",
-        "default" : null
-      },
-      "default" : null
+        "type" : "string"
+      }
     },
     "activeChildrenCount" : {
       "type" : "integer",
-      "description" : "Number of currently active children",
-      "default" : null
-    },
-    "creationPoint" : {
-      "$ref" : "#/components/schemas/SuspensionPoint"
-    },
-    "lastSuspensionPoint" : {
-      "$ref" : "#/components/schemas/SuspensionPoint"
+      "description" : "Number of currently active children"
     }
   },
-  "description" : "A node in the coroutine hierarchy tree. Contains parent-child relationships, state, timing, dispatcher, and thread information.\n",
-  "default" : null
-};
-            defs["Incident"] = {};
-            defs["IncidentKind"] = {
-  "type" : "string",
-  "enum" : [ "FAILED", "POSSIBLY_BLOCKED" ],
-  "default" : null
+  "description" : "A node in the coroutine hierarchy tree. Contains parent-child relationships, state, timing, dispatcher, and thread information.\n"
 };
             defs["MemoryInfo"] = {
   "required" : [ "maxMb", "usagePercent", "usedMb" ],
@@ -1418,90 +1000,20 @@
     "usedMb" : {
       "type" : "integer",
       "description" : "Currently used heap memory in megabytes",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "maxMb" : {
       "type" : "integer",
       "description" : "Maximum available heap memory in megabytes",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "usagePercent" : {
       "type" : "number",
       "description" : "Heap usage as a percentage (0.0 - 100.0)",
-      "format" : "double",
-      "default" : null
+      "format" : "double"
     }
   },
-  "description" : "JVM heap memory usage statistics",
-  "default" : null
-};
-            defs["NotEvaluatedReason"] = {
-  "type" : "string",
-  "enum" : [ "NO_WATERMARK", "DEMO", "REPLAY", "OVERFLOW", "EVENTS_DROPPED", "HISTORY_TRIMMED" ],
-  "default" : null
-};
-            defs["Observations"] = {
-  "required" : [ "longLived", "longSuspended" ],
-  "type" : "object",
-  "properties" : {
-    "longLived" : {
-      "$ref" : "#/components/schemas/CappedObservedAges"
-    },
-    "longSuspended" : {
-      "$ref" : "#/components/schemas/CappedObservedAges"
-    }
-  },
-  "description" : "Shown, never counted as problems",
-  "default" : null
-};
-            defs["ObservedAge"] = {
-  "required" : [ "ageNanos", "coroutineId", "name" ],
-  "type" : "object",
-  "properties" : {
-    "coroutineId" : {
-      "type" : "string",
-      "default" : null
-    },
-    "name" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "ageNanos" : {
-      "type" : "integer",
-      "description" : "Frozen at the last observation",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "default" : null
-};
-            defs["OriginCounts"] = {
-  "required" : [ "app", "unknown", "untracked", "vizcore" ],
-  "type" : "object",
-  "properties" : {
-    "app" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "vizcore" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "unknown" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "untracked" : {
-      "type" : "integer",
-      "description" : "Coroutines beyond capacity, only counted",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "default" : null
+  "description" : "JVM heap memory usage statistics"
 };
             defs["PatternInfo"] = {
   "required" : [ "description", "duration", "endpoint", "id", "name" ],
@@ -1509,23 +1021,19 @@
   "properties" : {
     "id" : {
       "type" : "string",
-      "description" : "Unique pattern identifier",
-      "default" : null
+      "description" : "Unique pattern identifier"
     },
     "name" : {
       "type" : "string",
-      "description" : "Human-readable pattern name",
-      "default" : null
+      "description" : "Human-readable pattern name"
     },
     "description" : {
       "type" : "string",
-      "description" : "Detailed description of the concurrency pattern",
-      "default" : null
+      "description" : "Detailed description of the concurrency pattern"
     },
     "endpoint" : {
       "type" : "string",
-      "description" : "HTTP endpoint to trigger the pattern scenario",
-      "default" : null
+      "description" : "HTTP endpoint to trigger the pattern scenario"
     },
     "category" : {
       "type" : "string",
@@ -1534,181 +1042,10 @@
     },
     "duration" : {
       "type" : "string",
-      "description" : "Estimated execution duration",
-      "default" : null
+      "description" : "Estimated execution duration"
     }
   },
-  "description" : "Entry in the pattern scenario catalog with full metadata.\n",
-  "default" : null
-};
-            defs["PossiblyBlockedEvaluation"] = {
-  "required" : [ "reason", "status" ],
-  "type" : "object",
-  "properties" : {
-    "status" : {
-      "$ref" : "#/components/schemas/EvaluationStatus"
-    },
-    "reason" : {
-      "description" : "Set if and only if NOT_EVALUATED; the highest-precedence reason",
-      "nullable" : true,
-      "allOf" : [ {
-        "$ref" : "#/components/schemas/NotEvaluatedReason"
-      } ],
-      "default" : null
-    }
-  },
-  "default" : null
-};
-            defs["PossiblyBlockedIncident"] = {
-  "required" : [ "anchorId", "coroutineId", "dispatcher", "eventLoopClue", "firstObservedRunning", "id", "lastRunStart", "lastSuspension", "lastSuspensionProvenance", "lastThread", "name", "roundId", "runningForNanos", "sortSeq", "transitions", "transitionsGap", "type" ],
-  "type" : "object",
-  "properties" : {
-    "type" : {
-      "type" : "string",
-      "enum" : [ "POSSIBLY_BLOCKED" ],
-      "default" : null
-    },
-    "id" : {
-      "type" : "string",
-      "default" : null
-    },
-    "coroutineId" : {
-      "type" : "string",
-      "default" : null
-    },
-    "name" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "roundId" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "anchorId" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "lastThread" : {
-      "description" : "The thread assigned in the current run, null when none was observed",
-      "nullable" : true,
-      "allOf" : [ {
-        "$ref" : "#/components/schemas/ThreadObservation"
-      } ],
-      "default" : null
-    },
-    "dispatcher" : {
-      "type" : "string",
-      "nullable" : true,
-      "default" : null
-    },
-    "lastSuspension" : {
-      "nullable" : true,
-      "allOf" : [ {
-        "$ref" : "#/components/schemas/SuspensionPoint"
-      } ],
-      "default" : null
-    },
-    "lastSuspensionProvenance" : {
-      "type" : "string",
-      "nullable" : true,
-      "enum" : [ "REAL_FRAME", "CREATION_FALLBACK", "STALE" ],
-      "default" : null
-    },
-    "lastRunStart" : {
-      "$ref" : "#/components/schemas/Transition"
-    },
-    "runningForNanos" : {
-      "type" : "integer",
-      "description" : "From the latest start/resume to the watermark (app clock)",
-      "format" : "int64",
-      "default" : null
-    },
-    "transitions" : {
-      "type" : "array",
-      "description" : "Up to the 20 most recent retained transitions",
-      "items" : {
-        "$ref" : "#/components/schemas/Transition"
-      },
-      "default" : null
-    },
-    "transitionsGap" : {
-      "type" : "boolean",
-      "description" : "The retained transitions do not start with the creation",
-      "default" : null
-    },
-    "firstObservedRunning" : {
-      "type" : "boolean",
-      "description" : "No suspension was ever observed",
-      "default" : null
-    },
-    "eventLoopClue" : {
-      "type" : "string",
-      "description" : "The matched event-loop thread prefix (a clue, never a verdict)",
-      "nullable" : true,
-      "default" : null
-    },
-    "sortSeq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "description" : "A coroutine observed running past the threshold up to the latest watermark",
-  "default" : null
-};
-            defs["ProblemRound"] = {
-  "required" : [ "anchorCreatedNanos", "anchorId", "kinds", "roundId" ],
-  "type" : "object",
-  "properties" : {
-    "roundId" : {
-      "type" : "string",
-      "default" : null
-    },
-    "anchorId" : {
-      "type" : "string",
-      "default" : null
-    },
-    "anchorCreatedNanos" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    },
-    "kinds" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/components/schemas/IncidentKind"
-      },
-      "default" : null
-    }
-  },
-  "default" : null
-};
-            defs["RetentionInfo"] = {
-  "required" : [ "oldestRetainedAppNanos", "oldestRetainedSeq", "trimmed" ],
-  "type" : "object",
-  "properties" : {
-    "oldestRetainedSeq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "oldestRetainedAppNanos" : {
-      "type" : "integer",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "trimmed" : {
-      "type" : "boolean",
-      "description" : "Events before the oldest retained one were dropped",
-      "default" : null
-    }
-  },
-  "default" : null
+  "description" : "Entry in the pattern scenario catalog with full metadata.\n"
 };
             defs["ScenarioCatalogEntry"] = {
   "required" : [ "description", "endpoint", "id", "name" ],
@@ -1716,52 +1053,30 @@
   "properties" : {
     "id" : {
       "type" : "string",
-      "description" : "Unique scenario identifier",
-      "default" : null
+      "description" : "Unique scenario identifier"
     },
     "name" : {
       "type" : "string",
-      "description" : "Human-readable display name",
-      "default" : null
+      "description" : "Human-readable display name"
     },
     "description" : {
       "type" : "string",
-      "description" : "Detailed description of the scenario",
-      "default" : null
+      "description" : "Detailed description of the scenario"
     },
     "endpoint" : {
       "type" : "string",
-      "description" : "HTTP endpoint to trigger the scenario",
-      "default" : null
+      "description" : "HTTP endpoint to trigger the scenario"
     },
     "category" : {
       "type" : "string",
-      "description" : "Scenario category (realistic, basic, channel, flow, pattern, sync)",
-      "default" : null
-    },
-    "group" : {
-      "type" : "string",
-      "description" : "Stable key of the dialog group (real-life, basics, channels, flow, patterns, sync-mutex, sync-semaphore, combined)\n",
-      "default" : null
-    },
-    "groupLabel" : {
-      "type" : "string",
-      "description" : "Heading of the dialog group, for example \"Sync: Mutex\"",
-      "default" : null
-    },
-    "method" : {
-      "type" : "string",
-      "description" : "HTTP method that starts the demo (always POST)",
-      "default" : null
+      "description" : "Scenario category (basic, channel, realistic, flow, pattern)"
     },
     "duration" : {
       "type" : "string",
-      "description" : "Estimated execution duration (e.g. \"~2-3 seconds\")",
-      "default" : null
+      "description" : "Estimated execution duration (e.g. \"~2-3 seconds\")"
     }
   },
-  "description" : "Entry in the general scenario catalog. Includes metadata for display in the frontend scenario picker.\n",
-  "default" : null
+  "description" : "Entry in the general scenario catalog. Includes metadata for display in the frontend scenario picker.\n"
 };
             defs["ScenarioCompletionResponse"] = {
   "required" : [ "coroutineCount", "eventCount", "message", "sessionId", "success" ],
@@ -1769,32 +1084,26 @@
   "properties" : {
     "success" : {
       "type" : "boolean",
-      "description" : "Whether the scenario completed successfully",
-      "default" : null
+      "description" : "Whether the scenario completed successfully"
     },
     "sessionId" : {
       "type" : "string",
-      "description" : "Session ID where the scenario events were recorded",
-      "default" : null
+      "description" : "Session ID where the scenario events were recorded"
     },
     "message" : {
       "type" : "string",
-      "description" : "Human-readable result message",
-      "default" : null
+      "description" : "Human-readable result message"
     },
     "coroutineCount" : {
       "type" : "integer",
-      "description" : "Number of coroutines created during the scenario",
-      "default" : null
+      "description" : "Number of coroutines created during the scenario"
     },
     "eventCount" : {
       "type" : "integer",
-      "description" : "Total number of events produced by the scenario",
-      "default" : null
+      "description" : "Total number of events produced by the scenario"
     }
   },
-  "description" : "Detailed response returned after a built-in scenario completes, including the session ID for follow-up queries and event streaming.\n",
-  "default" : null
+  "description" : "Detailed response returned after a built-in scenario completes, including the session ID for follow-up queries and event streaming.\n"
 };
             defs["ScenarioConfigRequest"] = {
   "required" : [ "name", "root" ],
@@ -1802,27 +1111,23 @@
   "properties" : {
     "name" : {
       "type" : "string",
-      "description" : "Display name for the scenario",
-      "default" : null
+      "description" : "Display name for the scenario"
     },
     "description" : {
       "type" : "string",
       "description" : "Optional description of what the scenario demonstrates",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "sessionId" : {
       "type" : "string",
       "description" : "Existing session ID to reuse (creates new if omitted)",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "root" : {
       "$ref" : "#/components/schemas/CoroutineConfigDTO"
     }
   },
-  "description" : "User-defined scenario configuration. Defines a tree of coroutines with actions to execute. Submitted as the request body for the custom scenario endpoint.\n",
-  "default" : null
+  "description" : "User-defined scenario configuration. Defines a tree of coroutines with actions to execute. Submitted as the request body for the custom scenario endpoint.\n"
 };
             defs["ScenarioExecutionResponse"] = {
   "required" : [ "message", "sessionId", "success" ],
@@ -1830,42 +1135,34 @@
   "properties" : {
     "success" : {
       "type" : "boolean",
-      "description" : "Whether the scenario completed successfully",
-      "default" : null
+      "description" : "Whether the scenario completed successfully"
     },
     "sessionId" : {
       "type" : "string",
-      "description" : "Session ID (empty string on validation errors)",
-      "default" : null
+      "description" : "Session ID (empty string on validation errors)"
     },
     "message" : {
       "type" : "string",
-      "description" : "Human-readable result or error message",
-      "default" : null
+      "description" : "Human-readable result or error message"
     },
     "coroutineCount" : {
       "type" : "integer",
-      "description" : "Number of coroutines created (0 on failure)",
-      "default" : null
+      "description" : "Number of coroutines created (0 on failure)"
     },
     "eventCount" : {
       "type" : "integer",
-      "description" : "Total number of events produced (0 on failure)",
-      "default" : null
+      "description" : "Total number of events produced (0 on failure)"
     },
     "errors" : {
       "type" : "array",
       "description" : "Error details (stack traces or validation messages)",
       "nullable" : true,
       "items" : {
-        "type" : "string",
-        "default" : null
-      },
-      "default" : null
+        "type" : "string"
+      }
     }
   },
-  "description" : "Response from custom scenario execution. Includes optional error details on failure.\n",
-  "default" : null
+  "description" : "Response from custom scenario execution. Includes optional error details on failure.\n"
 };
             defs["ScenarioInfo"] = {
   "required" : [ "description", "name", "path", "type" ],
@@ -1873,27 +1170,22 @@
   "properties" : {
     "path" : {
       "type" : "string",
-      "description" : "URL path suffix (e.g. \"mutex/counter\")",
-      "default" : null
+      "description" : "URL path suffix (e.g. \"mutex/counter\")"
     },
     "name" : {
       "type" : "string",
-      "description" : "Human-readable scenario name",
-      "default" : null
+      "description" : "Human-readable scenario name"
     },
     "type" : {
       "type" : "string",
-      "description" : "Category of sync primitive (Mutex, Semaphore, Combined)",
-      "default" : null
+      "description" : "Category of sync primitive (Mutex, Semaphore, Combined)"
     },
     "description" : {
       "type" : "string",
-      "description" : "Brief description of what the scenario demonstrates",
-      "default" : null
+      "description" : "Brief description of what the scenario demonstrates"
     }
   },
-  "description" : "Descriptor for a synchronization scenario in the catalog.\n",
-  "default" : null
+  "description" : "Descriptor for a synchronization scenario in the catalog.\n"
 };
             defs["ScenarioResponse"] = {
   "required" : [ "message", "success" ],
@@ -1901,17 +1193,14 @@
   "properties" : {
     "success" : {
       "type" : "boolean",
-      "description" : "Whether the scenario completed successfully",
-      "default" : null
+      "description" : "Whether the scenario completed successfully"
     },
     "message" : {
       "type" : "string",
-      "description" : "Human-readable result message",
-      "default" : null
+      "description" : "Human-readable result message"
     }
   },
-  "description" : "Simple success/message response for scenario endpoints",
-  "default" : null
+  "description" : "Simple success/message response for scenario endpoints"
 };
             defs["ScenarioResultData"] = {
   "required" : [ "coroutines", "eventCount", "events", "sessionId", "success" ],
@@ -1919,197 +1208,81 @@
   "properties" : {
     "success" : {
       "type" : "boolean",
-      "description" : "Whether the scenario completed successfully",
-      "default" : null
+      "description" : "Whether the scenario completed successfully"
     },
     "sessionId" : {
       "type" : "string",
-      "description" : "Temporary session ID",
-      "default" : null
+      "description" : "Temporary session ID"
     },
     "events" : {
       "type" : "array",
       "description" : "All events produced by the scenario",
       "items" : {
         "$ref" : "#/components/schemas/VizEvent"
-      },
-      "default" : null
+      }
     },
     "coroutines" : {
       "type" : "array",
       "description" : "All coroutine nodes and their final states",
       "items" : {
         "$ref" : "#/components/schemas/CoroutineNodeDto"
-      },
-      "default" : null
+      }
     },
     "eventCount" : {
       "type" : "integer",
-      "description" : "Total number of events",
-      "default" : null
+      "description" : "Total number of events"
     }
   },
-  "description" : "Inline scenario results containing the full event list and coroutine node data in a single response. Used by the viz helper endpoint.\n",
-  "default" : null
+  "description" : "Inline scenario results containing the full event list and coroutine node data in a single response. Used by the viz helper endpoint.\n"
 };
             defs["SessionComparison"] = {
-  "required" : [ "commonCoroutines", "coroutineCountDiff", "coroutinesOnlyInA", "coroutinesOnlyInB", "distinctThreadsDiff", "eventCountDiff", "sessionA", "sessionB", "totalDurationDiffNanos" ],
+  "required" : [ "commonCoroutines", "coroutineCountDiff", "coroutinesOnlyInA", "coroutinesOnlyInB", "eventCountDiff", "sessionA", "sessionB", "totalDurationDiffNanos" ],
   "type" : "object",
   "properties" : {
     "sessionA" : {
       "type" : "string",
-      "description" : "ID of the first (baseline) session",
-      "default" : null
+      "description" : "ID of the first (baseline) session"
     },
     "sessionB" : {
       "type" : "string",
-      "description" : "ID of the second (comparison) session",
-      "default" : null
+      "description" : "ID of the second (comparison) session"
     },
     "coroutineCountDiff" : {
       "type" : "integer",
-      "description" : "Difference in coroutine count (B minus A)",
-      "default" : null
+      "description" : "Difference in coroutine count (B minus A)"
     },
     "eventCountDiff" : {
       "type" : "integer",
-      "description" : "Difference in event count (B minus A)",
-      "default" : null
+      "description" : "Difference in event count (B minus A)"
     },
     "totalDurationDiffNanos" : {
       "type" : "integer",
       "description" : "Difference in total session duration in nanoseconds (B minus A)",
-      "format" : "int64",
-      "default" : null
-    },
-    "distinctThreadsDiff" : {
-      "type" : "integer",
-      "description" : "Difference in distinct-thread (thread-utilization) count between the two sessions (B minus A), derived from ThreadAssigned events.\n",
-      "default" : null
+      "format" : "int64"
     },
     "coroutinesOnlyInA" : {
       "type" : "array",
       "description" : "Coroutine IDs present only in session A",
       "items" : {
-        "type" : "string",
-        "default" : null
-      },
-      "default" : null
+        "type" : "string"
+      }
     },
     "coroutinesOnlyInB" : {
       "type" : "array",
       "description" : "Coroutine IDs present only in session B",
       "items" : {
-        "type" : "string",
-        "default" : null
-      },
-      "default" : null
+        "type" : "string"
+      }
     },
     "commonCoroutines" : {
       "type" : "array",
       "description" : "Per-coroutine comparison for coroutines in both sessions",
       "items" : {
         "$ref" : "#/components/schemas/CoroutineComparison"
-      },
-      "default" : null
+      }
     }
   },
-  "description" : "Structured diff between two visualization sessions, including aggregate metrics and per-coroutine breakdowns.\n",
-  "default" : null
-};
-            defs["SessionHealth"] = {
-  "required" : [ "asOf", "asOfSeq", "asOfWatermark", "counts", "failedRoundCount", "failuresAtLeast", "incidents", "observations", "possiblyBlocked", "possiblyBlockedCount", "problemCount", "problemRoundCount", "problemRounds", "retention", "roundCount", "sessionOrigin", "state", "transport", "ungroupedFailureCount", "vizcoreConnection" ],
-  "type" : "object",
-  "properties" : {
-    "state" : {
-      "$ref" : "#/components/schemas/HealthState"
-    },
-    "asOf" : {
-      "description" : "Null before the first observation",
-      "nullable" : true,
-      "allOf" : [ {
-        "$ref" : "#/components/schemas/AsOf"
-      } ],
-      "default" : null
-    },
-    "asOfSeq" : {
-      "type" : "integer",
-      "description" : "The last event seq the health reflects (the cursor in replay)",
-      "format" : "int64",
-      "default" : null
-    },
-    "sessionOrigin" : {
-      "$ref" : "#/components/schemas/SessionOrigin"
-    },
-    "problemCount" : {
-      "type" : "integer",
-      "description" : "Failed rounds + ungrouped failures + possibly blocked",
-      "default" : null
-    },
-    "failedRoundCount" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "ungroupedFailureCount" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "possiblyBlockedCount" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "incidents" : {
-      "$ref" : "#/components/schemas/CappedIncidents"
-    },
-    "possiblyBlocked" : {
-      "$ref" : "#/components/schemas/PossiblyBlockedEvaluation"
-    },
-    "observations" : {
-      "$ref" : "#/components/schemas/Observations"
-    },
-    "counts" : {
-      "$ref" : "#/components/schemas/OriginCounts"
-    },
-    "failuresAtLeast" : {
-      "type" : "boolean",
-      "description" : "Counts may be low (overflow, lost or possibly lost events)",
-      "default" : null
-    },
-    "vizcoreConnection" : {
-      "$ref" : "#/components/schemas/VizcoreConnectionHealth"
-    },
-    "transport" : {
-      "$ref" : "#/components/schemas/TransportStatus"
-    },
-    "roundCount" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "problemRoundCount" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "problemRounds" : {
-      "$ref" : "#/components/schemas/CappedProblemRounds"
-    },
-    "asOfWatermark" : {
-      "description" : "The watermark the health used (live attached sessions only)",
-      "nullable" : true,
-      "allOf" : [ {
-        "$ref" : "#/components/schemas/WatermarkObservation"
-      } ],
-      "default" : null
-    },
-    "retention" : {
-      "nullable" : true,
-      "allOf" : [ {
-        "$ref" : "#/components/schemas/RetentionInfo"
-      } ],
-      "default" : null
-    }
-  },
-  "description" : "A session's derived health (spec 2026-10-21, C-3)",
-  "default" : null
+  "description" : "Structured diff between two visualization sessions, including aggregate metrics and per-coroutine breakdowns.\n"
 };
             defs["SessionInfo"] = {
   "required" : [ "coroutineCount", "eventCount", "sessionId" ],
@@ -2117,147 +1290,44 @@
   "properties" : {
     "sessionId" : {
       "type" : "string",
-      "description" : "Unique session identifier",
-      "default" : null
+      "description" : "Unique session identifier"
     },
     "coroutineCount" : {
       "type" : "integer",
-      "description" : "Number of coroutines tracked in this session",
-      "default" : null
+      "description" : "Number of coroutines tracked in this session"
     },
     "eventCount" : {
       "type" : "integer",
-      "description" : "Total number of events recorded in this session",
-      "default" : null
+      "description" : "Total number of events recorded in this session"
     }
   },
-  "description" : "Lightweight summary of a visualization session, returned when listing all sessions.\n",
-  "default" : null
-};
-            defs["SessionKind"] = {
-  "type" : "string",
-  "description" : "ATTACHED for a connected app's session, DEMO for vizcore's own runs",
-  "enum" : [ "ATTACHED", "DEMO" ],
-  "default" : null
-};
-            defs["SessionOrigin"] = {
-  "type" : "string",
-  "description" : "REPORTED when the producer reports coroutine origins (or for demos)",
-  "enum" : [ "REPORTED", "UNKNOWN" ],
-  "default" : null
+  "description" : "Lightweight summary of a visualization session, returned when listing all sessions.\n"
 };
             defs["SessionSnapshotResponse"] = {
-  "required" : [ "appConnected", "captureStartAppNanos", "coroutineCount", "coroutines", "eventCount", "kind", "lastIngestEpochMs", "lastWatermark", "oldestRetainedSeq", "origin", "sessionId", "startedAtEpochMs", "trimmed" ],
+  "required" : [ "coroutineCount", "coroutines", "eventCount", "sessionId" ],
   "type" : "object",
   "properties" : {
     "sessionId" : {
       "type" : "string",
-      "description" : "Unique session identifier",
-      "default" : null
+      "description" : "Unique session identifier"
     },
     "coroutineCount" : {
       "type" : "integer",
-      "description" : "Number of coroutines in the session",
-      "default" : null
+      "description" : "Number of coroutines in the session"
     },
     "eventCount" : {
       "type" : "integer",
-      "description" : "Total number of events recorded",
-      "default" : null
+      "description" : "Total number of events recorded"
     },
     "coroutines" : {
       "type" : "array",
       "description" : "All coroutine nodes in the session",
       "items" : {
         "$ref" : "#/components/schemas/CoroutineNodeDto"
-      },
-      "default" : null
-    },
-    "kind" : {
-      "$ref" : "#/components/schemas/SessionKind"
-    },
-    "startedAtEpochMs" : {
-      "type" : "integer",
-      "description" : "When the session was created (backend wall clock)",
-      "format" : "int64",
-      "default" : null
-    },
-    "captureStartAppNanos" : {
-      "type" : "integer",
-      "description" : "App-clock time of the earliest event captured; null when unknown",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "origin" : {
-      "$ref" : "#/components/schemas/SessionOrigin"
-    },
-    "appConnected" : {
-      "type" : "boolean",
-      "description" : "Whether an app's ingest socket is open on this backend right now",
-      "default" : null
-    },
-    "lastIngestEpochMs" : {
-      "type" : "integer",
-      "description" : "Backend receipt time of the last event frame from the app",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "lastWatermark" : {
-      "description" : "The app's latest poll watermark",
-      "nullable" : true,
-      "allOf" : [ {
-        "$ref" : "#/components/schemas/WatermarkObservation"
-      } ],
-      "default" : null
-    },
-    "oldestRetainedSeq" : {
-      "type" : "integer",
-      "description" : "Seq of the oldest event still retained",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    },
-    "trimmed" : {
-      "type" : "boolean",
-      "description" : "Whether older events were dropped",
-      "default" : null
+      }
     }
   },
-  "description" : "Full current-state snapshot of a session, including the list of all coroutine nodes and their states.\n",
-  "default" : null
-};
-            defs["SuspensionPoint"] = {
-  "required" : [ "function", "reason" ],
-  "type" : "object",
-  "properties" : {
-    "function" : {
-      "type" : "string",
-      "description" : "Name of the suspending function",
-      "default" : null
-    },
-    "fileName" : {
-      "type" : "string",
-      "description" : "Source file name",
-      "nullable" : true,
-      "default" : null
-    },
-    "lineNumber" : {
-      "type" : "integer",
-      "description" : "Source line number",
-      "nullable" : true,
-      "default" : null
-    },
-    "reason" : {
-      "type" : "string",
-      "description" : "Reason for suspension (e.g. \"delay\", \"withContext\", \"join\", \"await\")",
-      "default" : null
-    }
-  },
-  "description" : "Source code location where a coroutine suspended",
-  "nullable" : true,
-  "default" : null
+  "description" : "Full current-state snapshot of a session, including the list of all coroutine nodes and their states.\n"
 };
             defs["SyncScenarioResponse"] = {
   "required" : [ "message", "scenario", "sessionId", "success" ],
@@ -2265,32 +1335,26 @@
   "properties" : {
     "success" : {
       "type" : "boolean",
-      "description" : "Whether the scenario completed successfully",
-      "default" : null
+      "description" : "Whether the scenario completed successfully"
     },
     "sessionId" : {
       "type" : "string",
-      "description" : "Session ID where events were recorded (empty on failure)",
-      "default" : null
+      "description" : "Session ID where events were recorded (empty on failure)"
     },
     "scenario" : {
       "type" : "string",
-      "description" : "Name of the scenario that was executed",
-      "default" : null
+      "description" : "Name of the scenario that was executed"
     },
     "message" : {
       "type" : "string",
-      "description" : "Human-readable result message",
-      "default" : null
+      "description" : "Human-readable result message"
     },
     "eventCount" : {
       "type" : "integer",
-      "description" : "Number of events produced (0 on failure)",
-      "default" : null
+      "description" : "Number of events produced (0 on failure)"
     }
   },
-  "description" : "Response from synchronization primitive scenario execution.\n",
-  "default" : null
+  "description" : "Response from synchronization primitive scenario execution.\n"
 };
             defs["ThreadEvent"] = {
   "required" : [ "coroutineId", "eventType", "threadId", "threadName", "timestamp" ],
@@ -2298,62 +1362,34 @@
   "properties" : {
     "coroutineId" : {
       "type" : "string",
-      "description" : "Coroutine involved in the thread event",
-      "default" : null
+      "description" : "Coroutine involved in the thread event"
     },
     "threadId" : {
       "type" : "integer",
       "description" : "System thread ID",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "threadName" : {
       "type" : "string",
-      "description" : "Human-readable thread name",
-      "default" : null
+      "description" : "Human-readable thread name"
     },
     "timestamp" : {
       "type" : "integer",
       "description" : "Nanosecond timestamp of the event",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "eventType" : {
       "type" : "string",
       "description" : "Type of thread event",
-      "enum" : [ "ASSIGNED", "RELEASED" ],
-      "default" : null
+      "enum" : [ "ASSIGNED", "RELEASED" ]
     },
     "dispatcherName" : {
       "type" : "string",
       "description" : "Name of the dispatcher that assigned the thread",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     }
   },
-  "description" : "Records a coroutine's assignment to or release from a thread. Used for thread lane visualizations.\n",
-  "default" : null
-};
-            defs["ThreadObservation"] = {
-  "required" : [ "seq", "threadId", "threadName" ],
-  "type" : "object",
-  "properties" : {
-    "threadId" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    },
-    "threadName" : {
-      "type" : "string",
-      "default" : null
-    },
-    "seq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "default" : null
+  "description" : "Records a coroutine's assignment to or release from a thread. Used for thread lane visualizations.\n"
 };
             defs["TimelineEventSummary"] = {
   "required" : [ "kind", "seq", "tsNanos" ],
@@ -2362,57 +1398,34 @@
     "seq" : {
       "type" : "integer",
       "description" : "Event sequence number",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "tsNanos" : {
       "type" : "integer",
       "description" : "Nanosecond timestamp",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "kind" : {
       "type" : "string",
-      "description" : "Event type (kebab-case, e.g. \"coroutine.suspended\", \"coroutine.started\")",
-      "default" : null
+      "description" : "Event type (e.g. \"CoroutineStarted\", \"CoroutineSuspended\")"
     },
     "threadName" : {
       "type" : "string",
       "description" : "Thread name at the time of the event",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "dispatcherName" : {
       "type" : "string",
       "description" : "Dispatcher name at the time of the event",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     },
     "reason" : {
       "type" : "string",
       "description" : "Reason for suspension (for suspension events)",
-      "nullable" : true,
-      "default" : null
-    },
-    "suspensionPoint" : {
-      "$ref" : "#/components/schemas/SuspensionPoint"
-    },
-    "waitKind" : {
-      "type" : "string",
-      "description" : "On a suspension recorded by a mutex, semaphore or channel wrapper: what the coroutine waited for.",
-      "nullable" : true,
-      "enum" : [ "MUTEX", "SEMAPHORE", "CHANNEL_SEND", "CHANNEL_RECEIVE" ],
-      "default" : null
-    },
-    "resourceId" : {
-      "type" : "string",
-      "description" : "On such a suspension: the mutexId, semaphoreId or channelId waited for.",
-      "nullable" : true,
-      "default" : null
+      "nullable" : true
     }
   },
-  "description" : "Simplified event summary for timeline display",
-  "default" : null
+  "description" : "Simplified event summary for timeline display"
 };
             defs["TimingReport"] = {
   "required" : [ "coroutineDurations", "suspensionDurations", "totalDuration" ],
@@ -2422,11 +1435,9 @@
       "type" : "object",
       "additionalProperties" : {
         "type" : "integer",
-        "format" : "int64",
-        "default" : null
+        "format" : "int64"
       },
-      "description" : "Map of coroutine ID to total duration in milliseconds (from first event to last event for that coroutine)\n",
-      "default" : null
+      "description" : "Map of coroutine ID to total duration in nanoseconds (from first event to last event for that coroutine)\n"
     },
     "suspensionDurations" : {
       "type" : "object",
@@ -2434,133 +1445,39 @@
         "type" : "array",
         "items" : {
           "type" : "integer",
-          "format" : "int64",
-          "default" : null
-        },
-        "default" : null
+          "format" : "int64"
+        }
       },
-      "description" : "Map of coroutine ID to list of individual suspension durations in milliseconds\n",
-      "default" : null
+      "description" : "Map of coroutine ID to list of individual suspension durations in nanoseconds\n"
     },
     "totalDuration" : {
       "type" : "integer",
-      "description" : "Overall duration of the event stream in milliseconds",
-      "format" : "int64",
-      "default" : null
+      "description" : "Overall duration of the event stream in nanoseconds",
+      "format" : "int64"
     }
   },
-  "description" : "Timing analysis of a coroutine event stream, containing per-coroutine durations, suspension breakdowns, and the overall stream duration.\n",
-  "default" : null
-};
-            defs["Transition"] = {
-  "required" : [ "appNanos", "kind", "seq" ],
-  "type" : "object",
-  "properties" : {
-    "kind" : {
-      "$ref" : "#/components/schemas/TransitionKind"
-    },
-    "appNanos" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    },
-    "seq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "default" : null
-};
-            defs["TransitionKind"] = {
-  "type" : "string",
-  "enum" : [ "CREATED", "STARTED", "SUSPENDED", "RESUMED", "BODY_COMPLETED", "COMPLETED", "CANCELLED", "FAILED" ],
-  "default" : null
-};
-            defs["TransportStatus"] = {
-  "required" : [ "deliveryUncertain", "lostEvents", "sinceSeq" ],
-  "type" : "object",
-  "properties" : {
-    "lostEvents" : {
-      "type" : "integer",
-      "description" : "Largest cumulative loss count an SDK watermark reported",
-      "format" : "int64",
-      "default" : null
-    },
-    "deliveryUncertain" : {
-      "type" : "boolean",
-      "description" : "An ingest connection ended without a final watermark, a frame could not be read, or the events came through a connection this backend did not watch",
-      "default" : null
-    },
-    "sinceSeq" : {
-      "type" : "integer",
-      "description" : "First seq that may be incomplete",
-      "format" : "int64",
-      "nullable" : true,
-      "default" : null
-    }
-  },
-  "description" : "Sticky for the session across reconnects",
-  "default" : null
-};
-            defs["UngroupedFailureIncident"] = {
-  "required" : [ "failure", "id", "sortSeq", "type" ],
-  "type" : "object",
-  "properties" : {
-    "type" : {
-      "type" : "string",
-      "enum" : [ "UNGROUPED_FAILURE" ],
-      "default" : null
-    },
-    "id" : {
-      "type" : "string",
-      "default" : null
-    },
-    "failure" : {
-      "$ref" : "#/components/schemas/FailureEntry"
-    },
-    "sortSeq" : {
-      "type" : "integer",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "description" : "A failed coroutine whose round cannot be determined",
-  "default" : null
+  "description" : "Timing analysis of a coroutine event stream, containing per-coroutine durations, suspension breakdowns, and the overall stream duration.\n"
 };
             defs["ValidationResponse"] = {
-  "required" : [ "appConnected", "results", "sessionId", "stillRunning", "timing" ],
+  "required" : [ "results", "sessionId", "timing" ],
   "type" : "object",
   "properties" : {
     "sessionId" : {
       "type" : "string",
-      "description" : "Session that was validated",
-      "default" : null
+      "description" : "Session that was validated"
     },
     "results" : {
       "type" : "array",
       "description" : "Individual validation rule results (Pass or Fail)",
       "items" : {
         "$ref" : "#/components/schemas/ValidationResult"
-      },
-      "default" : null
+      }
     },
     "timing" : {
       "$ref" : "#/components/schemas/TimingReport"
-    },
-    "appConnected" : {
-      "type" : "boolean",
-      "description" : "Whether an app is streaming into the session right now (an open ingest socket). While it is, StartedHasTerminal reports unfinished coroutines as still running instead of failing them.\n",
-      "default" : null
-    },
-    "stillRunning" : {
-      "type" : "integer",
-      "description" : "Number of coroutines started without a terminal event",
-      "default" : null
     }
   },
-  "description" : "Aggregated validation results for a session, including individual rule outcomes and a timing analysis report.\n",
-  "default" : null
+  "description" : "Aggregated validation results for a session, including individual rule outcomes and a timing analysis report.\n"
 };
             defs["ValidationResult"] = {
   "required" : [ "message", "ruleName", "type" ],
@@ -2569,30 +1486,25 @@
     "type" : {
       "type" : "string",
       "description" : "Discriminator for Pass or Fail",
-      "enum" : [ "Pass", "Fail" ],
-      "default" : null
+      "enum" : [ "Pass", "Fail" ]
     },
     "ruleName" : {
       "type" : "string",
-      "description" : "Machine-readable name of the validation rule",
-      "default" : null
+      "description" : "Machine-readable name of the validation rule"
     },
     "message" : {
       "type" : "string",
-      "description" : "Human-readable summary of the result",
-      "default" : null
+      "description" : "Human-readable summary of the result"
     },
     "details" : {
       "type" : "string",
-      "description" : "Detailed failure information (only present on Fail results)",
-      "default" : null
+      "description" : "Detailed failure information (only present on Fail results)"
     }
   },
   "description" : "Result of a single validation rule. Discriminated by type field: \"Pass\" when the rule succeeded, \"Fail\" when it detected a violation.\n",
   "discriminator" : {
     "propertyName" : "type"
-  },
-  "default" : null
+  }
 };
             defs["ValidationRule"] = {
   "required" : [ "description", "name" ],
@@ -2600,17 +1512,14 @@
   "properties" : {
     "name" : {
       "type" : "string",
-      "description" : "Machine-readable rule name (e.g. \"CreatedHasStarted\")",
-      "default" : null
+      "description" : "Machine-readable rule name (e.g. \"CreatedHasStarted\")"
     },
     "description" : {
       "type" : "string",
-      "description" : "Human-readable explanation of what the rule checks",
-      "default" : null
+      "description" : "Human-readable explanation of what the rule checks"
     }
   },
-  "description" : "Descriptor for an available validation rule",
-  "default" : null
+  "description" : "Descriptor for an available validation rule"
 };
             defs["VizEvent"] = {
   "required" : [ "kind", "seq", "sessionId", "tsNanos" ],
@@ -2618,74 +1527,25 @@
   "properties" : {
     "sessionId" : {
       "type" : "string",
-      "description" : "Session this event belongs to",
-      "default" : null
+      "description" : "Session this event belongs to"
     },
     "seq" : {
       "type" : "integer",
       "description" : "Monotonically increasing sequence number within the session",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "tsNanos" : {
       "type" : "integer",
       "description" : "Nanosecond timestamp (from System.nanoTime())",
-      "format" : "int64",
-      "default" : null
+      "format" : "int64"
     },
     "kind" : {
       "type" : "string",
-      "description" : "Event type discriminator (e.g. \"CoroutineCreated\", \"ChannelSendCompleted\", \"FlowValueEmitted\")\n",
-      "default" : null
+      "description" : "Event type discriminator (e.g. \"CoroutineCreated\", \"ChannelSendCompleted\", \"FlowValueEmitted\")\n"
     }
   },
   "additionalProperties" : true,
-  "description" : "Base polymorphic event type. Every event carries a session ID, monotonic sequence number, nanosecond timestamp, and a kind discriminator. Concrete subtypes include CoroutineCreated, CoroutineStarted, CoroutineSuspended, CoroutineResumed, CoroutineCompleted, CoroutineCancelled, CoroutineFailed, ChannelCreated, ChannelSendStarted, ChannelSendCompleted, FlowCreated, FlowValueEmitted, and many more (32+ event types).\n",
-  "default" : null
-};
-            defs["VizcoreConnectionHealth"] = {
-  "required" : [ "captured", "failed", "failures" ],
-  "type" : "object",
-  "properties" : {
-    "captured" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "failed" : {
-      "type" : "integer",
-      "default" : null
-    },
-    "failures" : {
-      "$ref" : "#/components/schemas/CappedFailureEntries"
-    }
-  },
-  "default" : null
-};
-            defs["WatermarkObservation"] = {
-  "required" : [ "appEpochMs", "appNanos", "receivedEpochMs" ],
-  "type" : "object",
-  "properties" : {
-    "appNanos" : {
-      "type" : "integer",
-      "description" : "Poll time on the app clock",
-      "format" : "int64",
-      "default" : null
-    },
-    "appEpochMs" : {
-      "type" : "integer",
-      "description" : "The app's wall-clock time of that poll",
-      "format" : "int64",
-      "default" : null
-    },
-    "receivedEpochMs" : {
-      "type" : "integer",
-      "description" : "When the backend received it",
-      "format" : "int64",
-      "default" : null
-    }
-  },
-  "description" : "An SDK poll watermark (spec C-7)",
-  "default" : null
+  "description" : "Base polymorphic event type. Every event carries a session ID, monotonic sequence number, nanosecond timestamp, and a kind discriminator. Concrete subtypes include CoroutineCreated, CoroutineStarted, CoroutineSuspended, CoroutineResumed, CoroutineCompleted, CoroutineCancelled, CoroutineFailed, ChannelCreated, ChannelSendStarted, ChannelSendCompleted, FlowCreated, FlowValueEmitted, and many more (32+ event types).\n"
 };
   </script>
 
@@ -2717,15 +1577,6 @@
                   <li class="nav-header" data-group="Health"><a href="#api-Health">API Methods - Health</a></li>
                     <li data-group="Health" data-name="getHealth" class="">
                       <a href="#api-Health-getHealth">getHealth</a>
-                    </li>
-                    <li data-group="Health" data-name="getHealthAlias" class="">
-                      <a href="#api-Health-getHealthAlias">getHealthAlias</a>
-                    </li>
-                    <li data-group="Health" data-name="getLiveness" class="">
-                      <a href="#api-Health-getLiveness">getLiveness</a>
-                    </li>
-                    <li data-group="Health" data-name="getReadiness" class="">
-                      <a href="#api-Health-getReadiness">getReadiness</a>
                     </li>
                   <li class="nav-header" data-group="Projections"><a href="#api-Projections">API Methods - Projections</a></li>
                     <li data-group="Projections" data-name="getCoroutineTimeline" class="">
@@ -2870,9 +1721,6 @@
                     <li data-group="Sessions" data-name="getSession" class="">
                       <a href="#api-Sessions-getSession">getSession</a>
                     </li>
-                    <li data-group="Sessions" data-name="getSessionHealth" class="">
-                      <a href="#api-Sessions-getSessionHealth">getSessionHealth</a>
-                    </li>
                     <li data-group="Sessions" data-name="listSessions" class="">
                       <a href="#api-Sessions-listSessions">listSessions</a>
                     </li>
@@ -2924,11 +1772,11 @@
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Produces a structured diff between two visualization sessions. The comparison includes aggregate differences (coroutine count, event count, duration, thread utilization), coroutines unique to each session, and per-coroutine state and event count comparisons for shared coroutines.
+                        <p class="marked">Produces a structured diff between two visualization sessions. The comparison includes aggregate differences (coroutine count, event count, duration), coroutines unique to each session, and per-coroutine state and event count comparisons for shared coroutines.
 </p>
                         <p></p>
                         <br />
-                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/api/sessions/compare</span></code></pre>
+                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/api/compare</span></code></pre>
                         <p>
                           <h3>Usage and SDK Samples</h3>
                         </p>
@@ -2950,7 +1798,7 @@
                           <div class="tab-pane active" id="examples-Comparison-compareSessions-0-curl">
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
 -H "Accept: application/json"\
-"http://0.0.0.0:8080/api/sessions/compare?a=&b="</code></pre>
+"http://0.0.0.0:8080/api/compare?sessionA=&sessionB="</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Comparison-compareSessions-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -2966,10 +1814,10 @@ public class ComparisonApiExample {
     public static void main(String[] args) {
         
         ComparisonApi apiInstance = new ComparisonApi();
-        String a = a_example; // String | ID of the first (baseline) session
-        String b = b_example; // String | ID of the second (comparison) session
+        String sessionA = sessionA_example; // String | ID of the first (baseline) session
+        String sessionB = sessionB_example; // String | ID of the second (comparison) session
         try {
-            SessionComparison result = apiInstance.compareSessions(a, b);
+            SessionComparison result = apiInstance.compareSessions(sessionA, sessionB);
             System.out.println(result);
         } catch (ApiException e) {
             System.err.println("Exception when calling ComparisonApi#compareSessions");
@@ -2986,10 +1834,10 @@ public class ComparisonApiExample {
 
     public static void main(String[] args) {
         ComparisonApi apiInstance = new ComparisonApi();
-        String a = a_example; // String | ID of the first (baseline) session
-        String b = b_example; // String | ID of the second (comparison) session
+        String sessionA = sessionA_example; // String | ID of the first (baseline) session
+        String sessionB = sessionB_example; // String | ID of the second (comparison) session
         try {
-            SessionComparison result = apiInstance.compareSessions(a, b);
+            SessionComparison result = apiInstance.compareSessions(sessionA, sessionB);
             System.out.println(result);
         } catch (ApiException e) {
             System.err.println("Exception when calling ComparisonApi#compareSessions");
@@ -3003,14 +1851,14 @@ public class ComparisonApiExample {
   <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
   </div> -->
                             <div class="tab-pane" id="examples-Comparison-compareSessions-0-objc">
-                              <pre class="prettyprint"><code class="language-cpp">String *a = a_example; // ID of the first (baseline) session
-String *b = b_example; // ID of the second (comparison) session
+                              <pre class="prettyprint"><code class="language-cpp">String *sessionA = sessionA_example; // ID of the first (baseline) session
+String *sessionB = sessionB_example; // ID of the second (comparison) session
 
 ComparisonApi *apiInstance = [[ComparisonApi alloc] init];
 
 // Compare two sessions
-[apiInstance compareSessionsWith:a
-    b:b
+[apiInstance compareSessionsWith:sessionA
+    sessionB:sessionB
               completionHandler: ^(SessionComparison output, NSError* error) {
                             if (output) {
                                 NSLog(@"%@", output);
@@ -3026,8 +1874,8 @@ ComparisonApi *apiInstance = [[ComparisonApi alloc] init];
                               <pre class="prettyprint"><code class="language-js">var CoroutineVisualizerApi = require('coroutine_visualizer_api');
 
 var api = new CoroutineVisualizerApi.ComparisonApi()
-var a = a_example; // {{String}} ID of the first (baseline) session
-var b = b_example; // {{String}} ID of the second (comparison) session
+var sessionA = sessionA_example; // {{String}} ID of the first (baseline) session
+var sessionB = sessionB_example; // {{String}} ID of the second (comparison) session
 
 var callback = function(error, data, response) {
   if (error) {
@@ -3036,7 +1884,7 @@ var callback = function(error, data, response) {
     console.log('API called successfully. Returned data: ' + data);
   }
 };
-api.compareSessions(a, b, callback);
+api.compareSessions(sessionA, sessionB, callback);
 </code></pre>
                             </div>
 
@@ -3058,13 +1906,13 @@ namespace Example
         {
 
             var apiInstance = new ComparisonApi();
-            var a = a_example;  // String | ID of the first (baseline) session
-            var b = b_example;  // String | ID of the second (comparison) session
+            var sessionA = sessionA_example;  // String | ID of the first (baseline) session
+            var sessionB = sessionB_example;  // String | ID of the second (comparison) session
 
             try
             {
                 // Compare two sessions
-                SessionComparison result = apiInstance.compareSessions(a, b);
+                SessionComparison result = apiInstance.compareSessions(sessionA, sessionB);
                 Debug.WriteLine(result);
             }
             catch (Exception e)
@@ -3082,11 +1930,11 @@ namespace Example
 require_once(__DIR__ . '/vendor/autoload.php');
 
 $api_instance = new Swagger\Client\ApiComparisonApi();
-$a = a_example; // String | ID of the first (baseline) session
-$b = b_example; // String | ID of the second (comparison) session
+$sessionA = sessionA_example; // String | ID of the first (baseline) session
+$sessionB = sessionB_example; // String | ID of the second (comparison) session
 
 try {
-    $result = $api_instance->compareSessions($a, $b);
+    $result = $api_instance->compareSessions($sessionA, $sessionB);
     print_r($result);
 } catch (Exception $e) {
     echo 'Exception when calling ComparisonApi->compareSessions: ', $e->getMessage(), PHP_EOL;
@@ -3100,11 +1948,11 @@ use WWW::SwaggerClient::Configuration;
 use WWW::SwaggerClient::ComparisonApi;
 
 my $api_instance = WWW::SwaggerClient::ComparisonApi->new();
-my $a = a_example; # String | ID of the first (baseline) session
-my $b = b_example; # String | ID of the second (comparison) session
+my $sessionA = sessionA_example; # String | ID of the first (baseline) session
+my $sessionB = sessionB_example; # String | ID of the second (comparison) session
 
 eval { 
-    my $result = $api_instance->compareSessions(a => $a, b => $b);
+    my $result = $api_instance->compareSessions(sessionA => $sessionA, sessionB => $sessionB);
     print Dumper($result);
 };
 if ($@) {
@@ -3121,12 +1969,12 @@ from pprint import pprint
 
 # create an instance of the API class
 api_instance = swagger_client.ComparisonApi()
-a = a_example # String | ID of the first (baseline) session
-b = b_example # String | ID of the second (comparison) session
+sessionA = sessionA_example # String | ID of the first (baseline) session
+sessionB = sessionB_example # String | ID of the second (comparison) session
 
 try: 
     # Compare two sessions
-    api_response = api_instance.compare_sessions(a, b)
+    api_response = api_instance.compare_sessions(sessionA, sessionB)
     pprint(api_response)
 except ApiException as e:
     print("Exception when calling ComparisonApi->compareSessions: %s\n" % e)</code></pre>
@@ -3145,11 +1993,11 @@ except ApiException as e:
                                 <th width="150px">Name</th>
                                 <th>Description</th>
                               </tr>
-                                <tr><td style="width:150px;">a*</td>
+                                <tr><td style="width:150px;">sessionA*</td>
                                 <td>
                                 
                                 
-                                    <div id="d2e199_compareSessions_a">
+                                    <div id="d2e199_compareSessions_sessionA">
                                         <div class="json-schema-view">
                                             <div class="primitive">
                                                 <span class="type">
@@ -3167,11 +2015,11 @@ except ApiException as e:
                                     </div>
                                 </td>
                                 </tr>
-                                <tr><td style="width:150px;">b*</td>
+                                <tr><td style="width:150px;">sessionB*</td>
                                 <td>
                                 
                                 
-                                    <div id="d2e199_compareSessions_b">
+                                    <div id="d2e199_compareSessions_sessionB">
                                         <div class="json-schema-view">
                                             <div class="primitive">
                                                 <span class="type">
@@ -3611,8 +2459,7 @@ except ApiException as e:
         "items" : {
           "$ref" : "#/components/schemas/VizEvent"
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -4007,8 +2854,7 @@ except ApiException as e:
       "schema" : {
         "type" : "string",
         "description" : "Server-Sent Events stream. Each event carries a JSON-encoded VizEvent in its data field.\n",
-        "x-content-type" : "text/event-stream",
-        "default" : null
+        "x-content-type" : "text/event-stream"
       }
     }
   }
@@ -4060,11 +2906,11 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Returns the current health of the application including active session count, uptime, JVM memory usage, application version, and a component status map. Returns HTTP 200 when healthy and HTTP 503 when memory usage exceeds 90%.
+                        <p class="marked">Returns the current health of the application including active session count, uptime, and JVM memory usage. Returns HTTP 200 when healthy and HTTP 503 when memory usage exceeds 90%.
 </p>
                         <p></p>
                         <br />
-                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/api/health</span></code></pre>
+                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/health</span></code></pre>
                         <p>
                           <h3>Usage and SDK Samples</h3>
                         </p>
@@ -4086,7 +2932,7 @@ except ApiException as e:
                           <div class="tab-pane active" id="examples-Health-getHealth-0-curl">
                            <pre class="prettyprint"><code class="language-bsh">curl -X GET\
 -H "Accept: application/json"\
-"http://0.0.0.0:8080/api/health"</code></pre>
+"http://0.0.0.0:8080/health"</code></pre>
                           </div>
                           <div class="tab-pane" id="examples-Health-getHealth-0-java">
                             <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
@@ -4352,916 +3198,6 @@ except ApiException as e:
                                     </script>
                                   </div>
                                   <input id='responses-getHealth-503-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                        </article>
-                      </div>
-                      <hr>
-                    <div id="api-Health-getHealthAlias">
-                      <article id="api-Health-getHealthAlias-0" data-group="User" data-name="getHealthAlias" data-version="0">
-                        <div class="pull-left">
-                          <h1>getHealthAlias</h1>
-                          <p>Application health status (alias)</p>
-                        </div>
-                        <div class="pull-right"></div>
-                        <div class="clearfix"></div>
-                        <p></p>
-                        <p class="marked">Alias for /api/health. Returns the current health of the application including active session count, uptime, JVM memory usage, version, and component status map. Returns HTTP 200 when healthy and HTTP 503 when memory usage exceeds 90%.
-</p>
-                        <p></p>
-                        <br />
-                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/health</span></code></pre>
-                        <p>
-                          <h3>Usage and SDK Samples</h3>
-                        </p>
-                        <ul class="nav nav-tabs nav-tabs-examples">
-                          <li class="active"><a href="#examples-Health-getHealthAlias-0-curl">Curl</a></li>
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-java">Java</a></li>
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-android">Android</a></li>
-                          <!--<li class=""><a href="#examples-Health-getHealthAlias-0-groovy">Groovy</a></li>-->
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-objc">Obj-C</a></li>
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-javascript">JavaScript</a></li>
-                          <!--<li class=""><a href="#examples-Health-getHealthAlias-0-angular">Angular</a></li>-->
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-csharp">C#</a></li>
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-php">PHP</a></li>
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-perl">Perl</a></li>
-                          <li class=""><a href="#examples-Health-getHealthAlias-0-python">Python</a></li>
-                        </ul>
-
-                        <div class="tab-content">
-                          <div class="tab-pane active" id="examples-Health-getHealthAlias-0-curl">
-                           <pre class="prettyprint"><code class="language-bsh">curl -X GET\
--H "Accept: application/json"\
-"http://0.0.0.0:8080/health"</code></pre>
-                          </div>
-                          <div class="tab-pane" id="examples-Health-getHealthAlias-0-java">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
-import io.swagger.client.auth.*;
-import io.swagger.client.model.*;
-import io.swagger.client.api.HealthApi;
-
-import java.io.File;
-import java.util.*;
-
-public class HealthApiExample {
-
-    public static void main(String[] args) {
-        
-        HealthApi apiInstance = new HealthApi();
-        try {
-            HealthStatus result = apiInstance.getHealthAlias();
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling HealthApi#getHealthAlias");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-
-                          <div class="tab-pane" id="examples-Health-getHealthAlias-0-android">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.HealthApi;
-
-public class HealthApiExample {
-
-    public static void main(String[] args) {
-        HealthApi apiInstance = new HealthApi();
-        try {
-            HealthStatus result = apiInstance.getHealthAlias();
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling HealthApi#getHealthAlias");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-  <!--
-  <div class="tab-pane" id="examples-Health-getHealthAlias-0-groovy">
-  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-  </div> -->
-                            <div class="tab-pane" id="examples-Health-getHealthAlias-0-objc">
-                              <pre class="prettyprint"><code class="language-cpp">
-HealthApi *apiInstance = [[HealthApi alloc] init];
-
-// Application health status (alias)
-[apiInstance getHealthAliasWithCompletionHandler: 
-              ^(HealthStatus output, NSError* error) {
-                            if (output) {
-                                NSLog(@"%@", output);
-                            }
-                            if (error) {
-                                NSLog(@"Error: %@", error);
-                            }
-                        }];
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getHealthAlias-0-javascript">
-                              <pre class="prettyprint"><code class="language-js">var CoroutineVisualizerApi = require('coroutine_visualizer_api');
-
-var api = new CoroutineVisualizerApi.HealthApi()
-var callback = function(error, data, response) {
-  if (error) {
-    console.error(error);
-  } else {
-    console.log('API called successfully. Returned data: ' + data);
-  }
-};
-api.getHealthAlias(callback);
-</code></pre>
-                            </div>
-
-                            <!--<div class="tab-pane" id="examples-Health-getHealthAlias-0-angular">
-              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-            </div>-->
-                            <div class="tab-pane" id="examples-Health-getHealthAlias-0-csharp">
-                              <pre class="prettyprint"><code class="language-cs">using System;
-using System.Diagnostics;
-using IO.Swagger.Api;
-using IO.Swagger.Client;
-using IO.Swagger.Model;
-
-namespace Example
-{
-    public class getHealthAliasExample
-    {
-        public void main()
-        {
-
-            var apiInstance = new HealthApi();
-
-            try
-            {
-                // Application health status (alias)
-                HealthStatus result = apiInstance.getHealthAlias();
-                Debug.WriteLine(result);
-            }
-            catch (Exception e)
-            {
-                Debug.Print("Exception when calling HealthApi.getHealthAlias: " + e.Message );
-            }
-        }
-    }
-}
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getHealthAlias-0-php">
-                              <pre class="prettyprint"><code class="language-php"><&#63;php
-require_once(__DIR__ . '/vendor/autoload.php');
-
-$api_instance = new Swagger\Client\ApiHealthApi();
-
-try {
-    $result = $api_instance->getHealthAlias();
-    print_r($result);
-} catch (Exception $e) {
-    echo 'Exception when calling HealthApi->getHealthAlias: ', $e->getMessage(), PHP_EOL;
-}
-?></code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getHealthAlias-0-perl">
-                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
-use WWW::SwaggerClient::Configuration;
-use WWW::SwaggerClient::HealthApi;
-
-my $api_instance = WWW::SwaggerClient::HealthApi->new();
-
-eval { 
-    my $result = $api_instance->getHealthAlias();
-    print Dumper($result);
-};
-if ($@) {
-    warn "Exception when calling HealthApi->getHealthAlias: $@\n";
-}</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getHealthAlias-0-python">
-                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
-import time
-import swagger_client
-from swagger_client.rest import ApiException
-from pprint import pprint
-
-# create an instance of the API class
-api_instance = swagger_client.HealthApi()
-
-try: 
-    # Application health status (alias)
-    api_response = api_instance.get_health_alias()
-    pprint(api_response)
-except ApiException as e:
-    print("Exception when calling HealthApi->getHealthAlias: %s\n" % e)</code></pre>
-                            </div>
-                          </div>
-
-                          <h2>Parameters</h2>
-
-
-
-
-
-
-                          <h2>Responses</h2>
-                            <h3> Status: 200 - Application is healthy </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getHealthAlias-200-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getHealthAlias-200-schema">
-                                  <div id='responses-getHealthAlias-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "Application is healthy",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "$ref" : "#/components/schemas/HealthStatus"
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getHealthAlias-200-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getHealthAlias-200-schema-200');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getHealthAlias-200-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                            <h3> Status: 503 - Application is degraded (memory usage above 90%) </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getHealthAlias-503-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getHealthAlias-503-schema">
-                                  <div id='responses-getHealthAlias-503-schema-503' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "Application is degraded (memory usage above 90%)",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "$ref" : "#/components/schemas/HealthStatus"
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getHealthAlias-503-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getHealthAlias-503-schema-503');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getHealthAlias-503-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                        </article>
-                      </div>
-                      <hr>
-                    <div id="api-Health-getLiveness">
-                      <article id="api-Health-getLiveness-0" data-group="User" data-name="getLiveness" data-version="0">
-                        <div class="pull-left">
-                          <h1>getLiveness</h1>
-                          <p>Liveness probe</p>
-                        </div>
-                        <div class="pull-right"></div>
-                        <div class="clearfix"></div>
-                        <p></p>
-                        <p class="marked">Kubernetes-compatible liveness probe. Returns HTTP 200 with {&quot;status&quot;:&quot;UP&quot;} if the application process is alive. Does not check component health — use /api/ready for readiness.
-</p>
-                        <p></p>
-                        <br />
-                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/api/live</span></code></pre>
-                        <p>
-                          <h3>Usage and SDK Samples</h3>
-                        </p>
-                        <ul class="nav nav-tabs nav-tabs-examples">
-                          <li class="active"><a href="#examples-Health-getLiveness-0-curl">Curl</a></li>
-                          <li class=""><a href="#examples-Health-getLiveness-0-java">Java</a></li>
-                          <li class=""><a href="#examples-Health-getLiveness-0-android">Android</a></li>
-                          <!--<li class=""><a href="#examples-Health-getLiveness-0-groovy">Groovy</a></li>-->
-                          <li class=""><a href="#examples-Health-getLiveness-0-objc">Obj-C</a></li>
-                          <li class=""><a href="#examples-Health-getLiveness-0-javascript">JavaScript</a></li>
-                          <!--<li class=""><a href="#examples-Health-getLiveness-0-angular">Angular</a></li>-->
-                          <li class=""><a href="#examples-Health-getLiveness-0-csharp">C#</a></li>
-                          <li class=""><a href="#examples-Health-getLiveness-0-php">PHP</a></li>
-                          <li class=""><a href="#examples-Health-getLiveness-0-perl">Perl</a></li>
-                          <li class=""><a href="#examples-Health-getLiveness-0-python">Python</a></li>
-                        </ul>
-
-                        <div class="tab-content">
-                          <div class="tab-pane active" id="examples-Health-getLiveness-0-curl">
-                           <pre class="prettyprint"><code class="language-bsh">curl -X GET\
--H "Accept: application/json"\
-"http://0.0.0.0:8080/api/live"</code></pre>
-                          </div>
-                          <div class="tab-pane" id="examples-Health-getLiveness-0-java">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
-import io.swagger.client.auth.*;
-import io.swagger.client.model.*;
-import io.swagger.client.api.HealthApi;
-
-import java.io.File;
-import java.util.*;
-
-public class HealthApiExample {
-
-    public static void main(String[] args) {
-        
-        HealthApi apiInstance = new HealthApi();
-        try {
-            Object result = apiInstance.getLiveness();
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling HealthApi#getLiveness");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-
-                          <div class="tab-pane" id="examples-Health-getLiveness-0-android">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.HealthApi;
-
-public class HealthApiExample {
-
-    public static void main(String[] args) {
-        HealthApi apiInstance = new HealthApi();
-        try {
-            Object result = apiInstance.getLiveness();
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling HealthApi#getLiveness");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-  <!--
-  <div class="tab-pane" id="examples-Health-getLiveness-0-groovy">
-  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-  </div> -->
-                            <div class="tab-pane" id="examples-Health-getLiveness-0-objc">
-                              <pre class="prettyprint"><code class="language-cpp">
-HealthApi *apiInstance = [[HealthApi alloc] init];
-
-// Liveness probe
-[apiInstance getLivenessWithCompletionHandler: 
-              ^(Object output, NSError* error) {
-                            if (output) {
-                                NSLog(@"%@", output);
-                            }
-                            if (error) {
-                                NSLog(@"Error: %@", error);
-                            }
-                        }];
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getLiveness-0-javascript">
-                              <pre class="prettyprint"><code class="language-js">var CoroutineVisualizerApi = require('coroutine_visualizer_api');
-
-var api = new CoroutineVisualizerApi.HealthApi()
-var callback = function(error, data, response) {
-  if (error) {
-    console.error(error);
-  } else {
-    console.log('API called successfully. Returned data: ' + data);
-  }
-};
-api.getLiveness(callback);
-</code></pre>
-                            </div>
-
-                            <!--<div class="tab-pane" id="examples-Health-getLiveness-0-angular">
-              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-            </div>-->
-                            <div class="tab-pane" id="examples-Health-getLiveness-0-csharp">
-                              <pre class="prettyprint"><code class="language-cs">using System;
-using System.Diagnostics;
-using IO.Swagger.Api;
-using IO.Swagger.Client;
-using IO.Swagger.Model;
-
-namespace Example
-{
-    public class getLivenessExample
-    {
-        public void main()
-        {
-
-            var apiInstance = new HealthApi();
-
-            try
-            {
-                // Liveness probe
-                Object result = apiInstance.getLiveness();
-                Debug.WriteLine(result);
-            }
-            catch (Exception e)
-            {
-                Debug.Print("Exception when calling HealthApi.getLiveness: " + e.Message );
-            }
-        }
-    }
-}
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getLiveness-0-php">
-                              <pre class="prettyprint"><code class="language-php"><&#63;php
-require_once(__DIR__ . '/vendor/autoload.php');
-
-$api_instance = new Swagger\Client\ApiHealthApi();
-
-try {
-    $result = $api_instance->getLiveness();
-    print_r($result);
-} catch (Exception $e) {
-    echo 'Exception when calling HealthApi->getLiveness: ', $e->getMessage(), PHP_EOL;
-}
-?></code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getLiveness-0-perl">
-                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
-use WWW::SwaggerClient::Configuration;
-use WWW::SwaggerClient::HealthApi;
-
-my $api_instance = WWW::SwaggerClient::HealthApi->new();
-
-eval { 
-    my $result = $api_instance->getLiveness();
-    print Dumper($result);
-};
-if ($@) {
-    warn "Exception when calling HealthApi->getLiveness: $@\n";
-}</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getLiveness-0-python">
-                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
-import time
-import swagger_client
-from swagger_client.rest import ApiException
-from pprint import pprint
-
-# create an instance of the API class
-api_instance = swagger_client.HealthApi()
-
-try: 
-    # Liveness probe
-    api_response = api_instance.get_liveness()
-    pprint(api_response)
-except ApiException as e:
-    print("Exception when calling HealthApi->getLiveness: %s\n" % e)</code></pre>
-                            </div>
-                          </div>
-
-                          <h2>Parameters</h2>
-
-
-
-
-
-
-                          <h2>Responses</h2>
-                            <h3> Status: 200 - Application process is alive </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getLiveness-200-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getLiveness-200-schema">
-                                  <div id='responses-getLiveness-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "Application process is alive",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "required" : [ "status" ],
-        "type" : "object",
-        "properties" : {
-          "status" : {
-            "type" : "string",
-            "description" : "Always \"UP\" for a live process",
-            "enum" : [ "UP" ],
-            "default" : null
-          }
-        },
-        "x-content-type" : "application/json",
-        "default" : null
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getLiveness-200-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getLiveness-200-schema-200');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getLiveness-200-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                        </article>
-                      </div>
-                      <hr>
-                    <div id="api-Health-getReadiness">
-                      <article id="api-Health-getReadiness-0" data-group="User" data-name="getReadiness" data-version="0">
-                        <div class="pull-left">
-                          <h1>getReadiness</h1>
-                          <p>Readiness probe</p>
-                        </div>
-                        <div class="pull-right"></div>
-                        <div class="clearfix"></div>
-                        <p></p>
-                        <p class="marked">Kubernetes-compatible readiness probe. Returns HTTP 200 with {&quot;status&quot;:&quot;UP&quot;} when the application is ready to serve traffic (SessionManager reachable and memory usage below 95%). Returns HTTP 503 with {&quot;status&quot;:&quot;DOWN&quot;,&quot;reason&quot;:&quot;high memory&quot;} when memory exceeds the threshold.
-</p>
-                        <p></p>
-                        <br />
-                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/api/ready</span></code></pre>
-                        <p>
-                          <h3>Usage and SDK Samples</h3>
-                        </p>
-                        <ul class="nav nav-tabs nav-tabs-examples">
-                          <li class="active"><a href="#examples-Health-getReadiness-0-curl">Curl</a></li>
-                          <li class=""><a href="#examples-Health-getReadiness-0-java">Java</a></li>
-                          <li class=""><a href="#examples-Health-getReadiness-0-android">Android</a></li>
-                          <!--<li class=""><a href="#examples-Health-getReadiness-0-groovy">Groovy</a></li>-->
-                          <li class=""><a href="#examples-Health-getReadiness-0-objc">Obj-C</a></li>
-                          <li class=""><a href="#examples-Health-getReadiness-0-javascript">JavaScript</a></li>
-                          <!--<li class=""><a href="#examples-Health-getReadiness-0-angular">Angular</a></li>-->
-                          <li class=""><a href="#examples-Health-getReadiness-0-csharp">C#</a></li>
-                          <li class=""><a href="#examples-Health-getReadiness-0-php">PHP</a></li>
-                          <li class=""><a href="#examples-Health-getReadiness-0-perl">Perl</a></li>
-                          <li class=""><a href="#examples-Health-getReadiness-0-python">Python</a></li>
-                        </ul>
-
-                        <div class="tab-content">
-                          <div class="tab-pane active" id="examples-Health-getReadiness-0-curl">
-                           <pre class="prettyprint"><code class="language-bsh">curl -X GET\
--H "Accept: application/json"\
-"http://0.0.0.0:8080/api/ready"</code></pre>
-                          </div>
-                          <div class="tab-pane" id="examples-Health-getReadiness-0-java">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
-import io.swagger.client.auth.*;
-import io.swagger.client.model.*;
-import io.swagger.client.api.HealthApi;
-
-import java.io.File;
-import java.util.*;
-
-public class HealthApiExample {
-
-    public static void main(String[] args) {
-        
-        HealthApi apiInstance = new HealthApi();
-        try {
-            Object result = apiInstance.getReadiness();
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling HealthApi#getReadiness");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-
-                          <div class="tab-pane" id="examples-Health-getReadiness-0-android">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.HealthApi;
-
-public class HealthApiExample {
-
-    public static void main(String[] args) {
-        HealthApi apiInstance = new HealthApi();
-        try {
-            Object result = apiInstance.getReadiness();
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling HealthApi#getReadiness");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-  <!--
-  <div class="tab-pane" id="examples-Health-getReadiness-0-groovy">
-  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-  </div> -->
-                            <div class="tab-pane" id="examples-Health-getReadiness-0-objc">
-                              <pre class="prettyprint"><code class="language-cpp">
-HealthApi *apiInstance = [[HealthApi alloc] init];
-
-// Readiness probe
-[apiInstance getReadinessWithCompletionHandler: 
-              ^(Object output, NSError* error) {
-                            if (output) {
-                                NSLog(@"%@", output);
-                            }
-                            if (error) {
-                                NSLog(@"Error: %@", error);
-                            }
-                        }];
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getReadiness-0-javascript">
-                              <pre class="prettyprint"><code class="language-js">var CoroutineVisualizerApi = require('coroutine_visualizer_api');
-
-var api = new CoroutineVisualizerApi.HealthApi()
-var callback = function(error, data, response) {
-  if (error) {
-    console.error(error);
-  } else {
-    console.log('API called successfully. Returned data: ' + data);
-  }
-};
-api.getReadiness(callback);
-</code></pre>
-                            </div>
-
-                            <!--<div class="tab-pane" id="examples-Health-getReadiness-0-angular">
-              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-            </div>-->
-                            <div class="tab-pane" id="examples-Health-getReadiness-0-csharp">
-                              <pre class="prettyprint"><code class="language-cs">using System;
-using System.Diagnostics;
-using IO.Swagger.Api;
-using IO.Swagger.Client;
-using IO.Swagger.Model;
-
-namespace Example
-{
-    public class getReadinessExample
-    {
-        public void main()
-        {
-
-            var apiInstance = new HealthApi();
-
-            try
-            {
-                // Readiness probe
-                Object result = apiInstance.getReadiness();
-                Debug.WriteLine(result);
-            }
-            catch (Exception e)
-            {
-                Debug.Print("Exception when calling HealthApi.getReadiness: " + e.Message );
-            }
-        }
-    }
-}
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getReadiness-0-php">
-                              <pre class="prettyprint"><code class="language-php"><&#63;php
-require_once(__DIR__ . '/vendor/autoload.php');
-
-$api_instance = new Swagger\Client\ApiHealthApi();
-
-try {
-    $result = $api_instance->getReadiness();
-    print_r($result);
-} catch (Exception $e) {
-    echo 'Exception when calling HealthApi->getReadiness: ', $e->getMessage(), PHP_EOL;
-}
-?></code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getReadiness-0-perl">
-                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
-use WWW::SwaggerClient::Configuration;
-use WWW::SwaggerClient::HealthApi;
-
-my $api_instance = WWW::SwaggerClient::HealthApi->new();
-
-eval { 
-    my $result = $api_instance->getReadiness();
-    print Dumper($result);
-};
-if ($@) {
-    warn "Exception when calling HealthApi->getReadiness: $@\n";
-}</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Health-getReadiness-0-python">
-                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
-import time
-import swagger_client
-from swagger_client.rest import ApiException
-from pprint import pprint
-
-# create an instance of the API class
-api_instance = swagger_client.HealthApi()
-
-try: 
-    # Readiness probe
-    api_response = api_instance.get_readiness()
-    pprint(api_response)
-except ApiException as e:
-    print("Exception when calling HealthApi->getReadiness: %s\n" % e)</code></pre>
-                            </div>
-                          </div>
-
-                          <h2>Parameters</h2>
-
-
-
-
-
-
-                          <h2>Responses</h2>
-                            <h3> Status: 200 - Application is ready to serve traffic </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getReadiness-200-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getReadiness-200-schema">
-                                  <div id='responses-getReadiness-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "Application is ready to serve traffic",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "required" : [ "status" ],
-        "type" : "object",
-        "properties" : {
-          "status" : {
-            "type" : "string",
-            "description" : "Ready to serve",
-            "enum" : [ "UP" ],
-            "default" : null
-          }
-        },
-        "x-content-type" : "application/json",
-        "default" : null
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getReadiness-200-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getReadiness-200-schema-200');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getReadiness-200-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                            <h3> Status: 503 - Application is not ready (high memory pressure) </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getReadiness-503-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getReadiness-503-schema">
-                                  <div id='responses-getReadiness-503-schema-503' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "Application is not ready (high memory pressure)",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "required" : [ "reason", "status" ],
-        "type" : "object",
-        "properties" : {
-          "status" : {
-            "type" : "string",
-            "enum" : [ "DOWN" ],
-            "default" : null
-          },
-          "reason" : {
-            "type" : "string",
-            "description" : "Human-readable reason for not-ready state",
-            "default" : null
-          }
-        },
-        "x-content-type" : "application/json",
-        "default" : null
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getReadiness-503-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getReadiness-503-schema-503');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getReadiness-503-schema-data' type='hidden' value=''></input>
                                 </div>
                             </div>
 
@@ -6000,8 +3936,7 @@ except ApiException as e:
         "items" : {
           "$ref" : "#/components/schemas/HierarchyNode"
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -6138,7 +4073,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Returns a map keyed by thread ID, where each value is the list of thread assignment and release events for that thread — showing which coroutines ran on which threads and when. Useful for rendering thread lane visualizations.
+                        <p class="marked">Returns a list of thread assignment and release events, showing which coroutines ran on which threads and when. Useful for rendering thread lane visualizations.
 </p>
                         <p></p>
                         <br />
@@ -6182,7 +4117,7 @@ public class ProjectionsApiExample {
         ProjectionsApi apiInstance = new ProjectionsApi();
         String id = id_example; // String | Unique session identifier
         try {
-            map['String', array[ThreadEvent]] result = apiInstance.getSessionThreads(id);
+            array[ThreadEvent] result = apiInstance.getSessionThreads(id);
             System.out.println(result);
         } catch (ApiException e) {
             System.err.println("Exception when calling ProjectionsApi#getSessionThreads");
@@ -6201,7 +4136,7 @@ public class ProjectionsApiExample {
         ProjectionsApi apiInstance = new ProjectionsApi();
         String id = id_example; // String | Unique session identifier
         try {
-            map['String', array[ThreadEvent]] result = apiInstance.getSessionThreads(id);
+            array[ThreadEvent] result = apiInstance.getSessionThreads(id);
             System.out.println(result);
         } catch (ApiException e) {
             System.err.println("Exception when calling ProjectionsApi#getSessionThreads");
@@ -6221,7 +4156,7 @@ ProjectionsApi *apiInstance = [[ProjectionsApi alloc] init];
 
 // Get thread activity
 [apiInstance getSessionThreadsWith:id
-              completionHandler: ^(map['String', array[ThreadEvent]] output, NSError* error) {
+              completionHandler: ^(array[ThreadEvent] output, NSError* error) {
                             if (output) {
                                 NSLog(@"%@", output);
                             }
@@ -6272,7 +4207,7 @@ namespace Example
             try
             {
                 // Get thread activity
-                map['String', array[ThreadEvent]] result = apiInstance.getSessionThreads(id);
+                array[ThreadEvent] result = apiInstance.getSessionThreads(id);
                 Debug.WriteLine(result);
             }
             catch (Exception e)
@@ -6375,7 +4310,7 @@ except ApiException as e:
 
 
                           <h2>Responses</h2>
-                            <h3> Status: 200 - Map of thread ID to that thread&#x27;s activity events </h3>
+                            <h3> Status: 200 - Array of thread activity events </h3>
 
                             <ul class="nav nav-tabs nav-tabs-examples" >
                                 <li class="active">
@@ -6390,20 +4325,15 @@ except ApiException as e:
                                     <script>
                                       $(document).ready(function() {
                                         var schemaWrapper = {
-  "description" : "Map of thread ID to that thread's activity events",
+  "description" : "Array of thread activity events",
   "content" : {
     "application/json" : {
       "schema" : {
-        "type" : "object",
-        "additionalProperties" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/components/schemas/ThreadEvent"
-          },
-          "default" : null
+        "type" : "array",
+        "items" : {
+          "$ref" : "#/components/schemas/ThreadEvent"
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -6762,8 +4692,7 @@ except ApiException as e:
     "text/plain" : {
       "schema" : {
         "type" : "string",
-        "x-content-type" : "text/plain",
-        "default" : null
+        "x-content-type" : "text/plain"
       },
       "examples" : {
         "greeting" : {
@@ -7029,8 +4958,7 @@ except ApiException as e:
       "schema" : {
         "type" : "string",
         "description" : "SSE stream; single event with data \"world\"",
-        "x-content-type" : "text/event-stream",
-        "default" : null
+        "x-content-type" : "text/event-stream"
       }
     }
   }
@@ -9441,12 +7369,10 @@ except ApiException as e:
             "type" : "array",
             "items" : {
               "$ref" : "#/components/schemas/ScenarioCatalogEntry"
-            },
-            "default" : null
+            }
           }
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -9711,12 +7637,10 @@ except ApiException as e:
             "type" : "array",
             "items" : {
               "$ref" : "#/components/schemas/PatternInfo"
-            },
-            "default" : null
+            }
           }
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -9757,7 +7681,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Returns every demo the &quot;New demo session&quot; dialog can start (32), listed group by group in display order: real life, basics, channels, Flow, patterns, Mutex, Semaphore and combined. Each entry includes the scenario ID (its path under /api/scenarios/), display name, description, HTTP method and endpoint, category, group and estimated duration. Start one with &#x60;POST /api/scenarios/{id}?sessionId&#x3D;...&#x60;.
+                        <p class="marked">Returns the catalog of built-in scenarios across all categories (realistic, channel, basic). Each entry includes the scenario ID, display name, description, HTTP endpoint, category, and estimated duration.
 </p>
                         <p></p>
                         <br />
@@ -9981,12 +7905,10 @@ except ApiException as e:
             "type" : "array",
             "items" : {
               "$ref" : "#/components/schemas/ScenarioCatalogEntry"
-            },
-            "default" : null
+            }
           }
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -10249,8 +8171,7 @@ except ApiException as e:
         "items" : {
           "$ref" : "#/components/schemas/ScenarioInfo"
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -10294,7 +8215,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">An office sends 8 jobs to a print queue with 5 slots, faster than the printer prints: the buffer fills, the sender waits for a free slot, and the printer drains the queue. Paced to about 23 seconds.
+                        <p class="marked">Buffered channel (capacity 3) showing buffer fill and drain behavior. Producer sends 5 items; consumer starts after a delay.
 </p>
                         <p></p>
                         <br />
@@ -10646,7 +8567,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Fan-out: 12 support tickets go into one queue read by 3 agents; each ticket goes to exactly one free agent, and tickets wait in the queue while all agents are busy. Paced to about 13 seconds.
+                        <p class="marked">Fan-out pattern: one producer dispatches 10 tasks and 3 workers compete to receive and process them.
 </p>
                         <p></p>
                         <br />
@@ -10998,7 +8919,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">A chef hands each plate to a waiter through a rendezvous channel (no buffer): a plate changes hands only when both are there, so whoever arrives first waits. Paced to about 17 seconds.
+                        <p class="marked">Zero-buffer channel where sender and receiver must meet for each transfer. Demonstrates suspension on both sides when one party is not ready.
 </p>
                         <p></p>
                         <br />
@@ -13175,7 +11096,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">A shop charges orders through a payment provider that is down: after 3 failed charges the breaker opens and rejects orders at once for 5.5 s, then lets one trial order through (half-open), which succeeds and closes it. Paced to about 22 seconds; answers once the demo has ended.
+                        <p class="marked">After N consecutive failures, stops attempting calls for a cooldown period. Demonstrates the resilience pattern for protecting downstream services.
 </p>
                         <p></p>
                         <br />
@@ -13527,7 +11448,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">9 photos go to 3 resizers, each to exactly one (fan-out); the album collects the finished photos through one channel in the order they are done (fan-in). Paced to about 12 seconds; answers once the demo has ended.
+                        <p class="marked">One producer distributes work to 3 worker coroutines that process in parallel; results are collected via channel. Demonstrates the work distribution pattern.
 </p>
                         <p></p>
                         <br />
@@ -13879,7 +11800,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">A cashier puts orders on a rail (a channel with room for 3) and a barista makes them, each at their own pace: in the rush the rail fills and the cashier waits; in the quiet spell the barista waits. Paced to about 18 seconds; answers once the demo has ended.
+                        <p class="marked">Producer sends items to a buffered channel (capacity 5), consumer processes them with delay. Shows channel-based communication between coroutines.
 </p>
                         <p></p>
                         <br />
@@ -14231,7 +12152,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">A weather app retries an overloaded server with exponential backoff: the first three tries fail (HTTP 503), the app waits 0.75 s, 1.5 s and 3 s between them, and the fourth try gets the forecast. Paced to about 12 seconds; answers once the demo has ended.
+                        <p class="marked">Retries a failing operation 3 times with exponential backoff (100ms, 200ms, 400ms). Shows the structured retry pattern for handling transient failures.
 </p>
                         <p></p>
                         <br />
@@ -14583,7 +12504,7 @@ except ApiException as e:
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Photos, contacts and messages back up side by side under supervisorScope; the message backup fails and the other two keep going. Paced to about 14 seconds; answers once the demo has ended.
+                        <p class="marked">Launches child coroutines where one fails but siblings continue executing. Shows error isolation with structured concurrency using SupervisorJob.
 </p>
                         <p></p>
                         <br />
@@ -16076,12 +13997,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runMutexBankTransferScenario-0" data-group="User" data-name="runMutexBankTransferScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runMutexBankTransferScenario</h1>
-                          <p>Run Bank Account Transfer: Household Bills</p>
+                          <p>Run bank account transfer scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Anna and Ben send each other money. Each transfer locks both accounts, always Anna&#x27;s first, so the transfers queue instead of deadlocking; the one Ben cannot afford is declined. About 12 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates safe money transfer between accounts with consistent lock ordering to prevent deadlocks.
 </p>
                         <p></p>
                         <br />
@@ -16159,7 +14080,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Bank Account Transfer: Household Bills
+// Run bank account transfer scenario
 [apiInstance runMutexBankTransferScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -16208,7 +14129,7 @@ namespace Example
 
             try
             {
-                // Run Bank Account Transfer: Household Bills
+                // Run bank account transfer scenario
                 SyncScenarioResponse result = apiInstance.runMutexBankTransferScenario();
                 Debug.WriteLine(result);
             }
@@ -16264,7 +14185,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Bank Account Transfer: Household Bills
+    # Run bank account transfer scenario
     api_response = api_instance.run_mutex_bank_transfer_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -16383,12 +14304,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runMutexCacheScenario-0" data-group="User" data-name="runMutexCacheScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runMutexCacheScenario</h1>
-                          <p>Run Cache Read-Through: Product Prices</p>
+                          <p>Run cache read-through scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Eight requests for two prices meet an empty cache. The first miss loads a price under the lock; the others wait, check again and find it cached; later requests read the cache without the lock. Two loads in all. About 11.5 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates thread-safe lazy initialization and cache read-through pattern using Mutex.
 </p>
                         <p></p>
                         <br />
@@ -16466,7 +14387,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Cache Read-Through: Product Prices
+// Run cache read-through scenario
 [apiInstance runMutexCacheScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -16515,7 +14436,7 @@ namespace Example
 
             try
             {
-                // Run Cache Read-Through: Product Prices
+                // Run cache read-through scenario
                 SyncScenarioResponse result = apiInstance.runMutexCacheScenario();
                 Debug.WriteLine(result);
             }
@@ -16571,7 +14492,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Cache Read-Through: Product Prices
+    # Run cache read-through scenario
     api_response = api_instance.run_mutex_cache_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -16690,12 +14611,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runMutexCounterScenario-0" data-group="User" data-name="runMutexCounterScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runMutexCounterScenario</h1>
-                          <p>Run Thread-Safe Counter: Festival Gates</p>
+                          <p>Run thread-safe counter scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Three gates count festival visitors into one shared count. Each update holds a lock while it reads, shows and writes the count, so the other gates wait for it, suspended, and no visitor is lost. About 14 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates using a Mutex for atomic counter increments from multiple coroutines.
 </p>
                         <p></p>
                         <br />
@@ -16773,7 +14694,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Thread-Safe Counter: Festival Gates
+// Run thread-safe counter scenario
 [apiInstance runMutexCounterScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -16822,7 +14743,7 @@ namespace Example
 
             try
             {
-                // Run Thread-Safe Counter: Festival Gates
+                // Run thread-safe counter scenario
                 SyncScenarioResponse result = apiInstance.runMutexCounterScenario();
                 Debug.WriteLine(result);
             }
@@ -16878,7 +14799,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Thread-Safe Counter: Festival Gates
+    # Run thread-safe counter scenario
     api_response = api_instance.run_mutex_counter_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -16997,12 +14918,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runMutexDeadlockScenario-0" data-group="User" data-name="runMutexDeadlockScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runMutexDeadlockScenario</h1>
-                          <p>Run Deadlock Demo: Two Transfers at Month End</p>
+                          <p>Run deadlock demonstration scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Anna pays Ben and Ben pays Anna, each locking the payer&#x27;s account first. Each holds one account and waits, suspended, for the other&#x27;s. After 10 s a watchdog cancels both, which releases their accounts. About 11 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Intentionally creates a deadlock to demonstrate deadlock detection capabilities. Two coroutines attempt to acquire two mutexes in opposite order.
 </p>
                         <p></p>
                         <br />
@@ -17080,7 +15001,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Deadlock Demo: Two Transfers at Month End
+// Run deadlock demonstration scenario
 [apiInstance runMutexDeadlockScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -17129,7 +15050,7 @@ namespace Example
 
             try
             {
-                // Run Deadlock Demo: Two Transfers at Month End
+                // Run deadlock demonstration scenario
                 SyncScenarioResponse result = apiInstance.runMutexDeadlockScenario();
                 Debug.WriteLine(result);
             }
@@ -17185,7 +15106,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Deadlock Demo: Two Transfers at Month End
+    # Run deadlock demonstration scenario
     api_response = api_instance.run_mutex_deadlock_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -17201,7 +15122,7 @@ except ApiException as e:
 
 
                           <h2>Responses</h2>
-                            <h3> Status: 200 - Scenario completed (the watchdog cancelled the deadlocked transfers) </h3>
+                            <h3> Status: 200 - Scenario completed (deadlock detected and resolved) </h3>
 
                             <ul class="nav nav-tabs nav-tabs-examples" >
                                 <li class="active">
@@ -17216,7 +15137,7 @@ except ApiException as e:
                                     <script>
                                       $(document).ready(function() {
                                         var schemaWrapper = {
-  "description" : "Scenario completed (the watchdog cancelled the deadlocked transfers)",
+  "description" : "Scenario completed (deadlock detected and resolved)",
   "content" : {
     "application/json" : {
       "schema" : {
@@ -17304,12 +15225,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runSemaphoreConnectionPoolScenario-0" data-group="User" data-name="runSemaphoreConnectionPoolScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runSemaphoreConnectionPoolScenario</h1>
-                          <p>Run Database Connection Pool: Online Shop at Lunchtime</p>
+                          <p>Run database connection pool scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Nine lunchtime requests share an online shop&#x27;s 3 database connections. The first three find one free; the other six wait for one, suspended, and get it in the order they asked. About 11 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates limiting concurrent database connections using a Semaphore. Multiple coroutines compete for a limited number of connections.
 </p>
                         <p></p>
                         <br />
@@ -17387,7 +15308,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Database Connection Pool: Online Shop at Lunchtime
+// Run database connection pool scenario
 [apiInstance runSemaphoreConnectionPoolScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -17436,7 +15357,7 @@ namespace Example
 
             try
             {
-                // Run Database Connection Pool: Online Shop at Lunchtime
+                // Run database connection pool scenario
                 SyncScenarioResponse result = apiInstance.runSemaphoreConnectionPoolScenario();
                 Debug.WriteLine(result);
             }
@@ -17492,7 +15413,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Database Connection Pool: Online Shop at Lunchtime
+    # Run database connection pool scenario
     api_response = api_instance.run_semaphore_connection_pool_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -17611,12 +15532,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runSemaphoreFileProcessorScenario-0" data-group="User" data-name="runSemaphoreFileProcessorScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runSemaphoreFileProcessorScenario</h1>
-                          <p>Run Parallel File Processor: The Tax Folder</p>
+                          <p>Run parallel file processor scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Nine files of a tax folder are compressed two at a time. While the big bank statements hold one permit, the other passes from file to file the moment one is done. About 13 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates I/O-limited parallel file processing where a Semaphore restricts the number of concurrent file operations.
 </p>
                         <p></p>
                         <br />
@@ -17694,7 +15615,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Parallel File Processor: The Tax Folder
+// Run parallel file processor scenario
 [apiInstance runSemaphoreFileProcessorScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -17743,7 +15664,7 @@ namespace Example
 
             try
             {
-                // Run Parallel File Processor: The Tax Folder
+                // Run parallel file processor scenario
                 SyncScenarioResponse result = apiInstance.runSemaphoreFileProcessorScenario();
                 Debug.WriteLine(result);
             }
@@ -17799,7 +15720,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Parallel File Processor: The Tax Folder
+    # Run parallel file processor scenario
     api_response = api_instance.run_semaphore_file_processor_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -17918,12 +15839,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runSemaphoreProducerConsumerScenario-0" data-group="User" data-name="runSemaphoreProducerConsumerScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runSemaphoreProducerConsumerScenario</h1>
-                          <p>Run Producer-Consumer Buffer: The Bakery Rack</p>
+                          <p>Run producer-consumer buffer scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">A baker fills a cooling rack with room for 3 loaves faster than the shop assistant sells them. Two semaphores count the free places and the ready loaves: the baker waits when the rack is full, the assistant when it is empty. About 21 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates a bounded buffer implementation using Semaphore to coordinate producer and consumer coroutines.
 </p>
                         <p></p>
                         <br />
@@ -18001,7 +15922,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Producer-Consumer Buffer: The Bakery Rack
+// Run producer-consumer buffer scenario
 [apiInstance runSemaphoreProducerConsumerScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -18050,7 +15971,7 @@ namespace Example
 
             try
             {
-                // Run Producer-Consumer Buffer: The Bakery Rack
+                // Run producer-consumer buffer scenario
                 SyncScenarioResponse result = apiInstance.runSemaphoreProducerConsumerScenario();
                 Debug.WriteLine(result);
             }
@@ -18106,7 +16027,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Producer-Consumer Buffer: The Bakery Rack
+    # Run producer-consumer buffer scenario
     api_response = api_instance.run_semaphore_producer_consumer_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -18225,12 +16146,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runSemaphoreRateLimiterScenario-0" data-group="User" data-name="runSemaphoreRateLimiterScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runSemaphoreRateLimiterScenario</h1>
-                          <p>Run API Rate Limiter: Weather for a Trip</p>
+                          <p>Run API rate limiter scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">A trip planner asks for the weather in eight cities at once, but the weather service takes two calls at a time. Six calls wait for a permit, suspended, and the trip page waits for every forecast. About 12 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates throttling concurrent API calls using a Semaphore to enforce a maximum number of in-flight requests.
 </p>
                         <p></p>
                         <br />
@@ -18308,7 +16229,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run API Rate Limiter: Weather for a Trip
+// Run API rate limiter scenario
 [apiInstance runSemaphoreRateLimiterScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -18357,7 +16278,7 @@ namespace Example
 
             try
             {
-                // Run API Rate Limiter: Weather for a Trip
+                // Run API rate limiter scenario
                 SyncScenarioResponse result = apiInstance.runSemaphoreRateLimiterScenario();
                 Debug.WriteLine(result);
             }
@@ -18413,7 +16334,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run API Rate Limiter: Weather for a Trip
+    # Run API rate limiter scenario
     api_response = api_instance.run_semaphore_rate_limiter_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -18532,12 +16453,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runSemaphoreResourceTimeoutScenario-0" data-group="User" data-name="runSemaphoreResourceTimeoutScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runSemaphoreResourceTimeoutScenario</h1>
-                          <p>Run Resource Pool with Timeout: Fitting Rooms</p>
+                          <p>Run resource pool with timeout scenario</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Seven shoppers share two fitting rooms and wait at most 3 s for one. Carla, Dan and Gina get a room in time; Eva and Finn give up and leave. About 11.5 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates resource acquisition with timeout handling. Coroutines attempt to acquire a limited resource and fail gracefully if the timeout expires.
 </p>
                         <p></p>
                         <br />
@@ -18615,7 +16536,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run Resource Pool with Timeout: Fitting Rooms
+// Run resource pool with timeout scenario
 [apiInstance runSemaphoreResourceTimeoutScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -18664,7 +16585,7 @@ namespace Example
 
             try
             {
-                // Run Resource Pool with Timeout: Fitting Rooms
+                // Run resource pool with timeout scenario
                 SyncScenarioResponse result = apiInstance.runSemaphoreResourceTimeoutScenario();
                 Debug.WriteLine(result);
             }
@@ -18720,7 +16641,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run Resource Pool with Timeout: Fitting Rooms
+    # Run resource pool with timeout scenario
     api_response = api_instance.run_semaphore_resource_timeout_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -18839,12 +16760,12 @@ except ApiException as e:
                       <article id="api-ScenariosSync-runSyncEcommerceScenario-0" data-group="User" data-name="runSyncEcommerceScenario" data-version="0">
                         <div class="pull-left">
                           <h1>runSyncEcommerceScenario</h1>
-                          <p>Run E-commerce Orders: A Limited Sneaker Drop</p>
+                          <p>Run e-commerce order processing (Mutex + Semaphore)</p>
                         </div>
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Six orders for the last 3 pairs. Each reserves a pair under a lock, then pays through a provider that takes two payments at a time. A declined card puts its pair back for a later order; the others find it sold out. About 11 s at scale 1; answers once the demo has ended.
+                        <p class="marked">Demonstrates combining Mutex and Semaphore in a realistic e-commerce order processing flow with inventory management and payment processing.
 </p>
                         <p></p>
                         <br />
@@ -18922,7 +16843,7 @@ public class ScenariosSyncApiExample {
                               <pre class="prettyprint"><code class="language-cpp">
 ScenariosSyncApi *apiInstance = [[ScenariosSyncApi alloc] init];
 
-// Run E-commerce Orders: A Limited Sneaker Drop
+// Run e-commerce order processing (Mutex + Semaphore)
 [apiInstance runSyncEcommerceScenarioWithCompletionHandler: 
               ^(SyncScenarioResponse output, NSError* error) {
                             if (output) {
@@ -18971,7 +16892,7 @@ namespace Example
 
             try
             {
-                // Run E-commerce Orders: A Limited Sneaker Drop
+                // Run e-commerce order processing (Mutex + Semaphore)
                 SyncScenarioResponse result = apiInstance.runSyncEcommerceScenario();
                 Debug.WriteLine(result);
             }
@@ -19027,7 +16948,7 @@ from pprint import pprint
 api_instance = swagger_client.ScenariosSyncApi()
 
 try: 
-    # Run E-commerce Orders: A Limited Sneaker Drop
+    # Run e-commerce order processing (Mutex + Semaphore)
     api_response = api_instance.run_sync_ecommerce_scenario()
     pprint(api_response)
 except ApiException as e:
@@ -19413,17 +17334,14 @@ except ApiException as e:
         "properties" : {
           "sessionId" : {
             "type" : "string",
-            "description" : "Unique identifier for the created session",
-            "default" : null
+            "description" : "Unique identifier for the created session"
           },
           "message" : {
             "type" : "string",
-            "description" : "Confirmation message",
-            "default" : null
+            "description" : "Confirmation message"
           }
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -19772,12 +17690,10 @@ except ApiException as e:
         "properties" : {
           "message" : {
             "type" : "string",
-            "example" : "Session closed",
-            "default" : null
+            "example" : "Session closed"
           }
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -20298,516 +18214,6 @@ except ApiException as e:
                         </article>
                       </div>
                       <hr>
-                    <div id="api-Sessions-getSessionHealth">
-                      <article id="api-Sessions-getSessionHealth-0" data-group="User" data-name="getSessionHealth" data-version="0">
-                        <div class="pull-left">
-                          <h1>getSessionHealth</h1>
-                          <p>The session&#x27;s derived health, live or at a replay cursor</p>
-                        </div>
-                        <div class="pull-right"></div>
-                        <div class="clearfix"></div>
-                        <p></p>
-                        <p class="marked">What the captured coroutines show (spec 2026-10-21, C-3): failed rounds, ungrouped failures and possibly blocked coroutines, observations, origin counts, transport and retention facts; every list is capped at 50 with its total. Without atSeq the health is live; with it, it is the fold of the retained events up to the cursor (clamped to the last event), seeded from the durable summaries for coroutines whose creation was trimmed.</p>
-                        <p></p>
-                        <br />
-                        <pre class="prettyprint language-html prettyprinted" data-type="get"><code><span class="pln">/api/sessions/{id}/health</span></code></pre>
-                        <p>
-                          <h3>Usage and SDK Samples</h3>
-                        </p>
-                        <ul class="nav nav-tabs nav-tabs-examples">
-                          <li class="active"><a href="#examples-Sessions-getSessionHealth-0-curl">Curl</a></li>
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-java">Java</a></li>
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-android">Android</a></li>
-                          <!--<li class=""><a href="#examples-Sessions-getSessionHealth-0-groovy">Groovy</a></li>-->
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-objc">Obj-C</a></li>
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-javascript">JavaScript</a></li>
-                          <!--<li class=""><a href="#examples-Sessions-getSessionHealth-0-angular">Angular</a></li>-->
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-csharp">C#</a></li>
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-php">PHP</a></li>
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-perl">Perl</a></li>
-                          <li class=""><a href="#examples-Sessions-getSessionHealth-0-python">Python</a></li>
-                        </ul>
-
-                        <div class="tab-content">
-                          <div class="tab-pane active" id="examples-Sessions-getSessionHealth-0-curl">
-                           <pre class="prettyprint"><code class="language-bsh">curl -X GET\
--H "Accept: application/json"\
-"http://0.0.0.0:8080/api/sessions/{id}/health?atSeq=&leakThresholdMs="</code></pre>
-                          </div>
-                          <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-java">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.*;
-import io.swagger.client.auth.*;
-import io.swagger.client.model.*;
-import io.swagger.client.api.SessionsApi;
-
-import java.io.File;
-import java.util.*;
-
-public class SessionsApiExample {
-
-    public static void main(String[] args) {
-        
-        SessionsApi apiInstance = new SessionsApi();
-        String id = id_example; // String | Unique session identifier
-        Long atSeq = 789; // Long | Replay cursor (event seq). Omit for live health.
-        Long leakThresholdMs = 789; // Long | Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)
-        try {
-            SessionHealth result = apiInstance.getSessionHealth(id, atSeq, leakThresholdMs);
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling SessionsApi#getSessionHealth");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-
-                          <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-android">
-                            <pre class="prettyprint"><code class="language-java">import io.swagger.client.api.SessionsApi;
-
-public class SessionsApiExample {
-
-    public static void main(String[] args) {
-        SessionsApi apiInstance = new SessionsApi();
-        String id = id_example; // String | Unique session identifier
-        Long atSeq = 789; // Long | Replay cursor (event seq). Omit for live health.
-        Long leakThresholdMs = 789; // Long | Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)
-        try {
-            SessionHealth result = apiInstance.getSessionHealth(id, atSeq, leakThresholdMs);
-            System.out.println(result);
-        } catch (ApiException e) {
-            System.err.println("Exception when calling SessionsApi#getSessionHealth");
-            e.printStackTrace();
-        }
-    }
-}</code></pre>
-                          </div>
-  <!--
-  <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-groovy">
-  <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-  </div> -->
-                            <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-objc">
-                              <pre class="prettyprint"><code class="language-cpp">String *id = id_example; // Unique session identifier
-Long *atSeq = 789; // Replay cursor (event seq). Omit for live health. (optional)
-Long *leakThresholdMs = 789; // Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000) (optional)
-
-SessionsApi *apiInstance = [[SessionsApi alloc] init];
-
-// The session's derived health, live or at a replay cursor
-[apiInstance getSessionHealthWith:id
-    atSeq:atSeq
-    leakThresholdMs:leakThresholdMs
-              completionHandler: ^(SessionHealth output, NSError* error) {
-                            if (output) {
-                                NSLog(@"%@", output);
-                            }
-                            if (error) {
-                                NSLog(@"Error: %@", error);
-                            }
-                        }];
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-javascript">
-                              <pre class="prettyprint"><code class="language-js">var CoroutineVisualizerApi = require('coroutine_visualizer_api');
-
-var api = new CoroutineVisualizerApi.SessionsApi()
-var id = id_example; // {{String}} Unique session identifier
-var opts = { 
-  'atSeq': 789, // {{Long}} Replay cursor (event seq). Omit for live health.
-  'leakThresholdMs': 789 // {{Long}} Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)
-};
-var callback = function(error, data, response) {
-  if (error) {
-    console.error(error);
-  } else {
-    console.log('API called successfully. Returned data: ' + data);
-  }
-};
-api.getSessionHealth(id, opts, callback);
-</code></pre>
-                            </div>
-
-                            <!--<div class="tab-pane" id="examples-Sessions-getSessionHealth-0-angular">
-              <pre class="prettyprint language-json prettyprinted" data-type="json"><code>Coming Soon!</code></pre>
-            </div>-->
-                            <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-csharp">
-                              <pre class="prettyprint"><code class="language-cs">using System;
-using System.Diagnostics;
-using IO.Swagger.Api;
-using IO.Swagger.Client;
-using IO.Swagger.Model;
-
-namespace Example
-{
-    public class getSessionHealthExample
-    {
-        public void main()
-        {
-
-            var apiInstance = new SessionsApi();
-            var id = id_example;  // String | Unique session identifier
-            var atSeq = 789;  // Long | Replay cursor (event seq). Omit for live health. (optional) 
-            var leakThresholdMs = 789;  // Long | Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000) (optional) 
-
-            try
-            {
-                // The session's derived health, live or at a replay cursor
-                SessionHealth result = apiInstance.getSessionHealth(id, atSeq, leakThresholdMs);
-                Debug.WriteLine(result);
-            }
-            catch (Exception e)
-            {
-                Debug.Print("Exception when calling SessionsApi.getSessionHealth: " + e.Message );
-            }
-        }
-    }
-}
-</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-php">
-                              <pre class="prettyprint"><code class="language-php"><&#63;php
-require_once(__DIR__ . '/vendor/autoload.php');
-
-$api_instance = new Swagger\Client\ApiSessionsApi();
-$id = id_example; // String | Unique session identifier
-$atSeq = 789; // Long | Replay cursor (event seq). Omit for live health.
-$leakThresholdMs = 789; // Long | Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)
-
-try {
-    $result = $api_instance->getSessionHealth($id, $atSeq, $leakThresholdMs);
-    print_r($result);
-} catch (Exception $e) {
-    echo 'Exception when calling SessionsApi->getSessionHealth: ', $e->getMessage(), PHP_EOL;
-}
-?></code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-perl">
-                              <pre class="prettyprint"><code class="language-perl">use Data::Dumper;
-use WWW::SwaggerClient::Configuration;
-use WWW::SwaggerClient::SessionsApi;
-
-my $api_instance = WWW::SwaggerClient::SessionsApi->new();
-my $id = id_example; # String | Unique session identifier
-my $atSeq = 789; # Long | Replay cursor (event seq). Omit for live health.
-my $leakThresholdMs = 789; # Long | Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)
-
-eval { 
-    my $result = $api_instance->getSessionHealth(id => $id, atSeq => $atSeq, leakThresholdMs => $leakThresholdMs);
-    print Dumper($result);
-};
-if ($@) {
-    warn "Exception when calling SessionsApi->getSessionHealth: $@\n";
-}</code></pre>
-                            </div>
-
-                            <div class="tab-pane" id="examples-Sessions-getSessionHealth-0-python">
-                              <pre class="prettyprint"><code class="language-python">from __future__ import print_statement
-import time
-import swagger_client
-from swagger_client.rest import ApiException
-from pprint import pprint
-
-# create an instance of the API class
-api_instance = swagger_client.SessionsApi()
-id = id_example # String | Unique session identifier
-atSeq = 789 # Long | Replay cursor (event seq). Omit for live health. (optional)
-leakThresholdMs = 789 # Long | Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000) (optional)
-
-try: 
-    # The session's derived health, live or at a replay cursor
-    api_response = api_instance.get_session_health(id, atSeq=atSeq, leakThresholdMs=leakThresholdMs)
-    pprint(api_response)
-except ApiException as e:
-    print("Exception when calling SessionsApi->getSessionHealth: %s\n" % e)</code></pre>
-                            </div>
-                          </div>
-
-                          <h2>Parameters</h2>
-
-                            <div class="methodsubtabletitle">Path parameters</div>
-                            <table id="methodsubtable">
-                                <tr>
-                                  <th width="150px">Name</th>
-                                  <th>Description</th>
-                                </tr>
-                                  <tr><td style="width:150px;">id*</td>
-                                  <td>
-                                  
-                                  
-                                      <div id="d2e199_getSessionHealth_id">
-                                          <div class="json-schema-view">
-                                              <div class="primitive">
-                                                  <span class="type">
-                                                      String
-                                                  </span>
-                                  
-                                                      <div class="inner description">
-                                                          Unique session identifier
-                                                      </div>
-                                              </div>
-                                                  <div class="inner required">
-                                                      Required
-                                                  </div>
-                                          </div>
-                                      </div>
-                                  </td>
-                                  </tr>
-                            </table>
-
-
-
-
-                            <div class="methodsubtabletitle">Query parameters</div>
-                            <table id="methodsubtable">
-                              <tr>
-                                <th width="150px">Name</th>
-                                <th>Description</th>
-                              </tr>
-                                <tr><td style="width:150px;">atSeq</td>
-                                <td>
-                                
-                                
-                                    <div id="d2e199_getSessionHealth_atSeq">
-                                        <div class="json-schema-view">
-                                            <div class="primitive">
-                                                <span class="type">
-                                                    Long
-                                                </span>
-                                                    <span class="format">
-                                                        (int64)
-                                                    </span>
-                                
-                                                    <div class="inner description">
-                                                        Replay cursor (event seq). Omit for live health.
-                                                    </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                </tr>
-                                <tr><td style="width:150px;">leakThresholdMs</td>
-                                <td>
-                                
-                                
-                                    <div id="d2e199_getSessionHealth_leakThresholdMs">
-                                        <div class="json-schema-view">
-                                            <div class="primitive">
-                                                <span class="type">
-                                                    Long
-                                                </span>
-                                                    <span class="format">
-                                                        (int64)
-                                                    </span>
-                                
-                                                    <div class="inner description">
-                                                        Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)
-                                                    </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                </tr>
-                            </table>
-
-                          <h2>Responses</h2>
-                            <h3> Status: 200 - The session&#x27;s health </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getSessionHealth-200-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getSessionHealth-200-schema">
-                                  <div id='responses-getSessionHealth-200-schema-200' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "The session's health",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "$ref" : "#/components/schemas/SessionHealth"
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getSessionHealth-200-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getSessionHealth-200-schema-200');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getSessionHealth-200-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                            <h3> Status: 400 - atSeq is not a non-negative integer </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getSessionHealth-400-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getSessionHealth-400-schema">
-                                  <div id='responses-getSessionHealth-400-schema-400' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "atSeq is not a non-negative integer",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "$ref" : "#/components/schemas/ErrorResponse"
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getSessionHealth-400-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getSessionHealth-400-schema-400');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getSessionHealth-400-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                            <h3> Status: 404 - Session not found </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getSessionHealth-404-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getSessionHealth-404-schema">
-                                  <div id='responses-getSessionHealth-404-schema-404' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "Session not found",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "$ref" : "#/components/schemas/ErrorResponse"
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getSessionHealth-404-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getSessionHealth-404-schema-404');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getSessionHealth-404-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                            <h3> Status: 503 - Health unavailable: code summaries-unavailable, or history-trimmed for a database session whose early events were trimmed </h3>
-
-                            <ul class="nav nav-tabs nav-tabs-examples" >
-                                <li class="active">
-                                  <a data-toggle="tab" href="#responses-getSessionHealth-503-schema">Schema</a>
-                                </li>
-
-                            </ul>
-
-                            <div class="tab-content" style='margin-bottom: 10px;'>
-                                <div class="tab-pane active" id="responses-getSessionHealth-503-schema">
-                                  <div id='responses-getSessionHealth-503-schema-503' style="padding: 30px; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">
-                                    <script>
-                                      $(document).ready(function() {
-                                        var schemaWrapper = {
-  "description" : "Health unavailable: code summaries-unavailable, or history-trimmed for a database session whose early events were trimmed",
-  "content" : {
-    "application/json" : {
-      "schema" : {
-        "$ref" : "#/components/schemas/ErrorResponse"
-      }
-    }
-  }
-};
-                                        var schema = schemaWrapper.content["application/json"].schema;
-                                        if (schema.$ref != null) {
-                                          schema = defsParser.$refs.get(schema.$ref);
-                                        } else {
-                                          schemaWrapper.components = {};
-                                          schemaWrapper.components.schemas = Object.assign({}, defs);
-                                          $RefParser.dereference(schemaWrapper).catch(function(err) {
-                                            console.log(err);
-                                          });
-                                        }
-
-                                        //console.log(JSON.stringify(schema));
-                                        var view = new JSONSchemaView(schema, 3);
-                                        $('#responses-getSessionHealth-503-schema-data').val(stringify(schema));
-                                        var result = $('#responses-getSessionHealth-503-schema-503');
-                                        result.empty();
-                                        result.append(view.render());
-                                      });
-                                    </script>
-                                  </div>
-                                  <input id='responses-getSessionHealth-503-schema-data' type='hidden' value=''></input>
-                                </div>
-                            </div>
-
-                        </article>
-                      </div>
-                      <hr>
                     <div id="api-Sessions-listSessions">
                       <article id="api-Sessions-listSessions-0" data-group="User" data-name="listSessions" data-version="0">
                         <div class="pull-left">
@@ -21039,8 +18445,7 @@ except ApiException as e:
         "items" : {
           "$ref" : "#/components/schemas/SessionInfo"
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
@@ -21568,8 +18973,7 @@ except ApiException as e:
         "items" : {
           "$ref" : "#/components/schemas/ValidationRule"
         },
-        "x-content-type" : "application/json",
-        "default" : null
+        "x-content-type" : "application/json"
       }
     }
   }
