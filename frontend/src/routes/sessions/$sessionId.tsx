@@ -1,12 +1,16 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { useCallback } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Layout } from '@/components/Layout'
 import { SessionWorkspace } from '@/components/SessionWorkspace'
+import { LookProvider } from '@/looks/look-context'
 
 interface SessionSearchParams {
   scenarioId?: string
   scenarioName?: string
   /** Open with the live stream on (set by the Connect wizard, #126). */
   live?: boolean
+  /** A trial look for this page (PR L0): `a`, `b`, `c` or `classic`. Read once, then removed. */
+  look?: string
 }
 
 export const Route = createFileRoute('/sessions/$sessionId')({
@@ -16,6 +20,8 @@ export const Route = createFileRoute('/sessions/$sessionId')({
       scenarioId: search.scenarioId as string | undefined,
       scenarioName: search.scenarioName as string | undefined,
       live: search.live === true || search.live === 'true' ? true : undefined,
+      // The search parser turns `?look=1` into a number: kept as text, it reads as unknown (Classic).
+      look: search.look === undefined || search.look === null ? undefined : String(search.look),
     }
   },
 })
@@ -23,23 +29,35 @@ export const Route = createFileRoute('/sessions/$sessionId')({
 function SessionDetailPage() {
   const { sessionId } = Route.useParams()
   const search = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+  // Once the look from a link is applied and remembered, the address drops it,
+  // so a later choice from the menu is not overruled on reload.
+  const dropLookFromAddress = useCallback(
+    () => void navigate({ search: prev => ({ ...prev, look: undefined }), replace: true }),
+    [navigate]
+  )
 
   return (
-    <Layout>
-      {/* Full width, full height under the navbar (64 px and its 1 px border,
+    <LookProvider link={search.look} onLinkRead={dropLookFromAddress}>
+      <Layout>
+        {/* Full width, full height under the navbar (64 px and its 1 px border,
           S-1): the main view and the dock share the window instead of
           scrolling a long page. */}
-      <div className="flex h-[calc(100dvh-65px)] flex-col px-4 py-3 sm:px-6">
-        <SessionWorkspace
-          // A new session is a new page: no selection, dock tab or stream state
-          // carries over from the one before (Reset navigates between them).
-          key={sessionId}
-          sessionId={sessionId}
-          scenarioId={search.scenarioId}
-          scenarioName={search.scenarioName}
-          startLive={search.live}
-        />
-      </div>
-    </Layout>
+        <div
+          data-look-part="page"
+          className="flex h-[calc(100dvh-65px)] flex-col px-4 py-3 sm:px-6"
+        >
+          <SessionWorkspace
+            // A new session is a new page: no selection, dock tab or stream state
+            // carries over from the one before (Reset navigates between them).
+            key={sessionId}
+            sessionId={sessionId}
+            scenarioId={search.scenarioId}
+            scenarioName={search.scenarioName}
+            startLive={search.live}
+          />
+        </div>
+      </Layout>
+    </LookProvider>
   )
 }
