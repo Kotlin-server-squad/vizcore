@@ -181,6 +181,13 @@ Where a task below and this list disagree, this list wins.
 
 ## Plan review round 3: open (process stopped here)
 
+**Resolution (after the coordinator resumed the run):** #4 fixed in 5b-1 (`ungroupedMatches`); #5 fixed in 5b-1; P1 #1
+fixed in 5b-2 with cut ids (`X-Viz-Cut` / `healthCut` / `asOfCut`), and in 5b-1 by the code review's round 1 (summaries
+and events read under one send lock; cuts coalesce only when their evidence is equal); #2, #3 and #6 are handled in 5b-2
+as proposed below (`retainedOnly` tests the database store, per-origin throughput is `Double?`, the guarantee is stated
+with the global cap).
+
+
 Round 3 (`codex-part5b-plan-r3.md`) still raised one P1, so per the run's rule the plan loop stopped and the work was
 reported instead of reviewed a fourth time. Tasks 0–7 are built (commits up to `648d4c97`); round 3's #5 is fixed. Open:
 
