@@ -462,7 +462,8 @@ object SyncScenarios {
      * [onClosed] gets who tried on, in the order they got a room, and who left without, in the order they gave up.
      *
      * Every timeout fires at least 0.5 s away from any room coming free, so no shopper gives up in the same moment a
-     * room would have been theirs.
+     * room would have been theirs. A room taken just as the timeout fires still goes back: whether the shopper has one
+     * is set inside the timeout block, not read from its result.
      */
     suspend fun runResourceTimeout(
         session: VizSession,
@@ -482,15 +483,23 @@ object SyncScenarios {
                     for (shopper in SHOPPERS) {
                         pause(shopper.gapMillis) // the next shopper comes in
                         vizLaunch(shopper.name) {
-                            val gotRoom = withTimeoutOrNull(scaled(FITTING_ROOM_PATIENCE_MILLIS)) { rooms.acquire() } != null
-                            if (gotRoom) {
-                                triedOn += shopper.name
-                                try {
+                            // Set inside the block: a timeout can fire just after the room is taken, and then
+                            // withTimeoutOrNull returns null although the shopper has a room, which must go back.
+                            var gotRoom = false
+                            try {
+                                withTimeoutOrNull(scaled(FITTING_ROOM_PATIENCE_MILLIS)) {
+                                    rooms.acquire()
+                                    gotRoom = true
+                                }
+                                if (gotRoom) {
+                                    triedOn += shopper.name
                                     pause(shopper.tryOnMillis) // try the clothes on
                                     pause(1000) // change back
-                                } finally {
-                                    rooms.release()
                                 }
+                            } finally {
+                                if (gotRoom) rooms.release()
+                            }
+                            if (gotRoom) {
                                 pause(1000) // pay at the till
                             } else {
                                 leftWithout += shopper.name
@@ -579,7 +588,8 @@ object SyncScenarios {
             SneakerOrder("ben", gapMillis = 500, cardAccepted = false),
             SneakerOrder("carla", gapMillis = 1000),
             SneakerOrder("dan", gapMillis = 1000),
-            SneakerOrder("eva", gapMillis = 3500),
+            SneakerOrder("eva", gapMillis = 3000),
+            SneakerOrder("finn", gapMillis = 3000),
         )
 
     /**
@@ -591,8 +601,8 @@ object SyncScenarios {
      * Anna (0.5 s), Ben (1 s), Carla (2 s) and Dan (3 s) each wait for the stock lock while the order before checks.
      * Anna, Ben and Carla reserve the three pairs; Carla waits for a payment permit (3.5-4 s) while Anna and Ben pay.
      * Dan finds none left at 4.5 s: Ben's pair is still reserved. Ben's card is declined at 5 s, and his pair goes
-     * back. Eva comes at 6.5 s and buys it. Three pairs sold (Anna, Carla, Eva), none left, at 11 s; [onSettled] gets
-     * the buyers in the order they paid and the pairs left.
+     * back. Eva comes at 6 s and buys it; Finn comes at 9 s and finds none left. Three pairs sold (Anna, Carla, Eva),
+     * none left, at 11 s; [onSettled] gets the buyers in the order they paid and the pairs left.
      */
     suspend fun runOrderProcessing(
         session: VizSession,

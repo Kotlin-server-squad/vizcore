@@ -267,7 +267,7 @@ class SemaphoreStoriesTest {
                 runStory { session, context ->
                     SyncScenarios.runOrderProcessing(session, context) { bought, left -> settled.complete(bought to left) }
                 }
-            val orders = listOf("order-anna", "order-ben", "order-carla", "order-dan", "order-eva")
+            val orders = listOf("order-anna", "order-ben", "order-carla", "order-dan", "order-eva", "order-finn")
 
             assertEquals(setOf("sneaker-drop") + orders, story.labels)
             assertEquals(
@@ -288,15 +288,16 @@ class SemaphoreStoriesTest {
                     "order-carla" to 2500L,
                     "order-dan" to 3500L,
                     "order-ben" to 5000L,
-                    "order-eva" to 6500L,
+                    "order-eva" to 6000L,
+                    "order-finn" to 9000L,
                 ),
                 stockHolders,
                 "ben takes the stock lock again to put his pair back",
             )
             assertEquals(
-                listOf("order-anna" to 1500L, "order-ben" to 2500L, "order-carla" to 4000L, "order-eva" to 7500L),
+                listOf("order-anna" to 1500L, "order-ben" to 2500L, "order-carla" to 4000L, "order-eva" to 7000L),
                 story.permits("payment-gateway"),
-                "dan pays nothing: the last pair was reserved when he checked",
+                "dan and finn pay nothing: no pair was left when they checked",
             )
             assertEquals(listOf(Triple("order-carla", 3500L, 4000L)), story.waitSpans("payment-gateway"))
             assertEquals(2, story.mostHeldAtOnce("payment-gateway"))
