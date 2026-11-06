@@ -76,7 +76,7 @@ export function CoroutineCanvas({
       aria-label="Main view"
       className="flex min-h-[320px] min-w-0 flex-1 flex-col rounded-xl border border-default-200 bg-content1"
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-default-200 px-3 py-2">
+      <div data-look-part="main-toolbar" className="flex flex-wrap items-center gap-2 border-b border-default-200 px-3 py-2">
         <div role="group" aria-label="View" className="flex gap-0.5 rounded-medium bg-default-100 p-0.5">
           <ViewButton label="Graph" pressed={viewMode === 'graph'} onPress={() => onViewModeChange('graph')} />
           <ViewButton label="List" pressed={viewMode === 'list'} onPress={() => onViewModeChange('list')} />

@@ -10,6 +10,7 @@ import {
 } from './look-context'
 import { classicSessionBody } from './classic/SessionBody'
 import { LOOKS } from './registry'
+import type { LookDefinition } from './types'
 
 // Registry-driven, so deleting a trial look needs no change here.
 const TRIAL = LOOKS.filter(l => l.trial).map(l => l.id)
@@ -214,14 +215,13 @@ describe('storage that reads but will not write', () => {
 })
 
 describe('useLookSlot', () => {
-  it("gives Classic's layout for every look until a look brings its own", () => {
-    // Update this test when a look brings its own SessionBody.
-    for (const { id } of LOOKS) {
-      localStorage.setItem(LOOK_STORAGE_KEY, id)
+  it("gives each look its own layout, or Classic's where it brings none", () => {
+    for (const look of LOOKS as readonly LookDefinition[]) {
+      localStorage.setItem(LOOK_STORAGE_KEY, look.id)
       const { result, unmount } = renderHook(() => useLookSlot('SessionBody'), {
         wrapper: withProvider(),
       })
-      expect(result.current).toBe(classicSessionBody)
+      expect(result.current).toBe(look.slots?.SessionBody ?? classicSessionBody)
       unmount()
     }
     const outside = renderHook(() => useLookSlot('SessionBody'))
