@@ -173,7 +173,7 @@ launch {                                          // anna … gina
       },
       {
         title: 'Giving up is not failing',
-        text: 'Eva\'s 3 s are up at 5.5 s and Finn\'s at 6 s, with both rooms still taken. Their waits end without a room: in the tree they go from suspended back to running, not to cancelled, and they leave the queue and the shop. Five shoppers tried clothes on and two left; the shop is done at 11.5 s.',
+        text: 'Eva\'s 3 s are up at 5.5 s and Finn\'s at 6 s, with both rooms still taken. Their waits end without a room, with a resume, not a cancel: they leave the queue, hang the clothes back (1 s, suspended again in the tree) and complete. Five shoppers tried clothes on and two left; the shop is done at 11.5 s.',
       },
     ],
     keyIdea:
