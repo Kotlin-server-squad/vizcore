@@ -169,13 +169,17 @@ class SessionHealthDatabaseModeTest {
         }
 
     @Test
-    fun `a session stored before this backend started is not vouched for, even without events`() =
+    fun `a row from before ingest state was persisted, stored before this backend started, is not vouched for`() =
         testApplication {
             application { module() }
             val sessionId = client.createSessionNamed("db-recovered")
-            // As if the row was written by an earlier backend process (crashed before any event was stored).
+            // As if the row was written by a backend from before Part 5b-2 (no ingest state, no marker), which may have
+            // crashed before any event was stored. Rows written since keep a marker instead (IngestStatePersistenceTest).
             transaction(db) {
-                SessionsTable.update({ SessionsTable.id eq sessionId }) { it[createdAt] = Instant.fromEpochMilliseconds(0) }
+                SessionsTable.update({ SessionsTable.id eq sessionId }) {
+                    it[createdAt] = Instant.fromEpochMilliseconds(0)
+                    it[ingestState] = null
+                }
             }
 
             val health = client.health(sessionId)

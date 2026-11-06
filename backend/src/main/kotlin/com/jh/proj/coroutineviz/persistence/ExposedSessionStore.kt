@@ -16,6 +16,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
@@ -78,6 +79,8 @@ class ExposedSessionStore(
                 it[scenario] = null
                 it[tenantId] = owner
                 it[metadata] = null
+                // An empty ingest state tells this row from one created before Part 5b-2 (plan E-13).
+                it[ingestState] = "{}"
             }
         }
         logger.info("Created session (db): $sessionId (tenant=${owner ?: "<global>"})")
@@ -103,6 +106,16 @@ class ExposedSessionStore(
                 .firstOrNull()
                 ?.get(SessionsTable.createdAt)
                 ?.toEpochMilliseconds()
+        }
+
+    /** Whether the session's row stores an ingest state (rows created before Part 5b-2 do not; plan E-13). */
+    fun hasIngestState(sessionId: String): Boolean =
+        transaction(db) {
+            SessionsTable
+                .select(SessionsTable.ingestState)
+                .where { SessionsTable.id eq sessionId }
+                .firstOrNull()
+                ?.get(SessionsTable.ingestState) != null
         }
 
     /** Whether the session's row exists, without rebuilding the session from its events. */

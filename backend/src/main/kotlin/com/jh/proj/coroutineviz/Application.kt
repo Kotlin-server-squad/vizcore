@@ -5,8 +5,10 @@ import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.observability.configureObservability
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
+import com.jh.proj.coroutineviz.persistence.ExposedIngestStatePersistence
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
 import com.jh.proj.coroutineviz.routes.IngestConnections
+import com.jh.proj.coroutineviz.routes.IngestStates
 import com.jh.proj.coroutineviz.routes.configureDemoRuns
 import com.jh.proj.coroutineviz.session.RetentionPolicy
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -294,6 +296,11 @@ private fun Application.configureStorage(maxEvents: Int) {
     if (storageType.equals("database", ignoreCase = true)) {
         val db = DatabaseFactory.init(environment.config)
         SessionManager.useStore(ExposedSessionStore(db, maxEvents = maxEvents))
+        // A connection open when the previous process stopped makes its session uncertain, then ingest state persists.
+        ExposedIngestStatePersistence(db).also {
+            it.sweepOpenMarkers()
+            IngestStates.persistence = it
+        }
         // Expose the handle so configureRouting() can build the DB-backed ShareService (Plan 04).
         attributes.put(DatabaseKey, db)
         moduleLogger.info("Persistence enabled (storage.type=database)")

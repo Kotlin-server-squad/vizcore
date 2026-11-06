@@ -27,12 +27,20 @@ data class IngestSnapshot(
  *
  * A watermark is transport state, not a session event: it is neither stored nor numbered, so one per second does not
  * evict real events from the bounded store. Keyed by session id for the same reason as [IngestConnections] (the
- * database store builds a fresh `VizSession` on every read), and process-local like it. Nothing here is persisted yet:
- * after a restart a database session has no ingest state until its app connects again (Part 5b, spec C-4); the health
- * reads treat what this process did not watch as uncertain.
+ * database store builds a fresh `VizSession` on every read), and process-local like it. In database mode [persistence]
+ * keeps it on the session row (spec C-4, plan E-13): a state is seeded from the row, written under its lock when a
+ * connection opens (with the "ingest open" marker), at most every 5 s while frames arrive, and when a
+ * connection closes; reads of a session this process holds no state for read the row.
  */
 object IngestStates {
     private const val WATERMARK_BUFFER = 16
+
+    /** Database mode: where the state survives a restart. Null in memory mode. */
+    @Volatile
+    var persistence: IngestStatePersistence? = null
+
+    @Volatile
+    internal var clock: () -> Long = System::currentTimeMillis
 
     // Internal so tests can check a session holds no state.
     internal val states = ConcurrentHashMap<String, State>()
@@ -43,6 +51,11 @@ object IngestStates {
         var lastIngestEpochMs: Long? = null
         var transport = TransportStatus()
         var firstConnectionSeq: Long? = null
+
+        /** First seqs of this process's open connections: the "ingest open" marker is the earliest. */
+        val openFirstSeqs = mutableListOf<Long>()
+        var lastSavedAtMs = Long.MIN_VALUE
+        var savedRevision = -1L
 
         // Only the newest watermark matters to a stream that fell behind.
         val watermarks =
@@ -66,12 +79,27 @@ object IngestStates {
         internal var finalWatermarkReceived = false
     }
 
+    /**
+     * A socket opened. In database mode the state and the "ingest open" marker are written before any event is accepted;
+     * when that fails the connection is not opened ([IngestStateNotStoredException]) and the route refuses the socket.
+     */
     fun connectionOpened(
         sessionId: String,
         firstSeq: Long,
     ): Connection {
         val state = stateOf(sessionId)
-        synchronized(state) { if (state.firstConnectionSeq == null) state.firstConnectionSeq = firstSeq }
+        synchronized(state) {
+            val firstBefore = state.firstConnectionSeq
+            if (state.firstConnectionSeq == null) state.firstConnectionSeq = firstSeq
+            state.openFirstSeqs += firstSeq
+            persistence?.let { p ->
+                runCatching { state.saveTo(p, sessionId) }.onFailure { e ->
+                    state.openFirstSeqs.remove(firstSeq)
+                    state.firstConnectionSeq = firstBefore
+                    throw IngestStateNotStoredException(e)
+                }
+            }
+        }
         return Connection(sessionId, firstSeq, state)
     }
 
@@ -81,7 +109,10 @@ object IngestStates {
         receivedEpochMs: Long,
     ) {
         val state = connection.state
-        synchronized(state) { state.lastIngestEpochMs = maxOf(state.lastIngestEpochMs ?: Long.MIN_VALUE, receivedEpochMs) }
+        synchronized(state) {
+            state.lastIngestEpochMs = maxOf(state.lastIngestEpochMs ?: Long.MIN_VALUE, receivedEpochMs)
+            state.saveIfDue(connection.sessionId)
+        }
     }
 
     /**
@@ -108,6 +139,7 @@ object IngestStates {
                     sinceSeq = if (doubt) earliest(t.sinceSeq, connection.firstSeq) else t.sinceSeq,
                 ),
             )
+            state.saveIfDue(connection.sessionId)
         }
         if (watermark.final) connection.finalWatermarkReceived = true
         state.watermarks.tryEmit(observation)
@@ -119,10 +151,18 @@ object IngestStates {
     /** Without a final watermark nothing says every event of the connection arrived (spec C-7, H-3). */
     fun connectionClosed(connection: Connection) {
         if (!connection.finalWatermarkReceived) markUncertain(connection)
+        val state = connection.state
+        synchronized(state) {
+            state.openFirstSeqs.remove(connection.firstSeq)
+            // A failed write keeps the old marker: after a restart the session reads uncertain, never wrongly clean.
+            persistence?.let { p ->
+                runCatching { state.saveTo(p, connection.sessionId) }.onFailure { logWriteFailure(connection.sessionId, it) }
+            }
+        }
     }
 
     fun snapshot(sessionId: String): IngestSnapshot {
-        val state = states[sessionId] ?: return IngestSnapshot()
+        val state = states[sessionId] ?: return persistence?.load(sessionId)?.toSnapshot() ?: IngestSnapshot()
         return synchronized(state) {
             IngestSnapshot(state.watermark, state.lastIngestEpochMs, state.transport, state.firstConnectionSeq)
         }
@@ -139,6 +179,8 @@ object IngestStates {
     internal fun clear() {
         states.clear()
         beforeStateAllocatedForTest = null
+        persistence = null
+        clock = System::currentTimeMillis
     }
 
     /**
@@ -151,7 +193,7 @@ object IngestStates {
     private fun stateOf(sessionId: String): State {
         states[sessionId]?.let { return it }
         beforeStateAllocatedForTest?.invoke(sessionId)
-        return states.computeIfAbsent(sessionId) { State() }
+        return states.computeIfAbsent(sessionId) { State().also { s -> persistence?.load(sessionId)?.let(s::seedFrom) } }
     }
 }
 
@@ -161,6 +203,7 @@ private fun markUncertain(connection: IngestStates.Connection) {
     synchronized(state) {
         val t = state.transport
         state.updateTransport(t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, connection.firstSeq)))
+        state.saveIfDue(connection.sessionId)
     }
 }
 
@@ -178,3 +221,45 @@ private fun IngestStates.State.updateTransport(next: TransportStatus) {
             next.sinceSeq != current.sinceSeq
     if (changed) transport = next.copy(revision = current.revision + 1)
 }
+
+private val ingestStateLogger = org.slf4j.LoggerFactory.getLogger(IngestStates::class.java)
+
+private fun logWriteFailure(
+    sessionId: String,
+    e: Throwable,
+) = ingestStateLogger.warn("Ingest state of session {} could not be stored", sessionId, e)
+
+/** Writes this state and its marker. Caller holds the state's lock, so writes land in the order the state changed. */
+private fun IngestStates.State.saveTo(
+    persistence: IngestStatePersistence,
+    sessionId: String,
+) {
+    persistence.save(
+        sessionId,
+        PersistedIngestState(watermark, lastIngestEpochMs, transport, firstConnectionSeq),
+        openFirstSeqs.minOrNull(),
+    )
+    lastSavedAtMs = IngestStates.clock()
+    savedRevision = transport.revision
+}
+
+/**
+ * At most every few seconds while frames arrive, but at once when the transport changed (its facts are sticky and rare); a
+ * failure is logged (the marker written at open stays set). Caller holds the lock.
+ */
+private fun IngestStates.State.saveIfDue(sessionId: String) {
+    val p = IngestStates.persistence ?: return
+    if (transport.revision == savedRevision && IngestStates.clock() - lastSavedAtMs < SAVE_INTERVAL) return
+    runCatching { saveTo(p, sessionId) }.onFailure { logWriteFailure(sessionId, it) }
+}
+
+private const val SAVE_INTERVAL = 5_000L
+
+private fun IngestStates.State.seedFrom(stored: PersistedIngestState) {
+    watermark = stored.watermark
+    lastIngestEpochMs = stored.lastIngestEpochMs
+    transport = stored.transport
+    firstConnectionSeq = stored.firstConnectionSeq
+}
+
+private fun PersistedIngestState.toSnapshot() = IngestSnapshot(watermark, lastIngestEpochMs, transport, firstConnectionSeq)

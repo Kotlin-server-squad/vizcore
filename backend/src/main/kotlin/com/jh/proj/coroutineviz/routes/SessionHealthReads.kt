@@ -50,11 +50,10 @@ internal class HistoryTrimmedException(
 ) : IllegalStateException(message)
 
 /**
- * The transport a read reports (spec C-3 `transport`). A database session outlives this process: a row written before
- * this JVM started, or events stored before the first connection this process saw, came through connections nobody
- * here watched end (a crash runs no close handler), so nothing vouches that all their events arrived (H-3). Until Part
- * 5b persists the transport and the "ingest open" marker, such an ATTACHED session reads delivery-uncertain from its
- * first seq.
+ * The transport a read reports (spec C-3 `transport`). In database mode the transport and the "ingest open" marker are
+ * persisted (plan E-13; a crash leaves the marker set and the startup sweep marks the session uncertain), so only what no
+ * recorded connection vouches for is added here: events stored while no connection was ever recorded, and, for a row from
+ * before Part 5b-2, any row written before this JVM started (5a D-9b). Memory sessions report their ingest facts as is.
  */
 internal fun transportOf(
     ingest: IngestSnapshot,
@@ -62,12 +61,14 @@ internal fun transportOf(
     kind: SessionKind,
     lastSeq: Long,
 ): TransportStatus {
-    // A row written before this JVM started may have had a connection that ended in the crash, even with no event stored.
-    val recovered = session.createdAtMs < PROCESS_STARTED_AT_MS
+    val store = SessionManager.backingStore() as? ExposedSessionStore
+    if (store == null || kind != SessionKind.ATTACHED) return ingest.transport
+    // Events stored while no connection was ever recorded came through one nobody watched end.
     val eventsBeforeWatching = lastSeq > 0 && (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
-    val databaseSession = SessionManager.backingStore() is ExposedSessionStore
-    val unwatched = databaseSession && kind == SessionKind.ATTACHED && (recovered || eventsBeforeWatching)
-    return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
+    // A row from before Part 5b-2 stores no ingest state (no marker either): a row written before this JVM started may
+    // have had a connection that ended in a crash, even with no event stored (5a D-9b). Newer rows have the marker.
+    val recovered = session.createdAtMs < PROCESS_STARTED_AT_MS && !store.hasIngestState(session.sessionId)
+    return if (eventsBeforeWatching || recovered) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
 }
 
 private val PROCESS_STARTED_AT_MS: Long = ManagementFactory.getRuntimeMXBean().startTime
