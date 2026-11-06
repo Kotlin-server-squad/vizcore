@@ -44,6 +44,7 @@ One PR. It is about half of Part 3b's size and every task leaves a working page,
 - **A late release keeps the new holder.** `VizMutex.unlock` releases the lock before it records `MutexUnlocked`, so the waiter it woke can record `MutexLockAcquired` first — possibly several handovers in a row. Each holder displaced by an acquisition joins a per-lock multiset of pending releases; a release found there is consumed and frees nothing; any other release frees the lock. A coroutine that acquires again leaves the multiset (it records its release before it can acquire again), so a lost release cannot swallow a later real one.
 - **Permit counts come from state snapshots only; between snapshots the holders are unsettled.** A semaphore's `SemaphoreStateChanged` follows each acquire and release, but a stream flush or a replay cursor can fall between the two, and whether a snapshot already counted an operation cannot be told from the totals: VizSemaphore records a holder before the acquisition event and drops it before the release event, and a semaphore can start with permits taken (`acquiredPermits`). So any acquire or release since the last snapshot marks that semaphore's holder list **unsettled** until the next snapshot (an acquirer not listed yet is added to the list; no count changes). While unsettled, every listed holder's node reads "may hold a … permit · holder unknown", and Evidence reads "holder unknown — N of M permits in use; last recorded holders …" with no per-holder counts. A snapshot or release with every permit free means nobody holds one (a snapshot copies its holders before it reads the free permits). Exact attribution between snapshots is not attempted.
 - **Permits in use with no recorded holder** (taken at creation, `acquiredPermits`, or before the retained history) read "holder unknown — 3 of 3 permits in use; no holder was recorded", or "order-3, and 1 permit with no recorded holder"; "Held by none" only when no permit is in use.
+- **A failed try-acquire** reads the free permits as they are now: when that differs from what was known, a permit moved since the last snapshot, so the holders are unsettled too; all free means nobody holds one.
 - **Free permits are unknown until an event reports them** (`SemaphoreCreated` carries the capacity only; a semaphore can start with permits taken): until then Evidence reads "3 permits · availability unknown" and "holder unknown"; with no total in the retained events, "total unknown". While holders are ambiguous, no count is claimed ("may hold a … permit").
 - **Evidence presence comes from the shown events in every mode**, like the sections' contents: in replay the cursor's, live the shown ones (cleared live events capture nothing). The rung keeps the whole session's categories.
 - **Keyboard:** a resource chosen from the keyboard takes focus in Evidence; waiter rows are keyed by coroutine, so focus survives a queue change; "All events" moves focus to the scope line; the channel picker exposes `aria-current` (the page's selection) and `aria-pressed` (shown).
@@ -411,6 +412,31 @@ describe('projectSync', () => {
     expect(projectSync([created]).semaphores[0]!.availableKnown).toBe(false)
     expect(projectSync([created, stateChanged({ availablePermits: 1 })]).semaphores[0]!.availableKnown).toBe(true)
   })
+
+  describe('a failed try-acquire reports the free permits', () => {
+    const one = event('SemaphoreCreated', { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 2 })
+    const held = stateChanged({ totalPermits: 2, availablePermits: 0, activeHolderPermits: [1, 1] })
+    const failed = (availablePermits: number) =>
+      event('SemaphoreTryAcquireFailed', {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', requesterId: 'c-9', requesterLabel: 'c-9', availablePermits, permitsRequested: 1,
+      })
+
+    it('when it reports fewer permits in use than listed, who still holds is unknown', () => {
+      const [sem] = projectSync([one, held, failed(1)]).semaphores
+      expect(sem!.unsettled).toBe(true)
+    })
+
+    it('when it reports every permit free, nobody holds one', () => {
+      const [sem] = projectSync([one, held, failed(2)]).semaphores
+      expect(sem!.activeHolders).toEqual([])
+    })
+
+    it('when it reports what the snapshot said, the holders stay settled', () => {
+      const [sem] = projectSync([one, held, failed(0)]).semaphores
+      expect(sem!.unsettled).toBe(false)
+      expect(sem!.activeHolders.map(h => h.id)).toEqual(['c-1', 'c-2'])
+    })
+  })
 })
 ```
 
@@ -707,8 +733,12 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         const e = syncEvent as SemaphoreTryAcquireFailed
         ensureSemaphore(semaphoreStates, e.semaphoreId, e.semaphoreLabel)
         const failed = semaphoreStates.get(e.semaphoreId)!
+        // It reads the free permits as they are now: if that differs from what was known, some permit moved
+        // since the last snapshot, so who holds what is unsettled (unknown, not inferred).
+        if (!failed.availableKnown || failed.availablePermits !== e.availablePermits) failed.unsettled = true
         failed.availablePermits = e.availablePermits
         failed.availableKnown = true
+        clearWhenAllFree(failed)
         break
       }
       case 'SemaphoreStateChanged': {
