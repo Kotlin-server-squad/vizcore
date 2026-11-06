@@ -2,7 +2,6 @@ package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarios.SyncScenarios
-import com.jh.proj.coroutineviz.scenarios.demoScope
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.*
@@ -71,35 +70,35 @@ fun Route.registerSyncScenarioRoutes() {
      * Database connection pool limiting
      */
     demoGet("/api/sync/semaphore/connection-pool") {
-        call.runSyncScenario("Database Connection Pool") { SyncScenarios.databaseConnectionPool(it.demoScope()) }
+        call.runSyncScenario("Database Connection Pool") { SyncScenarios.runConnectionPool(it).join() }
     }
 
     /**
      * API rate limiter
      */
     demoGet("/api/sync/semaphore/rate-limiter") {
-        call.runSyncScenario("API Rate Limiter") { SyncScenarios.apiRateLimiter(it.demoScope()) }
+        call.runSyncScenario("API Rate Limiter") { SyncScenarios.runRateLimiter(it).join() }
     }
 
     /**
      * Parallel file processor with I/O throttling
      */
     demoGet("/api/sync/semaphore/file-processor") {
-        call.runSyncScenario("Parallel File Processor") { SyncScenarios.parallelFileProcessor(it.demoScope()) }
+        call.runSyncScenario("Parallel File Processor") { SyncScenarios.runFileProcessor(it).join() }
     }
 
     /**
      * Resource pool with timeout handling
      */
     demoGet("/api/sync/semaphore/resource-timeout") {
-        call.runSyncScenario("Resource Pool with Timeout") { SyncScenarios.resourcePoolWithTimeout(it.demoScope()) }
+        call.runSyncScenario("Resource Pool with Timeout") { SyncScenarios.runResourceTimeout(it).join() }
     }
 
     /**
      * Producer-Consumer with bounded buffer
      */
     demoGet("/api/sync/semaphore/producer-consumer") {
-        call.runSyncScenario("Producer-Consumer Buffer") { SyncScenarios.producerConsumerBuffer(it.demoScope()) }
+        call.runSyncScenario("Producer-Consumer Buffer") { SyncScenarios.runProducerConsumer(it).join() }
     }
 
     // ========================================================================
@@ -110,7 +109,7 @@ fun Route.registerSyncScenarioRoutes() {
      * E-commerce order processing (Mutex + Semaphore)
      */
     demoGet("/api/sync/combined/ecommerce") {
-        call.runSyncScenario("E-commerce Order Processing") { SyncScenarios.ecommerceOrderProcessing(it.demoScope()) }
+        call.runSyncScenario("E-commerce Order Processing") { SyncScenarios.runOrderProcessing(it).join() }
     }
 
     // ========================================================================
@@ -183,22 +182,22 @@ fun Route.registerSyncScenarioRoutes() {
         call.runSyncScenarioInSession("Deadlock Demo") { SyncScenarios.runDeadlock(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/connection-pool") {
-        call.runSyncScenarioInSession("Connection Pool") { SyncScenarios.databaseConnectionPool(it.demoScope()) }
+        call.runSyncScenarioInSession("Connection Pool") { SyncScenarios.runConnectionPool(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/rate-limiter") {
-        call.runSyncScenarioInSession("API Rate Limiter") { SyncScenarios.apiRateLimiter(it.demoScope()) }
+        call.runSyncScenarioInSession("API Rate Limiter") { SyncScenarios.runRateLimiter(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/file-processor") {
-        call.runSyncScenarioInSession("File Processor") { SyncScenarios.parallelFileProcessor(it.demoScope()) }
+        call.runSyncScenarioInSession("File Processor") { SyncScenarios.runFileProcessor(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/resource-timeout") {
-        call.runSyncScenarioInSession("Resource Timeout") { SyncScenarios.resourcePoolWithTimeout(it.demoScope()) }
+        call.runSyncScenarioInSession("Resource Timeout") { SyncScenarios.runResourceTimeout(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/producer-consumer") {
-        call.runSyncScenarioInSession("Producer-Consumer") { SyncScenarios.producerConsumerBuffer(it.demoScope()) }
+        call.runSyncScenarioInSession("Producer-Consumer") { SyncScenarios.runProducerConsumer(it).join() }
     }
     demoPost("/api/scenarios/sync/combined/ecommerce") {
-        call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.ecommerceOrderProcessing(it.demoScope()) }
+        call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.runOrderProcessing(it).join() }
     }
 }
 

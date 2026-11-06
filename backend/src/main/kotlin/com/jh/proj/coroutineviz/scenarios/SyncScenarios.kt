@@ -5,19 +5,20 @@ import com.jh.proj.coroutineviz.wrappers.*
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * Real-world synchronization scenario examples.
  *
- * The Sync: Mutex demos tell everyday stories at a pace a person can follow, like the Patterns
- * ([PatternScenarios]): 0.5-3 s a step, 10-30 s a demo, at the configured `scenarios.timeScale`.
- * Each returns the demo's root coroutine, which keeps running after the call returns. A coroutine
- * waiting for a `VizMutex` is recorded as suspended, and resumed when it gets the lock unless its
- * own job is cancelled. Each takes a [CoroutineContext] so a test can run it on virtual time.
- *
- * The Semaphore and Combined demos below still take a scope and end within a second or two.
+ * The Sync: Mutex, Sync: Semaphore and Combined demos tell everyday stories at a pace a person can
+ * follow, like the Patterns ([PatternScenarios]): 0.5-3 s a step, 10-30 s a demo, at the configured
+ * `scenarios.timeScale`. Each returns the demo's root coroutine, which keeps running after the call
+ * returns; the root's body only starts its children. A coroutine waiting for a `VizMutex` or a
+ * `VizSemaphore` permit is recorded as suspended, and resumed when it gets the lock or the permit
+ * (or when a timeout it survives ends the wait) unless its own job is cancelled. Each takes a
+ * [CoroutineContext] so a test can run it on virtual time.
  */
 object SyncScenarios {
     private val logger = LoggerFactory.getLogger(SyncScenarios::class.java)
@@ -288,296 +289,356 @@ object SyncScenarios {
     // SEMAPHORE SCENARIOS
     // ========================================================================
 
-    /**
-     * Scenario: Database Connection Pool
-     *
-     * Real-world use case: Limiting concurrent database connections.
-     * Too many connections can overwhelm the database server.
-     */
-    suspend fun databaseConnectionPool(scope: VizScope) {
-        val connectionPool = scope.vizSemaphore("db-connections", permits = 3)
-
-        // 10 concurrent queries, but only 3 connections available
-        val jobs =
-            (1..10).map { queryId ->
-                scope.vizLaunch("query-$queryId") {
-                    connectionPool.withPermit {
-                        println("Query $queryId: Acquired connection")
-                        // Simulate query execution
-                        vizDelay((50..200).random().toLong())
-                        println("Query $queryId: Released connection")
-                    }
-                }
-            }
-
-        jobs.forEach { it.join() }
-    }
-
-    /**
-     * Scenario: API Rate Limiter
-     *
-     * Real-world use case: Limiting concurrent API calls to external service.
-     * Prevents overwhelming the API and getting rate-limited.
-     */
-    suspend fun apiRateLimiter(scope: VizScope) {
-        val rateLimiter = scope.vizSemaphore("api-rate-limit", permits = 5)
-
-        // Batch of 20 API calls
-        val results =
-            (1..20).map { requestId ->
-                scope.vizAsync("api-call-$requestId") {
-                    rateLimiter.withPermit {
-                        println("Request $requestId: Calling API...")
-                        // Simulate API call latency
-                        vizDelay((100..300).random().toLong())
-                        "Response for request $requestId"
-                    }
-                }
-            }
-
-        results.forEach { deferred ->
-            println(deferred.await())
-        }
-    }
-
-    /**
-     * Scenario: Parallel File Processor
-     *
-     * Real-world use case: Processing files with limited I/O parallelism.
-     * Too many concurrent file operations can saturate disk I/O.
-     */
-    suspend fun parallelFileProcessor(scope: VizScope) {
-        val ioSemaphore = scope.vizSemaphore("io-parallelism", permits = 4)
-
-        data class FileTask(
-            val name: String,
-            val sizeKb: Int,
+    /** One lunchtime request of the Connection Pool demo: its name and the steps of its query, in scripted ms. */
+    private val LUNCHTIME_REQUESTS =
+        listOf(
+            "show-basket" to listOf(2500L),
+            "search-shoes" to listOf(3000L),
+            "order-history" to listOf(2000L, 1500), // read the orders, then the invoices
+            "track-parcel" to listOf(2500L),
+            "write-review" to listOf(2000L),
+            "checkout" to listOf(1500L, 2000), // check the stock, then save the order
+            "wish-list" to listOf(2500L),
+            "store-hours" to listOf(1500L),
+            "loyalty-points" to listOf(2500L),
         )
 
-        val files =
-            listOf(
-                FileTask("report.pdf", 500),
-                FileTask("data.csv", 1200),
-                FileTask("image1.jpg", 800),
-                FileTask("image2.jpg", 750),
-                FileTask("log.txt", 200),
-                FileTask("backup.zip", 2000),
-                FileTask("config.json", 10),
-                FileTask("video.mp4", 5000),
-            )
-
-        val jobs =
-            files.map { file ->
-                scope.vizLaunch("process-${file.name}") {
-                    ioSemaphore.withPermit {
-                        println("Processing ${file.name}...")
-                        // Simulate I/O time proportional to file size
-                        vizDelay((file.sizeKb / 10).toLong())
-                        println("Completed ${file.name}")
-                    }
-                }
-            }
-
-        jobs.forEach { it.join() }
-    }
-
     /**
-     * Scenario: Resource Pool with Timeout
-     *
-     * Real-world use case: Acquiring resources with timeout to prevent
-     * indefinite waiting in overloaded systems.
+     * A database connection pool, as an online shop's backend at lunchtime. The pool `db-connections` has 3
+     * connections. A request comes in every 0.5 s, nine in all. Each takes a connection, runs its query (one or two
+     * steps, 1.5-3 s) and gives the connection back, then renders its page (1 s) without it. The first three find a
+     * connection free; the other six wait for one, suspended, and get it in the order they asked: track-parcel at
+     * 3 s, write-review at 4 s, checkout at 5 s, wish-list at 5.5 s, store-hours at 6 s and loyalty-points at 7.5 s.
+     * Never more than three queries run at once. The shop is done at 11 s.
      */
-    suspend fun resourcePoolWithTimeout(scope: VizScope) {
-        val resourcePool = scope.vizSemaphore("limited-resources", permits = 2)
+    suspend fun runConnectionPool(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+    ): Job =
+        coroutineScope {
+            logger.info("Starting connection pool scenario in session: ${session.sessionId}")
 
-        // Rapid requests that will cause some timeouts
-        val results =
-            (1..8).map { userId ->
-                scope.vizAsync("user-$userId") {
-                    val acquired =
-                        withTimeoutOrNull(500) {
-                            resourcePool.acquire()
-                            true
-                        } ?: false
+            val viz = session.demoScope(context)
+            val pool = viz.vizSemaphore("db-connections", permits = 3)
 
-                    if (acquired) {
-                        try {
-                            println("User $userId: Using resource")
-                            // Use resource
-                            vizDelay(300)
-                            true
-                        } finally {
-                            resourcePool.release()
-                            println("User $userId: Released resource")
+            viz.vizLaunch("shop-backend") {
+                for ((request, query) in LUNCHTIME_REQUESTS) {
+                    pause(500) // the next request comes in
+                    vizLaunch(request) {
+                        pool.withPermit {
+                            for (step in query) pause(step) // run the query on the connection
                         }
-                    } else {
-                        println("User $userId: Timeout waiting for resource")
-                        false
+                        pause(1000) // render the page, without the connection
                     }
                 }
             }
+        }
 
-        val successCount = results.count { it.await() }
-        println("Successful: $successCount / ${results.size}")
-    }
+    /** What the Rate Limiter demo's weather service says for each city, and how long it takes to answer, in scripted ms. */
+    private val CITY_WEATHER =
+        listOf(
+            Triple("rome", "24°C, sunny", 2500L),
+            Triple("paris", "17°C, showers", 3000L),
+            Triple("vienna", "19°C, cloudy", 2000L),
+            Triple("prague", "16°C, windy", 3000L),
+            Triple("lisbon", "26°C, sunny", 2500L),
+            Triple("oslo", "11°C, rain", 2000L),
+            Triple("split", "27°C, sunny", 3000L),
+            Triple("krakow", "15°C, cloudy", 2500L),
+        )
 
     /**
-     * Scenario: Producer-Consumer with Bounded Buffer
-     *
-     * Real-world use case: Message queue with limited buffer.
-     * Producers wait when buffer is full, consumers wait when empty.
+     * An API rate limiter, as a trip planner showing the weather for eight cities. The weather service takes at most
+     * two calls at a time, so every call goes through the semaphore `weather-api` (2 permits). The planner asks for
+     * all eight forecasts at once (`weather-rome` … `weather-krakow`, each an async call of 2-3 s), and `trip-page`
+     * awaits them in order, then draws the page (1.5 s). Rome and Paris call at once; the other six wait for a
+     * permit, suspended, and call as soon as one is free: Vienna at 2.5 s, Prague at 3 s, Lisbon at 4.5 s, Oslo at
+     * 6 s, Split at 7 s, Krakow at 8 s. The last forecast is in at 10.5 s and the page is drawn at 12 s; [onPlanned]
+     * gets the forecasts in city order.
      */
-    suspend fun producerConsumerBuffer(scope: VizScope) {
-        val bufferSize = 5
-        val emptySlots = scope.vizSemaphore("buffer-empty-slots", permits = bufferSize)
-        // F10: "full slots" starts empty (0 available) with capacity = bufferSize. kotlinx Semaphore
-        // forbids permits = 0, so model it as fully-acquired: permits = bufferSize, acquiredPermits = bufferSize.
-        val fullSlots = scope.vizSemaphore("buffer-full-slots", permits = bufferSize, acquiredPermits = bufferSize)
-        val bufferLock = scope.vizMutex("buffer-access")
+    suspend fun runRateLimiter(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+        onPlanned: (forecasts: List<String>) -> Unit = {},
+    ): Job =
+        coroutineScope {
+            logger.info("Starting API rate limiter scenario in session: ${session.sessionId}")
 
-        val buffer = ArrayDeque<Int>()
+            val viz = session.demoScope(context)
+            val weatherApi = viz.vizSemaphore("weather-api", permits = 2)
 
-        suspend fun produce(item: Int) {
-            // Wait for empty slot
-            emptySlots.acquire()
-            bufferLock.withLock {
-                buffer.addLast(item)
-                println("Produced: $item, buffer size: ${buffer.size}")
+            viz.vizLaunch("trip-planner") {
+                val forecasts =
+                    CITY_WEATHER.map { (city, weather, millis) ->
+                        vizAsync("weather-$city") {
+                            weatherApi.withPermit {
+                                pause(millis) // ask the weather service
+                            }
+                            "$city: $weather"
+                        }
+                    }
+                vizLaunch("trip-page") {
+                    val all = forecasts.map { it.await() }
+                    pause(1500) // draw the page
+                    onPlanned(all)
+                }
             }
-            // Signal item available
-            fullSlots.release()
         }
 
-        suspend fun consume(): Int {
-            // Wait for item
-            fullSlots.acquire()
-            val item =
-                bufferLock.withLock {
-                    buffer.removeFirst().also {
-                        println("Consumed: $it, buffer size: ${buffer.size}")
+    /** One file of the File Processor demo's tax folder and the steps it takes to compress, in scripted ms. */
+    private val TAX_FOLDER =
+        listOf(
+            "payslips.pdf" to listOf(1500L),
+            "bank-statements.pdf" to listOf(3000L, 3000, 1500), // a big file, in three parts
+            "receipts.zip" to listOf(2500L),
+            "insurance.pdf" to listOf(1000L),
+            "donations.pdf" to listOf(2000L),
+            "pension.pdf" to listOf(1500L),
+            "childcare.pdf" to listOf(2500L),
+            "invoices.zip" to listOf(3000L),
+            "doctor-bills.pdf" to listOf(2000L),
+        )
+
+    /**
+     * A parallel file processor, as an app that compresses the nine files of a tax folder before they go to the
+     * accountant. The disk is fastest with two files at a time, so each file takes a permit of `disk` (2 permits)
+     * while it is compressed (one to three steps, 1-3 s), then uploads (1 s) without it. All nine start at once. The
+     * bank statements hold one permit from 0 to 7.5 s; meanwhile the other permit goes from file to file the moment
+     * one is done: payslips, receipts (1.5 s), insurance (4 s), donations (5 s). Seven files wait for the disk,
+     * suspended. The last file is uploaded at 13 s.
+     */
+    suspend fun runFileProcessor(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+    ): Job =
+        coroutineScope {
+            logger.info("Starting parallel file processor scenario in session: ${session.sessionId}")
+
+            val viz = session.demoScope(context)
+            val disk = viz.vizSemaphore("disk", permits = 2)
+
+            viz.vizLaunch("tax-folder") {
+                for ((file, parts) in TAX_FOLDER) {
+                    vizLaunch(file) {
+                        disk.withPermit {
+                            for (part in parts) pause(part) // compress the file, or the next part of it
+                        }
+                        pause(1000) // upload it to the accountant, without the disk
                     }
                 }
-            // Signal slot available
-            emptySlots.release()
-            return item
+            }
         }
 
-        // Start producers
-        val producers =
-            (1..3).map { producerId ->
-                scope.vizLaunch("producer-$producerId") {
-                    repeat(5) { item ->
-                        produce(producerId * 100 + item)
-                        vizDelay((10..50).random().toLong())
-                    }
-                }
-            }
+    /** One shopper of the Resource Timeout demo: when they come after the one before, and how long they try on, in scripted ms. */
+    private data class Shopper(
+        val name: String,
+        val gapMillis: Long,
+        val tryOnMillis: Long,
+    )
 
-        // Start consumers
-        val consumers =
-            (1..2).map { consumerId ->
-                scope.vizLaunch("consumer-$consumerId") {
-                    repeat(7) {
-                        consume()
-                        vizDelay((20..80).random().toLong())
-                    }
-                }
-            }
+    private val SHOPPERS =
+        listOf(
+            Shopper("anna", gapMillis = 500, tryOnMillis = 2000),
+            Shopper("ben", gapMillis = 500, tryOnMillis = 2500),
+            Shopper("carla", gapMillis = 500, tryOnMillis = 2500),
+            Shopper("dan", gapMillis = 500, tryOnMillis = 2000),
+            Shopper("eva", gapMillis = 500, tryOnMillis = 2000),
+            Shopper("finn", gapMillis = 500, tryOnMillis = 2000),
+            Shopper("gina", gapMillis = 3000, tryOnMillis = 2500),
+        )
 
-        producers.forEach { it.join() }
-        consumers.forEach { it.join() }
-    }
+    /** How long a shopper of the Resource Timeout demo waits for a fitting room before giving up, in scripted ms. */
+    private const val FITTING_ROOM_PATIENCE_MILLIS = 3000L
+
+    /**
+     * A resource pool with a timeout, as the two fitting rooms of a clothes shop (`fitting-rooms`, 2 permits). A
+     * shopper waits at most 3 s for a room (`withTimeoutOrNull`). With a room, they try the clothes on (2-2.5 s),
+     * change back (1 s), give the room back and pay at the till (1 s); without one, they hang the clothes back and
+     * leave (1 s).
+     *
+     * Anna (0.5 s) and Ben (1 s) find a room free. Carla (1.5 s) and Dan (2 s) wait, suspended, and get one at 3.5 s
+     * and 4.5 s. Eva (2.5 s) and Finn (3 s) wait too, but no room comes free within 3 s: their waits end at 5.5 s and
+     * 6 s, they go on and leave. Gina comes at 6 s, waits 1 s and gets Carla's room. The shop is done at 11.5 s;
+     * [onClosed] gets who tried on, in the order they got a room, and who left without, in the order they gave up.
+     *
+     * Every timeout fires at least 0.5 s away from any room coming free, so no shopper gives up in the same moment a
+     * room would have been theirs.
+     */
+    suspend fun runResourceTimeout(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+        onClosed: (triedOn: List<String>, leftWithout: List<String>) -> Unit = { _, _ -> },
+    ): Job =
+        coroutineScope {
+            logger.info("Starting resource pool with timeout scenario in session: ${session.sessionId}")
+
+            val viz = session.demoScope(context)
+            val rooms = viz.vizSemaphore("fitting-rooms", permits = 2)
+            val triedOn = ConcurrentLinkedQueue<String>()
+            val leftWithout = ConcurrentLinkedQueue<String>()
+
+            viz
+                .vizLaunch("clothes-shop") {
+                    for (shopper in SHOPPERS) {
+                        pause(shopper.gapMillis) // the next shopper comes in
+                        vizLaunch(shopper.name) {
+                            val gotRoom = withTimeoutOrNull(scaled(FITTING_ROOM_PATIENCE_MILLIS)) { rooms.acquire() } != null
+                            if (gotRoom) {
+                                triedOn += shopper.name
+                                try {
+                                    pause(shopper.tryOnMillis) // try the clothes on
+                                    pause(1000) // change back
+                                } finally {
+                                    rooms.release()
+                                }
+                                pause(1000) // pay at the till
+                            } else {
+                                leftWithout += shopper.name
+                                pause(1000) // hang the clothes back and leave
+                            }
+                        }
+                    }
+                }.also { root -> root.invokeOnCompletion { if (it == null) onClosed(triedOn.toList(), leftWithout.toList()) } }
+        }
+
+    /** How long the Bounded Buffer demo's baker takes for each loaf, in scripted ms: the sixth is a big rye. */
+    private val LOAF_BAKE_MILLIS = listOf(1000L, 1000, 1000, 1000, 1000, 1500, 1000, 1000)
+
+    /** How many loaves fit on the Bounded Buffer demo's cooling rack. */
+    private const val RACK_PLACES = 3
+
+    /**
+     * A producer and a consumer sharing a bounded buffer, as a bakery's cooling rack with room for 3 loaves. The
+     * `baker` bakes a loaf (1 s, the sixth 1.5 s) and puts it on the rack; the `shop-assistant` takes loaves off, one
+     * at a time, and sells each (2.5 s). Two semaphores count the rack: `free-places` (3 permits, all free) and
+     * `loaves-ready` (3 permits, all taken at the start, so none free). The baker takes a free place and gives a
+     * permit to `loaves-ready`; the assistant takes a ready loaf and gives a permit back to `free-places`. A small
+     * lock `rack` guards the list of loaves itself.
+     *
+     * The assistant waits for the first loaf (0-1 s). The baker is faster, so the rack fills: at 7.5 s and again at
+     * 9.5 s the baker waits for a free place, suspended, until the assistant takes a loaf (8.5 s, 11 s). The baker
+     * is done at 11 s; the assistant sells the last loaf at 21 s. [onSold] gets the loaves in the order sold and the
+     * most that were on the rack at once.
+     */
+    suspend fun runProducerConsumer(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+        onSold: (loaves: List<Int>, mostOnRack: Int) -> Unit = { _, _ -> },
+    ): Job =
+        coroutineScope {
+            logger.info("Starting bounded buffer scenario in session: ${session.sessionId}")
+
+            val viz = session.demoScope(context)
+            val freePlaces = viz.vizSemaphore("free-places", permits = RACK_PLACES)
+            // kotlinx forbids a semaphore with 0 permits: "none ready" is all 3 permits taken at the start.
+            val loavesReady = viz.vizSemaphore("loaves-ready", permits = RACK_PLACES, acquiredPermits = RACK_PLACES)
+            val rack = viz.vizMutex("rack")
+            val onRack = ArrayDeque<Int>() // only read or changed under `rack`
+            var mostOnRack = 0
+            val sold = ConcurrentLinkedQueue<Int>()
+
+            viz
+                .vizLaunch("bakery") {
+                    vizLaunch("baker") {
+                        LOAF_BAKE_MILLIS.forEachIndexed { i, millis ->
+                            pause(millis) // bake the next loaf
+                            freePlaces.acquire() // a free place on the rack; waits while the rack is full
+                            rack.withLock {
+                                onRack.addLast(i + 1)
+                                mostOnRack = maxOf(mostOnRack, onRack.size)
+                            }
+                            loavesReady.release() // one more loaf ready
+                        }
+                    }
+                    vizLaunch("shop-assistant") {
+                        repeat(LOAF_BAKE_MILLIS.size) {
+                            loavesReady.acquire() // a loaf; waits while the rack is empty
+                            val loaf = rack.withLock { onRack.removeFirst() }
+                            freePlaces.release() // one more free place
+                            pause(2500) // sell the loaf
+                            sold += loaf
+                        }
+                    }
+                }.also { root -> root.invokeOnCompletion { if (it == null) onSold(sold.toList(), mostOnRack) } }
+        }
 
     // ========================================================================
     // COMBINED SCENARIOS
     // ========================================================================
 
-    /**
-     * Scenario: E-commerce Order Processing
-     *
-     * Real-world use case: Processing orders with inventory management.
-     * Combines mutex for inventory updates and semaphore for payment processing.
-     */
-    suspend fun ecommerceOrderProcessing(scope: VizScope) {
-        val inventory =
-            mutableMapOf(
-                "laptop" to 5,
-                "phone" to 10,
-                "tablet" to 3,
-            )
-        val inventoryLock = scope.vizMutex("inventory-lock")
-        val paymentGateway = scope.vizSemaphore("payment-gateway", permits = 2)
+    /** One order of the Combined demo: whose, when it comes after the one before, and whether the card is accepted. */
+    private data class SneakerOrder(
+        val customer: String,
+        val gapMillis: Long,
+        val cardAccepted: Boolean = true,
+    )
 
-        data class Order(
-            val id: Int,
-            val product: String,
-            val quantity: Int,
+    private val SNEAKER_ORDERS =
+        listOf(
+            SneakerOrder("anna", gapMillis = 500),
+            SneakerOrder("ben", gapMillis = 500, cardAccepted = false),
+            SneakerOrder("carla", gapMillis = 1000),
+            SneakerOrder("dan", gapMillis = 1000),
+            SneakerOrder("eva", gapMillis = 3500),
         )
 
-        suspend fun processOrder(order: Order): Boolean {
-            // Check and reserve inventory (mutex)
-            val reserved =
-                inventoryLock.withLock {
-                    val available = inventory[order.product] ?: 0
-                    if (available >= order.quantity) {
-                        inventory[order.product] = available - order.quantity
-                        println("Order ${order.id}: Reserved ${order.quantity} ${order.product}")
-                        true
-                    } else {
-                        println("Order ${order.id}: Insufficient stock for ${order.product}")
-                        false
+    /**
+     * Order processing with a mutex and a semaphore, as a limited sneaker drop: a web shop sells its last 3 pairs. An
+     * order checks and reserves a pair under the lock `stock` (1 s), pays through a payment provider that takes two
+     * payments at a time (`payment-gateway`, 2 permits; 2.5 s), and sends a confirmation (1 s). An order that finds
+     * no pair tells the customer it is sold out (1 s). A declined card puts its pair back under `stock` (0.5 s).
+     *
+     * Anna (0.5 s), Ben (1 s), Carla (2 s) and Dan (3 s) each wait for the stock lock while the order before checks.
+     * Anna, Ben and Carla reserve the three pairs; Carla waits for a payment permit (3.5-4 s) while Anna and Ben pay.
+     * Dan finds none left at 4.5 s: Ben's pair is still reserved. Ben's card is declined at 5 s, and his pair goes
+     * back. Eva comes at 6.5 s and buys it. Three pairs sold (Anna, Carla, Eva), none left, at 11 s; [onSettled] gets
+     * the buyers in the order they paid and the pairs left.
+     */
+    suspend fun runOrderProcessing(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+        onSettled: (bought: List<String>, pairsLeft: Int) -> Unit = { _, _ -> },
+    ): Job =
+        coroutineScope {
+            logger.info("Starting e-commerce order processing scenario in session: ${session.sessionId}")
+
+            val viz = session.demoScope(context)
+            val stock = viz.vizMutex("stock")
+            val paymentGateway = viz.vizSemaphore("payment-gateway", permits = 2)
+            var pairsLeft = 3 // only read or changed under `stock`
+            val bought = ConcurrentLinkedQueue<String>()
+
+            suspend fun VizScope.order(o: SneakerOrder) {
+                val reserved =
+                    stock.withLock {
+                        pause(1000) // check the stock
+                        (pairsLeft > 0).also { if (it) pairsLeft-- } // and reserve a pair, under the same lock
+                    }
+                if (!reserved) {
+                    pause(1000) // tell the customer the drop is sold out
+                    return
+                }
+                val paid = paymentGateway.withPermit {
+                    pause(2500) // charge the card
+                    o.cardAccepted
+                }
+                if (paid) {
+                    bought += "order-${o.customer}"
+                } else {
+                    stock.withLock {
+                        pause(500) // put the pair back
+                        pairsLeft++
                     }
                 }
-
-            if (!reserved) return false
-
-            // Process payment (semaphore-limited)
-            val paid =
-                try {
-                    paymentGateway.withPermit {
-                        println("Order ${order.id}: Processing payment...")
-                        delay((100..300).random().toLong())
-                        // Simulate 90% success rate
-                        kotlin.random.Random.nextDouble() < 0.9
-                    }
-                } catch (e: Exception) {
-                    false
-                }
-
-            if (!paid) {
-                // Rollback inventory
-                inventoryLock.withLock {
-                    inventory[order.product] = (inventory[order.product] ?: 0) + order.quantity
-                    println("Order ${order.id}: Payment failed, inventory restored")
-                }
-                return false
+                pause(1000) // send the confirmation, or say the card was declined
             }
 
-            println("Order ${order.id}: Completed successfully!")
-            return true
+            viz
+                .vizLaunch("sneaker-drop") {
+                    for (o in SNEAKER_ORDERS) {
+                        pause(o.gapMillis) // the next order comes in
+                        vizLaunch("order-${o.customer}") { order(o) }
+                    }
+                }.also { root -> root.invokeOnCompletion { if (it == null) onSettled(bought.toList(), pairsLeft) } }
         }
-
-        val orders =
-            listOf(
-                Order(1, "laptop", 2),
-                Order(2, "phone", 3),
-                Order(3, "tablet", 1),
-                Order(4, "laptop", 2),
-                Order(5, "phone", 5),
-                Order(6, "tablet", 3),
-                // This will fail - not enough stock
-                Order(7, "laptop", 3),
-            )
-
-        val results =
-            orders.map { order ->
-                scope.vizAsync("order-${order.id}") {
-                    processOrder(order)
-                }
-            }
-
-        val successCount = results.count { it.await() }
-        println("Successfully processed: $successCount / ${orders.size} orders")
-        println("Final inventory: $inventory")
-    }
 }
