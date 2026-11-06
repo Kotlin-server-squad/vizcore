@@ -8,7 +8,7 @@ import catalog from '@/test/demo-catalog.json'
 
 const ids = new Set(catalog.scenarios.map((s) => s.id))
 /** The groups whose demos all have a guide, with how many demos each has. */
-const GUIDED_GROUPS = { basics: 7, channels: 3, flow: 4, patterns: 5, 'sync-mutex': 4 }
+const GUIDED_GROUPS = { basics: 7, channels: 3, flow: 4, patterns: 5, 'sync-mutex': 4, 'sync-semaphore': 5, combined: 1 }
 const guided = (group: string) => catalog.scenarios.filter((s) => s.group === group).map((s) => s.id)
 /** The step markers in a snippet: `// 1`, `// 2` … (a duration is written `// takes 8 s`). */
 const markers = (code: string) => [...code.matchAll(/\/\/\s*(\d+)\b/g)].map((m) => Number(m[1]))

@@ -79,31 +79,6 @@ html[data-look='c'] {
   font-weight: 600;
 }
 
-/* Graph cards: the name in mono, the state as a display word, a thicker
-   outline in the same (shared) state colour, and no internal ids. */
-[data-look='c'] [data-look-part='node'] {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  border-width: 3px;
-}
-[data-look='c'] [data-look-part='node-name'] {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.25rem;
-}
-[data-look='c'] [data-look-part='node-state'] {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.5rem;
-  color: hsl(var(--heroui-foreground));
-}
-[data-look='c'] [data-look-part='node-details'] {
-  display: none;
-}
-
 /* Dock: pill tabs, the selected one filled with the text colour. */
 [data-look='c'] [data-look-part='dock-tabs'] {
   gap: 6px;

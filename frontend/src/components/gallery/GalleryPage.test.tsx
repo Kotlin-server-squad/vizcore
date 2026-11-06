@@ -115,7 +115,7 @@ describe('GalleryPage', () => {
 
   it('starts the demo of the card, with a Run button named after demo and group', async () => {
     renderPage('sync-semaphore')
-    await userEvent.click(screen.getByRole('button', { name: 'Run Producer-Consumer (Sync: Semaphore)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run Producer-Consumer Buffer: The Bakery Rack (Sync: Semaphore)' }))
     expect(start).toHaveBeenCalledWith(expect.objectContaining({ id: 'sync/semaphore/producer-consumer' }))
   })
 
@@ -219,12 +219,12 @@ describe('GalleryPage', () => {
   })
 
   it('shows no level for a demo without a guide', () => {
-    renderPage('sync-semaphore')
+    renderPage('real-life')
     expect(screen.getAllByTestId('demo-card').length).toBeGreaterThan(0)
     expect(screen.queryByText(/^(beginner|intermediate|advanced)$/)).toBeNull()
   })
 
-  it.each(['basics', 'channels', 'flow', 'patterns', 'sync-mutex'])('links every %s card to its How it works page', (group) => {
+  it.each(['basics', 'channels', 'flow', 'patterns', 'sync-mutex', 'sync-semaphore', 'combined'])('links every %s card to its How it works page', (group) => {
     renderPage(group)
     for (const s of all.filter((d) => d.group === group)) {
       expect(screen.getByRole('link', { name: `How it works: ${s.name}` })).toHaveAttribute('href', `/gallery/${demoSlug(s.id)}`)
@@ -239,7 +239,7 @@ describe('GalleryPage', () => {
   })
 
   it('has no How it works link for a demo without a guide', () => {
-    renderPage('sync-semaphore')
+    renderPage('real-life')
     expect(screen.queryByRole('link', { name: /how it works/i })).toBeNull()
   })
 })

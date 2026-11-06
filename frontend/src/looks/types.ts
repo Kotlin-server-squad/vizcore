@@ -2,6 +2,8 @@ import type { ReactElement, ReactNode, Ref } from 'react'
 import type { ActivityLine } from '@/lib/activity'
 import type { StateCounts } from '@/lib/state-counts'
 import type { CoroutineNode } from '@/types/api'
+import type { RunOutcomeFacts } from '@/lib/run-outcome'
+import type { VizEvent } from '@/types/api'
 
 /**
  * The pieces of layout a look may replace where CSS cannot rearrange them.
@@ -20,6 +22,25 @@ import type { CoroutineNode } from '@/types/api'
 export interface LookSlots {
   /** The main view and the dock under the header. Classic: a column, the main view above the dock. */
   SessionBody: (props: SessionBodyProps) => ReactElement
+  /**
+   * A line under the session title, from the facts the header already holds
+   * (no request, no other data). Classic: none. Its result is a leaf, so it
+   * may be a component of the look's own.
+   */
+  HeaderSummary: (props: HeaderSummaryProps) => ReactNode
+}
+
+export interface HeaderSummaryProps {
+  /** A demo run's outcome; null for an attached app. */
+  outcome: RunOutcomeFacts | null
+  /** From the first to the last event the page holds. */
+  runSpanNanos: number | null
+  /** Events were dropped, so the span is a floor. */
+  spanIsFloor: boolean
+  replayActive: boolean
+  replayAtNanos: number | null
+  /** The events the page shows: live, paused or up to the replay cursor. */
+  events: readonly VizEvent[]
 }
 
 export interface SessionBodyProps {
@@ -49,4 +70,17 @@ export interface LookDefinition<Id extends string = string> {
   trial: boolean
   /** The layout this look replaces; any slot left out is Classic's. */
   slots?: Partial<LookSlots>
+}
+
+/**
+ * The size of one coroutine card on the graph (PR L0, per-look cards). The
+ * layout reserves exactly this box for every card, so edges, the "N children"
+ * labels and the spacing follow it. Every look draws the same card markup,
+ * styled through its `data-look-part` hooks (node, node-name, node-state,
+ * node-activity, …) and the card wrapper's `data-state`; a look sets only the
+ * size here, in its folder's `card.ts`.
+ */
+export interface LookCard {
+  width: number
+  height: number
 }

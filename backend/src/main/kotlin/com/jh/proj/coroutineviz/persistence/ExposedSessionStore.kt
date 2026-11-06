@@ -16,8 +16,10 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.slf4j.LoggerFactory
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -78,6 +80,8 @@ class ExposedSessionStore(
                 it[scenario] = null
                 it[tenantId] = owner
                 it[metadata] = null
+                // An empty ingest state tells this row from one created before Part 5b-2 (plan E-13).
+                it[ingestState] = "{}"
             }
         }
         logger.info("Created session (db): $sessionId (tenant=${owner ?: "<global>"})")
@@ -103,6 +107,34 @@ class ExposedSessionStore(
                 .firstOrNull()
                 ?.get(SessionsTable.createdAt)
                 ?.toEpochMilliseconds()
+        }
+
+    /** Stores the session's last checks run (spec C-5). */
+    fun saveChecks(
+        sessionId: String,
+        json: String,
+    ) {
+        transaction(db) { SessionsTable.update({ SessionsTable.id eq sessionId }) { it[checks] = json } }
+    }
+
+    /** The session's last checks run as stored, or null. */
+    fun loadChecks(sessionId: String): String? =
+        transaction(db) {
+            SessionsTable
+                .select(SessionsTable.checks)
+                .where { SessionsTable.id eq sessionId }
+                .firstOrNull()
+                ?.get(SessionsTable.checks)
+        }
+
+    /** Whether the session's row stores an ingest state (rows created before Part 5b-2 do not; plan E-13). */
+    fun hasIngestState(sessionId: String): Boolean =
+        transaction(db) {
+            SessionsTable
+                .select(SessionsTable.ingestState)
+                .where { SessionsTable.id eq sessionId }
+                .firstOrNull()
+                ?.get(SessionsTable.ingestState) != null
         }
 
     /** Whether the session's row exists, without rebuilding the session from its events. */
@@ -178,7 +210,7 @@ class ExposedSessionStore(
      * [sessionId]. Uses the injectable event-store-factory seam on VizSession so
      * no DB dependency leaks into coroutine-viz-core. The session keeps summaries, folded
      * from the stored events by the rehydration below: complete while the store was never
-     * trimmed (the health route says so once it was; Part 5b persists them).
+     * trimmed; the trim keeps a checkpoint of them, see [rehydrate]).
      */
     private fun buildSession(
         sessionId: String,
@@ -190,12 +222,37 @@ class ExposedSessionStore(
             createdAtMs = createdAtMs,
             keepSummaries = true,
             eventStoreFactory = { id -> ExposedEventStore(db, id) },
-        ).also {
-            // A DB-backed session is reconstructed fresh on every read with empty
-            // in-memory read models — replay the persisted events so the coroutine
-            // tree / threads / timeline projections are populated (PERS visualization).
-            it.rehydrateFromStore()
+        ).also(::rehydrate)
+
+    /**
+     * A database session is rebuilt on every read (PERS visualization): its snapshot and projections from the stored
+     * events, its summaries from the trim's checkpoint plus the events after it (spec C-4, plan E-12). The events are read
+     * before the checkpoint, and read again while the checkpoint is newer than every event read (a trim committed in
+     * between), so summaries, snapshot and projections come from one cut. Without one after [CUT_ATTEMPTS] the summaries
+     * are abandoned: health reads answer "unavailable", everything else still works.
+     */
+    private fun rehydrate(session: VizSession) {
+        repeat(CUT_ATTEMPTS) {
+            val events = ExposedEventStore(db, session.sessionId).all()
+            afterEventsReadForTest?.invoke(session.sessionId)
+            val seed = transaction(db) { SummaryCheckpoints.read(session.sessionId) }
+            if (seed == null || seed.lastEventSeq <= (events.lastOrNull()?.seq ?: 0L)) {
+                session.rehydrateFrom(events, seed)
+                return
+            }
         }
+        logger.warn("No consistent cut of session {} after {} attempts; its summaries are unavailable", session.sessionId, CUT_ATTEMPTS)
+        session.rehydrateFrom(ExposedEventStore(db, session.sessionId).all(), seed = null)
+        session.abandonSummaries()
+    }
+
+    /** Test seam: runs between reading a session's events and its checkpoint, to interleave a trim. */
+    @Volatile
+    internal var afterEventsReadForTest: ((String) -> Unit)? = null
+
+    private companion object {
+        const val CUT_ATTEMPTS = 3
+    }
 
     /** Distinct coroutine ids present in a session's stored events. */
     private fun buildSessionEventStoreCoroutineCount(sessionId: String): Int =

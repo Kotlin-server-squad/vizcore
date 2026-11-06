@@ -179,6 +179,22 @@ data class PossiblyBlockedIncident(
 }
 
 @Serializable
+enum class MemberRole { FAILED, CANCELLED_AFTER }
+
+/** One member of a failed round's incident (spec C-3 `health/items?list=round-members`). */
+@Serializable
+data class RoundMember(
+    val coroutineId: String,
+    val name: String?,
+    val role: MemberRole,
+    val exceptionType: String?,
+    val message: String?,
+    val terminalSeq: Long,
+    /** The summary was reduced to a stub: type and message are no longer known. */
+    val detailsDropped: Boolean,
+)
+
+@Serializable
 data class ObservedAge(
     val coroutineId: String,
     val name: String?,
@@ -212,6 +228,11 @@ data class TransportStatus(
     val lostEvents: Long = 0,
     val deliveryUncertain: Boolean = false,
     val sinceSeq: Long? = null,
+    /**
+     * Bumped by the backend on every change of the facts above, so a follow-up read can tell that the transport moved on
+     * since the health it is bound to (the facts are sticky and cannot be rebuilt at a past seq).
+     */
+    val revision: Long = 0,
 )
 
 /**

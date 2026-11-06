@@ -37,19 +37,28 @@ internal object FailureIncidents {
             detailsDropped = s.reduced,
         )
 
+    /**
+     * A failed round's members (spec "Incidents"): its failures, then the cancellations recorded after its first failure,
+     * each newest first (spec C-3); `null` when none of [members] failed.
+     */
+    fun members(members: List<CoroutineSummary>): Pair<List<CoroutineSummary>, List<CoroutineSummary>>? {
+        val failures = members.filter { it.failed }.sortedWith(NEWEST_TERMINAL_FIRST)
+        if (failures.isEmpty()) return null
+        val firstFailureSeq = failures.minOf(::terminalSeq)
+        val cancelledAfter =
+            members
+                .filter { it.cancelled && !it.failed && terminalSeq(it) > firstFailureSeq }
+                .sortedWith(NEWEST_TERMINAL_FIRST)
+        return failures to cancelledAfter
+    }
+
     private fun failedRound(
         anchor: String,
         members: List<CoroutineSummary>,
     ): FailedRoundIncident? {
-        // Every list is newest first (spec C-3).
-        val failures = members.filter { it.failed }.sortedByDescending(::terminalSeq)
-        if (failures.isEmpty()) return null
-        val firstFailureSeq = terminalSeq(failures.last())
-        val cancelledAfter =
-            members
-                .filter { it.cancelled && !it.failed && terminalSeq(it) > firstFailureSeq }
-                .sortedByDescending(::terminalSeq)
-                .map { it.id }
+        val (failures, cancelled) = members(members) ?: return null
+        val firstFailureSeq = failures.minOf(::terminalSeq)
+        val cancelledAfter = cancelled.map { it.id }
         val roundId = RoundAnchoring.roundId(anchor)
         return FailedRoundIncident(
             id = "failed:$roundId",
@@ -67,4 +76,7 @@ internal object FailureIncidents {
      * FAILED and CANCELLED summaries always have a `terminal`, and stubs keep it.
      */
     fun terminalSeq(s: CoroutineSummary): Long = s.terminal?.seq ?: s.lastModifiedSeq
+
+    /** Newest terminal first, ties by id: one complete order, so paging by (seq, id) neither skips nor repeats (plan E-9). */
+    val NEWEST_TERMINAL_FIRST: Comparator<CoroutineSummary> = compareByDescending(::terminalSeq).thenBy { it.id }
 }
