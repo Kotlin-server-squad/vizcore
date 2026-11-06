@@ -52,6 +52,12 @@ describe('CoroutineTree', () => {
     expect(screen.getByText('ParentScope')).toBeInTheDocument()
   })
 
+  it('shows the second line under the id line', () => {
+    const activity = new Map([['c-1', { text: 'holds a payment-gateway permit', waiting: false }]])
+    render(<CoroutineTree coroutines={[makeCoroutine()]} activity={activity} />)
+    expect(screen.getByTestId('activity-line')).toHaveTextContent('holds a payment-gateway permit')
+  })
+
   it('renders state chips for each coroutine', () => {
     const coroutines: CoroutineNode[] = [
       makeCoroutine({ id: 'c-1', label: 'Worker-1', state: CoroutineState.ACTIVE }),

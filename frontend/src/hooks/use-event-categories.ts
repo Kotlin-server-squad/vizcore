@@ -32,43 +32,42 @@ export function useEventCategories(
 ): EventCategories {
   const { data: stored } = useSessionEvents(sessionId)
 
-  return useMemo(() => {
-    const result: EventCategories = {
-      hasChannels: false,
-      hasFlowOps: false,
-      hasSyncPrimitives: false,
-      hasJobs: false,
-      hasValidation: true, // Validation tab is always available
-    }
-
-    for (const event of eventsOf(stored, liveEvents)) {
-      const kind = event.kind
-      if (!result.hasChannels && CHANNEL_EVENT_KINDS.has(kind)) {
-        result.hasChannels = true
-      }
-      if (!result.hasFlowOps && FLOW_EVENT_KINDS.has(kind)) {
-        result.hasFlowOps = true
-      }
-      if (!result.hasSyncPrimitives && SYNC_EVENT_KINDS.has(kind)) {
-        result.hasSyncPrimitives = true
-      }
-      if (!result.hasJobs && JOB_EVENT_KINDS.has(kind)) {
-        result.hasJobs = true
-      }
-      // Early exit if all categories found
-      if (result.hasChannels && result.hasFlowOps && result.hasSyncPrimitives && result.hasJobs) {
-        break
-      }
-    }
-
-    return result
-  }, [stored, liveEvents])
+  return useMemo(() => categorizeEvents(stored, liveEvents), [stored, liveEvents])
 }
 
-function* eventsOf(
-  stored: readonly VizEvent[] | undefined,
-  live: readonly VizEvent[] | undefined,
-): Generator<VizEvent> {
-  if (stored) yield* stored
-  if (live) yield* live
+/**
+ * Which event categories the given lists hold. Pure: the replay view runs it
+ * over the cursor's events, so Evidence never reports what the cursor has not
+ * reached yet.
+ */
+export function categorizeEvents(...lists: ReadonlyArray<readonly VizEvent[] | undefined>): EventCategories {
+  const result: EventCategories = {
+    hasChannels: false,
+    hasFlowOps: false,
+    hasSyncPrimitives: false,
+    hasJobs: false,
+    hasValidation: true, // Validation tab is always available
+  }
+
+  for (const list of lists) for (const event of list ?? []) {
+    const kind = event.kind
+    if (!result.hasChannels && CHANNEL_EVENT_KINDS.has(kind)) {
+      result.hasChannels = true
+    }
+    if (!result.hasFlowOps && FLOW_EVENT_KINDS.has(kind)) {
+      result.hasFlowOps = true
+    }
+    if (!result.hasSyncPrimitives && SYNC_EVENT_KINDS.has(kind)) {
+      result.hasSyncPrimitives = true
+    }
+    if (!result.hasJobs && JOB_EVENT_KINDS.has(kind)) {
+      result.hasJobs = true
+    }
+    // Early exit if all categories found
+    if (result.hasChannels && result.hasFlowOps && result.hasSyncPrimitives && result.hasJobs) {
+      return result
+    }
+  }
+
+  return result
 }

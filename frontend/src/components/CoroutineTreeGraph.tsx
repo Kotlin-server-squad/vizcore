@@ -9,6 +9,7 @@ import {
 } from 'react-zoom-pan-pinch'
 import { Button } from '@heroui/react'
 import type { CoroutineNode } from '@/types/api'
+import type { ActivityLine } from '@/lib/activity'
 import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
 import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state-colors'
@@ -25,6 +26,8 @@ interface CoroutineTreeGraphProps {
   onSelect?: (id: string) => void
   /** Id of the currently selected node; drives the `ring-2 ring-primary` highlight. */
   selectedNodeId?: string | null
+  /** Each coroutine's second line: what it waits for or holds (S-6). */
+  activity?: ReadonlyMap<string, ActivityLine>
 }
 
 interface TreeNode extends CoroutineNode {
@@ -36,11 +39,11 @@ const isRunning = isActiveState
 
 /**
  * Card size and spacing the layout reserves; the card is drawn at exactly this size. The height
- * holds the tallest card (measured): border + padding 36, a two-line name and state 64 + 12,
- * four detail rows 92, the progress bar of a running coroutine 16 — 220 px.
+ * holds the tallest card (measured): border + padding 36, a two-line name, the state and the
+ * second line (S-6) 80 + 12, four detail rows 92, the progress bar of a running coroutine 16 — 236 px.
  */
 const NODE_WIDTH = 280
-const NODE_HEIGHT = 224
+const NODE_HEIGHT = 240
 const H_GAP = 40
 const V_GAP = 64
 /** Space around the tree inside the canvas. */
@@ -70,7 +73,7 @@ const MAX_SCALE = 2
 /** Row width used before the canvas has been measured (and in tests). */
 const DEFAULT_ROW_WIDTH = 1200
 
-export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId }: CoroutineTreeGraphProps) {
+export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activity }: CoroutineTreeGraphProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines) as TreeNode[], [coroutines])
   // The badge counts what the state bar calls Active (CREATED or ACTIVE); a parent
   // waiting for its children is not running its body (spec S-6).
@@ -371,6 +374,7 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId }: Cor
                         onSelect={onSelect}
                         onClickSelect={selectOnClick}
                         selected={selectedNodeId === node.id}
+                        activity={activity?.get(id)}
                       />
                       {node.children.length > 0 && (
                         <div
@@ -440,9 +444,11 @@ interface NodeCardProps {
   /** Click activation: ignores the click that ends a drag. */
   onClickSelect?: (id: string) => void
   selected: boolean
+  /** What it waits for or holds (S-6). */
+  activity?: ActivityLine
 }
 
-function NodeCard({ node, isRoot, onSelect, onClickSelect, selected }: NodeCardProps) {
+function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }: NodeCardProps) {
   const colors = getStateColors(node.state)
   const shouldAnimate = useAnimationSlot()
   // Use FiLoader for ACTIVE (rotation animation) — override the default FiPlay
@@ -520,6 +526,16 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected }: NodeCardP
               {stateLabel(node.state)}
               {node.state === 'ACTIVE' && <span className="ml-2 inline-block">●</span>}
             </div>
+            {/* What it waits for or holds (S-6): a wait in the Suspended colour, a hold neutral. */}
+            {activity && (
+              <div
+                data-testid="activity-line"
+                className={activity.waiting ? 'truncate text-xs text-warning' : 'truncate text-xs text-default-600'}
+                title={activity.text}
+              >
+                {activity.text}
+              </div>
+            )}
           </div>
         </div>
 

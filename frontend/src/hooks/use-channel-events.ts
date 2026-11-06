@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { useSessionEvents } from '@/hooks/use-sessions'
+import { inSeqOrder } from '@/lib/projections/in-seq-order'
+import type { VizEvent } from '@/types/api'
 import { CHANNEL_EVENT_KINDS } from '@/types/api'
 import type {
   ChannelCreated,
@@ -43,9 +45,14 @@ export interface UseChannelEventsResult {
 /**
  * Filters session events to only channel events,
  * groups by channelId, and tracks per-channel state.
+ *
+ * Reads `given` when passed — the events the page shows, so the facts follow
+ * the live stream and the replay cursor — else the stored history, which live
+ * updates never invalidate. It subscribes to that history either way (#124).
  */
-export function useChannelEvents(sessionId: string): UseChannelEventsResult {
-  const { data: events } = useSessionEvents(sessionId)
+export function useChannelEvents(sessionId: string, given?: readonly VizEvent[]): UseChannelEventsResult {
+  const { data: stored } = useSessionEvents(sessionId)
+  const events = given ?? stored
 
   return useMemo(() => {
     const channelEvents: ChannelEvent[] = []
@@ -62,7 +69,8 @@ export function useChannelEvents(sessionId: string): UseChannelEventsResult {
       }
     }
 
-    for (const event of events) {
+    // In seq order: the live stream can deliver an earlier event late (inSeqOrder).
+    for (const event of inSeqOrder(events)) {
       if (!CHANNEL_EVENT_KINDS.has(event.kind)) continue
 
       const channelEvent = event as unknown as ChannelEvent
