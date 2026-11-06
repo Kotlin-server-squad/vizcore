@@ -2297,11 +2297,12 @@ paths:
   /api/sync/semaphore/connection-pool:
     get:
       tags: [Scenarios - Sync]
-      summary: Run database connection pool scenario
+      summary: "Run Database Connection Pool: Online Shop at Lunchtime"
       description: >
-        Demonstrates limiting concurrent database connections using a
-        Semaphore. Multiple coroutines compete for a limited number of
-        connections.
+        Nine lunchtime requests share an online shop's 3 database
+        connections. The first three find one free; the other six wait
+        for one, suspended, and get it in the order they asked. About 11
+        s at scale 1; answers once the demo has ended.
       operationId: runSemaphoreConnectionPoolScenario
       responses:
         "200":
@@ -2320,10 +2321,13 @@ paths:
   /api/sync/semaphore/rate-limiter:
     get:
       tags: [Scenarios - Sync]
-      summary: Run API rate limiter scenario
+      summary: "Run API Rate Limiter: Weather for a Trip"
       description: >
-        Demonstrates throttling concurrent API calls using a Semaphore to
-        enforce a maximum number of in-flight requests.
+        A trip planner asks for the weather in eight cities at once, but
+        the weather service takes two calls at a time. Six calls wait
+        for a permit, suspended, and the trip page waits for every
+        forecast. About 12 s at scale 1; answers once the demo has
+        ended.
       operationId: runSemaphoreRateLimiterScenario
       responses:
         "200":
@@ -2342,10 +2346,12 @@ paths:
   /api/sync/semaphore/file-processor:
     get:
       tags: [Scenarios - Sync]
-      summary: Run parallel file processor scenario
+      summary: "Run Parallel File Processor: The Tax Folder"
       description: >
-        Demonstrates I/O-limited parallel file processing where a Semaphore
-        restricts the number of concurrent file operations.
+        Nine files of a tax folder are compressed two at a time. While
+        the big bank statements hold one permit, the other passes from
+        file to file the moment one is done. About 13 s at scale 1;
+        answers once the demo has ended.
       operationId: runSemaphoreFileProcessorScenario
       responses:
         "200":
@@ -2364,11 +2370,12 @@ paths:
   /api/sync/semaphore/resource-timeout:
     get:
       tags: [Scenarios - Sync]
-      summary: Run resource pool with timeout scenario
+      summary: "Run Resource Pool with Timeout: Fitting Rooms"
       description: >
-        Demonstrates resource acquisition with timeout handling. Coroutines
-        attempt to acquire a limited resource and fail gracefully if the
-        timeout expires.
+        Seven shoppers share two fitting rooms and wait at most 3 s for
+        one. Carla, Dan and Gina get a room in time; Eva and Finn give
+        up and leave. About 11.5 s at scale 1; answers once the demo has
+        ended.
       operationId: runSemaphoreResourceTimeoutScenario
       responses:
         "200":
@@ -2387,10 +2394,13 @@ paths:
   /api/sync/semaphore/producer-consumer:
     get:
       tags: [Scenarios - Sync]
-      summary: Run producer-consumer buffer scenario
+      summary: "Run Producer-Consumer Buffer: The Bakery Rack"
       description: >
-        Demonstrates a bounded buffer implementation using Semaphore to
-        coordinate producer and consumer coroutines.
+        A baker fills a cooling rack with room for 3 loaves faster than
+        the shop assistant sells them. Two semaphores count the free
+        places and the ready loaves: the baker waits when the rack is
+        full, the assistant when it is empty. About 21 s at scale 1;
+        answers once the demo has ended.
       operationId: runSemaphoreProducerConsumerScenario
       responses:
         "200":
@@ -2409,11 +2419,13 @@ paths:
   /api/sync/combined/ecommerce:
     get:
       tags: [Scenarios - Sync]
-      summary: Run e-commerce order processing (Mutex + Semaphore)
+      summary: "Run E-commerce Orders: A Limited Sneaker Drop"
       description: >
-        Demonstrates combining Mutex and Semaphore in a realistic e-commerce
-        order processing flow with inventory management and payment
-        processing.
+        Six orders for the last 3 pairs. Each reserves a pair under a
+        lock, then pays through a provider that takes two payments at a
+        time. A declined card puts its pair back for a later order; the
+        others find it sold out. About 11 s at scale 1; answers once the
+        demo has ended.
       operationId: runSyncEcommerceScenario
       responses:
         "200":

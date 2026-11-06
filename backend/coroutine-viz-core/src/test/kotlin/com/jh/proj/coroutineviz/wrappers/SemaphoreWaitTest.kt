@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -246,5 +248,90 @@ class SemaphoreWaitTest {
             release.complete(Unit)
             withTimeout(10.seconds) { keeper.join() }
             assertEquals(0, semaphore.getActiveHolderCount())
+        }
+    /**
+     * Locks and permits follows the events in order. A waiter can only get a permit once it is given back, so the
+     * release must be reported before the waiter reports it acquired: replayed in order, the events never show more
+     * coroutines holding a permit than there are permits.
+     */
+    @Test
+    fun `a permit is reported released before the next holder reports it acquired`() =
+        runBlocking {
+            val semaphore = VizSemaphore(session, permits = 1, label = "hot-gateway")
+            val holder = holding(semaphore)
+            val workers = (1..8).map { n -> viz.vizLaunch("worker-$n") { repeat(400) { semaphore.withPermit { } } } }
+            for (n in 1..8) session.awaitSuspension("worker-$n")
+            release.complete(Unit)
+            withTimeout(20.seconds) { (workers + holder).joinAll() }
+
+            var holding = 0
+            for (event in session.store.all().sortedBy { it.seq }) {
+                when (event) {
+                    is SemaphorePermitAcquired -> {
+                        holding++
+                        assertTrue(holding <= 1, "${event.acquirerLabel} reported a permit acquired while the only permit was held")
+                    }
+                    is SemaphorePermitReleased -> holding--
+                    else -> Unit
+                }
+            }
+        }
+
+    @Test
+    fun `a permit is given back even when reporting the release fails`() =
+        runBlocking {
+            val semaphore = VizSemaphore(session, permits = 1, label = "fragile-gateway")
+            assertTrue(semaphore.tryAcquire())
+            session.onEventEmitted = { throw IllegalStateException("the event sink is down") }
+
+            assertFailsWith<IllegalStateException> { semaphore.release() }
+
+            session.onEventEmitted = null
+            assertEquals(1, semaphore.availablePermits, "the permit is free although its release could not be reported")
+        }
+
+    @Test
+    fun `a release with every permit free fails without reporting a release`() =
+        runBlocking {
+            val semaphore = VizSemaphore(session, permits = 2, label = "idle-gateway")
+
+            assertFailsWith<IllegalStateException> { semaphore.release() }
+
+            assertEquals(2, semaphore.availablePermits)
+            assertEquals(emptyList(), releases(), "no release was reported")
+        }
+    /**
+     * The same order, made certain: a waiter on an unconfined dispatcher resumes inside the delegate's release, on the
+     * releasing thread, and reports its acquire straight away. The release must already be reported by then.
+     */
+    @Test
+    fun `a waiter resumed inside the release reports its acquire after the release`() =
+        runBlocking {
+            val semaphore = VizSemaphore(session, permits = 1, label = "gateway")
+            assertTrue(semaphore.tryAcquire())
+            val unconfined = VizScope(session, context = Dispatchers.Unconfined)
+            unconfined.vizLaunch("waiter") { semaphore.withPermit { } }
+            session.awaitSuspension("waiter")
+
+            semaphore.release()
+
+            val order = session.store.all().sortedBy { it.seq }.filter { it is SemaphorePermitAcquired || it is SemaphorePermitReleased }
+            assertEquals(listOf("SemaphorePermitAcquired", "SemaphorePermitReleased", "SemaphorePermitAcquired", "SemaphorePermitReleased"), order.map { it.kind })
+            assertEquals("waiter", (order[2] as SemaphorePermitAcquired).acquirerLabel, "the waiter acquires after the first release")
+        }
+
+    /** A waiter that leaves the queue (cancelled) does not take the next release: the permit is free. */
+    @Test
+    fun `a release after a waiter was cancelled frees the permit`() =
+        runBlocking {
+            val semaphore = VizSemaphore(session, permits = 1, label = "gateway", acquiredPermits = 1)
+            val doomed = viz.vizLaunch("doomed") { semaphore.withPermit { } }
+            session.awaitSuspension("doomed")
+            doomed.cancelAndJoin()
+
+            semaphore.release()
+
+            assertEquals(listOf(1), releases().map { it.newAvailablePermits })
+            assertEquals(1, semaphore.availablePermits)
         }
 }
