@@ -139,4 +139,19 @@ class WrapperOwnedCoroutinesTest {
         assertEquals("coroutine-1", snapshots[1].parentCoroutineId)
         assertEquals("coroutine-1", snapshots[2].parentCoroutineId)
     }
+
+    @Test
+    fun `an unlisted inner wrapper stays the parent of its child when the outer wrapper is listed`() {
+        val outerJob = Job()
+        val outer = element(session, outerJob)
+        val innerJob = Job(outerJob) // its body returned: DebugProbes do not list it
+        val inner =
+            VizCoroutineElement("coroutine-2", "job-2", "coroutine-1", "scope", "inner").also {
+                it.owner = session
+                it.ownerJob = innerJob
+            }
+        val raws = listOf(raw("outer", outerJob, outer), raw("child", Job(innerJob), inner))
+        val snapshots = attributeToWrappers(raws, CoroutineInfoAdapter().toSnapshots(raws), session)
+        assertEquals("coroutine-2", snapshots[1].parentCoroutineId, "the nearest wrapper, not the listed outer one")
+    }
 }

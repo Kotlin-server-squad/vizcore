@@ -38,27 +38,23 @@ internal fun attributeToWrappers(
     val elements = raws.map { raw -> raw.context[VizCoroutineElement]?.takeIf { it.owner === session } }
     if (elements.all { it == null }) return snapshots
     val owned = raws.indices.filter { isWrapperOwned(raws[it], session) }.toSet()
-    val wrapperIds = HashMap<CoroKey, String>()
-    for (i in owned) {
-        snapshots[i].wrapper = elements[i]
-        wrapperIds[snapshots[i].key] = elements[i]!!.coroutineId
-    }
+    for (i in owned) snapshots[i].wrapper = elements[i]
     val indexByKey = snapshots.indices.associateBy { snapshots[it].key }
     for (i in raws.indices) {
         if (i in owned) continue
-        val parentKey = snapshots[i].parentKey
-        // An observed wrapper parent is named by its own id, whatever the child carries (no element, another session's).
-        val wrapperParent = parentKey?.let(wrapperIds::get)
-        if (wrapperParent != null) {
-            snapshots[i].parentCoroutineId = wrapperParent
-            continue
-        }
-        // Inherited from a wrapper DebugProbes do not list (its body returned): that wrapper is the parent, unless the
-        // nearest observed parent is a nearer descendant of it (it carries the same element) and keeps its own id.
-        val element = elements[i] ?: continue
-        val parent = parentKey?.let(indexByKey::get)
-        val parentIsDescendant = parent != null && elements[parent] === element
-        if (!parentIsDescendant) snapshots[i].parentCoroutineId = element.coroutineId
+        val parent = snapshots[i].parentKey?.let(indexByKey::get)
+        val element = elements[i]
+        snapshots[i].parentCoroutineId =
+            if (element != null) {
+                // Inherited: the element names the nearest wrapper ancestor, listed or not (a wrapper whose body returned
+                // is not). Only a nearer observed descendant of that wrapper (same element, not the wrapper) keeps its id.
+                val nearerDescendant = parent != null && parent !in owned && elements[parent] === element
+                if (nearerDescendant) null else element.coroutineId
+            } else {
+                // No element of this session's (none, or another session's): an observed wrapper parent is named by its
+                // own id; any other parent keeps its dp- id.
+                parent?.takeIf { it in owned }?.let { elements[it]!!.coroutineId }
+            }
     }
     return snapshots
 }
