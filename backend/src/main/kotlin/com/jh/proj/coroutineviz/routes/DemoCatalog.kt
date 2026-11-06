@@ -286,15 +286,54 @@ val demoCatalog: List<DemoCatalogEntry> =
             "sync-semaphore",
             "Sync: Semaphore",
             "sync",
-            Demo("sync/semaphore/connection-pool", "Connection Pool", "Limiting concurrent database connections", "~1 second"),
-            Demo("sync/semaphore/rate-limiter", "API Rate Limiter", "Throttling concurrent API calls", "~1 second"),
-            Demo("sync/semaphore/file-processor", "File Processor", "I/O-limited parallel file processing", "~1 second"),
-            Demo("sync/semaphore/resource-timeout", "Resource Timeout", "Resource acquisition with timeout", "~1 second"),
-            Demo("sync/semaphore/producer-consumer", "Producer-Consumer", "Bounded buffer implementation", "~1 second"),
+            Demo(
+                "sync/semaphore/connection-pool",
+                "Database Connection Pool: Online Shop at Lunchtime",
+                "Nine lunchtime requests share an online shop's 3 database connections. The first three find " +
+                    "one free; the other six wait for one, suspended, and get it in the order they asked.",
+                "~11 seconds",
+            ),
+            Demo(
+                "sync/semaphore/rate-limiter",
+                "API Rate Limiter: Weather for a Trip",
+                "A trip planner asks for the weather in eight cities at once, but the weather service takes " +
+                    "two calls at a time. Six calls wait for a permit, suspended, and the trip page waits for " +
+                    "every forecast.",
+                "~12 seconds",
+            ),
+            Demo(
+                "sync/semaphore/file-processor",
+                "Parallel File Processor: The Tax Folder",
+                "Nine files of a tax folder are compressed two at a time. While the big bank statements hold " +
+                    "one permit, the other passes from file to file the moment one is done.",
+                "~13 seconds",
+            ),
+            Demo(
+                "sync/semaphore/resource-timeout",
+                "Resource Pool with Timeout: Fitting Rooms",
+                "Seven shoppers share two fitting rooms and wait at most 3 s for one. Carla, Dan and Gina get " +
+                    "a room in time; Eva and Finn give up and leave.",
+                "~12 seconds",
+            ),
+            Demo(
+                "sync/semaphore/producer-consumer",
+                "Producer-Consumer Buffer: The Bakery Rack",
+                "A baker fills a cooling rack with room for 3 loaves faster than the shop assistant sells " +
+                    "them. Two semaphores count the free places and the ready loaves: the baker waits when the " +
+                    "rack is full, the assistant when it is empty.",
+                "~21 seconds",
+            ),
         ) +
         group(
             "combined",
             "Combined",
             "sync",
-            Demo("sync/combined/ecommerce", "E-commerce Orders", "Order processing with inventory and payment", "~1 second"),
+            Demo(
+                "sync/combined/ecommerce",
+                "E-commerce Orders: A Limited Sneaker Drop",
+                "Six orders for the last 3 pairs. Each reserves a pair under a lock, then pays through a " +
+                    "provider that takes two payments at a time. A declined card puts its pair back for a later " +
+                    "order; the others find it sold out.",
+                "~11 seconds",
+            ),
         )

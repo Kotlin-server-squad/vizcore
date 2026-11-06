@@ -133,6 +133,12 @@ class GuideLabelsTest {
             "sync/mutex/bank-transfer" -> SyncScenarios.runBankTransfer(session, context)
             "sync/mutex/cache" -> SyncScenarios.runCache(session, context)
             "sync/mutex/deadlock-demo" -> SyncScenarios.runDeadlock(session, context)
+            "sync/semaphore/connection-pool" -> SyncScenarios.runConnectionPool(session, context)
+            "sync/semaphore/rate-limiter" -> SyncScenarios.runRateLimiter(session, context)
+            "sync/semaphore/file-processor" -> SyncScenarios.runFileProcessor(session, context)
+            "sync/semaphore/resource-timeout" -> SyncScenarios.runResourceTimeout(session, context)
+            "sync/semaphore/producer-consumer" -> SyncScenarios.runProducerConsumer(session, context)
+            "sync/combined/ecommerce" -> SyncScenarios.runOrderProcessing(session, context)
             else -> error("$demoId does not run on virtual time")
         }
 
@@ -217,9 +223,20 @@ class GuideLabelsTest {
         }
 
     companion object {
-        /** The demos whose picture is checked on virtual time: who gets a lock first decides their tree. */
+        /** The demos whose picture is checked on virtual time: who gets a lock or a permit first decides their tree. */
         private val VIRTUAL_TIME_DEMOS =
-            setOf("sync/mutex/counter", "sync/mutex/bank-transfer", "sync/mutex/cache", "sync/mutex/deadlock-demo")
+            setOf(
+                "sync/mutex/counter",
+                "sync/mutex/bank-transfer",
+                "sync/mutex/cache",
+                "sync/mutex/deadlock-demo",
+                "sync/semaphore/connection-pool",
+                "sync/semaphore/rate-limiter",
+                "sync/semaphore/file-processor",
+                "sync/semaphore/resource-timeout",
+                "sync/semaphore/producer-consumer",
+                "sync/combined/ecommerce",
+            )
 
         /** A tenth of scripted speed: each demo takes 1-2 s here. */
         private const val SCALE = 0.1

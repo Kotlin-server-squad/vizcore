@@ -393,30 +393,73 @@ paths:
   # ==========================================================================
   /api/sessions/{id}/hierarchy:
     get:
-      tags: [Projections]
+      tags:
+      - Projections
       summary: Get coroutine hierarchy tree
-      description: >
-        Returns the parent-child hierarchy of all coroutines in the session.
-        Optionally filter to a specific scope by providing the scopeId
-        query parameter.
+      description: 'Returns the parent-child hierarchy of all coroutines in the session. Optionally filter to a specific scope by providing the scopeId query parameter.
+
+        '
       operationId: getSessionHierarchy
       parameters:
-        - $ref: "#/components/parameters/SessionIdPath"
-        - name: scopeId
-          in: query
-          required: false
-          description: Filter hierarchy to coroutines within this scope ID
-          schema:
-            type: string
+      - $ref: "#/components/parameters/SessionIdPath"
+      - name: scopeId
+        in: query
+        required: false
+        description: Filter hierarchy to coroutines within this scope ID
+        schema:
+          type: string
+      - name: roundId
+        in: query
+        required: false
+        description: Only this round's nodes
+        schema:
+          type: string
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
       responses:
         "200":
-          description: Array of hierarchy nodes forming the coroutine tree
+          description: Nodes at one moment, with their round and summary (header X-Viz-As-Of-Seq at a bound or replay view)
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/HierarchyNode"
+                  $ref: "#/components/schemas/HierarchyNodeDto"
         "400":
           description: Missing session ID
           content:
@@ -425,6 +468,18 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed'
           content:
             application/json:
               schema:
@@ -497,6 +552,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SessionHealth"
+          headers:
+            X-Viz-Cut:
+              description: The live health's kept cut id (follow-ups pass it as asOfCut)
+              schema:
+                type: string
         "400":
           description: atSeq is not a non-negative integer
           content:
@@ -516,23 +576,778 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/sessions/{id}/coroutines/{coroutineId}/timeline:
+  /api/sessions/{id}/health/items:
     get:
-      tags: [Projections]
-      summary: Get coroutine timeline
-      description: >
-        Returns a detailed timeline for a single coroutine, including total
-        duration, active/suspended time breakdown, parent-child relationships,
-        and an ordered list of timeline event summaries.
-      operationId: getCoroutineTimeline
+      tags:
+      - Sessions
+      summary: A health list past its first 50 entries
+      operationId: getSessionHealthItems
       parameters:
-        - $ref: "#/components/parameters/SessionIdPath"
-        - name: coroutineId
-          in: path
-          required: true
-          description: Unique coroutine identifier
-          schema:
-            type: string
+      - $ref: "#/components/parameters/SessionIdPath"
+      - name: list
+        in: query
+        required: true
+        description: incidents, round-members, long-lived or long-suspended
+        schema:
+          type: string
+      - name: kind
+        in: query
+        required: false
+        description: 'With list=incidents: FAILED or POSSIBLY_BLOCKED'
+        schema:
+          type: string
+      - name: incidentId
+        in: query
+        required: false
+        description: 'With list=round-members: a FAILED_ROUND incident id'
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        description: Keyset cursor from nextCursor
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Page size 1..200 (default 50)
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - name: leakThresholdMs
+        in: query
+        required: false
+        description: Long-lived threshold in milliseconds, as on /metrics
+        schema:
+          type: integer
+          format: int64
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
+      responses:
+        "200":
+          description: A page of the list
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/IncidentsPage"
+                - $ref: "#/components/schemas/RoundMembersPage"
+                - $ref: "#/components/schemas/ObservedAgesPage"
+        "404":
+          description: Session not found, or incident-not-found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: A parameter does not parse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable: code summaries-unavailable or history-trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sessions/{id}/rounds:
+    get:
+      tags:
+      - Sessions
+      summary: Every round of the session, with server-side find
+      operationId: getSessionRounds
+      description: Problem rounds first, then newest anchor first, keyset paged (spec 2026-10-21 C-3, T-4).
+      parameters:
+      - $ref: "#/components/parameters/SessionIdPath"
+      - name: cursor
+        in: query
+        required: false
+        description: Keyset cursor from nextCursor
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Page size 1..200 (default 50)
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - name: q
+        in: query
+        required: false
+        description: 'Find: a substring of a member''s name, creation function or file (at most 200 characters)'
+        schema:
+          type: string
+      - name: problemsOnly
+        in: query
+        required: false
+        description: Only rounds holding a problem
+        schema:
+          type: boolean
+      - name: includeVizcore
+        in: query
+        required: false
+        description: Also rounds anchored by vizcore's own coroutines
+        schema:
+          type: boolean
+      - name: leakThresholdMs
+        in: query
+        required: false
+        description: Long-lived threshold in milliseconds, as on /metrics
+        schema:
+          type: integer
+          format: int64
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
+      responses:
+        "200":
+          description: A page of rounds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoundsPage"
+        "400":
+          description: A parameter does not parse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable: code summaries-unavailable or history-trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sessions/{id}/metrics:
+    get:
+      tags:
+      - Sessions
+      summary: Session metrics, split by origin
+      operationId: getSessionMetrics
+      parameters:
+      - $ref: "#/components/parameters/SessionIdPath"
+      - name: leakThresholdMs
+        in: query
+        required: false
+        description: Long-lived threshold in milliseconds (default 30000, clamped to 1000..3600000)
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: The session's metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricsResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/shared/{token}:
+    get:
+      tags:
+      - Sharing
+      summary: A shared session under one cut
+      operationId: getSharedSession
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Session, events, health and checks of one cut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedSessionResponse"
+        "404":
+          description: Share link not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Share link has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/shared/{token}/health:
+    get:
+      operationId: getSharedHealth
+      summary: 'Shared view: The session''s derived health, live or at a replay cursor'
+      description: 'What the captured coroutines show (spec 2026-10-21, C-3): failed rounds, ungrouped failures and possibly blocked coroutines, observations, origin counts, transport and retention facts; every list is capped at 50 with its total. Without atSeq the health is live; with it, it is the fold of the retained events up to the cursor (clamped to the last event), seeded from the durable summaries for coroutines whose creation was trimmed.'
+      tags:
+      - Sharing
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: atSeq
+        in: query
+        required: false
+        description: Replay cursor (event seq). Omit for live health.
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: leakThresholdMs
+        in: query
+        required: false
+        description: Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000)
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: The session's health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionHealth"
+          headers:
+            X-Viz-Cut:
+              description: The live health's kept cut id (follow-ups pass it as asOfCut)
+              schema:
+                type: string
+        "400":
+          description: atSeq is not a non-negative integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable: code summaries-unavailable, or history-trimmed for a database session whose early events were trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Share link has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/shared/{token}/health/items:
+    get:
+      tags:
+      - Sharing
+      summary: 'Shared view: A health list past its first 50 entries'
+      operationId: getSharedHealthItems
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: list
+        in: query
+        required: true
+        description: incidents, round-members, long-lived or long-suspended
+        schema:
+          type: string
+      - name: kind
+        in: query
+        required: false
+        description: 'With list=incidents: FAILED or POSSIBLY_BLOCKED'
+        schema:
+          type: string
+      - name: incidentId
+        in: query
+        required: false
+        description: 'With list=round-members: a FAILED_ROUND incident id'
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        description: Keyset cursor from nextCursor
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Page size 1..200 (default 50)
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - name: leakThresholdMs
+        in: query
+        required: false
+        description: Long-lived threshold in milliseconds, as on /metrics
+        schema:
+          type: integer
+          format: int64
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
+      responses:
+        "200":
+          description: A page of the list
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/IncidentsPage"
+                - $ref: "#/components/schemas/RoundMembersPage"
+                - $ref: "#/components/schemas/ObservedAgesPage"
+        "404":
+          description: Session not found, or incident-not-found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: A parameter does not parse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable: code summaries-unavailable or history-trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Share link has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/shared/{token}/rounds:
+    get:
+      tags:
+      - Sharing
+      summary: 'Shared view: Every round of the session, with server-side find'
+      operationId: getSharedRounds
+      description: Problem rounds first, then newest anchor first, keyset paged (spec 2026-10-21 C-3, T-4).
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        description: Keyset cursor from nextCursor
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Page size 1..200 (default 50)
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - name: q
+        in: query
+        required: false
+        description: 'Find: a substring of a member''s name, creation function or file (at most 200 characters)'
+        schema:
+          type: string
+      - name: problemsOnly
+        in: query
+        required: false
+        description: Only rounds holding a problem
+        schema:
+          type: boolean
+      - name: includeVizcore
+        in: query
+        required: false
+        description: Also rounds anchored by vizcore's own coroutines
+        schema:
+          type: boolean
+      - name: leakThresholdMs
+        in: query
+        required: false
+        description: Long-lived threshold in milliseconds, as on /metrics
+        schema:
+          type: integer
+          format: int64
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
+      responses:
+        "200":
+          description: A page of rounds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoundsPage"
+        "400":
+          description: A parameter does not parse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable: code summaries-unavailable or history-trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Share link has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/shared/{token}/hierarchy:
+    get:
+      tags:
+      - Sharing
+      summary: 'Shared view: Get coroutine hierarchy tree'
+      description: 'Returns the parent-child hierarchy of all coroutines in the session. Optionally filter to a specific scope by providing the scopeId query parameter.
+
+        '
+      operationId: getSharedHierarchy
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: scopeId
+        in: query
+        required: false
+        description: Filter hierarchy to coroutines within this scope ID
+        schema:
+          type: string
+      - name: roundId
+        in: query
+        required: false
+        description: Only this round's nodes
+        schema:
+          type: string
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Nodes at one moment, with their round and summary (header X-Viz-As-Of-Seq at a bound or replay view)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HierarchyNodeDto"
+        "400":
+          description: Missing session ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Share link has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/shared/{token}/coroutines/{coroutineId}/timeline:
+    get:
+      tags:
+      - Sharing
+      summary: 'Shared view: Get coroutine timeline'
+      description: "Returns a detailed timeline for a single coroutine, including total duration, active/suspended time breakdown, parent-child relationships, and an ordered list of timeline event summaries.\n With atSeq or asOfSeq: the timeline at that moment (no open phase, no observedAtEpochMs), with eventsTrimmed and partial."
+      operationId: getSharedTimeline
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: coroutineId
+        in: path
+        required: true
+        description: Unique coroutine identifier
+        schema:
+          type: string
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
       responses:
         "200":
           description: Coroutine timeline data
@@ -552,22 +1367,123 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Share link has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sessions/{id}/coroutines/{coroutineId}/timeline:
+    get:
+      tags:
+      - Projections
+      summary: Get coroutine timeline
+      description: "Returns a detailed timeline for a single coroutine, including total duration, active/suspended time breakdown, parent-child relationships, and an ordered list of timeline event summaries.\n With atSeq or asOfSeq: the timeline at that moment (no open phase, no observedAtEpochMs), with eventsTrimmed and partial."
+      operationId: getCoroutineTimeline
+      parameters:
+      - $ref: "#/components/parameters/SessionIdPath"
+      - name: coroutineId
+        in: path
+        required: true
+        description: Unique coroutine identifier
+        schema:
+          type: string
+      - name: atSeq
+        in: query
+        required: false
+        description: 'Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfSeq
+        in: query
+        required: false
+        description: 'Bind to a health response''s asOfSeq: strict, 409 code stale when it cannot be answered exactly'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfWatermark
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s asOfWatermark.appNanos'
+        schema:
+          type: integer
+          format: int64
+      - name: asOfTransport
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s transport.revision'
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: asOfCut
+        in: query
+        required: false
+        description: 'With asOfSeq: the health''s cut id (header X-Viz-Cut, or the share payload''s healthCut); names that cut exactly'
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Coroutine timeline data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoroutineTimeline"
+        "400":
+          description: Missing session ID or coroutine ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session or coroutine not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: 'Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ==========================================================================
   # VALIDATION
   # ==========================================================================
   /api/validate/session/{id}:
     post:
-      tags: [Validation]
+      tags:
+      - Validation
       summary: Validate session events
-      description: >
-        Runs all structured concurrency validators against the event stream
-        of the specified session. Checks include lifecycle validation,
-        hierarchy correctness, structured concurrency rules, sequence
-        uniqueness, and timing analysis.
+      description: 'Runs all structured concurrency validators against the event stream of the specified session. Checks include lifecycle validation, hierarchy correctness, structured concurrency rules, sequence uniqueness, and timing analysis.
+
+        '
       operationId: validateSession
       parameters:
-        - $ref: "#/components/parameters/SessionIdPath"
+      - $ref: "#/components/parameters/SessionIdPath"
       responses:
         "200":
           description: Validation results and timing report
@@ -581,6 +1497,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags:
+      - Validation
+      summary: The session's last checks run
+      operationId: getSessionChecks
+      parameters:
+      - $ref: "#/components/parameters/SessionIdPath"
+      responses:
+        "200":
+          description: The last run, null before any
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecksStatus"
         "404":
           description: Session not found
           content:
@@ -1361,11 +2297,12 @@ paths:
   /api/sync/semaphore/connection-pool:
     get:
       tags: [Scenarios - Sync]
-      summary: Run database connection pool scenario
+      summary: "Run Database Connection Pool: Online Shop at Lunchtime"
       description: >
-        Demonstrates limiting concurrent database connections using a
-        Semaphore. Multiple coroutines compete for a limited number of
-        connections.
+        Nine lunchtime requests share an online shop's 3 database
+        connections. The first three find one free; the other six wait
+        for one, suspended, and get it in the order they asked. About 11
+        s at scale 1; answers once the demo has ended.
       operationId: runSemaphoreConnectionPoolScenario
       responses:
         "200":
@@ -1384,10 +2321,13 @@ paths:
   /api/sync/semaphore/rate-limiter:
     get:
       tags: [Scenarios - Sync]
-      summary: Run API rate limiter scenario
+      summary: "Run API Rate Limiter: Weather for a Trip"
       description: >
-        Demonstrates throttling concurrent API calls using a Semaphore to
-        enforce a maximum number of in-flight requests.
+        A trip planner asks for the weather in eight cities at once, but
+        the weather service takes two calls at a time. Six calls wait
+        for a permit, suspended, and the trip page waits for every
+        forecast. About 12 s at scale 1; answers once the demo has
+        ended.
       operationId: runSemaphoreRateLimiterScenario
       responses:
         "200":
@@ -1406,10 +2346,12 @@ paths:
   /api/sync/semaphore/file-processor:
     get:
       tags: [Scenarios - Sync]
-      summary: Run parallel file processor scenario
+      summary: "Run Parallel File Processor: The Tax Folder"
       description: >
-        Demonstrates I/O-limited parallel file processing where a Semaphore
-        restricts the number of concurrent file operations.
+        Nine files of a tax folder are compressed two at a time. While
+        the big bank statements hold one permit, the other passes from
+        file to file the moment one is done. About 13 s at scale 1;
+        answers once the demo has ended.
       operationId: runSemaphoreFileProcessorScenario
       responses:
         "200":
@@ -1428,11 +2370,12 @@ paths:
   /api/sync/semaphore/resource-timeout:
     get:
       tags: [Scenarios - Sync]
-      summary: Run resource pool with timeout scenario
+      summary: "Run Resource Pool with Timeout: Fitting Rooms"
       description: >
-        Demonstrates resource acquisition with timeout handling. Coroutines
-        attempt to acquire a limited resource and fail gracefully if the
-        timeout expires.
+        Seven shoppers share two fitting rooms and wait at most 3 s for
+        one. Carla, Dan and Gina get a room in time; Eva and Finn give
+        up and leave. About 11.5 s at scale 1; answers once the demo has
+        ended.
       operationId: runSemaphoreResourceTimeoutScenario
       responses:
         "200":
@@ -1451,10 +2394,13 @@ paths:
   /api/sync/semaphore/producer-consumer:
     get:
       tags: [Scenarios - Sync]
-      summary: Run producer-consumer buffer scenario
+      summary: "Run Producer-Consumer Buffer: The Bakery Rack"
       description: >
-        Demonstrates a bounded buffer implementation using Semaphore to
-        coordinate producer and consumer coroutines.
+        A baker fills a cooling rack with room for 3 loaves faster than
+        the shop assistant sells them. Two semaphores count the free
+        places and the ready loaves: the baker waits when the rack is
+        full, the assistant when it is empty. About 21 s at scale 1;
+        answers once the demo has ended.
       operationId: runSemaphoreProducerConsumerScenario
       responses:
         "200":
@@ -1473,11 +2419,13 @@ paths:
   /api/sync/combined/ecommerce:
     get:
       tags: [Scenarios - Sync]
-      summary: Run e-commerce order processing (Mutex + Semaphore)
+      summary: "Run E-commerce Orders: A Limited Sneaker Drop"
       description: >
-        Demonstrates combining Mutex and Semaphore in a realistic e-commerce
-        order processing flow with inventory management and payment
-        processing.
+        Six orders for the last 3 pairs. Each reserves a pair under a
+        lock, then pays through a provider that takes two payments at a
+        time. A declined card puts its pair back for a later order; the
+        others find it sold out. About 11 s at scale 1; answers once the
+        demo has ended.
       operationId: runSyncEcommerceScenario
       responses:
         "200":
@@ -1990,10 +2938,13 @@ components:
 
     CoroutineTimeline:
       type: object
-      description: >
-        Detailed timeline for a single coroutine with duration breakdown
-        and ordered event summaries.
-      required: [coroutineId, name, state]
+      description: 'Detailed timeline for a single coroutine with duration breakdown and ordered event summaries.
+
+        '
+      required:
+      - coroutineId
+      - name
+      - state
       properties:
         coroutineId:
           type: string
@@ -2003,8 +2954,15 @@ components:
           description: Display name of the coroutine
         state:
           type: string
-          description: "Current coroutine state"
-          enum: [CREATED, ACTIVE, SUSPENDED, WAITING_FOR_CHILDREN, COMPLETED, CANCELLED, FAILED]
+          description: Current coroutine state
+          enum:
+          - CREATED
+          - ACTIVE
+          - SUSPENDED
+          - WAITING_FOR_CHILDREN
+          - COMPLETED
+          - CANCELLED
+          - FAILED
         totalDuration:
           type: integer
           format: int64
@@ -2037,29 +2995,36 @@ components:
         openPhase:
           type: string
           nullable: true
-          enum: [ACTIVE, SUSPENDED]
-          description: "For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished."
+          enum:
+          - ACTIVE
+          - SUSPENDED
+          description: For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished.
         openPhaseSinceNanos:
           type: integer
           format: int64
           nullable: true
-          description: "tsNanos of the transition that opened openPhase (the emitting JVM's monotonic clock)."
+          description: tsNanos of the transition that opened openPhase (the emitting JVM's monotonic clock).
         createdAtNanos:
           type: integer
           format: int64
           nullable: true
-          description: "Creation time on the emitting JVM's monotonic clock (tsNanos)."
+          description: Creation time on the emitting JVM's monotonic clock (tsNanos).
         createdAtEpochMs:
           type: integer
           format: int64
           nullable: true
-          description: "Creation time on the emitting JVM's wall clock, in epoch milliseconds."
+          description: Creation time on the emitting JVM's wall clock, in epoch milliseconds.
         observedAtEpochMs:
           type: integer
           format: int64
           nullable: true
-          description: "The backend's wall clock when it built this timeline. With createdAtNanos and createdAtEpochMs a client can estimate the emitting JVM's current tsNanos, assuming both hosts' wall clocks agree."
-
+          description: The backend's wall clock when it built this timeline. With createdAtNanos and createdAtEpochMs a client can estimate the emitting JVM's current tsNanos, assuming both hosts' wall clocks agree.
+        eventsTrimmed:
+          type: boolean
+          description: 'At a bound or replay view only: the coroutine''s creation is not retained'
+        partial:
+          type: boolean
+          description: 'Replay only: the state at the cursor is not known'
     TimelineEventSummary:
       type: object
       description: Simplified event summary for timeline display
@@ -3019,6 +3984,7 @@ components:
       - lostEvents
       - deliveryUncertain
       - sinceSeq
+      - revision
       properties:
         lostEvents:
           type: integer
@@ -3032,6 +3998,10 @@ components:
           format: int64
           nullable: true
           description: First seq that may be incomplete
+        revision:
+          type: integer
+          format: int64
+          description: Bumped on every change of the facts above
     ProblemRound:
       type: object
       required:
@@ -3159,4 +4129,657 @@ components:
         retention:
           allOf:
           - $ref: "#/components/schemas/RetentionInfo"
+          nullable: true
+
+    # Session health follow-up reads (Part 5b, spec 2026-10-21 C-3)
+    MemberRole:
+      type: string
+      enum:
+      - FAILED
+      - CANCELLED_AFTER
+    RoundMember:
+      type: object
+      description: One member of a failed round's incident
+      required:
+      - coroutineId
+      - name
+      - role
+      - exceptionType
+      - message
+      - terminalSeq
+      - detailsDropped
+      properties:
+        coroutineId:
+          type: string
+        name:
+          type: string
+          nullable: true
+        role:
+          $ref: "#/components/schemas/MemberRole"
+        exceptionType:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        terminalSeq:
+          type: integer
+          format: int64
+        detailsDropped:
+          type: boolean
+          description: 'The summary was reduced to a stub: type and message are no longer known'
+    RoundEntry:
+      type: object
+      description: One round (an anchor and its subtree)
+      required:
+      - roundId
+      - anchorId
+      - anchorName
+      - anchorOrigin
+      - anchorCreatedNanos
+      - anchorCreatedSeq
+      - inProgress
+      - countsByState
+      - memberCount
+      - problem
+      - problemKinds
+      - matches
+      - unknownMembers
+      properties:
+        roundId:
+          type: string
+        anchorId:
+          type: string
+        anchorName:
+          type: string
+          nullable: true
+        anchorOrigin:
+          type: string
+          enum:
+          - APP
+          - VIZCORE
+          - UNKNOWN
+          nullable: true
+        anchorCreatedNanos:
+          type: integer
+          format: int64
+        anchorCreatedSeq:
+          type: integer
+          format: int64
+        inProgress:
+          type: boolean
+        countsByState:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Members by state (CoroutineState names)
+        memberCount:
+          type: integer
+        problem:
+          type: boolean
+        problemKinds:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentKind"
+        matches:
+          allOf:
+          - $ref: "#/components/schemas/CappedStrings"
+          nullable: true
+          description: 'With q: the matching members, newest first'
+        unknownMembers:
+          type: integer
+          description: 'Replay only: members whose state at the cursor is not known'
+    RoundsPage:
+      type: object
+      description: 'A page of rounds: problem rounds first, then newest anchor first'
+      required:
+      - asOfSeq
+      - total
+      - items
+      - nextCursor
+      - unknownAtSeq
+      - ungroupedMatches
+      properties:
+        asOfSeq:
+          type: integer
+          format: int64
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoundEntry"
+        nextCursor:
+          type: string
+          nullable: true
+        unknownAtSeq:
+          type: integer
+          description: 'Replay only: coroutines whose state at the cursor is not known'
+        ungroupedMatches:
+          allOf:
+          - $ref: "#/components/schemas/CappedStrings"
+          nullable: true
+          description: 'With q: matching coroutines that belong to no round'
+    IncidentsPage:
+      type: object
+      required:
+      - list
+      - asOfSeq
+      - total
+      - items
+      - nextCursor
+      - unknownAtSeq
+      properties:
+        list:
+          type: string
+          enum:
+          - incidents
+        asOfSeq:
+          type: integer
+          format: int64
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Incident"
+        nextCursor:
+          type: string
+          nullable: true
+        unknownAtSeq:
+          type: integer
+    RoundMembersPage:
+      type: object
+      required:
+      - list
+      - asOfSeq
+      - total
+      - items
+      - nextCursor
+      - unknownAtSeq
+      properties:
+        list:
+          type: string
+          enum:
+          - round-members
+        asOfSeq:
+          type: integer
+          format: int64
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoundMember"
+        nextCursor:
+          type: string
+          nullable: true
+        unknownAtSeq:
+          type: integer
+    ObservedAgesPage:
+      type: object
+      required:
+      - list
+      - asOfSeq
+      - total
+      - items
+      - nextCursor
+      - unknownAtSeq
+      properties:
+        list:
+          type: string
+          enum:
+          - long-lived
+          - long-suspended
+        asOfSeq:
+          type: integer
+          format: int64
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObservedAge"
+        nextCursor:
+          type: string
+          nullable: true
+        unknownAtSeq:
+          type: integer
+    FailureInfo:
+      type: object
+      required:
+      - exceptionType
+      - message
+      properties:
+        exceptionType:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+    CoroutineSummary:
+      type: object
+      description: The durable per-coroutine summary (spec C-2)
+      required:
+      - id
+      - parentId
+      - origin
+      - name
+      - creationLocation
+      - createdAtEpochMs
+      - firstObserved
+      - lastTransition
+      - lastObservedNanos
+      - lastRunStart
+      - everSuspended
+      - terminal
+      - failed
+      - cancelled
+      - failure
+      - lastSuspension
+      - lastSuspensionProvenance
+      - lastThread
+      - dispatcher
+      - lastModifiedSeq
+      - promotedAtSeq
+      - grewAfterPromotion
+      - reduced
+      properties:
+        id:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+        origin:
+          type: string
+          enum:
+          - APP
+          - VIZCORE
+          - UNKNOWN
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        creationLocation:
+          allOf:
+          - $ref: "#/components/schemas/SuspensionPoint"
+          nullable: true
+        createdAtEpochMs:
+          type: integer
+          format: int64
+        firstObserved:
+          $ref: "#/components/schemas/Transition"
+        lastTransition:
+          $ref: "#/components/schemas/Transition"
+        lastObservedNanos:
+          type: integer
+          format: int64
+        lastRunStart:
+          allOf:
+          - $ref: "#/components/schemas/Transition"
+          nullable: true
+        everSuspended:
+          type: boolean
+        terminal:
+          allOf:
+          - $ref: "#/components/schemas/Transition"
+          nullable: true
+        failed:
+          type: boolean
+        cancelled:
+          type: boolean
+        failure:
+          allOf:
+          - $ref: "#/components/schemas/FailureInfo"
+          nullable: true
+        lastSuspension:
+          allOf:
+          - $ref: "#/components/schemas/SuspensionPoint"
+          nullable: true
+        lastSuspensionProvenance:
+          type: string
+          enum:
+          - REAL_FRAME
+          - CREATION_FALLBACK
+          - STALE
+          nullable: true
+        lastThread:
+          allOf:
+          - $ref: "#/components/schemas/ThreadObservation"
+          nullable: true
+        dispatcher:
+          type: string
+          nullable: true
+        lastModifiedSeq:
+          type: integer
+          format: int64
+        promotedAtSeq:
+          type: integer
+          format: int64
+          nullable: true
+        grewAfterPromotion:
+          type: boolean
+        reduced:
+          type: boolean
+    HierarchyNodeDto:
+      type: object
+      description: A hierarchy node with its round and summary
+      required:
+      - id
+      - parentId
+      - children
+      - name
+      - scopeId
+      - state
+      - createdAtNanos
+      - completedAtNanos
+      - dispatcherId
+      - dispatcherName
+      - currentThreadId
+      - currentThreadName
+      - jobId
+      - exceptionType
+      - exceptionMessage
+      - activeChildrenIds
+      - activeChildrenCount
+      - creationPoint
+      - lastSuspensionPoint
+      - roundId
+      - summary
+      - summaryState
+      - summaryOnly
+      - partial
+      properties:
+        id:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+        children:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        scopeId:
+          type: string
+          nullable: true
+        state:
+          type: string
+          description: The projection's state string
+        createdAtNanos:
+          type: integer
+          format: int64
+        completedAtNanos:
+          type: integer
+          format: int64
+          nullable: true
+        dispatcherId:
+          type: string
+          nullable: true
+        dispatcherName:
+          type: string
+          nullable: true
+        currentThreadId:
+          type: integer
+          format: int64
+          nullable: true
+        currentThreadName:
+          type: string
+          nullable: true
+        jobId:
+          type: string
+          nullable: true
+        exceptionType:
+          type: string
+          nullable: true
+        exceptionMessage:
+          type: string
+          nullable: true
+        activeChildrenIds:
+          type: array
+          items:
+            type: string
+        activeChildrenCount:
+          type: integer
+        creationPoint:
+          allOf:
+          - $ref: "#/components/schemas/SuspensionPoint"
+          nullable: true
+        lastSuspensionPoint:
+          allOf:
+          - $ref: "#/components/schemas/SuspensionPoint"
+          nullable: true
+        roundId:
+          type: string
+          nullable: true
+        summary:
+          allOf:
+          - $ref: "#/components/schemas/CoroutineSummary"
+          nullable: true
+        summaryState:
+          type: string
+          enum:
+          - CREATED
+          - ACTIVE
+          - SUSPENDED
+          - WAITING_FOR_CHILDREN
+          - COMPLETED
+          - CANCELLED
+          - FAILED
+          nullable: true
+          description: The health's classification of the summary (what problem counts use)
+        summaryOnly:
+          type: boolean
+          description: 'Built from the summary only: the events that created it are not retained'
+        partial:
+          type: boolean
+          description: 'Replay only: this coroutine''s state at the cursor is not known'
+
+    # Health persistence, checks, metrics by origin, shares (Part 5b-2)
+    RuleOutcome:
+      type: object
+      description: One rule of a checks run
+      required:
+      - name
+      - passed
+      - failures
+      properties:
+        name:
+          type: string
+        passed:
+          type: boolean
+        failures:
+          type: integer
+    ChecksRun:
+      type: object
+      description: The last checks run
+      required:
+      - checkedSeq
+      - ranAtEpochMs
+      - rules
+      - failedRuleCount
+      properties:
+        checkedSeq:
+          type: integer
+          format: int64
+          description: The last event validated
+        ranAtEpochMs:
+          type: integer
+          format: int64
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleOutcome"
+        failedRuleCount:
+          type: integer
+    ChecksStatus:
+      type: object
+      description: The checks status (spec C-5, T-8)
+      required:
+      - sessionId
+      - lastRun
+      - newEventsSince
+      properties:
+        sessionId:
+          type: string
+        lastRun:
+          allOf:
+          - $ref: "#/components/schemas/ChecksRun"
+          nullable: true
+          description: Null before any run
+        newEventsSince:
+          type: integer
+          format: int64
+          nullable: true
+          description: Events after the run
+    LeakDto:
+      type: object
+      required:
+      - coroutineId
+      - label
+      - aliveMs
+      - origin
+      properties:
+        coroutineId:
+          type: string
+        label:
+          type: string
+          nullable: true
+        aliveMs:
+          type: integer
+          format: int64
+          description: Age frozen at the last observation (or the live watermark)
+        origin:
+          type: string
+          enum:
+          - APP
+          - VIZCORE
+          - UNKNOWN
+          nullable: true
+    OriginSlice:
+      type: object
+      required:
+      - captured
+      - active
+      - peak
+      - throughputPerSec
+      - dispatcherUtilization
+      - longLived
+      properties:
+        captured:
+          type: integer
+        active:
+          type: integer
+        peak:
+          type: integer
+        throughputPerSec:
+          type: number
+          format: double
+          nullable: true
+          description: Events per second (backend receipt time); null for a database session rebuilt from stored events
+        dispatcherUtilization:
+          type: object
+          additionalProperties:
+            type: integer
+        longLived:
+          type: integer
+    OriginMetrics:
+      type: object
+      required:
+      - app
+      - vizcore
+      - unknown
+      - untracked
+      properties:
+        app:
+          $ref: "#/components/schemas/OriginSlice"
+        vizcore:
+          $ref: "#/components/schemas/OriginSlice"
+        unknown:
+          $ref: "#/components/schemas/OriginSlice"
+        untracked:
+          type: integer
+          format: int64
+    MetricsResponse:
+      type: object
+      description: Session metrics (RCO-07), split by origin (spec C-3)
+      required:
+      - active
+      - peak
+      - throughputPerSec
+      - dispatcherUtilization
+      - leaks
+      - leakThresholdMs
+      - leaksAvailable
+      - byOrigin
+      - retainedOnly
+      - oldestRetainedAppNanos
+      properties:
+        active:
+          type: integer
+        peak:
+          type: integer
+        throughputPerSec:
+          type: number
+          format: double
+        dispatcherUtilization:
+          type: object
+          additionalProperties:
+            type: integer
+        leaks:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeakDto"
+        leakThresholdMs:
+          type: integer
+          format: int64
+        leaksAvailable:
+          type: boolean
+          description: False when the summaries are unavailable (leaks then empty)
+        byOrigin:
+          allOf:
+          - $ref: "#/components/schemas/OriginMetrics"
+          nullable: true
+          description: Per effective origin; null when the summaries are unavailable
+        retainedOnly:
+          type: boolean
+          description: The projection figures come from retained events only
+        oldestRetainedAppNanos:
+          type: integer
+          format: int64
+          nullable: true
+    SharedSessionResponse:
+      type: object
+      description: A shared session under one cut (spec C-6)
+      required:
+      - session
+      - events
+      - health
+      - healthUnavailable
+      - healthCut
+      - checks
+      properties:
+        session:
+          $ref: "#/components/schemas/SessionSnapshotResponse"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/VizEvent"
+        health:
+          allOf:
+          - $ref: "#/components/schemas/SessionHealth"
+          nullable: true
+          description: The health at load, from the same cut as session and events
+        healthUnavailable:
+          type: string
+          nullable: true
+          description: summaries-unavailable or history-trimmed when health is null
+        healthCut:
+          type: string
+          nullable: true
+          description: 'The health''s kept cut: follow-ups pass it as asOfCut'
+        checks:
+          allOf:
+          - $ref: "#/components/schemas/ChecksStatus"
           nullable: true
