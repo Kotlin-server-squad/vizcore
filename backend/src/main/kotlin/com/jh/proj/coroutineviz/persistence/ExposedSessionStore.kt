@@ -19,6 +19,7 @@ import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.slf4j.LoggerFactory
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -106,6 +107,24 @@ class ExposedSessionStore(
                 .firstOrNull()
                 ?.get(SessionsTable.createdAt)
                 ?.toEpochMilliseconds()
+        }
+
+    /** Stores the session's last checks run (spec C-5). */
+    fun saveChecks(
+        sessionId: String,
+        json: String,
+    ) {
+        transaction(db) { SessionsTable.update({ SessionsTable.id eq sessionId }) { it[checks] = json } }
+    }
+
+    /** The session's last checks run as stored, or null. */
+    fun loadChecks(sessionId: String): String? =
+        transaction(db) {
+            SessionsTable
+                .select(SessionsTable.checks)
+                .where { SessionsTable.id eq sessionId }
+                .firstOrNull()
+                ?.get(SessionsTable.checks)
         }
 
     /** Whether the session's row stores an ingest state (rows created before Part 5b-2 do not; plan E-13). */
