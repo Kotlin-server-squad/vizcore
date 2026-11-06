@@ -19,10 +19,19 @@ import { formatNanoTime, formatRelativeTime } from '@/lib/utils'
 import { useAnimatedInView } from '@/hooks/use-animated-in-view'
 import { FiSearch, FiClock, FiServer, FiDatabase, FiMail, FiCloud, FiActivity } from 'react-icons/fi'
 import { DispatcherBadge } from './DispatcherBadge'
+import { eventTitle, type Selection } from '@/lib/selection'
 
 interface EventsListProps {
   events: VizEvent[]
+  /** What a row is about (S-2); null keeps that row presentational. */
+  subjectOf?: (event: VizEvent) => Selection | null
+  /** Selects what a row is about. Without it every row is presentational. */
+  onSelect?: (selection: Selection) => void
+  /** Resource id -> name, for rows about a channel whose creation is not in the list. */
+  resourceNames?: ReadonlyMap<string, string>
 }
+
+const NO_NAMES: ReadonlyMap<string, string> = new Map()
 
 /**
  * Parse a service label like "OrderService.processOrder" into parts
@@ -96,7 +105,7 @@ function AnimatedEventItem({
   )
 }
 
-export function EventsList({ events }: EventsListProps) {
+export function EventsList({ events, subjectOf, onSelect, resourceNames = NO_NAMES }: EventsListProps) {
   const [filter, setFilter] = useState('')
 
   const filteredEvents = useMemo(() => {
@@ -139,7 +148,10 @@ export function EventsList({ events }: EventsListProps) {
 
       <div className="space-y-2">
         <AnimatePresence mode="popLayout">
-          {sortedEvents.map((event, idx) => (
+          {sortedEvents.map((event, idx) => {
+            const title = eventTitle(event, resourceNames)
+            const subject = onSelect && subjectOf ? subjectOf(event) : null
+            return (
             <AnimatedEventItem
               key={`${event.sessionId}-${event.seq}`}
               initial={{ opacity: 0, y: -10 }}
@@ -147,17 +159,22 @@ export function EventsList({ events }: EventsListProps) {
               exit={{ opacity: 0, y: -10 }}
               transition={{ delay: idx * 0.02 }}
             >
-              <Card 
+              <Card
                 shadow="sm"
                 className={
-                  event.kind?.includes('failed')
+                  'w-full ' +
+                  (event.kind?.includes('failed')
                     ? 'border-l-4 border-danger'
                     : event.kind?.includes('cancelled')
                     ? 'border-l-4 border-default-400'
                     : event.kind?.includes('body-completed')
                     ? 'border-l-4 border-secondary/50'
-                    : ''
+                    : '')
                 }
+                // A row selects what it is about (S-2): its coroutine, or a resource.
+                {...(subject && onSelect
+                  ? { isPressable: true, 'aria-label': `Select ${title} (event #${event.seq})`, onPress: () => onSelect(subject) }
+                  : {})}
               >
                 <CardBody className="py-3">
                   <div className="flex items-center justify-between">
@@ -203,16 +220,18 @@ export function EventsList({ events }: EventsListProps) {
                           }
                           return (
                             <div className="font-semibold">
-                              {event.label || event.coroutineId}
+                              {title}
                             </div>
                           )
                         })()}
-                        <div className="text-xs text-default-500 mt-1">
-                          ID: <code className="font-mono">{event.coroutineId}</code>
-                          {event.parentCoroutineId && (
-                            <> • Parent: <code className="font-mono">{event.parentCoroutineId}</code></>
-                          )}
-                        </div>
+                        {event.coroutineId && (
+                          <div className="text-xs text-default-500 mt-1">
+                            ID: <code className="font-mono">{event.coroutineId}</code>
+                            {event.parentCoroutineId && (
+                              <> • Parent: <code className="font-mono">{event.parentCoroutineId}</code></>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="text-right text-xs text-default-400 flex flex-col items-end gap-1">
@@ -401,7 +420,8 @@ export function EventsList({ events }: EventsListProps) {
                 </CardBody>
               </Card>
             </AnimatedEventItem>
-          ))}
+            )
+          })}
         </AnimatePresence>
       </div>
     </div>

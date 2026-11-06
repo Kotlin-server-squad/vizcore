@@ -42,6 +42,19 @@ describe('SessionMetrics', () => {
     expect(screen.getByText('/s')).toBeInTheDocument()
   })
 
+  it('keeps each tile\'s label and value apart: a term and its value, with a gap', () => {
+    useSessionMetricsMock.mockReturnValue({ data: metrics({ active: 0, peak: 6 }), isLoading: false })
+
+    render(<SessionMetrics sessionId="s-1" />)
+
+    const terms = screen.getAllByRole('term')
+    expect(terms.map(t => t.textContent)).toEqual(['Active', 'Peak', 'Throughput'])
+    expect(terms[0]!.nextElementSibling).toHaveTextContent(/^0$/)
+    expect(terms[1]!.nextElementSibling).toHaveTextContent(/^6$/)
+    // The tile's row has a gap, so the value never touches its label ("Active0").
+    expect(terms[0]!.parentElement!.className).toMatch(/\bgap-3\b/)
+  })
+
   it('shows "—" for throughput when no events have arrived yet', () => {
     useSessionMetricsMock.mockReturnValue({
       data: metrics({ throughputPerSec: 0 }),

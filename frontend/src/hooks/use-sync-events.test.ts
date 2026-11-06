@@ -43,6 +43,17 @@ describe('useSyncEvents', () => {
     vi.clearAllMocks()
   })
 
+  it('reads the events it is given, not the stored history, when given some', () => {
+    mockedUseSessionEvents.mockReturnValue({ data: [] } as unknown as ReturnType<typeof useSessionEvents>)
+    const live = [makeEvent('MutexCreated', 1, { mutexId: 'm1', mutexLabel: 'L', ownerCoroutineId: null })]
+
+    const { result } = renderHook(() => useSyncEvents('s1', live), { wrapper: createWrapper() })
+
+    expect(result.current.mutexes.map(m => m.mutexId)).toEqual(['m1'])
+    // Still subscribed to the history, so the page's request profile is unchanged (#124).
+    expect(mockedUseSessionEvents).toHaveBeenCalledWith('s1')
+  })
+
   it('returns empty result when no events', () => {
     mockedUseSessionEvents.mockReturnValue({
       data: [],
@@ -253,8 +264,8 @@ describe('useSyncEvents', () => {
     expect(semaphore.availablePermits).toBe(3)
     expect(semaphore.totalPermits).toBe(5)
     expect(semaphore.activeHolders).toEqual([
-      { id: 'c1', label: 'Worker-1' },
-      { id: 'c2', label: 'Worker-2' },
+      { id: 'c1', label: 'Worker-1', permits: 1 },
+      { id: 'c2', label: 'Worker-2', permits: 1 },
     ])
     expect(semaphore.waitQueue).toEqual([{ id: 'c3', label: 'Worker-3' }])
   })

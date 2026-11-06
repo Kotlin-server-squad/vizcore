@@ -8,6 +8,7 @@ import { RunsOnCard } from './RunsOnCard'
 import { IdentityCard } from './IdentityCard'
 import { EventsCard } from './EventsCard'
 import type { CoroutineNode, ThreadActivity } from '@/types/api'
+import type { ActivityLine } from '@/lib/activity'
 
 interface InspectorProps {
   sessionId: string
@@ -37,6 +38,8 @@ interface InspectorProps {
   emptyState?: ReactNode
   /** Clears the selection, back to the empty state; offered under the heading. */
   onClearSelection?: () => void
+  /** What the selected coroutine waits for or holds (S-6), from the page's events. */
+  activity?: ActivityLine | null
 }
 
 /**
@@ -59,6 +62,7 @@ export function Inspector({
   placeholder = 'Select a coroutine to inspect it',
   emptyState,
   onClearSelection,
+  activity = null,
 }: InspectorProps) {
   const showTimeline = !!coroutine && !readOnly
   const { data: timeline, dataUpdatedAt, refetch: refetchTimeline } = useCoroutineTimeline(
@@ -121,6 +125,15 @@ export function Inspector({
             </button>
           )}
         </div>
+        {/* What it waits for or holds (S-6): a wait in the Suspended colour, a hold neutral. */}
+        {activity && (
+          <p
+            data-testid="inspector-activity"
+            className={activity.waiting ? 'text-sm text-warning' : 'text-sm text-default-600'}
+          >
+            {activity.text}
+          </p>
+        )}
         {/* Two columns on a wide dock, one below 1,024 px (S-14). D-7's order
             reads down the first column, then the events. */}
         <div className="grid gap-3 lg:grid-cols-2">

@@ -8,9 +8,12 @@ import { FlowBackpressureIndicator } from './FlowBackpressureIndicator'
 import { FlowValueTrace } from './FlowValueTrace'
 import { SharedFlowPanel } from './SharedFlowPanel'
 import { StateFlowPanel } from './StateFlowPanel'
+import type { VizEvent } from '@/types/api'
 
 interface FlowPanelProps {
   sessionId: string
+  /** The events the page shows (live, paused or at the replay cursor); the stored history when absent. */
+  events?: readonly VizEvent[]
 }
 
 function getFlowTypeColor(flowType: string): 'primary' | 'secondary' | 'warning' | 'success' {
@@ -23,8 +26,8 @@ function getFlowTypeColor(flowType: string): 'primary' | 'secondary' | 'warning'
   }
 }
 
-export function FlowPanel({ sessionId }: FlowPanelProps) {
-  const { flows, hasBackpressure } = useFlowEvents(sessionId)
+export function FlowPanel({ sessionId, events }: FlowPanelProps) {
+  const { flows, hasBackpressure } = useFlowEvents(sessionId, events)
   const [visualMode, setVisualMode] = useState<'chips' | 'svg'>('chips')
 
   if (flows.length === 0) {

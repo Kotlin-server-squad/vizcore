@@ -1,12 +1,24 @@
 import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
 import { motion } from 'framer-motion'
 import type { MutexState } from '@/hooks/use-sync-events'
+import { CoroutineName, type CoroutinePicker } from './CoroutineName'
 
 interface MutexStateIndicatorProps {
   mutex: MutexState
+  /** The page selected this lock (S-2): ringed. */
+  selected?: boolean
+  /** The page's selected coroutine, marked when it holds the lock. */
+  selectedCoroutineId?: string | null
+  /** Selects the holder, when the page can (S-2). */
+  picker?: CoroutinePicker
 }
 
-export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
+export function MutexStateIndicator({
+  mutex,
+  selected = false,
+  selectedCoroutineId = null,
+  picker,
+}: MutexStateIndicatorProps) {
   // A held lock is normal work, not an error (spec S-6): neutral grey, never red.
   return (
     <motion.div
@@ -28,7 +40,11 @@ export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
             }
       }
       transition={{ duration: 2, repeat: Infinity }}
-      className="rounded-xl"
+      data-testid={`resource-${mutex.mutexId}`}
+      // Focusable from script only: a selected resource takes focus when it is revealed (S-2).
+      tabIndex={-1}
+      data-selected={selected ? 'true' : 'false'}
+      className={selected ? 'rounded-xl ring-2 ring-primary' : 'rounded-xl'}
     >
       <Card shadow="sm" data-testid="mutex-state">
         <CardHeader className="pb-2">
@@ -59,10 +75,17 @@ export function MutexStateIndicator({ mutex }: MutexStateIndicatorProps) {
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div>
               <div className="text-default-500">Holder</div>
-              <div className="font-mono font-semibold">
-                {mutex.currentHolder
-                  ? mutex.currentHolderLabel || mutex.currentHolder
-                  : 'None'}
+              <div className="font-semibold">
+                {mutex.currentHolder ? (
+                  <CoroutineName
+                    id={mutex.currentHolder}
+                    label={mutex.currentHolderLabel}
+                    picker={picker}
+                    selected={mutex.currentHolder === selectedCoroutineId}
+                  />
+                ) : (
+                  'None'
+                )}
               </div>
             </div>
             <div>
