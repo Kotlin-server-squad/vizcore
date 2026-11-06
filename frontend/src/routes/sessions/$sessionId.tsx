@@ -20,8 +20,10 @@ export const Route = createFileRoute('/sessions/$sessionId')({
       scenarioId: search.scenarioId as string | undefined,
       scenarioName: search.scenarioName as string | undefined,
       live: search.live === true || search.live === 'true' ? true : undefined,
-      // The search parser turns `?look=1` into a number: kept as text, it reads as unknown (Classic).
-      look: search.look === undefined || search.look === null ? undefined : String(search.look),
+      // Present but not text (the search parser reads `?look=1`, `null` or `["a"]` as
+      // JSON): unknown, so Classic, never the remembered look.
+      look:
+        search.look === undefined ? undefined : typeof search.look === 'string' ? search.look : '',
     }
   },
 })

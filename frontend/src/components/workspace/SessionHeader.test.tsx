@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { SessionHeader } from './SessionHeader'
 import { LOOK_STORAGE_KEY, LookProvider, forgetVisitLook } from '@/looks/look-context'
+import { LOOKS } from '@/looks/registry'
 import type { SessionSnapshot } from '@/types/api'
 
 vi.mock('@/hooks/use-capabilities', () => ({ useCapabilities: () => ({ data: { sharingEnabled: true } }) }))
@@ -205,30 +206,37 @@ describe('SessionHeader', () => {
       return screen.findByRole('menu')
     }
 
-    it('offers the four looks in "⋯", marked as a trial, with the current one marked', async () => {
-      localStorage.setItem(LOOK_STORAGE_KEY, 'b')
+    // Registry-driven, so deleting a look needs no change here.
+    const chosen = LOOKS[LOOKS.length - 1]!
+
+    it('offers every look in "⋯", marked as a trial, with the current one marked', async () => {
+      localStorage.setItem(LOOK_STORAGE_KEY, chosen.id)
       renderHeader({}, { withLook: true })
       const menu = await openMenu()
       const section = within(menu).getByRole('group', { name: 'Look · trial' })
       const items = within(section).getAllByRole('menuitem')
-      expect(items.map((i) => i.textContent)).toEqual(['Classic', 'A · Compact', 'B · Calm', 'C · Bold'])
-      expect(items.map((i) => i.getAttribute('aria-current'))).toEqual([null, null, 'true', null])
+      expect(items.map((i) => i.textContent)).toEqual(LOOKS.map((l) => l.label))
+      expect(items.map((i) => i.getAttribute('aria-current'))).toEqual(
+        LOOKS.map((l) => (l.id === chosen.id ? 'true' : null))
+      )
+      // The page's own actions stay where they were, above the looks.
+      expect(within(menu).getByRole('menuitem', { name: /checks/i })).toBeInTheDocument()
     })
 
     it('switches the page to the chosen look', async () => {
       renderHeader({}, { withLook: true })
       expect(document.documentElement.dataset.look).toBe('classic')
       const menu = await openMenu()
-      await userEvent.click(within(menu).getByRole('menuitem', { name: 'C · Bold' }))
-      expect(document.documentElement.dataset.look).toBe('c')
-      expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe('c')
+      await userEvent.click(within(menu).getByRole('menuitem', { name: chosen.label }))
+      expect(document.documentElement.dataset.look).toBe(chosen.id)
+      expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe(chosen.id)
     })
 
     it('is not offered where the page has no look switch (the shared view)', async () => {
       renderHeader({ readOnly: true })
       const menu = await openMenu()
       expect(within(menu).queryByRole('group', { name: 'Look · trial' })).toBeNull()
-      expect(within(menu).queryByRole('menuitem', { name: 'A · Compact' })).toBeNull()
+      expect(within(menu).queryByRole('menuitem', { name: chosen.label })).toBeNull()
     })
   })
 })

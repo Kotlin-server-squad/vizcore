@@ -112,6 +112,33 @@ export function SessionHeader({
   const sharingDisabled = capabilities?.sharingEnabled === false
   // The Look switch (PR L0): offered only where the page has one (not the shared view).
   const { look, setLook, looks } = useLook()
+  // The page's own actions in "⋯".
+  const actionItems = [
+    // Owner only: a shared link can never re-share (ADR-019, T-03-22).
+    ...(readOnly
+      ? []
+      : [
+          <DropdownItem
+            key="share"
+            description={sharingDisabled ? 'Sharing requires storage.type=database' : undefined}
+          >
+            Share
+          </DropdownItem>,
+        ]),
+    // Session checks (M-3) — validation is an action, not a tab.
+    <DropdownItem key="checks">Checks</DropdownItem>,
+    <DropdownItem key="refresh">Refresh</DropdownItem>,
+    ...(scenario
+      ? [
+          <DropdownItem key="reset" description="Deletes this session and starts a fresh one">
+            Reset session
+          </DropdownItem>,
+          <DropdownItem key="clear" description="Empties the live event list; keeps the session">
+            Clear events
+          </DropdownItem>,
+        ]
+      : []),
+  ]
 
   return (
     <header data-look-part="header" className="space-y-2">
@@ -221,52 +248,31 @@ export function SessionHeader({
                 else if (key === 'refresh') onRefetch()
                 else if (key === 'reset') void scenario?.reset()
                 else if (key === 'clear') scenario?.clear()
-                else if (typeof key === 'string' && key.startsWith(LOOK_KEY)) setLook?.(parseLook(key.slice(LOOK_KEY.length)))
+                else if (typeof key === 'string' && key.startsWith(LOOK_KEY)) {
+                  setLook?.(parseLook(key.slice(LOOK_KEY.length)))
+                }
               }}
             >
-              {[
-                // Owner only: a shared link can never re-share (ADR-019, T-03-22).
-                ...(readOnly
-                  ? []
-                  : [
-                      <DropdownItem
-                        key="share"
-                        description={sharingDisabled ? 'Sharing requires storage.type=database' : undefined}
-                      >
-                        Share
-                      </DropdownItem>,
-                    ]),
-                // Session checks (M-3) — validation is an action, not a tab.
-                <DropdownItem key="checks">Checks</DropdownItem>,
-                <DropdownItem key="refresh">Refresh</DropdownItem>,
-                ...(scenario
-                  ? [
-                      <DropdownItem key="reset" description="Deletes this session and starts a fresh one">
-                        Reset session
-                      </DropdownItem>,
-                      <DropdownItem key="clear" description="Empties the live event list; keeps the session">
-                        Clear events
-                      </DropdownItem>,
-                    ]
-                  : []),
-                // Trial looks for this page (PR L0); the losing ones are deleted after the trial.
-                ...(setLook
-                  ? [
-                      <DropdownSection key="look" title="Look · trial">
-                        {looks.map(l => (
-                          <DropdownItem
-                            key={`${LOOK_KEY}${l.id}`}
-                            textValue={l.label}
-                            aria-current={l.id === look ? 'true' : undefined}
-                            endContent={l.id === look ? <FiCheck aria-hidden /> : undefined}
-                          >
-                            {l.label}
-                          </DropdownItem>
-                        ))}
-                      </DropdownSection>,
-                    ]
-                  : []),
-              ]}
+              {setLook
+                ? [
+                    <DropdownSection key="actions" aria-label="Session actions" showDivider>
+                      {actionItems}
+                    </DropdownSection>,
+                    // Trial looks for this page (PR L0); the losing ones are deleted after the trial.
+                    <DropdownSection key="look" title="Look · trial">
+                      {looks.map(l => (
+                        <DropdownItem
+                          key={`${LOOK_KEY}${l.id}`}
+                          textValue={l.label}
+                          aria-current={l.id === look ? 'true' : undefined}
+                          endContent={l.id === look ? <FiCheck aria-hidden /> : undefined}
+                        >
+                          {l.label}
+                        </DropdownItem>
+                      ))}
+                    </DropdownSection>,
+                  ]
+                : actionItems}
             </DropdownMenu>
           </Dropdown>
         </div>

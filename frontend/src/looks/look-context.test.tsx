@@ -3,6 +3,12 @@ import { act, render, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { LOOK_STORAGE_KEY, LookProvider, forgetVisitLook, useLook, useLookSlot } from './look-context'
 import { ClassicSessionBody } from './classic/SessionBody'
+import { LOOKS } from './registry'
+
+// Registry-driven, so deleting a trial look needs no change here.
+const TRIAL = LOOKS.filter((l) => l.trial).map((l) => l.id)
+const ONE = TRIAL[0]!
+const TWO = TRIAL[1] ?? 'classic'
 
 const html = () => document.documentElement
 
@@ -38,10 +44,10 @@ describe('LookProvider', () => {
   })
 
   it('starts from the stored look', () => {
-    localStorage.setItem(LOOK_STORAGE_KEY, 'b')
+    localStorage.setItem(LOOK_STORAGE_KEY, ONE)
     const { result } = renderHook(() => useLook(), { wrapper: withProvider() })
-    expect(result.current.look).toBe('b')
-    expect(html().dataset.look).toBe('b')
+    expect(result.current.look).toBe(ONE)
+    expect(html().dataset.look).toBe(ONE)
   })
 
   it('reads an unknown stored look as Classic', () => {
@@ -52,24 +58,24 @@ describe('LookProvider', () => {
 
   it('switches, marks <html> and remembers the choice', () => {
     const { result } = renderHook(() => useLook(), { wrapper: withProvider() })
-    act(() => result.current.setLook!('c'))
-    expect(result.current.look).toBe('c')
-    expect(html().dataset.look).toBe('c')
-    expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe('c')
+    act(() => result.current.setLook!(ONE))
+    expect(result.current.look).toBe(ONE)
+    expect(html().dataset.look).toBe(ONE)
+    expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe(ONE)
   })
 
   it('lets a ?look= link win over the stored look, remembers it and reports it read', () => {
-    localStorage.setItem(LOOK_STORAGE_KEY, 'b')
+    localStorage.setItem(LOOK_STORAGE_KEY, TWO)
     const onLinkRead = vi.fn()
-    const { result } = renderHook(() => useLook(), { wrapper: withProvider('a', onLinkRead) })
-    expect(result.current.look).toBe('a')
-    expect(html().dataset.look).toBe('a')
-    expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe('a')
+    const { result } = renderHook(() => useLook(), { wrapper: withProvider(ONE, onLinkRead) })
+    expect(result.current.look).toBe(ONE)
+    expect(html().dataset.look).toBe(ONE)
+    expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe(ONE)
     expect(onLinkRead).toHaveBeenCalledTimes(1)
   })
 
   it('reads an unknown link as Classic, and remembers Classic', () => {
-    localStorage.setItem(LOOK_STORAGE_KEY, 'b')
+    localStorage.setItem(LOOK_STORAGE_KEY, ONE)
     const { result } = renderHook(() => useLook(), { wrapper: withProvider('z') })
     expect(result.current.look).toBe('classic')
     expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe('classic')
@@ -89,18 +95,18 @@ describe('LookProvider', () => {
     )
     expect(onLinkRead).not.toHaveBeenCalled()
     rerender(
-      <LookProvider link="c" onLinkRead={onLinkRead}>
+      <LookProvider link={ONE} onLinkRead={onLinkRead}>
         <Probe />
       </LookProvider>,
     )
-    expect(probe.look).toBe('c')
-    expect(html().dataset.look).toBe('c')
+    expect(probe.look).toBe(ONE)
+    expect(html().dataset.look).toBe(ONE)
     expect(onLinkRead).toHaveBeenCalledTimes(1)
   })
 
   it('takes data-look off <html> when the page goes, so other pages stay Classic', () => {
-    const { unmount } = renderHook(() => useLook(), { wrapper: withProvider('b') })
-    expect(html().dataset.look).toBe('b')
+    const { unmount } = renderHook(() => useLook(), { wrapper: withProvider(ONE) })
+    expect(html().dataset.look).toBe(ONE)
     unmount()
     expect(html().dataset.look).toBeUndefined()
   })
@@ -113,18 +119,19 @@ describe('LookProvider', () => {
       throw new Error('blocked')
     })
     const first = renderHook(() => useLook(), { wrapper: withProvider() })
-    act(() => first.result.current.setLook!('a'))
-    expect(html().dataset.look).toBe('a')
+    act(() => first.result.current.setLook!(ONE))
+    expect(html().dataset.look).toBe(ONE)
     first.unmount()
     // Another session page in the same visit.
     const second = renderHook(() => useLook(), { wrapper: withProvider() })
-    expect(second.result.current.look).toBe('a')
+    expect(second.result.current.look).toBe(ONE)
   })
 })
 
 describe('useLookSlot', () => {
   it("gives Classic's layout for every look until a look brings its own", () => {
-    for (const id of ['classic', 'a', 'b', 'c']) {
+    // Update this test when a look brings its own SessionBody.
+    for (const { id } of LOOKS) {
       localStorage.setItem(LOOK_STORAGE_KEY, id)
       const { result, unmount } = renderHook(() => useLookSlot('SessionBody'), { wrapper: withProvider() })
       expect(result.current).toBe(ClassicSessionBody)

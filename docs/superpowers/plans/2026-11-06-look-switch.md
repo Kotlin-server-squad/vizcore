@@ -16,7 +16,7 @@
 
 ## 1. What the user sees
 
-- The session page's **⋯** menu gains a section **"Look · trial"** with four items: **Classic**, **A · Compact**, **B · Calm**, **C · Bold**. The current one carries a check mark. Picking one re-skins the page at once.
+- The session page's **⋯** menu gains a section **"Look · trial"** with four items: **Classic**, **A · Compact**, **B · Calm**, **C · Bold**, under a divider after the page's own actions. The current one carries a check mark and `aria-current="true"` (the menu has no selection mode: its other items are actions, and a radio menu would turn them into radios). Picking one re-skins the page at once.
 - The choice is **remembered per browser** (`localStorage`, key `vizcore-look`).
 - A link can set it: **`/sessions/<id>?look=a`** (also `b`, `c`, `classic`). The link wins over the stored choice and is then remembered; the `look` parameter is then removed from the address (replace, no history entry), so a later menu choice is not overruled on reload.
 - An **unknown value** (`?look=z`, a stored `b` after B was deleted, garbage in storage) **falls back to Classic**. For the link, Classic is then remembered too: the link always wins, whatever it says.
@@ -54,7 +54,7 @@ export function useLook(): { look: LookId; setLook: ((id: LookId) => void) | nul
 - The provider applies `data-look` to `<html>` in a `useLayoutEffect` and removes it on unmount.
 - **Outside a provider** `useLook()` returns `{ look: 'classic', setLook: null }`. The shared view (`/shared/$token`) and every component test that renders `SessionHeader` without a provider get Classic and no Look section in the menu: the switch is offered only where it works.
 
-The provider is mounted by `routes/sessions/$sessionId.tsx` around the page. The route adds `look?: string` to `validateSearch` (a string as given; numbers from TanStack's JSON search parsing are turned into strings, so `?look=1` reads as unknown → Classic) and passes `onLinkRead = () => navigate({ to: '.', search: prev => ({ ...prev, look: undefined }), replace: true })`.
+The provider is mounted by `routes/sessions/$sessionId.tsx` around the page. The route adds `look?: string` to `validateSearch`: absent stays `undefined`; a string is kept as given; **any other present value** (TanStack parses the search as JSON, so `?look=1`, `?look=null`, `?look=true`, `?look=["a"]`, `?look={}` arrive as a number, null, a boolean, an array, an object) becomes `''`, which reads as unknown → Classic — never dropped (that would restore the stored look) and never coerced (`String(["a"])` would select A). The route passes `onLinkRead = () => navigate({ search: prev => ({ ...prev, look: undefined }), replace: true })`, which keeps `scenarioId`, `scenarioName` and `live`.
 
 ### 2.3 Tokens per look (CSS)
 
@@ -66,7 +66,7 @@ Each look's `tokens.css` overrides, for `html.dark[data-look='x']` and `html.lig
 And for `html[data-look='x']` (both themes):
 
 - **Density:** the root `font-size` (A 15 px, B and C 16 px = today). Tailwind and HeroUI sizes are in `rem`, so this scales text, controls and spacing together — the cheapest density knob. Where a fixed pixel value assumes 16 px (the session page height `calc(100dvh - 65px)` for the 4 rem navbar), the look's CSS corrects it.
-- **Shape:** `--radius`, `--radius-sm`, `--heroui-radius-small/medium/large` (A 4/3 px, B 14/10 px, C 16/10 px).
+- **Shape:** `--radius`, `--radius-sm`, `--heroui-radius-small/medium/large` (A 4/3 px, B 14/10 px, C 16/10 px). The main view and the dock use a fixed Tailwind `rounded-xl`, so each look also sets their `border-radius` through the `main` and `dock` hooks (2.4); Classic's utilities stay as they are.
 - **Fonts:** `--font-sans` and `--font-mono` stay Inter and JetBrains Mono in all looks (the sketches use them). C adds `--font-display: 'Space Grotesk'` for the page title and dock headings (a new `@fontsource/space-grotesk` dependency, imported only by C's CSS).
 - **Spacing:** the page padding and the gap between header, main view and dock, set on the CSS hooks below (A tight 8×12 px / 8 px, B airy 24×32 px / 18 px, C 16×28 px / 14 px).
 
@@ -83,6 +83,7 @@ Stable attributes on the session page's big parts, with no Classic CSS attached:
 | `data-look-part="page"` | the full-height session container in `routes/sessions/$sessionId.tsx` |
 | `data-look-part="workspace"` | `SessionWorkspace`'s root column (header + main view + dock) |
 | `data-look-part="header"` | `SessionHeader`'s `<header>` |
+| `data-look-part="body"` | Classic's `SessionBody` column (main view + dock) |
 | `data-look-part="main"` | `CoroutineCanvas`'s root |
 | `data-look-part="dock"` | `SessionDock`'s root |
 | `data-look-part="dock-tabs"` | `DockTabs`' tab bar |
@@ -134,7 +135,7 @@ export const LOOKS = [classic, compact, calm, bold] as const
 export type LookId = (typeof LOOKS)[number]['id']
 ```
 
-Each look folder's `index.ts` exports a `LookDefinition` (`{ id, label, trial, slots? }`) and imports its own CSS, so the CSS ships only while the folder is referenced.
+Each look folder's `index.ts` exports a `LookDefinition` (`{ id, label, trial, slots? }`) and imports its own CSS, so the CSS ships only while the folder is referenced. Each folder also holds `palette.json` (the base colours the generator reads) and `look.test.ts` (that look's id and label). Every shared test (`registry.test.ts`, `look-context.test.tsx`, `looks-css.test.ts`, the ⋯ menu and route tests) is **registry-driven**: it reads the ids and labels from `LOOKS`, so deleting a look changes no shared test. The generator, `docs/superpowers/plans/2026-11-06-look-switch/gen-look-tokens.mjs <look folder>`, holds no look data: it reads the folder's `palette.json` and rewrites the generated block of its `tokens.css`. HeroUI foregrounds on solid fills are chosen by measured contrast (white or near-black), and `looks-css.test.ts` asserts every fill/foreground pair reaches WCAG AA (4.5:1) in both themes.
 
 ## 4. Removing a look
 
@@ -142,9 +143,9 @@ To delete, say, B after the trial:
 
 1. Delete `frontend/src/looks/b-calm/`.
 2. Delete its import and its entry in `frontend/src/looks/registry.ts`.
-3. Run `pnpm exec tsc --noEmit`: `LookId` no longer contains `'b'`, so any leftover reference fails to compile. (Look-specific tests live in the look's folder and go with it.)
+3. Run `pnpm exec tsc --noEmit`: `LookId` no longer contains `'b'`, so any leftover reference fails to compile. Look-specific tests and data (`look.test.ts`, `palette.json`) live in the look's folder and go with it; shared tests are registry-driven and need no change.
 4. A stored or linked `b` now falls back to Classic by itself (2.2).
-5. For C only: remove `@fontsource/space-grotesk` from `package.json`.
+5. The one exception, for C only: also remove `@fontsource/space-grotesk` from `package.json` (`pnpm remove @fontsource/space-grotesk`). C's `tokens.css` says so at the top.
 6. Remove the look's entry from the CHANGELOG's trial note when the trial ends.
 
 When one look wins and replaces Classic, a later PR moves its tokens into `styles/tokens.css` / `palette.ts` and deletes the switch (`looks/`, the provider in the route, the menu section) — out of scope here.
@@ -179,6 +180,10 @@ Light-theme status colours are the text-safe (≈ AA on white) shades, as Classi
 
 ---
 
+## Plan review
+
+- **Codex R1** (revise): P2 current item had no accessible state → `aria-current="true"` (1.); P2 malformed `?look=` values → present non-strings read as Classic, tests for each and for keeping the other search params (2.2, Task 4); P2 removal touched shared tests and the generator → registry-driven tests, per-look `palette.json` and `look.test.ts`, the font dependency named as the one exception (3., 4.); P2 radius tokens did not reach the main view and dock → look-scoped `border-radius` on the hooks (2.3); P2 white text on light fills (2.54:1) → foregrounds by contrast, tested (3.); P2 export tests needed a dark start → specified (Task 5); P3 divider after, not before, a section → the actions get a section with the divider (1., Task 3).
+
 ## Tasks
 
 ### Task 1: Registry and `parseLook` (TDD)
@@ -202,23 +207,23 @@ Light-theme status colours are the text-safe (≈ AA on white) shades, as Classi
 
 ### Task 3: The ⋯ menu section (TDD)
 
-- [ ] Tests in `SessionHeader.test.tsx`: with a `LookProvider`, opening ⋯ shows a "Look · trial" section with the four items; the current one has `aria-checked="true"`-style marking (`data-current` + check icon; asserted by role/name); choosing "B · Calm" sets `data-look="b"` on `<html>`. Without a provider there is no Look section (existing tests keep passing).
-- [ ] Implement in `SessionHeader.tsx` (`DropdownSection` with `showDivider` before it; items keyed `look:<id>`; `onAction` routes `look:` keys to `setLook`). Commit.
+- [ ] Tests in `SessionHeader.test.tsx` (registry-driven): with a `LookProvider`, opening ⋯ shows a "Look · trial" group with every look's label in registry order; only the current one has `aria-current="true"`; choosing one sets `data-look` on `<html>` and stores it; the page's actions are still there. Without a provider there is no Look section (existing tests keep passing).
+- [ ] Implement in `SessionHeader.tsx`. With a switch, the page's actions go into an unlabelled-but-`aria-label`led `DropdownSection` with `showDivider` (HeroUI draws the divider *after* a section), followed by the Look section; without one, the menu is exactly today's items. Items keyed `look:<id>`; `onAction` routes `look:` keys to `setLook`. Commit.
 
 ### Task 4: Route wiring (TDD)
 
-- [ ] Test (route-level, memory history, as the existing route tests do): `/sessions/s1?look=a` → `<html data-look="a">`, storage `a`, and the address loses `look`; leaving to `/` removes `data-look`.
+- [ ] Test (route-level, memory history, real route tree, as `first-run-ctas.test.tsx` does): `/sessions/s1?look=<trial>&scenarioId=…&scenarioName=…&live=true` → `<html data-look>` set, stored, and the address keeps `scenarioId`, `scenarioName`, `live` but loses `look`; `?look=classic` wins over a stored trial look; `?look=z|1|null|true|["a"]|{}|` (empty) all read as Classic and store Classic; no link → the stored look; navigating to another page removes `data-look`.
 - [ ] Implement in `routes/sessions/$sessionId.tsx` (`validateSearch` + `LookProvider` + strip) and add `data-look-part="page"`. Commit.
 
 ### Task 5: Hooks, the `SessionBody` slot, export stays Classic (TDD where it has behaviour)
 
 - [ ] Test: `useLookSlot('SessionBody')` returns Classic's body for every look in L0; Classic's body renders its children in order inside one column with the ref attached.
-- [ ] Test (`export-theme.test.ts`): `withDarkTheme` and `asDarkClone` drop `data-look` for the read / in the clone and restore it after.
+- [ ] Test (`export-theme.test.ts`): starting from **both** dark and light, `withDarkTheme` drops `data-look` for the read (before its "already dark" shortcut, which now applies only when there is neither a light class nor a look) and restores it in `finally`, also when the read throws; `asDarkClone` drops it in the clone; with no `data-look` nothing changes (the existing tests).
 - [ ] Implement: `classic/SessionBody.tsx`, the call site in `SessionWorkspace`, the `data-look-part` attributes, export-theme change. Commit.
 
 ### Task 6: Base tokens for A, B, C
 
-- [ ] Generate the colour blocks; write density, shape, fonts and spacing per 2.3/6; add `@fontsource/space-grotesk`. A test asserts every look's `tokens.css` defines the same set of variables in both themes and that **no CSS outside `looks/<x>/` mentions `data-look`** (Classic has no rules). Commit.
+- [ ] Generate the colour blocks; write density, shape, fonts and spacing per 2.3/6; add `@fontsource/space-grotesk` (lockfile edited to add only that package; `pnpm install --frozen-lockfile` passes). `looks-css.test.ts` asserts: every trial look in the registry has a folder with tokens and Classic has none; every rule in a look's CSS is scoped to `[data-look='<its id>']`; dark and light define the same variables; solid fill/foreground pairs reach 4.5:1; **no CSS outside `looks/` mentions `data-look`** (Classic has no rules). Commit.
 
 ### Task 7: Gates, Classic pixel check, browser check
 

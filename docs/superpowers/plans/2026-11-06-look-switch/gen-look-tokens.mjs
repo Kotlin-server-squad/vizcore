@@ -1,73 +1,18 @@
 #!/usr/bin/env node
 /**
- * Prints the colour part of one look's tokens.css (PR L0, the Look switch).
+ * Writes the colour block of one look's tokens.css (PR L0, the Look switch).
  *
- *   node docs/superpowers/plans/2026-11-06-look-switch/gen-look-tokens.mjs a
+ *   node docs/superpowers/plans/2026-11-06-look-switch/gen-look-tokens.mjs frontend/src/looks/a-compact
  *
- * The base colours below were read from the sketches in ./sketches (each sketch
- * shows one theme; the other theme of each look is derived in the same spirit).
- * HeroUI wants its colours as "H S% L%" triplets and a 50–900 ramp per colour,
- * which CSS cannot derive from a hex value, so this script writes them. Edit the
- * table, re-run, and paste the output over the generated block of
- * frontend/src/looks/<look>/tokens.css. Hand edits to the triplets are fine too.
+ * Reads the look's palette.json (base colours for its dark and light theme,
+ * read from the sketches in ./sketches; each sketch shows one theme and the
+ * other is derived in the same spirit) and replaces the block between the
+ * "generated" markers in the look's tokens.css. HeroUI wants its colours as
+ * "H S% L%" triplets with a 50–900 ramp per colour, which CSS cannot derive from
+ * a hex value; hence this script. Hand edits to the output are fine too.
  */
-
-const LOOKS = {
-  a: {
-    name: 'A · Compact',
-    dark: {
-      // K-A-Compact: JetBrains-style dark.
-      bg: '#1e1f22', surface: '#2b2d30', 'surface-2': '#313337', 'surface-3': '#393b40',
-      border: '#393b40', 'border-2': '#4e5157',
-      text: '#dfe1e5', 'text-muted': '#9da0a8', 'text-faint': '#6f737a',
-      primary: '#548af7', success: '#5fb865', warning: '#e5a50a', danger: '#e5534b',
-      secondary: '#a571e6', created: '#868a91',
-    },
-    light: {
-      bg: '#f7f8fa', surface: '#ffffff', 'surface-2': '#f2f3f5', 'surface-3': '#ebecf0',
-      border: '#ebecf0', 'border-2': '#c9ccd6',
-      text: '#1e1f22', 'text-muted': '#5a5d6b', 'text-faint': '#767a89',
-      primary: '#3574f0', success: '#1f7a35', warning: '#946100', danger: '#c7303f',
-      secondary: '#834dd1', created: '#767a89',
-    },
-  },
-  b: {
-    name: 'B · Calm',
-    light: {
-      // K-B-Calm: soft light, zinc neutrals.
-      bg: '#f7f7f8', surface: '#ffffff', 'surface-2': '#f4f4f5', 'surface-3': '#e4e4e7',
-      border: '#e4e4e7', 'border-2': '#d4d4d8',
-      text: '#18181b', 'text-muted': '#52525b', 'text-faint': '#71717a',
-      primary: '#2563eb', success: '#15803d', warning: '#b45309', danger: '#dc2626',
-      secondary: '#9333ea', created: '#71717a',
-    },
-    dark: {
-      bg: '#18181b', surface: '#202024', 'surface-2': '#27272a', 'surface-3': '#303036',
-      border: '#2f2f35', 'border-2': '#3f3f46',
-      text: '#f4f4f5', 'text-muted': '#a1a1aa', 'text-faint': '#71717a',
-      primary: '#60a5fa', success: '#4ade80', warning: '#fbbf24', danger: '#f87171',
-      secondary: '#c084fc', created: '#8b8b94',
-    },
-  },
-  c: {
-    name: 'C · Bold',
-    dark: {
-      // K-C-Bold: near-black, saturated fills.
-      bg: '#0b0d12', surface: '#18181b', 'surface-2': '#1f1f23', 'surface-3': '#27272a',
-      border: '#27272a', 'border-2': '#3f3f46',
-      text: '#f4f4f5', 'text-muted': '#a1a1aa', 'text-faint': '#71717a',
-      primary: '#3b82f6', success: '#22c55e', warning: '#f59e0b', danger: '#f43f5e',
-      secondary: '#a78bfa', created: '#8b8b94',
-    },
-    light: {
-      bg: '#fafaf9', surface: '#ffffff', 'surface-2': '#f4f4f5', 'surface-3': '#e4e4e7',
-      border: '#e4e4e7', 'border-2': '#a1a1aa',
-      text: '#0b0d12', 'text-muted': '#3f3f46', 'text-faint': '#71717a',
-      primary: '#1d4ed8', success: '#15803d', warning: '#b45309', danger: '#be123c',
-      secondary: '#6d28d9', created: '#71717a',
-    },
-  },
-}
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
 const toHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')
@@ -86,6 +31,21 @@ function hsl(hex) {
   h *= 60
   return `${h.toFixed(2)} ${(s * 100).toFixed(2)}% ${(l * 100).toFixed(2)}%`
 }
+
+/** WCAG relative luminance and contrast ratio. */
+function luminance(hex) {
+  const [r, g, b] = rgb(hex).map((v) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+const contrast = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+/** White or near-black text on a fill, whichever reads better. */
+const onFill = (fill) => (contrast(fill, '#ffffff') >= contrast(fill, '#0b0b0d') ? '#ffffff' : '#0b0b0d')
 
 function rgba(hex, a) {
   const [r, g, b] = rgb(hex)
@@ -148,26 +108,33 @@ function block(id, theme, p) {
   for (const [step, c] of Object.entries(n)) v(`heroui-default-${step}`, hsl(c), c)
   v('heroui-default', hsl(n[dark ? 200 : 300]))
   v('heroui-default-foreground', hsl(dark ? '#ffffff' : p.text))
-  const onDark = mix(p.bg, '#000000', 0.5)
   for (const role of ['primary', 'secondary', 'success', 'warning', 'danger']) {
     const r = ramp(p[role], p.bg, dark)
     for (const [step, c] of Object.entries(r)) v(`heroui-${role}-${step}`, hsl(c), c)
     v(`heroui-${role}`, hsl(p[role]), p[role])
-    const fg = dark && (role === 'success' || role === 'warning') ? onDark : '#ffffff'
+    const fg = onFill(p[role])
     v(`heroui-${role}-foreground`, hsl(fg), fg)
   }
   out.push('}')
   return out.join('\n')
 }
 
-const id = process.argv[2]
-const look = LOOKS[id]
-if (!look) {
-  console.error(`usage: gen-look-tokens.mjs <${Object.keys(LOOKS).join('|')}>`)
+const BEGIN = '/* --- generated by gen-look-tokens.mjs from palette.json (edit palette.json and re-run, or hand-edit) --- */'
+const END = '/* --- end of generated block --- */'
+
+const dir = process.argv[2]
+if (!dir) {
+  console.error('usage: gen-look-tokens.mjs <frontend/src/looks/<look-folder>>')
   process.exit(1)
 }
-console.log(`/* --- generated by gen-look-tokens.mjs ${id}: ${look.name} --- */`)
-console.log(block(id, 'dark', look.dark))
-console.log()
-console.log(block(id, 'light', look.light))
-console.log(`/* --- end of generated block --- */`)
+const look = JSON.parse(readFileSync(join(dir, 'palette.json'), 'utf8'))
+const generated = [BEGIN, block(look.id, 'dark', look.dark), '', block(look.id, 'light', look.light), END].join('\n')
+const cssPath = join(dir, 'tokens.css')
+const css = readFileSync(cssPath, 'utf8')
+const from = css.indexOf(BEGIN)
+const to = css.indexOf(END)
+const next = from >= 0 && to > from
+  ? css.slice(0, from) + generated + css.slice(to + END.length)
+  : `${css.trimEnd()}\n\n${generated}\n`
+writeFileSync(cssPath, next)
+console.log(`wrote ${cssPath}`)
