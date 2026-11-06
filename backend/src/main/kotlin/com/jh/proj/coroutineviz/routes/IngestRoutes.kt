@@ -104,7 +104,11 @@ fun Route.registerIngestRoutes() {
             // before any event is accepted (plan E-13), and the finally below undoes the registrations above.
             connection =
                 try {
-                    IngestStates.connectionOpened(sessionId, firstSeq = session.lastSeq + 1)
+                    IngestStates.connectionOpened(
+                        sessionId,
+                        firstSeq = session.lastSeq + 1,
+                        inheritedDoubt = transportOf(IngestStates.snapshot(sessionId), session, sessionKindOf(sessionId), session.lastSeq),
+                    )
                 } catch (e: IngestStateNotStoredException) {
                     ingestLogger.warn("Refused an ingest socket for session {}: {}", sessionId, e.message)
                     close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Ingest state could not be stored"))

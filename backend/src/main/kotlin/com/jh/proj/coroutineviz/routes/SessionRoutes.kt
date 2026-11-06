@@ -306,44 +306,13 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
-        // At a replay cursor or bound to a health: the timeline of that moment (plan E-7).
-        val binding =
-            try {
-                parseViewBinding(call.request.queryParameters)
-            } catch (e: BadReadParameter) {
-                call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "bad parameter"))
-                return@get
-            }
-        if (binding != ViewBinding.Current) {
-            call.withSessionView { view ->
-                val body = timelineAt(view, coroutineId)
-                if (body == null) {
-                    call.respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
-                } else {
-                    call.respond(HttpStatusCode.OK, body)
-                }
-            }
-            return@get
-        }
-
+        val ingest = IngestStates.snapshot(sessionId)
         val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@get
         }
-
-        val timeline = session.projectionService.getCoroutineTimeline(coroutineId)
-        if (timeline == null) {
-            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Coroutine not found"))
-            return@get
-        }
-
-        // The open phase lets a client count a still-running coroutine up to now (#218). For an
-        // app session only a still-streaming app vouches that the coroutine is still running:
-        // once its ingest socket is gone, its fate is unknown, so stop the clock. vizcore's own
-        // runs execute in this JVM and need no socket.
-        val live = IngestConnections.isConnected(sessionId) || sessionKindOf(sessionId) == SessionKind.DEMO
-        call.respond(HttpStatusCode.OK, if (live) timeline else timeline.copy(openPhase = null, openPhaseSinceNanos = null))
+        call.respondTimeline(session, ingest, coroutineId)
     }
 
     // Authenticated SSE stream. This route is registered INSIDE authenticatedApi { } (see Routing.kt),
@@ -597,3 +566,34 @@ internal fun VizEvent.toSse(): ServerSentEvent =
         event = kind,
         id = "$sessionId-$seq",
     )
+
+/**
+ * `…/coroutines/{coroutineId}/timeline` for a resolved session, shared by the session and the shared routes: the current
+ * timeline from the live projection (its open phase kept while the app streams or for a demo), or, at a replay cursor or
+ * bound to a health, the timeline of that moment (plan E-7).
+ */
+internal suspend fun ApplicationCall.respondTimeline(
+    session: VizSession,
+    ingest: IngestSnapshot,
+    coroutineId: String,
+) {
+    respondReadErrors {
+        val binding = parseViewBinding(request.queryParameters)
+        if (binding != ViewBinding.Current) {
+            val body = timelineAt(readView(session, ingest, binding, leakThresholdMs()), coroutineId)
+            if (body == null) respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found")) else respond(HttpStatusCode.OK, body)
+            return@respondReadErrors
+        }
+        val timeline = session.projectionService.getCoroutineTimeline(coroutineId)
+        if (timeline == null) {
+            respond(HttpStatusCode.NotFound, mapOf("error" to "Coroutine not found"))
+            return@respondReadErrors
+        }
+        // The open phase lets a client count a still-running coroutine up to now (#218). For an app session only a
+        // still-streaming app vouches that the coroutine is still running: once its ingest socket is gone, its fate is
+        // unknown, so stop the clock. vizcore's own runs execute in this JVM and need no socket.
+        val sessionId = session.sessionId
+        val live = IngestConnections.isConnected(sessionId) || sessionKindOf(sessionId) == SessionKind.DEMO
+        respond(HttpStatusCode.OK, if (live) timeline else timeline.copy(openPhase = null, openPhaseSinceNanos = null))
+    }
+}

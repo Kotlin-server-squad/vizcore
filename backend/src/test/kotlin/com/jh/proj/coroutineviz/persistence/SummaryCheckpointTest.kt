@@ -55,6 +55,8 @@ class SummaryCheckpointTest {
 
     @AfterEach
     fun tearDown() {
+        com.jh.proj.coroutineviz.session.SessionManager
+            .useStore(null)
         built.forEach { it.close() }
         dataSource.close()
     }
@@ -224,5 +226,28 @@ class SummaryCheckpointTest {
             )
         assertEquals(30L, view.seq)
         assertEquals((1L..30L).toList(), view.events.map { it.seq })
+    }
+
+    @Test
+    fun `an empty rebuilt session keeps its empty cut while the store fills and is trimmed`() {
+        com.jh.proj.coroutineviz.session.SessionManager
+            .useStore(store)
+        val id = runBlocking { store.createSession("cut-empty") }.sessionId
+        val rebuilt = fresh(id)
+        ingest(id, history(id))
+        DbRetentionPolicy(db, maxEventsPerSession = 10).cleanup()
+        val view =
+            com.jh.proj.coroutineviz.routes.readView(
+                rebuilt,
+                com.jh.proj.coroutineviz.routes
+                    .IngestSnapshot(),
+                com.jh.proj.coroutineviz.routes.ViewBinding.Current,
+                30_000,
+            )
+        assertEquals(0L, view.seq)
+        assertTrue(view.events.isEmpty())
+        assertEquals(false, view.input.retention?.trimmed, "the empty cut, not the trimmed store")
+        com.jh.proj.coroutineviz.session.SessionManager
+            .useStore(null)
     }
 }

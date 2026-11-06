@@ -18,6 +18,8 @@ import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.select
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -101,6 +103,15 @@ class ChecksPersistenceTest {
             client.post("/api/validate/session/$id")
             val before = assertNotNull(client.status(id).lastRun)
             SessionManager.useStore(ExposedSessionStore(db)) // a new process
+            ChecksResults.clear() // nothing in memory: the run must come from the session row
             assertEquals(before, client.status(id).lastRun)
+            val stored =
+                org.jetbrains.exposed.v1.jdbc.transactions.transaction(db) {
+                    com.jh.proj.coroutineviz.persistence.tables.SessionsTable
+                        .select(com.jh.proj.coroutineviz.persistence.tables.SessionsTable.checks)
+                        .where { com.jh.proj.coroutineviz.persistence.tables.SessionsTable.id eq id }
+                        .first()[com.jh.proj.coroutineviz.persistence.tables.SessionsTable.checks]
+                }
+            assertTrue(stored.orEmpty().contains("\"checkedSeq\""), stored)
         }
 }

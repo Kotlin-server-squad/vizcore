@@ -1440,7 +1440,7 @@ export interface components {
         /** @description A shared session under one cut (spec C-6) */
         SharedSessionResponse: {
             session: components["schemas"]["SessionSnapshotResponse"];
-            events: Record<string, never>[];
+            events: components["schemas"]["VizEvent"][];
             /** @description The health at load, from the same cut as session and events */
             health: components["schemas"]["SessionHealth"] | null;
             /** @description summaries-unavailable or history-trimmed when health is null */

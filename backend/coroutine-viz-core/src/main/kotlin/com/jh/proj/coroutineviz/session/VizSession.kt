@@ -375,7 +375,11 @@ class VizSession(
         require(seed == null || seed.lastEventSeq <= newest) {
             "checkpoint at ${seed?.lastEventSeq} is newer than the newest event $newest"
         }
-        if (events.isEmpty()) return
+        if (events.isEmpty()) {
+            // Nothing to rebuild, but this empty read is the cut: later reads must not see a store that moved on.
+            synchronized(sendLock) { rehydratedEvents = events }
+            return
+        }
         synchronized(sendLock) {
             rehydratedEvents = events
             if (seed != null && summaryTable != null) {

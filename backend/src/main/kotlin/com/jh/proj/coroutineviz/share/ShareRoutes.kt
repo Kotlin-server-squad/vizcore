@@ -25,8 +25,8 @@ import com.jh.proj.coroutineviz.routes.readView
 import com.jh.proj.coroutineviz.routes.respondHealthItems
 import com.jh.proj.coroutineviz.routes.respondHierarchy
 import com.jh.proj.coroutineviz.routes.respondReadErrors
+import com.jh.proj.coroutineviz.routes.respondTimeline
 import com.jh.proj.coroutineviz.routes.snapshotResponseOf
-import com.jh.proj.coroutineviz.routes.timelineAt
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.HttpStatusCode
@@ -220,16 +220,9 @@ fun Route.registerSharedPublicRoute(service: ShareService) {
         call.withSharedSession(service) { session, ingest, _ -> call.respondHierarchy(session, ingest) }
     }
     get("/api/shared/{token}/coroutines/{coroutineId}/timeline") {
-        call.withSharedView(service) { view ->
-            val body = call.parameters["coroutineId"]?.let { timelineAt(view, it) }
-            if (body ==
-                null
-            ) {
-                call.respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
-            } else {
-                call.respond(HttpStatusCode.OK, body)
-            }
-        }
+        val coroutineId =
+            call.parameters["coroutineId"] ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
+        call.withSharedSession(service) { session, ingest, _ -> call.respondTimeline(session, ingest, coroutineId) }
     }
 }
 

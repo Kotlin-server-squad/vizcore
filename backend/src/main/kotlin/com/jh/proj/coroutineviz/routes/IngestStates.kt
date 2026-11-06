@@ -86,9 +86,16 @@ object IngestStates {
     fun connectionOpened(
         sessionId: String,
         firstSeq: Long,
+        inheritedDoubt: TransportStatus? = null,
     ): Connection {
         val state = stateOf(sessionId)
         synchronized(state) {
+            // What no recorded connection vouched for so far (a row from before persisted ingest state, events stored with no
+            // connection) becomes part of the stored state before the first write, so a clean close cannot erase it.
+            inheritedDoubt?.takeIf { it.deliveryUncertain }?.let { doubt ->
+                val t = state.transport
+                state.updateTransport(t.copy(deliveryUncertain = true, sinceSeq = earliest(t.sinceSeq, doubt.sinceSeq ?: 1)))
+            }
             val firstBefore = state.firstConnectionSeq
             if (state.firstConnectionSeq == null) state.firstConnectionSeq = firstSeq
             state.openFirstSeqs += firstSeq

@@ -234,4 +234,16 @@ class SharedHealthRoutesTest {
             val metrics = client.get("/api/sessions/$id/metrics")
             assertTrue(metrics.bodyAsText().contains("\"retainedOnly\":true"), metrics.bodyAsText())
         }
+
+    @Test
+    fun `the shared current timeline answers like the session's, even without a health`() =
+        testApplication {
+            app()
+            val (id, token) = client.failingShared()
+            transaction(db) { EventsTable.deleteWhere { (EventsTable.sessionId eq id) and (EventsTable.seq eq 1L) } }
+            val own = client.get("/api/sessions/$id/coroutines/child/timeline")
+            assertEquals(HttpStatusCode.OK, own.status)
+            val shared = client.get("/api/shared/$token/coroutines/child/timeline")
+            assertEquals(HttpStatusCode.OK, shared.status, shared.bodyAsText())
+        }
 }

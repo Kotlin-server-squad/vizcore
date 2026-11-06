@@ -306,4 +306,22 @@ class IngestStatePersistenceTest {
         IngestStates.connectionClosed(a)
         assertEquals(5L, fake.writes.last().second, "b is still open")
     }
+
+    @Test
+    fun `a reconnect onto a row from before persisted ingest state keeps its doubt across a clean close and a restart`() =
+        testApplication {
+            application { module() }
+            val ws = createClient { install(WebSockets) }
+            val id = ws.createSessionNamed("db-legacy-reconnect")
+            transaction(db) {
+                SessionsTable.update({ SessionsTable.id eq id }) {
+                    it[ingestState] = null
+                    it[createdAt] = kotlin.time.Instant.fromEpochMilliseconds(0)
+                }
+            }
+            restart()
+            ws.streamAndClose(id, final = true)
+            restart()
+            assertTrue(ws.health(id).transport.deliveryUncertain)
+        }
 }
