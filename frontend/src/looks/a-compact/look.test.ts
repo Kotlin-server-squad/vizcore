@@ -102,7 +102,7 @@ describe('A · Compact', () => {
 
   it('leaves the graph’s cards to card.css, whose size card.ts gives the layout', () => {
     expect(layoutCss).not.toMatch(/data-look-part='node/)
-    expect(compactCard).toEqual({ width: 208, height: 66 })
+    expect(compactCard).toEqual({ width: 208, height: 66, fitMinZoom: 1 })
   })
 
   it('keeps every word on the card at 12 px or more', () => {
