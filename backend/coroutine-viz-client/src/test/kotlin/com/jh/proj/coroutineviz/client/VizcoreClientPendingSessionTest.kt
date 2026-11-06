@@ -257,6 +257,9 @@ class VizcoreClientPendingSessionTest {
 
             assertEquals(1, creates.get(), "no retries on an app runtime the SDK cannot run on")
             assertNull(client.sessionIdOrNull)
+            // The loop stops the client with stop(0), which releases the source on a thread of its own without waiting.
+            val released = System.currentTimeMillis() + 5_000
+            while (!source.stopped && System.currentTimeMillis() < released) Thread.sleep(10)
             assertTrue(source.stopped, "the client stops its source (and with it the probes)")
             // stop() cancels the scope last, after closing the buffer and the HTTP client.
             assertTrue(!scope.coroutineContext.job.isActive, "the client's scope is cancelled")
