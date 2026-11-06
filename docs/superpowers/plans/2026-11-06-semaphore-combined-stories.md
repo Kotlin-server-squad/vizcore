@@ -77,7 +77,7 @@ A trip planner shows the weather for eight cities. The weather service takes at 
 | `weather-split` | 3.0 | 7.0 | 10.0 |
 | `weather-krakow` | 2.5 | 8.0 | 10.5 |
 
-- Root `trip-planner` starts the eight calls and `trip-page` at once.
+- Root `trip-planner` starts the eight calls and `trip-page` at once. By default the demo runs its coroutines one at a time (`Dispatchers.Default.limitedParallelism(1)`, as the Deadlock demo does), so the calls reach the semaphore in the order they were started (see Changes while building).
 - `trip-page` is Suspended in `await` for each forecast in turn, then draws the page 10.5–12.0.
 - **Outcome:** the burst of eight is throttled to two calls at a time; six calls wait, each Suspended (`SEMAPHORE`) then Resumed; `onPlanned` gets the eight forecasts in city order. Live run **~12 s**.
 - **Common mistake:** *Too many coroutines at once* (its fix names a Semaphore). The key idea says plainly that the semaphore limits the calls, not the coroutines: for thousands of items use a fixed set of workers.
@@ -98,7 +98,7 @@ Before a tax return goes to the accountant, an app compresses the nine files of 
 | `invoices.zip` | 3.0 | 8.5 | 11.5 | 12.5 |
 | `doctor-bills.pdf` | 2.0 | 10.0 | 12.0 | 13.0 |
 
-- Root `tax-folder` starts all nine at once.
+- Root `tax-folder` starts all nine at once; one at a time by default, like the Rate Limiter.
 - **Outcome:** never more than 2 files on the disk; a permit goes to the next file the moment a file gives it back, not in rounds; seven files wait. Live run **~13 s**.
 
 ### 4. Resource Pool with Timeout: Fitting Rooms (`sync/semaphore/resource-timeout`)
@@ -232,3 +232,13 @@ Each picture is checked by `GuideLabelsTest` on virtual time (all six join `VIRT
 **Round 2** (1 P1, 2 P2):
 - **P1:** `delegate.release()` and `session.send` ran under the new `releaseLock`; an unconfined waiter resumed inline could release another semaphore and deadlock against a second thread. **P2:** the waiter counts went stale after a hand-off whose waiter was cancelled. **P2:** the over-release guard could call the delegate's release successfully before reporting it.
 - These were smaller and smaller findings from one piece of accounting, so scope was cut instead of adding more: the lock and the counts are gone. `newAvailablePermits` is one more than were free just before the release, honest about what the release frees and not exact when releases race (the snapshot after each release is). The guard now throws at once. The two tests that asserted the accounting are removed; the order tests (1, 2), the sink and guard tests and the cancelled-waiter test stay.
+
+---
+
+## Changes while building
+
+- **The pacing test caught a 3.5 s root step** before Eva in the Combined demo (also found by the plan review): Eva now comes at 6 s, and Finn at 9 s.
+- **Caption roles:** the trees show holders and waiters alike as suspended, so the Bakery picture matches most of its run. `SemaphoreStoriesTest` now checks each caption at its moment from the events: who holds which permit or lock, and who is suspended in a permit wait, a `delay` or an `await`.
+- **The live check found the Rate Limiter's order wrong:** all eight calls start at the same moment, and on `Dispatchers.Default` Oslo and Split got the first two permits. Both burst demos (Rate Limiter, File Processor) now run their coroutines one at a time by default, as the Deadlock demo does; a real-time test checks the permit order (it failed 3 of 3 runs without the change).
+- **Code boxes:** three label comments made the code box scroll sideways by 25-47 px; shortened.
+- **Measured live** (scale 1, `scripts/demo-pacing-audit.py`, backend 18801, frontend 13801): connection pool 11.0 s, rate limiter 12.0 s, file processor 13.0 s, fitting rooms 11.5 s, bakery 21.0 s, sneaker drop 11.0 s; 22, 10, 18, 19, 17 and 21 half-second moments; the busiest half second holds at most 39 % of the events (the burst demos at 0 s). Each picture equals the live tree at its moment, and the session events confirm each caption.
