@@ -50,7 +50,7 @@ export function useLook(): { look: LookId; setLook: ((id: LookId) => void) | nul
 
 - Initial look: `link !== undefined ? parseLook(link) : parseLook(readStored())`. A link is saved at once.
 - When `link` changes to another defined value while mounted (a client-side navigation to `?look=b`), it is applied and saved too. After a link is read, `onLinkRead()` runs.
-- `setLook(id)` sets state and saves. Storage blocked (private mode, policy) → the choice lives for this visit only, in a module variable, so navigating to another session keeps it (the same idea as `useTheme`'s `data-viz-theme`).
+- `setLook(id)` sets state and saves, and also keeps the choice in a module variable for this visit. Opening a session page starts from **this visit's choice first, then storage, then Classic**: storage that is blocked, or reads but will not write (full, a policy), still keeps the choice across navigations (the same idea as `useTheme`'s `data-viz-theme`).
 - The provider applies `data-look` to `<html>` in a `useLayoutEffect` and removes it on unmount.
 - **Outside a provider** `useLook()` returns `{ look: 'classic', setLook: null }`. The shared view (`/shared/$token`) and every component test that renders `SessionHeader` without a provider get Classic and no Look section in the menu: the switch is offered only where it works.
 
@@ -68,7 +68,7 @@ And for `html[data-look='x']` (both themes):
 - **Density:** the root `font-size` (A 15 px, B and C 16 px = today). Tailwind and HeroUI sizes are in `rem`, so this scales text, controls and spacing together — the cheapest density knob. Where a fixed pixel value assumes 16 px (the session page height `calc(100dvh - 65px)` for the 4 rem navbar), the look's CSS corrects it.
 - **Shape:** `--radius`, `--radius-sm`, `--heroui-radius-small/medium/large` (A 4/3 px, B 14/10 px, C 16/10 px). The main view and the dock use a fixed Tailwind `rounded-xl`, so each look also sets their `border-radius` through the `main` and `dock` hooks (2.4); Classic's utilities stay as they are.
 - **Fonts:** `--font-sans` and `--font-mono` stay Inter and JetBrains Mono in all looks (the sketches use them). C adds `--font-display: 'Space Grotesk'` for the page title and dock headings (a new `@fontsource/space-grotesk` dependency, imported only by C's CSS).
-- **Spacing:** the page padding and the gap between header, main view and dock, set on the CSS hooks below (A tight 8×12 px / 8 px, B airy 24×32 px / 18 px, C 16×28 px / 14 px).
+- **Spacing:** the page padding and the gap between the header and the body, set on the CSS hooks below (A tight 8×12 px / 8 px, B airy 24×32 px / 18 px, C 16×28 px / 14 px). The 12 px gap between the main view and the dock stays in every look: `lib/dock-layout.ts` sizes the dock with it (`GAP_PX`). A look that wants another gap, or a dock beside the main view, first makes the dock's size rules read the real gap and orientation (and the separator's semantics follow), with Classic's defaults unchanged — a shared change, in that look's PR. `looks-css.test.ts` guards the gap.
 
 **Specificity:** `html.dark[data-look='a']` (0,2,1) beats HeroUI's `.dark` (0,1,0) and `tokens.css`'s `html.light` (0,1,1), whatever the order the bundles load in. **Classic has no CSS at all**, so it cannot drift: its pixels are today's by construction, and the before/after screenshots prove it.
 
@@ -97,12 +97,14 @@ A look may replace a piece of layout that CSS cannot rearrange. The registry typ
 ```ts
 export interface LookSlots {
   /** The main view and the dock under the header. Classic: a column, main view above the dock. */
-  SessionBody: ComponentType<SessionBodyProps>
+  SessionBody: (props: SessionBodyProps) => ReactElement
 }
 export interface SessionBodyProps { sharedRef: Ref<HTMLDivElement>; main: ReactNode; dock: ReactNode }
 ```
 
-`useLookSlot('SessionBody')` returns the current look's component, or Classic's. Classic's `SessionBody` renders exactly today's `<div ref={sharedRef} className="flex min-h-0 flex-1 flex-col gap-3">{main}{dock}</div>`. In L0 no look fills a slot; the one call site (in `SessionWorkspace`) proves the plumbing and costs nothing. A follow-up that needs a different arrangement (C's dock beside the tree, say) adds `slots: { SessionBody: BoldSessionBody }` to its look and keeps every prop, handler and data flow as is. New slots are added only when a look needs one, with Classic's version extracted unchanged.
+`useLookSlot('SessionBody')` returns the current look's version, or Classic's. **A slot is a render function, called in place** (`sessionBody({ … })`, not `<SessionBody />`): swapping a component type would remount everything under it when the look changes — the graph's pan and zoom, Evidence's open sections, every panel's query subscription. Called in place, React keeps them, provided every look's version returns the same shape: for SessionBody, one `div` whose first two children are `main` and then `dock`; attributes, classes and extra children after those two may differ. `slots.test.tsx` proves it with a look that brings its own body: stateful children keep their state and mount once across switching there and back.
+
+Classic's `classicSessionBody` renders exactly today's `<div ref={sharedRef} className="flex min-h-0 flex-1 flex-col gap-3">{main}{dock}</div>` (plus the `body` hook). In L0 no look fills a slot; the one call site (in `SessionWorkspace`) proves the plumbing and costs nothing. A follow-up that needs a different arrangement adds `slots: { SessionBody: boldSessionBody }` to its look and keeps every prop, handler and data flow as is. A rearrangement that cannot keep that shape needs portals or a shared change, and its PR says so. New slots are added only when a look needs one, with Classic's version extracted unchanged.
 
 **Rule for every look:** a look changes presentation only. Data, hooks, handlers, selection, tab state, request profile and accessibility names are shared; a slot receives rendered nodes and refs, never data to re-derive.
 
@@ -115,7 +117,7 @@ frontend/src/looks/
   look-context.test.tsx  the switch, persistence, ?look=, fallback, data-look, slots
   classic/
     index.ts             Classic's definition: no CSS; the default slots
-    SessionBody.tsx      today's main-view-and-dock column, unchanged
+    SessionBody.tsx      classicSessionBody: today's main-view-and-dock column, unchanged
   a-compact/
     index.ts             A's definition; imports ./tokens.css
     tokens.css           colours (generated block), density, shape, spacing
@@ -183,6 +185,8 @@ Light-theme status colours are the text-safe (≈ AA on white) shades, as Classi
 ## Plan review
 
 - **Codex R1** (revise): P2 current item had no accessible state → `aria-current="true"` (1.); P2 malformed `?look=` values → present non-strings read as Classic, tests for each and for keeping the other search params (2.2, Task 4); P2 removal touched shared tests and the generator → registry-driven tests, per-look `palette.json` and `look.test.ts`, the font dependency named as the one exception (3., 4.); P2 radius tokens did not reach the main view and dock → look-scoped `border-radius` on the hooks (2.3); P2 white text on light fills (2.54:1) → foregrounds by contrast, tested (3.); P2 export tests needed a dark start → specified (Task 5); P3 divider after, not before, a section → the actions get a section with the divider (1., Task 3).
+
+- **Codex R2** (revise, no P1): P2 a component-type slot would remount the main view and dock on a look change → slots are render functions with a fixed shape, tested (2.5); P2 the dock's size rules assume a 12 px gap → looks keep it, guarded by a test, and a side dock is named as a shared change for its PR (2.3); P2 storage that reads but will not write lost the visit's choice → the visit's choice comes first, tested (2.2). Not taken to a third round: no P1 in R2, and the code review covers the fixes.
 
 ## Tasks
 
