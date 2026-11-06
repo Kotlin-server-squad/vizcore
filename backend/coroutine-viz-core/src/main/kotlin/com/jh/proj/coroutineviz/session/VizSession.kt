@@ -5,6 +5,7 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.job.JobStateChanged
 import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.SummaryTable
+import com.jh.proj.coroutineviz.health.SummaryTableState
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.models.RuntimeSnapshot
 import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
@@ -151,7 +152,22 @@ class VizSession(
     private val applier = EventApplier(snapshot)
 
     // Durable per-coroutine summaries (spec 2026-10-21, C-2); guarded by [sendLock] like the snapshot.
-    private val summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
+    private var summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
+
+    /** The last seq of the checkpoint the summaries were restored from, `null` when they were folded from the events alone. */
+    @Volatile
+    var summarySeedSeq: Long? = null
+        private set
+
+    /**
+     * The events this session was rebuilt from by [rehydrateFrom], until anything is appended to it: what its snapshot,
+     * projections and summaries describe. A database store hands out a fresh session per read, and the store itself may
+     * change (appends, trims) after it was read; reads of such a session use these events, not the store, so they describe
+     * one cut (spec C-4, C-6). Guarded by the send lock.
+     */
+    var rehydratedEvents: List<VizEvent>? = null
+        get() = synchronized(sendLock) { field }
+        private set
 
     /** Test hook: runs before each event is applied to the summary table, to inject a failure. */
     @Volatile
@@ -328,6 +344,7 @@ class VizSession(
             if (!guard()) return false
             finalizeSeq()
             lastSentSeq = event.seq
+            rehydratedEvents = null
             store.record(event)
             applier.apply(event)
             applyToSummaries(event)
@@ -358,13 +375,37 @@ class VizSession(
      * send lock. A summary failure degrades the
      * summaries only; the rest of the rehydration still completes.
      */
-    fun rehydrateFromStore() {
-        val events = store.all() // ExposedEventStore returns these ordered by seq
-        if (events.isEmpty()) return
+    fun rehydrateFromStore() = rehydrateFrom(store.all(), seed = null)
+
+    /**
+     * Rebuilds the read models from [events] (in seq order) and, when [seed] is given, the summaries from that checkpoint
+     * plus the events after it (spec C-4); events up to the checkpoint rebuild the snapshot and projections only. The
+     * caller reads [events] and [seed] as one cut: [seed] must not be newer than the newest event. Call it once, before
+     * the session is published. A summary failure degrades the summaries only.
+     */
+    fun rehydrateFrom(
+        events: List<VizEvent>,
+        seed: SummaryTableState?,
+    ) {
+        val newest = events.lastOrNull()?.seq ?: 0L
+        require(seed == null || seed.lastEventSeq <= newest) {
+            "checkpoint at ${seed?.lastEventSeq} is newer than the newest event $newest"
+        }
+        if (events.isEmpty()) {
+            // Nothing to rebuild, but this empty read is the cut: later reads must not see a store that moved on.
+            synchronized(sendLock) { rehydratedEvents = events }
+            return
+        }
         synchronized(sendLock) {
+            rehydratedEvents = events
+            if (seed != null && summaryTable != null) {
+                summaryTable = SummaryTable.restore(seed)
+                summarySeedSeq = seed.lastEventSeq
+            }
+            val after = summarySeedSeq ?: Long.MIN_VALUE
             events.forEach {
                 applier.apply(it)
-                applyToSummaries(it)
+                if (it.seq > after) applyToSummaries(it)
             }
             val maxSeq = events.maxOf { it.seq }
             if (maxSeq > lastSentSeq) {
@@ -375,6 +416,21 @@ class VizSession(
         projectionService.rebuildFrom(events)
         metricsProjection.rebuildFrom(events)
     }
+
+    /**
+     * Abandons the summary table, as an apply failure does: health reads answer "unavailable" (H-3) while every other read
+     * still works. A store calls it when it cannot rebuild the summaries from one consistent cut.
+     */
+    fun abandonSummaries() {
+        synchronized(sendLock) { summariesDegraded = true }
+    }
+
+    /**
+     * Runs [block] under the send lock with the live summary table (`null` when the session keeps none or they were
+     * abandoned): one consistent cut of store, snapshot and summaries (spec C-6). Keep [block] short, and copy what it
+     * returns: the view is only safe under the lock.
+     */
+    fun <T> readCut(block: (SummaryView?) -> T): T = synchronized(sendLock) { block(summaryTable?.takeUnless { summariesDegraded }) }
 
     /**
      * Async event send - for non-coroutine contexts.

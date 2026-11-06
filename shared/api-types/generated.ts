@@ -111,6 +111,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{id}/health/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A health list past its first 50 entries */
+        get: operations["getSessionHealthItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{id}/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every round of the session, with server-side find
+         * @description Problem rounds first, then newest anchor first, keyset paged (spec 2026-10-21 C-3, T-4).
+         */
+        get: operations["getSessionRounds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{id}/coroutines/{coroutineId}/timeline": {
         parameters: {
             query?: never;
@@ -118,7 +155,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get timeline for a specific coroutine */
+        /**
+         * Get timeline for a specific coroutine
+         * @description With atSeq or asOfSeq: the timeline at that moment (no open phase, no observedAtEpochMs), with eventsTrimmed and partial.
+         */
         get: operations["getCoroutineTimeline"];
         put?: never;
         post?: never;
@@ -373,7 +413,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The session's last checks run */
+        get: operations["getSessionChecks"];
         put?: never;
         /** Run validation rules against a session's events */
         post: operations["validateSession"];
@@ -412,6 +453,134 @@ export interface paths {
          * @description Produces a structured diff between two visualization sessions. The comparison includes aggregate differences (coroutine count, event count, duration, thread utilization), coroutines unique to each session, and per-coroutine state and event count comparisons for shared coroutines.
          */
         get: operations["compareSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session metrics, split by origin */
+        get: operations["getSessionMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shared/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A shared session under one cut */
+        get: operations["getSharedSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shared/{token}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared view: The session's derived health, live or at a replay cursor
+         * @description What the captured coroutines show (spec 2026-10-21, C-3): failed rounds, ungrouped failures and possibly blocked coroutines, observations, origin counts, transport and retention facts; every list is capped at 50 with its total. Without atSeq the health is live; with it, it is the fold of the retained events up to the cursor (clamped to the last event), seeded from the durable summaries for coroutines whose creation was trimmed.
+         */
+        get: operations["getSharedHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shared/{token}/health/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shared view: A health list past its first 50 entries */
+        get: operations["getSharedHealthItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shared/{token}/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared view: Every round of the session, with server-side find
+         * @description Problem rounds first, then newest anchor first, keyset paged (spec 2026-10-21 C-3, T-4).
+         */
+        get: operations["getSharedRounds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shared/{token}/hierarchy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shared view: Get coroutine hierarchy tree for a session */
+        get: operations["getSharedHierarchy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shared/{token}/coroutines/{coroutineId}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared view: Get timeline for a specific coroutine
+         * @description With atSeq or asOfSeq: the timeline at that moment (no open phase, no observedAtEpochMs), with eventsTrimmed and partial.
+         */
+        get: operations["getSharedTimeline"];
         put?: never;
         post?: never;
         delete?: never;
@@ -564,6 +733,10 @@ export interface components {
              * @description The backend's wall clock when it built this timeline. With createdAtNanos and createdAtEpochMs a client can estimate the emitting JVM's current tsNanos, assuming both hosts' wall clocks agree.
              */
             observedAtEpochMs?: number | null;
+            /** @description At a bound or replay view only: the coroutine's creation is not retained */
+            eventsTrimmed?: boolean;
+            /** @description Replay only: the state at the cursor is not known */
+            partial?: boolean;
         };
         TimelineEventSummary: {
             /** Format: int64 */
@@ -971,6 +1144,11 @@ export interface components {
              * @description First seq that may be incomplete
              */
             sinceSeq: number | null;
+            /**
+             * Format: int64
+             * @description Bumped on every change of the facts above
+             */
+            revision: number;
         };
         ProblemRound: {
             roundId: string;
@@ -1023,6 +1201,253 @@ export interface components {
             /** @description The watermark the health used (live attached sessions only) */
             asOfWatermark: components["schemas"]["WatermarkObservation"] | null;
             retention: components["schemas"]["RetentionInfo"] | null;
+        };
+        /** @enum {string} */
+        MemberRole: "FAILED" | "CANCELLED_AFTER";
+        /** @description One member of a failed round's incident */
+        RoundMember: {
+            coroutineId: string;
+            name: string | null;
+            role: components["schemas"]["MemberRole"];
+            exceptionType: string | null;
+            message: string | null;
+            /** Format: int64 */
+            terminalSeq: number;
+            /** @description The summary was reduced to a stub: type and message are no longer known */
+            detailsDropped: boolean;
+        };
+        /** @description One round (an anchor and its subtree) */
+        RoundEntry: {
+            roundId: string;
+            anchorId: string;
+            anchorName: string | null;
+            /** @enum {string|null} */
+            anchorOrigin: "APP" | "VIZCORE" | "UNKNOWN" | null;
+            /** Format: int64 */
+            anchorCreatedNanos: number;
+            /** Format: int64 */
+            anchorCreatedSeq: number;
+            inProgress: boolean;
+            /** @description Members by state (CoroutineState names) */
+            countsByState: {
+                [key: string]: number;
+            };
+            memberCount: number;
+            problem: boolean;
+            problemKinds: components["schemas"]["IncidentKind"][];
+            /** @description With q: the matching members, newest first */
+            matches: components["schemas"]["CappedStrings"] | null;
+            /** @description Replay only: members whose state at the cursor is not known */
+            unknownMembers: number;
+        };
+        /** @description A page of rounds: problem rounds first, then newest anchor first */
+        RoundsPage: {
+            /** Format: int64 */
+            asOfSeq: number;
+            total: number;
+            items: components["schemas"]["RoundEntry"][];
+            nextCursor: string | null;
+            /** @description Replay only: coroutines whose state at the cursor is not known */
+            unknownAtSeq: number;
+            /** @description With q: matching coroutines that belong to no round */
+            ungroupedMatches: components["schemas"]["CappedStrings"] | null;
+        };
+        IncidentsPage: {
+            /** @enum {string} */
+            list: "incidents";
+            /** Format: int64 */
+            asOfSeq: number;
+            total: number;
+            items: components["schemas"]["Incident"][];
+            nextCursor: string | null;
+            unknownAtSeq: number;
+        };
+        RoundMembersPage: {
+            /** @enum {string} */
+            list: "round-members";
+            /** Format: int64 */
+            asOfSeq: number;
+            total: number;
+            items: components["schemas"]["RoundMember"][];
+            nextCursor: string | null;
+            unknownAtSeq: number;
+        };
+        ObservedAgesPage: {
+            /** @enum {string} */
+            list: "long-lived" | "long-suspended";
+            /** Format: int64 */
+            asOfSeq: number;
+            total: number;
+            items: components["schemas"]["ObservedAge"][];
+            nextCursor: string | null;
+            unknownAtSeq: number;
+        };
+        FailureInfo: {
+            exceptionType: string | null;
+            message: string | null;
+        };
+        /** @description The durable per-coroutine summary (spec C-2) */
+        CoroutineSummary: {
+            id: string;
+            parentId: string | null;
+            /** @enum {string|null} */
+            origin: "APP" | "VIZCORE" | "UNKNOWN" | null;
+            name: string | null;
+            creationLocation: components["schemas"]["SuspensionPoint"] | null;
+            /** Format: int64 */
+            createdAtEpochMs: number;
+            firstObserved: components["schemas"]["Transition"];
+            lastTransition: components["schemas"]["Transition"];
+            /** Format: int64 */
+            lastObservedNanos: number;
+            lastRunStart: components["schemas"]["Transition"] | null;
+            everSuspended: boolean;
+            terminal: components["schemas"]["Transition"] | null;
+            failed: boolean;
+            cancelled: boolean;
+            failure: components["schemas"]["FailureInfo"] | null;
+            lastSuspension: components["schemas"]["SuspensionPoint"] | null;
+            /** @enum {string|null} */
+            lastSuspensionProvenance: "REAL_FRAME" | "CREATION_FALLBACK" | "STALE" | null;
+            lastThread: components["schemas"]["ThreadObservation"] | null;
+            dispatcher: string | null;
+            /** Format: int64 */
+            lastModifiedSeq: number;
+            /** Format: int64 */
+            promotedAtSeq: number | null;
+            grewAfterPromotion: boolean;
+            reduced: boolean;
+        };
+        /** @description A hierarchy node with its round and summary */
+        HierarchyNodeDto: {
+            id: string;
+            parentId: string | null;
+            children: string[];
+            name: string;
+            scopeId: string | null;
+            /** @description The projection's state string */
+            state: string;
+            /** Format: int64 */
+            createdAtNanos: number;
+            /** Format: int64 */
+            completedAtNanos: number | null;
+            dispatcherId: string | null;
+            dispatcherName: string | null;
+            /** Format: int64 */
+            currentThreadId: number | null;
+            currentThreadName: string | null;
+            jobId: string | null;
+            exceptionType: string | null;
+            exceptionMessage: string | null;
+            activeChildrenIds: string[];
+            activeChildrenCount: number;
+            creationPoint: components["schemas"]["SuspensionPoint"] | null;
+            lastSuspensionPoint: components["schemas"]["SuspensionPoint"] | null;
+            roundId: string | null;
+            summary: components["schemas"]["CoroutineSummary"] | null;
+            /**
+             * @description The health's classification of the summary (what problem counts use)
+             * @enum {string|null}
+             */
+            summaryState: "CREATED" | "ACTIVE" | "SUSPENDED" | "WAITING_FOR_CHILDREN" | "COMPLETED" | "CANCELLED" | "FAILED" | null;
+            /** @description Built from the summary only: the events that created it are not retained */
+            summaryOnly: boolean;
+            /** @description Replay only: this coroutine's state at the cursor is not known */
+            partial: boolean;
+        };
+        /** @description One rule of a checks run */
+        RuleOutcome: {
+            name: string;
+            passed: boolean;
+            failures: number;
+        };
+        /** @description The last checks run */
+        ChecksRun: {
+            /**
+             * Format: int64
+             * @description The last event validated
+             */
+            checkedSeq: number;
+            /** Format: int64 */
+            ranAtEpochMs: number;
+            rules: components["schemas"]["RuleOutcome"][];
+            failedRuleCount: number;
+        };
+        /** @description The checks status (spec C-5, T-8) */
+        ChecksStatus: {
+            sessionId: string;
+            /** @description Null before any run */
+            lastRun: components["schemas"]["ChecksRun"] | null;
+            /**
+             * Format: int64
+             * @description Events after the run
+             */
+            newEventsSince: number | null;
+        };
+        LeakDto: {
+            coroutineId: string;
+            label: string | null;
+            /**
+             * Format: int64
+             * @description Age frozen at the last observation (or the live watermark)
+             */
+            aliveMs: number;
+            /** @enum {string|null} */
+            origin: "APP" | "VIZCORE" | "UNKNOWN" | null;
+        };
+        OriginSlice: {
+            captured: number;
+            active: number;
+            peak: number;
+            /**
+             * Format: double
+             * @description Events per second (backend receipt time); null for a database session rebuilt from stored events
+             */
+            throughputPerSec: number | null;
+            dispatcherUtilization: {
+                [key: string]: number;
+            };
+            longLived: number;
+        };
+        OriginMetrics: {
+            app: components["schemas"]["OriginSlice"];
+            vizcore: components["schemas"]["OriginSlice"];
+            unknown: components["schemas"]["OriginSlice"];
+            /** Format: int64 */
+            untracked: number;
+        };
+        /** @description Session metrics (RCO-07), split by origin (spec C-3) */
+        MetricsResponse: {
+            active: number;
+            peak: number;
+            /** Format: double */
+            throughputPerSec: number;
+            dispatcherUtilization: {
+                [key: string]: number;
+            };
+            leaks: components["schemas"]["LeakDto"][];
+            /** Format: int64 */
+            leakThresholdMs: number;
+            /** @description False when the summaries are unavailable (leaks then empty) */
+            leaksAvailable: boolean;
+            /** @description Per effective origin; null when the summaries are unavailable */
+            byOrigin: components["schemas"]["OriginMetrics"] | null;
+            /** @description The projection figures come from retained events only */
+            retainedOnly: boolean;
+            /** Format: int64 */
+            oldestRetainedAppNanos: number | null;
+        };
+        /** @description A shared session under one cut (spec C-6) */
+        SharedSessionResponse: {
+            session: components["schemas"]["SessionSnapshotResponse"];
+            events: components["schemas"]["VizEvent"][];
+            /** @description The health at load, from the same cut as session and events */
+            health: components["schemas"]["SessionHealth"] | null;
+            /** @description summaries-unavailable or history-trimmed when health is null */
+            healthUnavailable: string | null;
+            /** @description The health's kept cut: follow-ups pass it as asOfCut */
+            healthCut: string | null;
+            checks: components["schemas"]["ChecksStatus"] | null;
         };
     };
     responses: never;
@@ -1183,6 +1608,18 @@ export interface operations {
             query?: {
                 /** @description Optional scope ID to filter hierarchy */
                 scopeId?: string;
+                /** @description Only this round's nodes */
+                roundId?: string;
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
             };
             header?: never;
             path: {
@@ -1192,17 +1629,44 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Hierarchy tree of coroutines */
+            /** @description Nodes at one moment, with their round and summary (header X-Viz-As-Of-Seq at a bound or replay view) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HierarchyNode"][];
+                    "application/json": components["schemas"]["HierarchyNodeDto"][];
+                };
+            };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Session not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1264,6 +1728,8 @@ export interface operations {
             /** @description The session's health */
             200: {
                 headers: {
+                    /** @description The live health's kept cut id (follow-ups pass it as asOfCut) */
+                    "X-Viz-Cut"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1299,9 +1765,182 @@ export interface operations {
             };
         };
     };
+    getSessionHealthItems: {
+        parameters: {
+            query: {
+                /** @description incidents, round-members, long-lived or long-suspended */
+                list: string;
+                /** @description With list=incidents: FAILED or POSSIBLY_BLOCKED */
+                kind?: string;
+                /** @description With list=round-members: a FAILED_ROUND incident id */
+                incidentId?: string;
+                /** @description Keyset cursor from nextCursor */
+                cursor?: string;
+                /** @description Page size 1..200 (default 50) */
+                limit?: number;
+                /** @description Long-lived threshold in milliseconds, as on /metrics */
+                leakThresholdMs?: number;
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentsPage"] | components["schemas"]["RoundMembersPage"] | components["schemas"]["ObservedAgesPage"];
+                };
+            };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session not found, or incident-not-found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable: code summaries-unavailable or history-trimmed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSessionRounds: {
+        parameters: {
+            query?: {
+                /** @description Keyset cursor from nextCursor */
+                cursor?: string;
+                /** @description Page size 1..200 (default 50) */
+                limit?: number;
+                /** @description Find: a substring of a member's name, creation function or file (at most 200 characters) */
+                q?: string;
+                /** @description Only rounds holding a problem */
+                problemsOnly?: boolean;
+                /** @description Also rounds anchored by vizcore's own coroutines */
+                includeVizcore?: boolean;
+                /** @description Long-lived threshold in milliseconds, as on /metrics */
+                leakThresholdMs?: number;
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of rounds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoundsPage"];
+                };
+            };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable: code summaries-unavailable or history-trimmed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getCoroutineTimeline: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -1320,8 +1959,35 @@ export interface operations {
                     "application/json": components["schemas"]["CoroutineTimeline"];
                 };
             };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Session or coroutine not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1772,6 +2438,37 @@ export interface operations {
             };
         };
     };
+    getSessionChecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The last run, null before any */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecksStatus"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     validateSession: {
         parameters: {
             query?: never;
@@ -1857,6 +2554,486 @@ export interface operations {
             };
             /** @description One or both sessions not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSessionMetrics: {
+        parameters: {
+            query?: {
+                /** @description Long-lived threshold in milliseconds (default 30000, clamped to 1000..3600000) */
+                leakThresholdMs?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session's metrics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsResponse"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSharedSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, events, health and checks of one cut */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedSessionResponse"];
+                };
+            };
+            /** @description Share link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Share link has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSharedHealth: {
+        parameters: {
+            query?: {
+                /** @description Replay cursor (event seq). Omit for live health. */
+                atSeq?: number;
+                /** @description Long-lived threshold in ms, as on /metrics (default 30000, clamped to 1000..3600000) */
+                leakThresholdMs?: number;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session's health */
+            200: {
+                headers: {
+                    /** @description The live health's kept cut id (follow-ups pass it as asOfCut) */
+                    "X-Viz-Cut"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionHealth"];
+                };
+            };
+            /** @description atSeq is not a non-negative integer */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Share link has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable: code summaries-unavailable, or history-trimmed for a database session whose early events were trimmed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSharedHealthItems: {
+        parameters: {
+            query: {
+                /** @description incidents, round-members, long-lived or long-suspended */
+                list: string;
+                /** @description With list=incidents: FAILED or POSSIBLY_BLOCKED */
+                kind?: string;
+                /** @description With list=round-members: a FAILED_ROUND incident id */
+                incidentId?: string;
+                /** @description Keyset cursor from nextCursor */
+                cursor?: string;
+                /** @description Page size 1..200 (default 50) */
+                limit?: number;
+                /** @description Long-lived threshold in milliseconds, as on /metrics */
+                leakThresholdMs?: number;
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentsPage"] | components["schemas"]["RoundMembersPage"] | components["schemas"]["ObservedAgesPage"];
+                };
+            };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session not found, or incident-not-found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Share link has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable: code summaries-unavailable or history-trimmed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSharedRounds: {
+        parameters: {
+            query?: {
+                /** @description Keyset cursor from nextCursor */
+                cursor?: string;
+                /** @description Page size 1..200 (default 50) */
+                limit?: number;
+                /** @description Find: a substring of a member's name, creation function or file (at most 200 characters) */
+                q?: string;
+                /** @description Only rounds holding a problem */
+                problemsOnly?: boolean;
+                /** @description Also rounds anchored by vizcore's own coroutines */
+                includeVizcore?: boolean;
+                /** @description Long-lived threshold in milliseconds, as on /metrics */
+                leakThresholdMs?: number;
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of rounds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoundsPage"];
+                };
+            };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Share link has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable: code summaries-unavailable or history-trimmed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSharedHierarchy: {
+        parameters: {
+            query?: {
+                /** @description Optional scope ID to filter hierarchy */
+                scopeId?: string;
+                /** @description Only this round's nodes */
+                roundId?: string;
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nodes at one moment, with their round and summary (header X-Viz-As-Of-Seq at a bound or replay view) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HierarchyNodeDto"][];
+                };
+            };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Share link has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSharedTimeline: {
+        parameters: {
+            query?: {
+                /** @description Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged) */
+                atSeq?: number;
+                /** @description Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly */
+                asOfSeq?: number;
+                /** @description With asOfSeq: the health's asOfWatermark.appNanos */
+                asOfWatermark?: number;
+                /** @description With asOfSeq: the health's transport.revision */
+                asOfTransport?: number;
+                /** @description With asOfSeq: the health's cut id (header X-Viz-Cut, or the share payload's healthCut); names that cut exactly */
+                asOfCut?: string;
+            };
+            header?: never;
+            path: {
+                token: string;
+                coroutineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Coroutine timeline with computed durations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoroutineTimeline"];
+                };
+            };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session or coroutine not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This view has moved on (code stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Share link has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

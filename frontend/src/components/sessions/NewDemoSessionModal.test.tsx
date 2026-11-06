@@ -100,7 +100,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
     const names = screen.getAllByRole('button', { name: /^start /i }).map((b) => b.getAttribute('aria-label'))
     expect(new Set(names).size).toBe(32)
     expect(screen.getByRole('button', { name: 'Start Producer-Consumer: Coffee Bar (Patterns)' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Start Producer-Consumer (Sync: Semaphore)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start Producer-Consumer Buffer: The Bakery Rack (Sync: Semaphore)' })).toBeInTheDocument()
   })
 
   it('groups the demos in the order of the catalog', async () => {

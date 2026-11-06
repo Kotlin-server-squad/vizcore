@@ -189,6 +189,8 @@ class DbRetentionPolicy(
                 // Keep the newest `maxEventsPerSession` by seq; the cutoff is the
                 // smallest kept seq, and anything strictly below it is trimmed.
                 val keepCutoffSeq = seqs.sortedDescending()[maxEventsPerSession - 1]
+                // What the deleted events told is kept in the session's summary checkpoint first (spec C-4).
+                SummaryCheckpoints.foldBelow(sessionId, keepCutoffSeq)
                 EventsTable.deleteWhere {
                     (EventsTable.sessionId eq sessionId) and (EventsTable.seq less keepCutoffSeq)
                 }

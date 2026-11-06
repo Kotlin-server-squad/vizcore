@@ -6,6 +6,7 @@ import { CoroutineTreeGraph } from '../CoroutineTreeGraph'
 import { EmptyState } from '../EmptyState'
 import type { StateFilter } from '@/lib/state-counts'
 import type { CoroutineNode } from '@/types/api'
+import type { ActivityLine } from '@/lib/activity'
 
 interface CoroutineCanvasProps {
   /** Already filtered and capped by the caller — the canvas renders what it is given. */
@@ -22,6 +23,8 @@ interface CoroutineCanvasProps {
   moreCount: number
   /** Unfinished children per parent over the whole snapshot (see `CoroutineTree`). */
   pendingChildCounts?: ReadonlyMap<string, number>
+  /** Each coroutine's second line (S-6); shown in every mode, read from the same events as the tree. */
+  activity?: ReadonlyMap<string, ActivityLine>
   /** Which chip the state bar has active — decides which empty state is honest. */
   stateFilter: StateFilter
   /** The state bar, already bound to the filter (rendered in the toolbar). */
@@ -57,6 +60,7 @@ export function CoroutineCanvas({
   onToggleCompleted,
   moreCount,
   pendingChildCounts,
+  activity,
   stateFilter,
   stateBar,
   isDemo = false,
@@ -140,6 +144,7 @@ export function CoroutineCanvas({
                   coroutines={coroutines}
                   onSelect={onSelect}
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
+                  activity={activity}
                 />
               ) : (
                 <CoroutineTree
@@ -147,6 +152,7 @@ export function CoroutineCanvas({
                   onSelect={onSelect}
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
                   pendingChildCounts={pendingChildCounts}
+                  activity={activity}
                 />
               )}
             </div>

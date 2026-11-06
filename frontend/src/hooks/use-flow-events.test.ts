@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
+import type { VizEvent } from '@/types/api'
 
 vi.mock('@/hooks/use-sessions', () => ({
   useSessionEvents: vi.fn(),
@@ -34,6 +35,30 @@ describe('useFlowEvents', () => {
     expect(result.current.flowEvents).toEqual([])
     expect(result.current.flows).toEqual([])
     expect(result.current.hasBackpressure).toBe(false)
+  })
+
+  it('reduces in seq order, whatever order the events arrived in', () => {
+    mockedUseSessionEvents.mockReturnValue({ data: [] } as unknown as ReturnType<typeof useSessionEvents>)
+    const created = { kind: 'FlowCreated', sessionId: 's1', seq: 1, tsNanos: 1, flowId: 'f-1', coroutineId: 'c1', flowType: 'SharedFlow', label: 'f', scopeId: null }
+    const sub = (seq: number, subscriberCount: number) => ({
+      kind: 'SharedFlowSubscription', sessionId: 's1', seq, tsNanos: seq, flowId: 'f-1', subscriberId: `s-${seq}`, action: 'subscribed', subscriberCount,
+    })
+    const arrived = [created, sub(3, 2), sub(2, 1)] as unknown as VizEvent[]
+
+    const { result } = renderHook(() => useFlowEvents('s1', arrived))
+
+    expect(result.current.flows[0]?.subscriberCount).toBe(2)
+  })
+
+  it('reads the events it is given, not the stored history, when given some', () => {
+    mockedUseSessionEvents.mockReturnValue({ data: [] } as unknown as ReturnType<typeof useSessionEvents>)
+    const live = [
+      { kind: 'FlowCreated', sessionId: 's1', seq: 1, tsNanos: 1, flowId: 'f-1', coroutineId: 'c1', flowType: 'Cold', label: 'f', scopeId: null },
+    ] as unknown as VizEvent[]
+
+    const { result } = renderHook(() => useFlowEvents('s1', live))
+
+    expect(result.current.flows.map(f => f.flowId)).toEqual(['f-1'])
   })
 
   it('tracks flow creation and type', () => {

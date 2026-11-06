@@ -1,5 +1,7 @@
 package com.jh.proj.coroutineviz.session
 
+import com.jh.proj.coroutineviz.events.CoroutineEvent
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineBodyCompleted
@@ -81,6 +83,15 @@ class MetricsProjection(
     /** Recent event arrival timestamps (tsNanos), bounded to the sliding window. */
     private val recentEventTsNanos = ArrayDeque<Long>()
 
+    // Per reported origin (spec C-3 `/metrics` by origin): which bucket each active coroutine is in, each bucket's active
+    // count and peak, and a throughput window on ONE clock, the backend's receipt time as the live bus delivers each event
+    // (an attached app's clock is unrelated to the backend's). A rebuilt projection has no receipt times.
+    private val bucketOf = HashMap<String, OriginBucket>()
+    private val activeByBucket = java.util.EnumMap<OriginBucket, Int>(OriginBucket::class.java)
+    private val peakByBucket = java.util.EnumMap<OriginBucket, Int>(OriginBucket::class.java)
+    private val receiptsByBucket = java.util.EnumMap<OriginBucket, ArrayDeque<Long>>(OriginBucket::class.java)
+    private var rebuilt = false
+
     init {
         // Subscribe to the event bus, exactly like ProjectionService.
         // UNDISPATCHED: the bus is replay = 0, so the subscription must exist before this
@@ -106,6 +117,11 @@ class MetricsProjection(
             activeCoroutines.clear()
             peakActive = 0
             recentEventTsNanos.clear()
+            bucketOf.clear()
+            activeByBucket.clear()
+            peakByBucket.clear()
+            receiptsByBucket.clear()
+            rebuilt = true
             events.forEach { applyLocked(it) }
         }
     }
@@ -113,7 +129,10 @@ class MetricsProjection(
     /** Live bus path: acquire the lock, then apply. */
     private fun processEvent(event: VizEvent) {
         synchronized(lock) {
+            // The bucket before the event applies: a terminal event removes it, and still counts.
+            val bucket = bucketFor(event)
             applyLocked(event)
+            bucket?.let { recordReceipt(it, System.nanoTime()) }
         }
     }
 
@@ -125,6 +144,12 @@ class MetricsProjection(
         recordArrival(event.tsNanos)
         when (event) {
             is CoroutineCreated -> {
+                val bucket = OriginBucket.of(event.origin)
+                if (bucketOf.put(event.coroutineId, bucket) == null) {
+                    val active = (activeByBucket[bucket] ?: 0) + 1
+                    activeByBucket[bucket] = active
+                    if (active > (peakByBucket[bucket] ?: 0)) peakByBucket[bucket] = active
+                }
                 activeCoroutines[event.coroutineId] =
                     ActiveCoroutine(
                         label = event.label,
@@ -135,9 +160,9 @@ class MetricsProjection(
             }
 
             // Terminal states: drop from the active set (bounds memory, T-08-06).
-            is CoroutineCompleted -> activeCoroutines.remove(event.coroutineId)
-            is CoroutineCancelled -> activeCoroutines.remove(event.coroutineId)
-            is CoroutineFailed -> activeCoroutines.remove(event.coroutineId)
+            is CoroutineCompleted -> finished(event.coroutineId)
+            is CoroutineCancelled -> finished(event.coroutineId)
+            is CoroutineFailed -> finished(event.coroutineId)
 
             // Non-terminal lifecycle transitions keep the coroutine active; they
             // are still observed events (counted toward throughput above).
@@ -157,6 +182,44 @@ class MetricsProjection(
      * against the READ clock (WR-04) — this append-time trim only keeps the deque bounded
      * between reads.
      */
+    private fun finished(coroutineId: String) {
+        activeCoroutines.remove(coroutineId)
+        bucketOf.remove(coroutineId)?.let { activeByBucket[it] = (activeByBucket[it] ?: 1) - 1 }
+    }
+
+    private fun bucketFor(event: VizEvent): OriginBucket? =
+        when (event) {
+            is CoroutineCreated -> bucketOf[event.coroutineId] ?: OriginBucket.of(event.origin)
+            is CoroutineEvent -> bucketOf[event.coroutineId]
+            else -> null
+        }
+
+    private fun recordReceipt(
+        bucket: OriginBucket,
+        receiptNanos: Long,
+    ) {
+        val window = receiptsByBucket.getOrPut(bucket) { ArrayDeque() }
+        window.addLast(receiptNanos)
+        while (window.isNotEmpty() && window.peekFirst() < receiptNanos - THROUGHPUT_WINDOW_NANOS) window.removeFirst()
+    }
+
+    /**
+     * Per reported origin: the peak of active coroutines and, for a live projection, the events per second of that
+     * origin's coroutines over the last 10 s of backend receipt time (`null` once rebuilt from stored events, which carry
+     * no receipt time). [nowNanos] is the backend's `System.nanoTime()`.
+     */
+    fun byOrigin(nowNanos: Long = System.nanoTime()): Map<OriginBucket, OriginAggregate> =
+        synchronized(lock) {
+            OriginBucket.entries.associateWith { bucket ->
+                val window = receiptsByBucket[bucket]
+                window?.let { while (it.isNotEmpty() && it.peekFirst() < nowNanos - THROUGHPUT_WINDOW_NANOS) it.removeFirst() }
+                OriginAggregate(
+                    peak = peakByBucket[bucket] ?: 0,
+                    throughputPerSec = if (rebuilt) null else (window?.size ?: 0) / (THROUGHPUT_WINDOW_NANOS / NANOS_PER_SECOND),
+                )
+            }
+        }
+
     private fun recordArrival(tsNanos: Long) {
         recentEventTsNanos.addLast(tsNanos)
         evictOlderThan(tsNanos - THROUGHPUT_WINDOW_NANOS)
@@ -280,4 +343,27 @@ data class LeakInfo(
     val coroutineId: String,
     val label: String?,
     val aliveMs: Long,
+)
+
+/** A coroutine's reported origin, as `MetricsProjection` buckets it: anything not reported as APP or VIZCORE is UNREPORTED. */
+enum class OriginBucket {
+    APP,
+    VIZCORE,
+    UNREPORTED,
+    ;
+
+    companion object {
+        fun of(origin: CoroutineOrigin?): OriginBucket =
+            when (origin) {
+                CoroutineOrigin.APP -> APP
+                CoroutineOrigin.VIZCORE -> VIZCORE
+                else -> UNREPORTED
+            }
+    }
+}
+
+/** One origin bucket's figures (see [MetricsProjection.byOrigin]). */
+data class OriginAggregate(
+    val peak: Int,
+    val throughputPerSec: Double?,
 )
