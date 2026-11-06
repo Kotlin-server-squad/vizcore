@@ -1,5 +1,9 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import kotlin.test.assertSame
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.wrappers.VizCoroutineElement
@@ -28,7 +32,8 @@ class WrapperOwnedCoroutinesTest {
         context: CoroutineContext,
     ) = CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, job, context + CoroutineName(name), emptyList(), emptyList())
 
-    private fun kept(vararg raws: CoroutineInfoAdapter.RawInfo) = excludeWrapperOwned(raws.toList(), session).map { it.context[CoroutineName]!!.name }
+    private fun kept(vararg raws: CoroutineInfoAdapter.RawInfo) =
+        raws.filterNot { isWrapperOwned(it, session) }.map { it.context[CoroutineName]!!.name }
 
     @Test
     fun `the coroutine a VizScope of this session launched is left to its wrapper events`() {
@@ -64,10 +69,11 @@ class WrapperOwnedCoroutinesTest {
         val wrapperJob = Job()
         val e = element(session, wrapperJob)
         val raws = listOf(raw("wrapper", wrapperJob, e), raw("child", Job(wrapperJob), e))
-        val kept = leaveToWrappers(raws, CoroutineInfoAdapter().toSnapshots(raws), session)
-        assertEquals(1, kept.size)
-        assertEquals("coroutine-1", kept.single().parentCoroutineId)
-        val created = DebugProbesEventSynthesizer().synthesize(CoroutineDelta.Appeared(kept.single()), session).first() as CoroutineCreated
+        val snapshots = attributeToWrappers(raws, CoroutineInfoAdapter().toSnapshots(raws), session)
+        assertSame(e, snapshots[0].wrapper)
+        assertNull(snapshots[1].wrapper)
+        assertEquals("coroutine-1", snapshots[1].parentCoroutineId)
+        val created = DebugProbesEventSynthesizer().synthesize(CoroutineDelta.Appeared(snapshots[1]), session).first() as CoroutineCreated
         assertEquals("coroutine-1", created.parentCoroutineId)
     }
 
@@ -75,8 +81,42 @@ class WrapperOwnedCoroutinesTest {
     fun `without wrappers the snapshots pass unchanged`() {
         val raws = listOf(raw("app", Job(), CoroutineName("app")))
         val snapshots = CoroutineInfoAdapter().toSnapshots(raws)
-        val kept = leaveToWrappers(raws, snapshots, session)
-        assertEquals(snapshots, kept)
-        assertNull(kept.single().parentCoroutineId)
+        val attributed = attributeToWrappers(raws, snapshots, session)
+        assertEquals(snapshots, attributed)
+        assertNull(attributed.single().parentCoroutineId)
+        assertNull(attributed.single().wrapper)
+    }
+
+    private fun wrapperSnapshot(
+        state: CoroState,
+        ownerJob: Job = Job(),
+    ) = CoroutineSnapshot(
+        key = CoroKey("w"),
+        state = state,
+        function = "main",
+        lastObservedStackTrace = listOf(StackTraceElement("com.acme.Repo", "load", "Repo.kt", 42)),
+    ).also { it.wrapper = element(session, ownerJob) }
+
+    @Test
+    fun `a wrapper coroutine gets only its sampled suspensions and resumes, under its own id`() {
+        val synthesizer = DebugProbesEventSynthesizer()
+        val suspended = wrapperSnapshot(CoroState.SUSPENDED)
+        val appeared = synthesizer.synthesize(CoroutineDelta.Appeared(suspended), session)
+        val event = appeared.single() as CoroutineSuspended
+        assertEquals("coroutine-1", event.coroutineId)
+        assertEquals("job-1", event.jobId)
+        assertEquals(SuspensionProvenance.REAL_FRAME, event.provenance)
+        assertEquals(emptyList(), synthesizer.synthesize(CoroutineDelta.Appeared(wrapperSnapshot(CoroState.RUNNING)), session))
+        val resumed = synthesizer.synthesize(CoroutineDelta.StateChanged(CoroState.SUSPENDED, CoroState.RUNNING, wrapperSnapshot(CoroState.RUNNING)), session)
+        assertEquals(listOf("CoroutineResumed"), resumed.map { it.kind })
+        assertEquals("coroutine-1", (resumed.single() as CoroutineResumed).coroutineId)
+        assertEquals(emptyList(), synthesizer.synthesize(CoroutineDelta.Vanished(suspended), session), "its end is the wrapper's")
+    }
+
+    @Test
+    fun `nothing is added for a wrapper coroutine whose job completed`() {
+        val done = Job().also { it.complete() }
+        val events = DebugProbesEventSynthesizer().synthesize(CoroutineDelta.Appeared(wrapperSnapshot(CoroState.SUSPENDED, done)), session)
+        assertEquals(emptyList(), events)
     }
 }

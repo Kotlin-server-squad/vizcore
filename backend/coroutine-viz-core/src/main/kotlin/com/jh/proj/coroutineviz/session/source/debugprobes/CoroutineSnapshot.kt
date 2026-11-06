@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.wrappers.VizCoroutineElement
 
 /**
  * The three coroutine states DebugProbes exposes, modelled locally so the pure
@@ -92,6 +93,9 @@ data class CoroutineSnapshot(
 
     /** Set when the parent is a wrapper coroutine, whose events use its own id rather than a `dp-` one. Like [origin]. */
     internal var parentCoroutineId: String? = null
+
+    /** Set when this is a wrapper coroutine ([attributeToWrappers]): the element its wrapper events use. Like [origin]. */
+    internal var wrapper: VizCoroutineElement? = null
 }
 
 /**

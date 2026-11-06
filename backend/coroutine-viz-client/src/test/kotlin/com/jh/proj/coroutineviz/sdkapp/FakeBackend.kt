@@ -4,6 +4,7 @@ import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import kotlinx.serialization.PolymorphicSerializer
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -50,6 +51,11 @@ internal class FakeBackend(
     private val events = ConcurrentHashMap<String, Created>()
     val created: List<Created> get() = events.values.toList()
     private val frameKinds = CopyOnWriteArrayList<String>()
+
+    private val suspendedFrames = CopyOnWriteArrayList<CoroutineSuspended>()
+
+    /** Every CoroutineSuspended the ingest socket received, in order. */
+    val suspended: List<CoroutineSuspended> get() = suspendedFrames.toList()
 
     /** The kind of every frame the ingest socket received, in order (watermarks included). */
     val kinds: List<String> get() = frameKinds.toList()
@@ -126,6 +132,7 @@ internal class FakeBackend(
                 readTextFrames(input) { text ->
                     val event = appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), text)
                     frameKinds += event.kind
+                    if (event is CoroutineSuspended) suspendedFrames += event
                     if (event is CoroutineCreated) {
                         events[event.coroutineId] =
                             Created(event.label, event.creationPoint?.fileName, event.origin, event.coroutineId, event.parentCoroutineId)

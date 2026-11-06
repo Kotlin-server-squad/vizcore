@@ -601,6 +601,7 @@ class VizcoreClient internal constructor(
             var session: VizSession? = null
             var scope: CoroutineScope? = null
             var source: DebugProbesSource? = null
+            var client: VizcoreClient? = null
             return try {
                 // Created here when the backend answers, so the id is known when start() returns, as
                 // before; otherwise null, and the reconnect loop creates it once the backend is up.
@@ -639,15 +640,18 @@ class VizcoreClient internal constructor(
                     correlation = correlation,
                     buffer = outbound,
                 ).also {
+                    client = it
                     it.start()
                     // An app's wrapper events sent right after start returns must be captured.
-                    if (!it.awaitCapture(captureTimeout.inWholeMilliseconds)) {
-                        it.stop(0)
-                        throw IllegalStateException("vizcore could not start capturing within ${captureTimeout.inWholeMilliseconds} ms")
+                    check(it.awaitCapture(captureTimeout.inWholeMilliseconds)) {
+                        "vizcore could not start capturing within ${captureTimeout.inWholeMilliseconds} ms"
                     }
                 }
             } catch (failure: Throwable) {
-                // No client reaches the caller, so nothing else could ever close what this opened.
+                // No client reaches the caller, so nothing else could ever close what this opened. Stopping the client
+                // first marks it stopped under its lifecycle lock, so its asynchronous start cannot start the source
+                // after the source is stopped below (also when an interrupt ended the wait for capturing).
+                client?.stop(0)
                 source?.stop()
                 scope?.cancel()
                 session?.close()

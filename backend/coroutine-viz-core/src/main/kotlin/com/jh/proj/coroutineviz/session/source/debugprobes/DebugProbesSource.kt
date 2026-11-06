@@ -86,10 +86,10 @@ class DebugProbesSource(
         // straight into RawInfo — keeping the observed thread for ThreadAssigned
         // synthesis.
         //
-        // Coroutines a VizScope of this session launched are reported by their wrapper events: they help rebuild the
-        // hierarchy, then leaveToWrappers drops them (spec "Origin": captured once).
+        // Coroutines a VizScope of this session launched are created and ended by their wrapper events; DebugProbes add
+        // only what they sample, under the wrapper's id (spec "Origin": captured once).
         val raws = excludeSdkOwned(DebugProbesImplBridge.dumpRawInfos(), internalDispatchers, transportRoots)
-        leaveToWrappers(raws, adapter.toSnapshots(raws), session)
+        attributeToWrappers(raws, adapter.toSnapshots(raws), session)
     },
 ) : InstrumentationSource {
     private val logger = LoggerFactory.getLogger(DebugProbesSource::class.java)

@@ -14,6 +14,7 @@ import com.jh.proj.coroutineviz.session.coroutineStarted
 import com.jh.proj.coroutineviz.session.coroutineSuspended
 import com.jh.proj.coroutineviz.session.dispatcherSelected
 import com.jh.proj.coroutineviz.session.threadAssigned
+import com.jh.proj.coroutineviz.wrappers.VizCoroutineElement
 
 /**
  * Maps a [CoroutineDelta] to the existing `VizEvent` subtypes via the
@@ -203,12 +204,47 @@ class DebugProbesEventSynthesizer(
         delta: CoroutineDelta,
         session: VizSession,
         outcome: CompletionOutcome? = null,
-    ): List<VizEvent> =
-        when (delta) {
+    ): List<VizEvent> {
+        val wrapper =
+            when (delta) {
+                is CoroutineDelta.Appeared -> delta.now.wrapper
+                is CoroutineDelta.StateChanged -> delta.now.wrapper
+                is CoroutineDelta.Vanished -> delta.last.wrapper
+            }
+        if (wrapper != null) return wrapperEvents(delta, session, wrapper)
+        return when (delta) {
             is CoroutineDelta.Appeared -> appearedEvents(contextFor(session, delta.now), delta.now)
             is CoroutineDelta.StateChanged -> stateChangedEvents(contextFor(session, delta.now), delta)
             is CoroutineDelta.Vanished -> listOf(vanishedEvent(contextFor(session, delta.last), outcome))
         }
+    }
+
+    /**
+     * A [com.jh.proj.coroutineviz.wrappers.VizScope] coroutine ([CoroutineSnapshot.wrapper]): its wrapper events give its
+     * creation, start and end, so DebugProbes add only the state changes they sampled — a suspension (a plain `delay()`
+     * suspends without a wrapper event, and without it the coroutine would read as running) and the resume after it —
+     * under the wrapper's own id. Nothing once its Job completed: its terminal event is the wrapper's, and nothing
+     * follows it.
+     */
+    private fun wrapperEvents(
+        delta: CoroutineDelta,
+        session: VizSession,
+        element: VizCoroutineElement,
+    ): List<VizEvent> {
+        if (element.ownerJob?.isCompleted == true) return emptyList()
+        val ctx = EventContext(session, element.coroutineId, element.jobId, element.parentCoroutineId, element.scopeId, element.label)
+        return when (delta) {
+            is CoroutineDelta.Appeared -> if (delta.now.state == CoroState.SUSPENDED) suspendedEvents(ctx, delta.now) else emptyList()
+            is CoroutineDelta.StateChanged ->
+                when {
+                    delta.to == CoroState.SUSPENDED -> suspendedEvents(ctx, delta.now)
+                    delta.from == CoroState.SUSPENDED && delta.to == CoroState.RUNNING ->
+                        listOf(ctx.coroutineResumed()) + threadEvents(ctx, delta.now)
+                    else -> emptyList()
+                }
+            is CoroutineDelta.Vanished -> emptyList()
+        }
+    }
 
     /**
      * Appeared mapping: created/started per observed state, then the one-shot

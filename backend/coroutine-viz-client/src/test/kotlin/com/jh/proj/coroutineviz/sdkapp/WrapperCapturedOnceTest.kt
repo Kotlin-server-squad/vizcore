@@ -2,12 +2,14 @@ package com.jh.proj.coroutineviz.sdkapp
 
 import com.jh.proj.coroutineviz.client.VizcoreClient
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesInstall
 import com.jh.proj.coroutineviz.wrappers.VizScope
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Tag
@@ -40,8 +42,10 @@ class WrapperCapturedOnceTest {
                     }
                 }
                 viz.vizAsync(label = "wrapped-async", context = CoroutineName("wrapped-async")) { awaitCancellation() }
+                // A plain delay() suspends without a wrapper event: DebugProbes must say so, or it reads as running.
+                viz.vizLaunch(label = "wrapped-delay", context = CoroutineName("wrapped-delay")) { delay(60_000) }
             }
-            listOf("wrapped-launch", "wrapped-async", "inheriting-child").forEach(backend::awaitLabel)
+            listOf("wrapped-launch", "wrapped-async", "inheriting-child", "wrapped-delay").forEach(backend::awaitLabel)
             Thread.sleep(500) // several more polls: a dp- duplicate would have arrived by now
 
             val byLabel = backend.created.groupBy { it.label }
@@ -55,6 +59,16 @@ class WrapperCapturedOnceTest {
             assertTrue(child.coroutineId.startsWith("dp-"), "captured by DebugProbes: $child")
             val wrapperId = byLabel.getValue("wrapped-launch").single().coroutineId
             assertEquals(wrapperId, child.parentCoroutineId, "and keeps the wrapper as its parent")
+
+            val delayed = byLabel.getValue("wrapped-delay").single()
+            assertEquals(1, byLabel.getValue("wrapped-delay").size)
+            val deadline = System.currentTimeMillis() + 15_000
+            while (backend.suspended.none { it.coroutineId == delayed.coroutineId } && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50)
+            }
+            val suspension = backend.suspended.firstOrNull { it.coroutineId == delayed.coroutineId }
+            assertTrue(suspension != null, "the wrapper coroutine's sampled suspension arrives under its own id")
+            assertEquals(SuspensionProvenance.REAL_FRAME, suspension.provenance)
         } finally {
             scope?.cancel()
             client?.stop()
