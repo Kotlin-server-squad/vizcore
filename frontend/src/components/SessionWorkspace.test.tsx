@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { SessionWorkspace } from './SessionWorkspace'
+import { LOOK_STORAGE_KEY, LookProvider, forgetVisitLook } from '@/looks/look-context'
+import { CARDS, LOOKS } from '@/looks/registry'
 import type { SessionSnapshot, CoroutineState, ThreadActivity } from '@/types/api'
 
 // Mock all hooks the component depends on
@@ -1259,6 +1261,25 @@ describe('SessionWorkspace — header, main view and dock (S-1)', () => {
     expect(screen.getByRole('region', { name: 'Dock' })).toHaveStyle({
       height: `${Math.round(window.innerHeight * 0.4)}px`,
     })
+  })
+
+  it('opens the dock at each look’s own starting share, and at 40 % without one', () => {
+    for (const look of LOOKS) {
+      localStorage.clear()
+      forgetVisitLook()
+      localStorage.setItem(LOOK_STORAGE_KEY, look.id)
+      const { unmount } = render(
+        <LookProvider>
+          <SessionWorkspace sessionId="session-1" />
+        </LookProvider>,
+        { wrapper: createWrapper() }
+      )
+      const share = CARDS[look.id].dockShare ?? 0.4
+      expect(screen.getByRole('region', { name: 'Dock' }), look.id).toHaveStyle({
+        height: `${Math.round(window.innerHeight * share)}px`,
+      })
+      unmount()
+    }
   })
 
   it('resizes the dock from the keyboard and remembers it', async () => {
