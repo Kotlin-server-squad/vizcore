@@ -45,7 +45,7 @@ class FakeResizeObserver {
   static all: FakeResizeObserver[] = []
   targets = new Set<Element>()
   disconnected = false
-  constructor(private readonly callback: ResizeObserverCallback) {
+  constructor(private readonly callback: ConstructorParameters<typeof ResizeObserver>[0]) {
     FakeResizeObserver.all.push(this)
   }
   observe(el: Element) {
