@@ -200,16 +200,15 @@ async function renderPage() {
   page = document.body.appendChild(document.createElement('div'))
   page.setAttribute('data-look-part', 'page')
   render(
-    createElement(
-      LookProvider,
-      { link: 'a' },
-      createElement(SessionWorkspace, {
+    createElement(LookProvider, {
+      link: 'a',
+      children: createElement(SessionWorkspace, {
         sessionId: 'session-1',
         scenarioId: 'sync/combined/ecommerce',
         scenarioName: 'E-commerce Orders',
         startLive: true,
-      })
-    ),
+      }),
+    }),
     { wrapper, container: page.appendChild(document.createElement('div')) }
   )
   await userEvent.click(screen.getByRole('button', { name: 'Open source for order-2' }))
