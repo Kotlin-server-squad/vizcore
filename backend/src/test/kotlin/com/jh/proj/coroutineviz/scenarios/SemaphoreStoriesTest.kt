@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.scenarios
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.MutexCreated
 import com.jh.proj.coroutineviz.events.MutexLockAcquired
+import com.jh.proj.coroutineviz.events.MutexUnlocked
 import com.jh.proj.coroutineviz.events.SemaphoreCreated
 import com.jh.proj.coroutineviz.events.SemaphorePermitAcquired
 import com.jh.proj.coroutineviz.events.SemaphorePermitReleased
@@ -45,7 +46,10 @@ class SemaphoreStoriesTest {
 
         val labels: Set<String> = created.mapNotNull { it.label }.toSet()
 
-        fun at(event: VizEvent) = run.at(event)
+        /** Scripted ms from the demo's first event, so several stories can share one test's virtual clock. */
+        private val start = run.at(events.first())
+
+        fun at(event: VizEvent) = run.at(event) - start
 
         fun semaphoreId(label: String) = events.filterIsInstance<SemaphoreCreated>().single { it.semaphoreLabel == label }.semaphoreId
 
@@ -93,6 +97,42 @@ class SemaphoreStoriesTest {
                 if (event is SemaphorePermitReleased && event.semaphoreId == id) held--
             }
             return most
+        }
+
+        /** What [label] is suspended in at scripted [millis] ("delay", "semaphore", "mutex", "await"), or null if it is not. */
+        fun suspendedIn(
+            label: String,
+            millis: Long,
+        ): String? {
+            val own = events.filterIsInstance<CoroutineEvent>().filter { it.label == label && at(it) <= millis }
+            return (own.lastOrNull { it is CoroutineSuspended || it is CoroutineResumed } as? CoroutineSuspended)?.reason
+        }
+
+        /** Who holds a permit of [semaphore] at scripted [millis], replaying acquires and named releases. */
+        fun permitHoldersAt(
+            semaphore: String,
+            millis: Long,
+        ): Set<String?> {
+            val id = semaphoreId(semaphore)
+            val holders = mutableSetOf<String?>()
+            for (event in events.filter { at(it) <= millis }) {
+                if (event is SemaphorePermitAcquired && event.semaphoreId == id) holders += event.acquirerLabel
+                if (event is SemaphorePermitReleased && event.semaphoreId == id) holders -= event.releaserLabel
+            }
+            return holders
+        }
+
+        /** Who holds the mutex [lock] at scripted [millis]. */
+        fun lockHolderAt(
+            lock: String,
+            millis: Long,
+        ): String? {
+            var holder: String? = null
+            for (event in events.filter { at(it) <= millis }) {
+                if (event is MutexLockAcquired && event.mutexId == mutexId(lock)) holder = event.acquirerLabel
+                if (event is MutexUnlocked && event.mutexId == mutexId(lock)) holder = null
+            }
+            return holder
         }
 
         fun noneCancelledOrFailed() = events.none { it is CoroutineCancelled || it is CoroutineFailed }
@@ -304,6 +344,44 @@ class SemaphoreStoriesTest {
             assertEquals(listOf("order-anna", "order-carla", "order-eva") to 0, settled.await())
             assertTrue(story.labels.all { story.completed(it) } && story.noneCancelledOrFailed())
             assertEquals(11_000, story.scriptedMillis)
+        }
+
+    /**
+     * Each guide's picture shows its demo's tree at one moment, and the tree shows holders and waiters alike as
+     * suspended. Its caption says who holds a permit, who waits for one and who is busy without one: true here, at
+     * the picture's moment, from the events.
+     */
+    @Test
+    fun `each picture's caption is true at its moment`() =
+        runTest {
+            val pool = runStory { session, context -> SyncScenarios.runConnectionPool(session, context) }
+            assertEquals(setOf("checkout", "wish-list", "store-hours"), pool.permitHoldersAt("db-connections", 6250))
+            assertEquals("semaphore", pool.suspendedIn("loyalty-points", 6250))
+            assertEquals(listOf("delay", "delay"), listOf("track-parcel", "write-review").map { pool.suspendedIn(it, 6250) })
+
+            val trip = runStory { session, context -> SyncScenarios.runRateLimiter(session, context) }
+            assertEquals(setOf("weather-vienna", "weather-prague"), trip.permitHoldersAt("weather-api", 3500))
+            for (city in listOf("lisbon", "oslo", "split", "krakow")) assertEquals("semaphore", trip.suspendedIn("weather-$city", 3500))
+            assertEquals("await", trip.suspendedIn("trip-page", 3500))
+
+            val folder = runStory { session, context -> SyncScenarios.runFileProcessor(session, context) }
+            assertEquals(setOf("bank-statements.pdf", "donations.pdf"), folder.permitHoldersAt("disk", 6500))
+            for (file in listOf("pension.pdf", "childcare.pdf", "invoices.zip", "doctor-bills.pdf")) {
+                assertEquals("semaphore", folder.suspendedIn(file, 6500), file)
+            }
+
+            val shop = runStory { session, context -> SyncScenarios.runResourceTimeout(session, context) }
+            assertEquals(setOf("dan", "gina"), shop.permitHoldersAt("fitting-rooms", 7250))
+            assertEquals("delay", shop.suspendedIn("carla", 7250), "carla pays at the till")
+
+            val bakery = runStory { session, context -> SyncScenarios.runProducerConsumer(session, context) }
+            assertEquals("semaphore", bakery.suspendedIn("baker", 8000), "the baker waits for a free place")
+            assertEquals(bakery.semaphoreId("free-places"), bakery.waitsFor("free-places").first().resourceId)
+            assertEquals("delay", bakery.suspendedIn("shop-assistant", 8000), "the assistant sells a loaf")
+
+            val drop = runStory { session, context -> SyncScenarios.runOrderProcessing(session, context) }
+            assertEquals(setOf("order-eva"), drop.permitHoldersAt("payment-gateway", 9250), "eva pays")
+            assertEquals("order-finn", drop.lockHolderAt("stock", 9250), "finn checks the stock")
         }
 
     /** Runs a demo on this test's virtual time and returns its story once every coroutine has ended. */

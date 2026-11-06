@@ -150,12 +150,51 @@ fun Route.registerSyncScenarioRoutes() {
                     "Anna pays Ben and Ben pays Anna, each locking the payer's account first. Each holds one account " +
                         "and waits, suspended, for the other's. After 10 s a watchdog cancels both.",
                 ),
-                ScenarioInfo("semaphore/connection-pool", "Connection Pool", "Semaphore", "Limiting concurrent database connections"),
-                ScenarioInfo("semaphore/rate-limiter", "API Rate Limiter", "Semaphore", "Throttling concurrent API calls"),
-                ScenarioInfo("semaphore/file-processor", "File Processor", "Semaphore", "I/O-limited parallel file processing"),
-                ScenarioInfo("semaphore/resource-timeout", "Resource Timeout", "Semaphore", "Resource acquisition with timeout"),
-                ScenarioInfo("semaphore/producer-consumer", "Producer-Consumer", "Semaphore", "Bounded buffer implementation"),
-                ScenarioInfo("combined/ecommerce", "E-commerce Orders", "Combined", "Order processing with inventory and payment"),
+                ScenarioInfo(
+                    "semaphore/connection-pool",
+                    "Database Connection Pool: Online Shop at Lunchtime",
+                    "Semaphore",
+                    "Nine lunchtime requests share an online shop's 3 database connections. The first three find " +
+                        "one free; the other six wait for one, suspended, and get it in the order they asked.",
+                ),
+                ScenarioInfo(
+                    "semaphore/rate-limiter",
+                    "API Rate Limiter: Weather for a Trip",
+                    "Semaphore",
+                    "A trip planner asks for the weather in eight cities at once, but the weather service takes " +
+                        "two calls at a time. Six calls wait for a permit, suspended, and the trip page waits for " +
+                        "every forecast.",
+                ),
+                ScenarioInfo(
+                    "semaphore/file-processor",
+                    "Parallel File Processor: The Tax Folder",
+                    "Semaphore",
+                    "Nine files of a tax folder are compressed two at a time. While the big bank statements hold " +
+                        "one permit, the other passes from file to file the moment one is done.",
+                ),
+                ScenarioInfo(
+                    "semaphore/resource-timeout",
+                    "Resource Pool with Timeout: Fitting Rooms",
+                    "Semaphore",
+                    "Seven shoppers share two fitting rooms and wait at most 3 s for one. Carla, Dan and Gina get " +
+                        "a room in time; Eva and Finn give up and leave.",
+                ),
+                ScenarioInfo(
+                    "semaphore/producer-consumer",
+                    "Producer-Consumer Buffer: The Bakery Rack",
+                    "Semaphore",
+                    "A baker fills a cooling rack with room for 3 loaves faster than the shop assistant sells " +
+                        "them. Two semaphores count the free places and the ready loaves: the baker waits when the " +
+                        "rack is full, the assistant when it is empty.",
+                ),
+                ScenarioInfo(
+                    "combined/ecommerce",
+                    "E-commerce Orders: A Limited Sneaker Drop",
+                    "Combined",
+                    "Six orders for the last 3 pairs. Each reserves a pair under a lock, then pays through a " +
+                        "provider that takes two payments at a time. A declined card puts its pair back for a later " +
+                        "order; the others find it sold out.",
+                ),
             ),
         )
     }
@@ -182,19 +221,19 @@ fun Route.registerSyncScenarioRoutes() {
         call.runSyncScenarioInSession("Deadlock Demo") { SyncScenarios.runDeadlock(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/connection-pool") {
-        call.runSyncScenarioInSession("Connection Pool") { SyncScenarios.runConnectionPool(it).join() }
+        call.runSyncScenarioInSession("Database Connection Pool") { SyncScenarios.runConnectionPool(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/rate-limiter") {
         call.runSyncScenarioInSession("API Rate Limiter") { SyncScenarios.runRateLimiter(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/file-processor") {
-        call.runSyncScenarioInSession("File Processor") { SyncScenarios.runFileProcessor(it).join() }
+        call.runSyncScenarioInSession("Parallel File Processor") { SyncScenarios.runFileProcessor(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/resource-timeout") {
-        call.runSyncScenarioInSession("Resource Timeout") { SyncScenarios.runResourceTimeout(it).join() }
+        call.runSyncScenarioInSession("Resource Pool with Timeout") { SyncScenarios.runResourceTimeout(it).join() }
     }
     demoPost("/api/scenarios/sync/semaphore/producer-consumer") {
-        call.runSyncScenarioInSession("Producer-Consumer") { SyncScenarios.runProducerConsumer(it).join() }
+        call.runSyncScenarioInSession("Producer-Consumer Buffer") { SyncScenarios.runProducerConsumer(it).join() }
     }
     demoPost("/api/scenarios/sync/combined/ecommerce") {
         call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.runOrderProcessing(it).join() }
