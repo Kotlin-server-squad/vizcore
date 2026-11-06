@@ -40,10 +40,41 @@ const busy: SessionOverview = {
 }
 const nothing: SessionOverview = { counts: counts(), coroutines: [], activity: new Map() }
 
+/** jsdom has no ResizeObserver: a fake one that records what it watches and can be fired. */
+class FakeResizeObserver {
+  static all: FakeResizeObserver[] = []
+  targets = new Set<Element>()
+  disconnected = false
+  constructor(private readonly callback: ResizeObserverCallback) {
+    FakeResizeObserver.all.push(this)
+  }
+  observe(el: Element) {
+    this.targets.add(el)
+  }
+  unobserve(el: Element) {
+    this.targets.delete(el)
+  }
+  disconnect() {
+    this.disconnected = true
+    this.targets.clear()
+  }
+  /** Every live observer reports a resize, as the browser would after a layout change. */
+  static fire() {
+    for (const o of FakeResizeObserver.all) {
+      if (!o.disconnected && o.targets.size > 0) o.callback([], o as unknown as ResizeObserver)
+    }
+  }
+  static live() {
+    return FakeResizeObserver.all.filter(o => !o.disconnected)
+  }
+}
+
 /** jsdom lays nothing out: give the body and the overview heights. */
 let bodyHeight = 800
 let overviewHeight = 96
 beforeEach(() => {
+  FakeResizeObserver.all = []
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver)
   bodyHeight = 800
   overviewHeight = 96
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
@@ -53,7 +84,10 @@ beforeEach(() => {
   localStorage.clear()
   forgetVisitLook()
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 function Body({ overview }: { overview: SessionOverview }) {
   return (
@@ -118,6 +152,37 @@ describe("C's Right now overview", () => {
     expect(screen.getByRole('region', { hidden: true })).toHaveAttribute('data-no-room')
   })
 
+  it('follows its own size and the body’s as they change, watching both', () => {
+    const { container } = render(<Body overview={busy} />)
+    const [observer] = FakeResizeObserver.live()
+    expect([...observer!.targets]).toEqual([screen.getByRole('region'), body(container)])
+    // The callout wraps onto another line.
+    overviewHeight = 140
+    act(() => FakeResizeObserver.fire())
+    expect(body(container).style.getPropertyValue(OVERVIEW_HEIGHT_VAR)).toBe('140px')
+    // The window gets short: it steps aside…
+    bodyHeight = ROOM_BELOW_PX + 100
+    act(() => FakeResizeObserver.fire())
+    expect(body(container).style.getPropertyValue(OVERVIEW_HEIGHT_VAR)).toBe('0px')
+    expect(screen.getByRole('region', { hidden: true })).toHaveAttribute('data-no-room')
+    // …and comes back when it grows again.
+    bodyHeight = 800
+    act(() => FakeResizeObserver.fire())
+    expect(body(container).style.getPropertyValue(OVERVIEW_HEIGHT_VAR)).toBe('140px')
+    expect(screen.getByRole('region')).not.toHaveAttribute('data-no-room')
+  })
+
+  it('stops watching when it empties or unmounts', () => {
+    const { rerender, unmount } = render(<Body overview={busy} />)
+    expect(FakeResizeObserver.live()).toHaveLength(1)
+    rerender(<Body overview={nothing} />)
+    expect(FakeResizeObserver.live()).toHaveLength(0)
+    rerender(<Body overview={busy} />)
+    expect(FakeResizeObserver.live()).toHaveLength(1)
+    unmount()
+    expect(FakeResizeObserver.live()).toHaveLength(0)
+  })
+
   it('fits exactly when the body keeps the minimums under it', () => {
     bodyHeight = ROOM_BELOW_PX + 96
     const { container } = render(<Body overview={busy} />)
@@ -167,8 +232,13 @@ describe('switching to C and back', () => {
     act(() => setLook!('classic'))
     expect(screen.queryByRole('region')).toBeNull()
     expect(body(container).getAttribute('style') ?? '').toBe('')
+    expect(FakeResizeObserver.live()).toHaveLength(0)
     act(() => setLook!('c'))
+    expect(FakeResizeObserver.live()).toHaveLength(1)
     act(() => setLook!('classic'))
+    expect(FakeResizeObserver.live()).toHaveLength(0)
+    // A late resize after leaving C cannot write the variable back.
+    act(() => FakeResizeObserver.fire())
     expect(body(container).getAttribute('style') ?? '').toBe('')
     expect(screen.getByRole('button', { name: 'main 0' })).toBeInTheDocument()
     // StrictMode mounts each twice on the first render only; never again on a switch.
