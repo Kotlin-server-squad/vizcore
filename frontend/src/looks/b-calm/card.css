@@ -5,6 +5,8 @@
  * Rules are keyed on the graph's own data-card-look, not on <html>'s
  * data-look: an export sets the page's look aside (Classic dark), and the
  * cards must keep the styling that fits their size.
+ * Text is 16 px (name) and 13 px (pill, second line): with card.ts's fit floor
+ * it stays at least 12 px on screen at the first fit.
  * Shown: the name, a state pill and the second line. Hidden: the icon, the
  * running tint, the progress bar and the ID / Job / Scope rows (the Inspector
  * shows those for the selected coroutine).
@@ -35,7 +37,7 @@
 }
 
 [data-card-look='b'] [data-look-part='node'] {
-  padding: 14px;
+  padding: 13px 14px;
   border-width: 1px;
   border-color: hsl(var(--heroui-default-200));
   border-radius: 14px;
@@ -57,11 +59,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
 }
 [data-card-look='b'] [data-look-part='node-name'] {
   max-width: 100%;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 22px;
   -webkit-line-clamp: 1;
@@ -72,9 +74,9 @@
   gap: 6px;
   padding: 2px 9px;
   border-radius: 9999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 17px;
+  line-height: 18px;
   background: hsl(var(--card-hue) / 0.16);
   color: hsl(var(--card-ink));
 }
@@ -97,8 +99,8 @@
   max-width: 100%;
   overflow: hidden;
   white-space: normal;
-  font-size: 12px;
-  line-height: 17px;
+  font-size: 13px;
+  line-height: 18px;
 }
 [data-card-look='b'] [data-look-part='node-children'] {
   border-radius: 9999px;
