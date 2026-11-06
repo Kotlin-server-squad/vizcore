@@ -1440,6 +1440,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     getSessionThreadActivity: {
@@ -1717,6 +1726,15 @@ export interface operations {
                     "application/json": components["schemas"]["CoroutineTimeline"];
                 };
             };
+            /** @description A parameter does not parse */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Session or coroutine not found */
             404: {
                 headers: {
@@ -1728,6 +1746,15 @@ export interface operations {
             };
             /** @description This view has moved on (code stale) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

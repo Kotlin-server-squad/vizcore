@@ -151,7 +151,8 @@ internal fun timelineAt(
     return JsonObject(body + mapOf("eventsTrimmed" to JsonPrimitive(trimmed), "partial" to JsonPrimitive(view.isPartial(coroutineId))))
 }
 
-private const val CREATED_KIND = "CoroutineCreated"
+/** The kind a timeline summary gives a creation (`ProjectionService.toSummary`). */
+private const val CREATED_KIND = "coroutine.created"
 
 /** The projection's state strings (`ProjectionService`): ACTIVE reads RUNNING, everything else by name. */
 internal fun projectionState(state: CoroutineState): String = if (state == CoroutineState.ACTIVE) "RUNNING" else state.name

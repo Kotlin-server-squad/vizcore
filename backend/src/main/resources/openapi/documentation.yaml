@@ -472,6 +472,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: "Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sessions/{id}/threads:
     get:
@@ -849,6 +855,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: This view has moved on (code stale)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: "Health unavailable at a bound or replay view: code summaries-unavailable or history-trimmed"
           content:
             application/json:
               schema:

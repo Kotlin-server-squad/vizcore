@@ -290,4 +290,33 @@ class HierarchyReadsTest {
                 "its retained start",
             )
         }
+
+    @Test
+    fun `a trimmed coroutine with no retained event has an empty timeline, never a made-up creation`() =
+        testApplication {
+            application { module() }
+            startApplication()
+            SessionManager.configure(maxEventsPerSession = 6)
+            val id = client.createSessionNamed("app-timeline-empty")
+            trimmedRoot(id) // root's three events are all trimmed
+            val seq = SessionManager.getSession(id)!!.lastSeq
+            val body =
+                appJson
+                    .parseToJsonElement(
+                        client.get("/api/sessions/$id/coroutines/root/timeline?atSeq=$seq").bodyAsText(),
+                    ).jsonObject
+            assertTrue(body["eventsTrimmed"]!!.jsonPrimitive.boolean)
+            assertEquals(0, body["events"]!!.jsonArray.size)
+        }
+
+    @Test
+    fun `a timeline rejects a watermark or transport without asOfSeq`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("app-timeline-bad")
+            rounds(id)
+            for (q in listOf("?asOfWatermark=5", "?asOfTransport=0", "?atSeq=1&asOfSeq=1")) {
+                assertEquals(HttpStatusCode.BadRequest, client.get("/api/sessions/$id/coroutines/r2-c/timeline$q").status, q)
+            }
+        }
 }

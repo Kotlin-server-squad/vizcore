@@ -4,6 +4,7 @@ import com.jh.proj.coroutineviz.health.Incident
 import com.jh.proj.coroutineviz.health.IncidentKind
 import com.jh.proj.coroutineviz.health.ObservedAge
 import com.jh.proj.coroutineviz.health.RoundMember
+import com.jh.proj.coroutineviz.health.SummaryView
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
@@ -61,7 +62,7 @@ internal suspend fun ApplicationCall.respondHealthItems(view: SessionView) {
     when (list) {
         "incidents" -> {
             val all = derived.incidents.filter { kind == null || it.kind == kind }
-            val page = Keyset.page(all, { Keyset.Key(it.kind.ordinal.toLong(), it.sortSeq, 0, it.id) }, cursor, limit)
+            val page = Keyset.page(all, ::incidentKey, cursor, limit)
             respond(IncidentsPage(list, view.seq, all.size, page.items, page.nextCursor, view.unknownAtSeq))
         }
         "round-members" -> {
@@ -71,20 +72,32 @@ internal suspend fun ApplicationCall.respondHealthItems(view: SessionView) {
                 respond(HttpStatusCode.NotFound, ErrorResponse("No failed round $incidentId in this view", code = "incident-not-found"))
                 return
             }
-            val page = Keyset.page(members, { Keyset.Key(it.role.ordinal.toLong(), it.terminalSeq, 0, it.coroutineId) }, cursor, limit)
+            val page = Keyset.page(members, ::memberKey, cursor, limit)
             respond(RoundMembersPage(list, view.seq, members.size, page.items, page.nextCursor, view.unknownAtSeq))
         }
         else -> {
             val longLived = list == "long-lived"
             val all = if (longLived) derived.longLived else derived.longSuspended
-            val seqOf = { age: ObservedAge ->
-                val s = summaries.get(age.coroutineId)
-                (if (longLived) s?.firstObserved?.seq else s?.lastTransition?.seq) ?: 0L
-            }
-            val page = Keyset.page(all, { Keyset.Key(0, seqOf(it), 0, it.coroutineId) }, cursor, limit)
+            val page = Keyset.page(all, ageKey(summaries, longLived), cursor, limit)
             respond(ObservedAgesPage(list, view.seq, all.size, page.items, page.nextCursor, view.unknownAtSeq))
         }
     }
 }
+
+/** The page key of an incident: the health's order (kind, newest first, then id; plan E-9). */
+internal fun incidentKey(i: Incident) = Keyset.Key(i.kind.ordinal.toLong(), i.sortSeq, 0, i.id)
+
+/** The page key of a failed round's member: failures first, newest terminal first, then id. */
+internal fun memberKey(m: RoundMember) = Keyset.Key(m.role.ordinal.toLong(), m.terminalSeq, 0, m.coroutineId)
+
+/** The page key of an observed age: newest first by first observation (long-lived) or by suspension, then id. */
+internal fun ageKey(
+    summaries: SummaryView,
+    longLived: Boolean,
+): (ObservedAge) -> Keyset.Key =
+    { age ->
+        val s = summaries.get(age.coroutineId)
+        Keyset.Key(0, (if (longLived) s?.firstObserved?.seq else s?.lastTransition?.seq) ?: 0L, 0, age.coroutineId)
+    }
 
 private val LISTS = listOf("incidents", "round-members", "long-lived", "long-suspended")

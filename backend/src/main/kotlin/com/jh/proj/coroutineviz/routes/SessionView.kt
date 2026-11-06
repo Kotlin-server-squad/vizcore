@@ -76,9 +76,11 @@ internal fun readView(
     binding: ViewBinding,
     leakThresholdMs: Long,
 ): SessionView {
-    val durable = session.readSummaries { it.snapshot() }
+    // One cut: the events are read under the same send lock as the summary copy, so an append in between cannot trim
+    // evidence the copy still describes (memory mode appends and trims under that lock).
+    val (durable, allEvents) = session.readSummaries { it.snapshot() to session.store.all() }
+    // Transport facts are sticky and only grow: read after the copy, they cover every event in it (5a D-9c).
     val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = ingestCut.watermark)
-    val allEvents = session.store.all()
     val last = durable.lastEventSeq
     val kept = (binding as? ViewBinding.Bound)?.let { keptCut(session, it, last) }
     val everyEvent = summariesSeeEveryEvent()

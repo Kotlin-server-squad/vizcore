@@ -23,6 +23,9 @@ internal class HealthCut(
     /** Same binding: a follow-up naming one names the other (plan E-17). */
     fun sameBinding(other: HealthCut): Boolean =
         seq == other.seq && watermarkNanos == other.watermarkNanos && transportRevision == other.transportRevision
+
+    /** Same binding and same evidence: one may stand for the other. */
+    fun equivalent(other: HealthCut): Boolean = sameBinding(other) && retention == other.retention && transitions == other.transitions
 }
 
 /**
@@ -50,11 +53,14 @@ internal object HealthCuts {
     private val bySession = HashMap<String, ArrayDeque<Entry>>()
     private var total = 0
 
-    /** Keeps [cut]; one with the same binding as a kept cut replaces it. */
+    /**
+     * Keeps [cut]; an equivalent kept cut (same binding and evidence) is replaced. Two cuts with one binding but different
+     * evidence are both kept, and a follow-up gets the newer (a database trim between two healths at one seq, Part 5b-2).
+     */
     fun remember(cut: HealthCut) =
         synchronized(bySession) {
             val entries = bySession.getOrPut(cut.sessionId) { ArrayDeque() }
-            if (entries.removeAll { it.cut.sameBinding(cut) }) total--
+            if (entries.removeAll { it.cut.equivalent(cut) }) total--
             entries.addLast(Entry(cut, clock()))
             total++
             if (entries.size > PER_SESSION) {
@@ -85,7 +91,11 @@ internal object HealthCuts {
                             it.cut.watermarkNanos == watermarkNanos &&
                             (transportRevision == null || it.cut.transportRevision == transportRevision) &&
                             now - it.usedAtMs <= TTL_MS
-                    }.maxByOrNull { it.cut.transportRevision } ?: return null
+                    }.let { matches ->
+                        // The newest revision; of equal ones the most recently used (entries are in use order).
+                        val newest = matches.maxOfOrNull { it.cut.transportRevision }
+                        matches.lastOrNull { it.cut.transportRevision == newest }
+                    } ?: return null
             hit.usedAtMs = now
             entries.remove(hit)
             entries.addLast(hit)

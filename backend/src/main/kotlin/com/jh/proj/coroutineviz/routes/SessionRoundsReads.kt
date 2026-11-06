@@ -109,7 +109,8 @@ internal fun listRounds(
     )
 }
 
-private fun roundKey(r: RoundEntry) = Keyset.Key(if (r.problem) 0 else 1, r.anchorCreatedNanos, r.anchorCreatedSeq, r.anchorId)
+/** The page key of a round: problem rounds first, newest anchor first, then anchor id (plan E-8, E-9). */
+internal fun roundKey(r: RoundEntry) = Keyset.Key(if (r.problem) 0 else 1, r.anchorCreatedNanos, r.anchorCreatedSeq, r.anchorId)
 
 private fun CoroutineSummary.matches(needle: String): Boolean =
     listOfNotNull(name, creationLocation?.function, creationLocation?.fileName).any { it.lowercase().contains(needle) }
