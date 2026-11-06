@@ -243,10 +243,13 @@ fun Route.registerSessionRoutes() {
             val nodes =
                 try {
                     hierarchyOf(readView(session, ingest, binding, call.leakThresholdMs()), scopeId, roundId)
-                } catch (_: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
-                    projectionOnlyHierarchy(session, scopeId).takeIf { roundId == null }.orEmpty()
-                } catch (_: HistoryTrimmedException) {
-                    projectionOnlyHierarchy(session, scopeId).takeIf { roundId == null }.orEmpty()
+                } catch (e: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
+                    // Rounds need the summaries: a round filter cannot be answered, the plain hierarchy can.
+                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
+                    projectionOnlyHierarchy(session, scopeId)
+                } catch (e: HistoryTrimmedException) {
+                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
+                    projectionOnlyHierarchy(session, scopeId)
                 }
             call.respond(HttpStatusCode.OK, nodes)
             return@get
@@ -333,10 +336,14 @@ fun Route.registerSessionRoutes() {
             }
 
         // At a replay cursor or bound to a health: the timeline of that moment (plan E-7).
-        if (call.request.queryParameters
-                .names()
-                .any { it == "atSeq" || it == "asOfSeq" }
-        ) {
+        val binding =
+            try {
+                parseViewBinding(call.request.queryParameters)
+            } catch (e: BadReadParameter) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "bad parameter"))
+                return@get
+            }
+        if (binding != ViewBinding.Current) {
             call.withSessionView { view ->
                 val body = timelineAt(view, coroutineId)
                 if (body == null) {

@@ -129,4 +129,17 @@ class HealthCutsTest {
         HealthCuts.forget("s")
         assertNull(find("s", 1))
     }
+
+    @Test
+    fun `cuts with one binding but different evidence are both kept, equivalent ones are coalesced`() {
+        val base = cut("s", 5)
+        HealthCuts.remember(base)
+        val other =
+            HealthCut("s", 5, SummaryTable(), IngestSnapshot(), RetentionInfo(3, 1, trimmed = true), transitions = emptyMap())
+        HealthCuts.remember(other)
+        assertSame(other, find("s", 5), "the newer of two")
+        HealthCuts.remember(cut("s", 5)) // equivalent to base: replaces it
+        for (seq in 1L..HealthCuts.PER_SESSION - 2) HealthCuts.remember(cut("s", 100 + seq))
+        assertNotNull(find("s", 5))
+    }
 }
