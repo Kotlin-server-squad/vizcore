@@ -145,9 +145,12 @@ The reads below (`rounds`, `health/items`, `hierarchy`, a coroutine's `timeline`
 a page holds when they pass that health's binding:
 
 - `asOfSeq=<health.asOfSeq>&asOfWatermark=<health.asOfWatermark.appNanos>&asOfTransport=<health.transport.revision>`
-  (live or shared view): answered from exactly what that health saw. The backend keeps each live health's inputs for
-  60 s (up to 8 per session); after that it rebuilds the moment from retained events, and when a coroutine's state then
-  cannot be known exactly it answers `409` with `code: "stale"` ("this view has moved on": fetch the health again).
+  (live or shared view), plus `asOfCut=<X-Viz-Cut header of the health>` (or the share payload's `healthCut`): answered
+  from exactly what that health saw. The backend keeps each live health's inputs for 60 s (up to 8 per session and 256
+  in all, least recently used dropped first, a follow-up refreshing them), so a view that follows up promptly is not
+  rebuilt; otherwise the moment is rebuilt from retained events, and when a coroutine's state then cannot be known
+  exactly the read answers `409` with `code: "stale"` ("this view has moved on": fetch the health again). `asOfCut`
+  names one cut even when two healths share a seq, watermark and transport revision (a database trim in between).
 - `atSeq=<cursor>` (replay view): the moment at the cursor, never `409`; what it does not know is flagged
   (`unknownAtSeq` on pages, `unknownMembers` on rounds, `partial` on nodes and timelines).
 - Neither: the session as it is now. `atSeq` and `asOfSeq` are exclusive; both are clamped to the last event.
@@ -179,6 +182,20 @@ GET /api/sessions/{id}/health/items?list=long-lived|long-suspended
 A health list past its first 50 entries, in the health's order (with the same `leakThresholdMs`). `round-members`:
 a failed round's failures, then the cancellations recorded after its first failure; `404` with
 `code: "incident-not-found"` when the incident is not a failed round in this view.
+
+### Session Metrics
+
+```
+GET /api/sessions/{id}/metrics?leakThresholdMs={optional}
+```
+
+Response `200`: `active`, `peak`, `throughputPerSec`, `dispatcherUtilization` (the whole session), `leaks` (coroutines
+alive longer than the threshold, each with its `origin` and an age frozen at its last observation, or at the live
+watermark: the same rule as the health's long-lived list), `leakThresholdMs`, and `byOrigin` (`app`, `vizcore`,
+`unknown`: `captured`, `active`, `peak`, `throughputPerSec` — `null` for a database session rebuilt from stored events —
+`dispatcherUtilization`, `longLived`; and `untracked`). Demos count every coroutine as the app's; a session whose
+origin is unknown counts them all as unknown. `retainedOnly` with `oldestRetainedAppNanos` says the figures cover
+retained events only. Without usable summaries `leaks` is empty and `leaksAvailable` is `false`.
 
 ### Delete Session
 
@@ -447,6 +464,18 @@ Response `200`:
 
 `appConnected` is true while an app streams into the session. Its unfinished coroutines (`stillRunning`) are then reported as still running, not as "started but never terminated".
 
+The run is also kept (memory: until the session is deleted; database: on the session row).
+
+### Last Checks Run
+
+```
+GET /api/validate/session/{id}
+```
+
+Response `200`: `{"sessionId", "lastRun", "newEventsSince"}`; `lastRun` is `null` before any run, else
+`{"checkedSeq", "ranAtEpochMs", "rules": [{"name", "passed", "failures"}], "failedRuleCount"}`; `newEventsSince` counts
+the events stored after the run (the checks status "passed at event N · M new events since").
+
 ### Comprehensive Validation Report
 
 ```
@@ -508,3 +537,33 @@ Response `200`:
 - **Session Isolation**: Each session has independent event store and snapshot
 - **Ad-hoc Sessions**: Sessions created automatically via `?sessionId` query params
 - **Event Kind Injection**: VizEvent serialization adds `kind` field automatically
+
+## Shared sessions
+
+```
+GET /api/shared/{token}
+```
+
+Response `200`: `session` (as `GET /api/sessions/{id}`), `events`, `health` (or `null` with `healthUnavailable`),
+`healthCut` and `checks`, all from one cut (the session state, events, health and checks agree). `410` for an expired
+link, `404` for an unknown one. The shared view's follow-up reads take the same parameters and give the same answers as
+the session routes, bound to the payload with `asOfSeq` / `asOfCut` (or `atSeq` in replay); they do not count as
+accesses:
+
+```
+GET /api/shared/{token}/health?atSeq={optional}
+GET /api/shared/{token}/health/items?list=...
+GET /api/shared/{token}/rounds
+GET /api/shared/{token}/hierarchy
+GET /api/shared/{token}/coroutines/{coroutineId}/timeline
+```
+
+## Persistence (database mode)
+
+- A session's summaries survive the retention trim: the trim folds the events it deletes into a checkpoint on the
+  session row, so health, replay and the capture start stay available after it. A session trimmed before this existed
+  answers `503 history-trimmed`.
+- The app's latest watermark, the transport facts and an "ingest open" marker are kept on the session row: after a
+  backend restart a cleanly closed session reads clean, and one whose connection was open when the backend stopped reads
+  "delivery uncertain".
+- The last checks run is kept on the session row.

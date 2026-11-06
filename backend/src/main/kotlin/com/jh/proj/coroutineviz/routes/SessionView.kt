@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.health.HealthInput
 import com.jh.proj.coroutineviz.health.HealthMode
 import com.jh.proj.coroutineviz.health.RebuildLevel
 import com.jh.proj.coroutineviz.health.SessionHealthDerivation
+import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.SummaryBinding
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.health.Transition
@@ -75,15 +76,17 @@ internal fun readView(
     ingestCut: IngestSnapshot,
     binding: ViewBinding,
     leakThresholdMs: Long,
+    cut: ReadCut? = null,
 ): SessionView {
     // One cut: the events are read under the same send lock as the summary copy, so an append in between cannot trim
     // evidence the copy still describes (memory mode appends and trims under that lock).
-    val (durable, allEvents) = session.readSummaries { it.snapshot() to session.store.all() }
-    // Transport facts are sticky and only grow: read after the copy, they cover every event in it (5a D-9c).
-    val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = ingestCut.watermark)
+    val (durable, allEvents) = summariesAndEvents(session, cut)
+    val ingest = ingestFor(session, ingestCut, cut)
     val last = durable.lastEventSeq
     val kept = (binding as? ViewBinding.Bound)?.let { keptCut(session, it, last) }
-    val everyEvent = summariesSeeEveryEvent()
+    // A health named by its cut id cannot be rebuilt from retained events: its evidence may differ (a trim since).
+    if (binding is ViewBinding.Bound && binding.cutId != null && kept == null) rethrow(StaleViewException("cut ${binding.cutId} is gone"))
+    val everyEvent = summariesSeeEveryEvent(session)
     val retention = retentionOf(allEvents, firstSeqEver = durable.firstSeqEver(everyEvent))
     if (kept == null && retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
     val kind = sessionKindOf(session.sessionId)
@@ -183,4 +186,54 @@ private fun keptCut(
     session: VizSession,
     binding: ViewBinding.Bound,
     last: Long,
-): HealthCut? = HealthCuts.find(session.sessionId, minOf(binding.asOfSeq, last), binding.watermarkNanos, binding.transportRevision)
+): HealthCut? {
+    val seq = minOf(binding.asOfSeq, last)
+    return binding.cutId?.let { id ->
+        HealthCuts.findById(session.sessionId, seq, id)?.takeIf { cut ->
+            (binding.watermarkNanos == null || cut.watermarkNanos == binding.watermarkNanos) &&
+                (binding.transportRevision == null || cut.transportRevision == binding.transportRevision)
+        }
+    }
+        ?: HealthCuts.find(session.sessionId, seq, binding.watermarkNanos, binding.transportRevision).takeIf { binding.cutId == null }
+}
+
+/**
+ * One consistent cut of a session (spec C-6), taken under its send lock: the summary copy (`null` when unavailable), the
+ * stored events and the coroutine nodes.
+ */
+internal class ReadCut(
+    val summaries: SummaryView?,
+    val events: List<VizEvent>,
+    val nodes: List<com.jh.proj.coroutineviz.models.CoroutineNode>,
+    val seq: Long,
+) {
+    companion object {
+        fun of(session: VizSession): ReadCut =
+            session.readCut { table ->
+                ReadCut(table?.snapshot(), session.rehydratedEvents ?: session.store.all(), session.snapshot.nodes(), session.lastSeq)
+            }
+    }
+}
+
+/** The summary copy and the stored events of one cut: [cut]'s, else read under the send lock (database: as rebuilt). */
+private fun summariesAndEvents(
+    session: VizSession,
+    cut: ReadCut?,
+): Pair<SummaryView, List<VizEvent>> =
+    cut?.let { (it.summaries ?: rethrow(SummariesUnavailableException("no summaries in the cut"))) to it.events }
+        ?: session.readSummaries { it.snapshot() to (session.rehydratedEvents ?: session.store.all()) }
+
+/**
+ * The ingest facts of a read: the watermark read before the session was resolved (5a D-9c) and the transport read now
+ * (sticky: it covers every event copied). A one-cut read (a share) also keeps the receipt time it read before the session,
+ * as its session facts do (spec C-6); other reads may show a newer one (5a D-3).
+ */
+private fun ingestFor(
+    session: VizSession,
+    ingestCut: IngestSnapshot,
+    cut: ReadCut?,
+): IngestSnapshot {
+    val now = IngestStates.snapshot(session.sessionId)
+    val receivedAt = if (cut != null) ingestCut.lastIngestEpochMs else now.lastIngestEpochMs
+    return now.copy(watermark = ingestCut.watermark, lastIngestEpochMs = receivedAt)
+}

@@ -10,7 +10,10 @@ import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
@@ -171,4 +174,30 @@ class SessionViewReadsTest {
         view(session, ViewBinding.Bound(current.seq, null, null))
         assertEquals(1, HealthCuts.findsForTest)
     }
+
+    @Test
+    fun `a follow-up naming a cut that is gone is stale, and an id from another binding names nothing`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("app-cut-id")
+            SessionManager.getSession(id)!!.send(HealthEvents.created(id, "a", sec(1)))
+            val response = client.get("/api/sessions/$id/health")
+            val cutId = assertNotNull(response.headers[CUT_HEADER])
+            assertTrue(cutId.contains("-"), "a per-process prefix")
+            val health = appJson.decodeFromString(SessionHealth.serializer(), response.bodyAsText())
+            val seq = health.asOfSeq
+            assertEquals(HttpStatusCode.OK, client.get("/api/sessions/$id/rounds?asOfSeq=$seq&asOfCut=$cutId").status)
+            assertEquals(HttpStatusCode.Conflict, client.get("/api/sessions/$id/rounds?asOfSeq=$seq&asOfCut=$cutId&asOfTransport=7").status)
+            HealthCuts.clear()
+            assertEquals(HttpStatusCode.Conflict, client.get("/api/sessions/$id/rounds?asOfSeq=$seq&asOfCut=$cutId").status)
+        }
+
+    @Test
+    fun `a cross-origin page can read the cut id`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("app-cut-cors")
+            val response = client.get("/api/sessions/$id/health") { header(HttpHeaders.Origin, "http://localhost:3000") }
+            assertTrue(response.headers[HttpHeaders.AccessControlExposeHeaders].orEmpty().contains(CUT_HEADER, ignoreCase = true))
+        }
 }

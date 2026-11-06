@@ -97,6 +97,19 @@ object SessionHealthDerivation {
         return (FailureIncidents.build(evaluated, anchoring) + blocked).sortedWith(INCIDENT_ORDER)
     }
 
+    /**
+     * Long-lived coroutines of every origin, vizcore's own included, with their effective origin (spec C-3 `/metrics` by
+     * origin): the same rule and ages as the health's long-lived observation, so the state bar filter and the health agree.
+     */
+    fun longLivedByOrigin(input: HealthInput): List<Pair<CoroutineOrigin, ObservedAge>> {
+        val view = input.summaries
+        val demo = input.kind == SessionKind.DEMO
+        val origin = if (demo) SessionOrigin.REPORTED else input.reportedOrigin ?: sessionOrigin(view, input.kind)
+        return HealthParts.longLived(view.all.toList(), liveWatermarkNanos(input), input).map { age ->
+            effectiveOrigin(checkNotNull(view.get(age.coroutineId)), demo, origin) to age
+        }
+    }
+
     /** Lost or possibly lost events count in replay only when the loss happened at or before the cursor. */
     private fun transportLossApplies(input: HealthInput): Boolean {
         val transport = input.transport

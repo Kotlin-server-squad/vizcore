@@ -1,6 +1,8 @@
 package com.jh.proj.coroutineviz.share
 
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.SessionHealth
+import com.jh.proj.coroutineviz.routes.ChecksStatus
 import com.jh.proj.coroutineviz.routes.SessionSnapshotResponse
 import kotlinx.serialization.Serializable
 
@@ -61,4 +63,12 @@ data class ShareSummary(
 data class SharedSessionResponse(
     val session: SessionSnapshotResponse,
     val events: List<VizEvent>,
+    /** The health at load, from the same cut as [session] and [events] (spec C-6); null when unavailable. */
+    val health: SessionHealth? = null,
+    /** Why [health] is null: `summaries-unavailable` or `history-trimmed`. */
+    val healthUnavailable: String? = null,
+    /** The kept cut of [health]: the shared view's follow-up reads pass it as `asOfCut` (plan E-17). */
+    val healthCut: String? = null,
+    /** The last checks run at load (spec C-5, C-6). */
+    val checks: ChecksStatus? = null,
 )

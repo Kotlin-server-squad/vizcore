@@ -224,40 +224,11 @@ fun Route.registerSessionRoutes() {
     // Nodes at one moment, with their derived round and C-2 summary (spec C-3; plan E-6): current, at a replay cursor
     // (atSeq) or bound to a health (asOfSeq), optionally one scope or one round.
     get("/api/sessions/{id}/hierarchy") {
-        val scopeId = call.request.queryParameters["scopeId"]
-        val roundId = call.request.queryParameters["roundId"]
-        val binding =
-            try {
-                parseViewBinding(call.request.queryParameters)
-            } catch (e: BadReadParameter) {
-                call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "bad parameter"))
-                return@get
-            }
-        if (binding == ViewBinding.Current) {
-            // Not a health read: without usable summaries the projection still answers, without rounds.
-            val sessionId = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("Missing session ID"))
-            val ingest = IngestStates.snapshot(sessionId)
-            val session =
-                call.resolveScopedSession(sessionId)
-                    ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Session not found"))
-            val nodes =
-                try {
-                    hierarchyOf(readView(session, ingest, binding, call.leakThresholdMs()), scopeId, roundId)
-                } catch (e: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
-                    // Rounds need the summaries: a round filter cannot be answered, the plain hierarchy can.
-                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
-                    projectionOnlyHierarchy(session, scopeId)
-                } catch (e: HistoryTrimmedException) {
-                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
-                    projectionOnlyHierarchy(session, scopeId)
-                }
-            call.respond(HttpStatusCode.OK, nodes)
-            return@get
-        }
-        call.withSessionView { view ->
-            call.response.headers.append(AS_OF_SEQ_HEADER, view.seq.toString())
-            call.respond(HttpStatusCode.OK, hierarchyOf(view, scopeId, roundId))
-        }
+        val sessionId = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("Missing session ID"))
+        val ingest = IngestStates.snapshot(sessionId)
+        val session =
+            call.resolveScopedSession(sessionId) ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Session not found"))
+        call.respondHierarchy(session, ingest)
     }
 
     get("/api/sessions/{id}/metrics") {
@@ -267,6 +238,8 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
+        // Before the session is resolved (5a D-9c): the leak ages may end at the live watermark.
+        val ingest = IngestStates.snapshot(sessionId)
         // MANDATORY tenant scoping (Pitfall 3 / T-08-04): a cross-tenant id resolves
         // to null → 404 (never 403, never leaking another tenant's metrics existence).
         val session = call.resolveScopedSession(sessionId)
@@ -279,20 +252,27 @@ fun Route.registerSessionRoutes() {
         // falls back to the server default; negative/absurd values are clamped to bounds.
         val leakThresholdMs = call.leakThresholdMs()
 
-        // Wall-clock read basis (CR-01): leak age must subtract a fixed-origin epoch-millis
-        // clock so it stays well-defined on the DB-rehydrated path across a restart.
+        // Wall-clock read basis (CR-01) for the projection totals; leak ages come from the summaries (frozen, plan E-15).
         val snapshot = session.metricsProjection.snapshot(System.currentTimeMillis(), leakThresholdMs)
-        call.respond(
-            HttpStatusCode.OK,
+        val base =
             MetricsResponse(
                 active = snapshot.active,
                 peak = snapshot.peak,
                 throughputPerSec = snapshot.throughputPerSec,
                 dispatcherUtilization = snapshot.dispatcherUtilization,
-                leaks = snapshot.leaks.map { LeakDto(it.coroutineId, it.label, it.aliveMs) },
+                leaks = emptyList(),
                 leakThresholdMs = leakThresholdMs,
-            ),
-        )
+                leaksAvailable = false,
+            )
+        val view =
+            try {
+                readView(session, ingest, ViewBinding.Current, leakThresholdMs)
+            } catch (_: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
+                null
+            } catch (_: HistoryTrimmedException) {
+                null
+            }
+        call.respond(HttpStatusCode.OK, view?.let { metricsByOrigin(base, it) } ?: base.withRetainedOnly(session))
     }
 
     get("/api/sessions/{id}/threads") {
@@ -326,44 +306,13 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
-        // At a replay cursor or bound to a health: the timeline of that moment (plan E-7).
-        val binding =
-            try {
-                parseViewBinding(call.request.queryParameters)
-            } catch (e: BadReadParameter) {
-                call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "bad parameter"))
-                return@get
-            }
-        if (binding != ViewBinding.Current) {
-            call.withSessionView { view ->
-                val body = timelineAt(view, coroutineId)
-                if (body == null) {
-                    call.respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
-                } else {
-                    call.respond(HttpStatusCode.OK, body)
-                }
-            }
-            return@get
-        }
-
+        val ingest = IngestStates.snapshot(sessionId)
         val session = call.resolveScopedSession(sessionId)
         if (session == null) {
             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
             return@get
         }
-
-        val timeline = session.projectionService.getCoroutineTimeline(coroutineId)
-        if (timeline == null) {
-            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Coroutine not found"))
-            return@get
-        }
-
-        // The open phase lets a client count a still-running coroutine up to now (#218). For an
-        // app session only a still-streaming app vouches that the coroutine is still running:
-        // once its ingest socket is gone, its fate is unknown, so stop the clock. vizcore's own
-        // runs execute in this JVM and need no socket.
-        val live = IngestConnections.isConnected(sessionId) || sessionKindOf(sessionId) == SessionKind.DEMO
-        call.respond(HttpStatusCode.OK, if (live) timeline else timeline.copy(openPhase = null, openPhaseSinceNanos = null))
+        call.respondTimeline(session, ingest, coroutineId)
     }
 
     // Authenticated SSE stream. This route is registered INSIDE authenticatedApi { } (see Routing.kt),
@@ -473,10 +422,12 @@ fun Route.registerSessionRoutes() {
 internal fun snapshotResponseOf(
     session: VizSession,
     events: List<VizEvent> = session.store.all(),
+    cut: ReadCut? = null,
+    ingestCut: IngestSnapshot? = null,
 ): SessionSnapshotResponse {
-    // One point-in-time copy so the count and the list agree while events keep arriving.
-    val nodes = session.snapshot.nodes()
-    val facts = readSessionFacts(session, events)
+    // One point-in-time copy so the count and the list agree while events keep arriving (or the share's one cut).
+    val nodes = cut?.nodes ?: session.snapshot.nodes()
+    val facts = readSessionFacts(session, events, cut, ingestCut)
     return SessionSnapshotResponse(
         sessionId = session.sessionId,
         coroutineCount = nodes.size,
@@ -615,3 +566,34 @@ internal fun VizEvent.toSse(): ServerSentEvent =
         event = kind,
         id = "$sessionId-$seq",
     )
+
+/**
+ * `…/coroutines/{coroutineId}/timeline` for a resolved session, shared by the session and the shared routes: the current
+ * timeline from the live projection (its open phase kept while the app streams or for a demo), or, at a replay cursor or
+ * bound to a health, the timeline of that moment (plan E-7).
+ */
+internal suspend fun ApplicationCall.respondTimeline(
+    session: VizSession,
+    ingest: IngestSnapshot,
+    coroutineId: String,
+) {
+    respondReadErrors {
+        val binding = parseViewBinding(request.queryParameters)
+        if (binding != ViewBinding.Current) {
+            val body = timelineAt(readView(session, ingest, binding, leakThresholdMs()), coroutineId)
+            if (body == null) respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found")) else respond(HttpStatusCode.OK, body)
+            return@respondReadErrors
+        }
+        val timeline = session.projectionService.getCoroutineTimeline(coroutineId)
+        if (timeline == null) {
+            respond(HttpStatusCode.NotFound, mapOf("error" to "Coroutine not found"))
+            return@respondReadErrors
+        }
+        // The open phase lets a client count a still-running coroutine up to now (#218). For an app session only a
+        // still-streaming app vouches that the coroutine is still running: once its ingest socket is gone, its fate is
+        // unknown, so stop the clock. vizcore's own runs execute in this JVM and need no socket.
+        val sessionId = session.sessionId
+        val live = IngestConnections.isConnected(sessionId) || sessionKindOf(sessionId) == SessionKind.DEMO
+        respond(HttpStatusCode.OK, if (live) timeline else timeline.copy(openPhase = null, openPhaseSinceNanos = null))
+    }
+}
