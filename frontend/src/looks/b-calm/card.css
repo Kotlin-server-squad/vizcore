@@ -1,0 +1,103 @@
+/*
+ * B · Calm: the default graph card (per-look cards). The card markup is
+ * shared by every look; this styles it through its data-look-part hooks and
+ * the wrapper's data-state. The size the layout reserves is in card.ts.
+ * Shown: the name, a state pill and the second line. Hidden: the icon, the
+ * running tint, the progress bar and the ID / Job / Scope rows (the Inspector
+ * shows those for the selected coroutine).
+ */
+
+/* The state's colour, from the shared state mapping (coroutine-state-colors). */
+[data-look='b'] [data-state] {
+  --card-hue: var(--heroui-default-400);
+  --card-ink: var(--heroui-default-600);
+}
+[data-look='b'] [data-state='ACTIVE'],
+[data-look='b'] [data-state='WAITING_FOR_CHILDREN'] {
+  --card-hue: var(--heroui-primary);
+  --card-ink: var(--heroui-primary-600);
+}
+[data-look='b'] [data-state='SUSPENDED'],
+[data-look='b'] [data-state='CANCELLED'] {
+  --card-hue: var(--heroui-warning);
+  --card-ink: var(--heroui-warning-600);
+}
+[data-look='b'] [data-state='COMPLETED'] {
+  --card-hue: var(--heroui-success);
+  --card-ink: var(--heroui-success-600);
+}
+[data-look='b'] [data-state='FAILED'] {
+  --card-hue: var(--heroui-danger);
+  --card-ink: var(--heroui-danger-600);
+}
+
+[data-look='b'] [data-look-part='node'] {
+  padding: 14px;
+  border-width: 1px;
+  border-color: hsl(var(--heroui-default-200));
+  border-radius: 14px;
+  background: hsl(var(--heroui-content1));
+  /* A soft shadow instead of the large one; the selection ring stays. */
+  --tw-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --tw-shadow-colored: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+[data-look='b'] [data-look-part='node-tint'],
+[data-look='b'] [data-look-part='node-icon'],
+[data-look='b'] [data-look-part='node-progress'],
+[data-look='b'] [data-look-part='node-details'] {
+  display: none;
+}
+[data-look='b'] [data-look-part='node-head'] {
+  margin: 0;
+}
+[data-look='b'] [data-look-part='node-text'] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+[data-look='b'] [data-look-part='node-name'] {
+  max-width: 100%;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  -webkit-line-clamp: 1;
+}
+[data-look='b'] [data-look-part='node-state'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+  background: hsl(var(--card-hue) / 0.16);
+  color: hsl(var(--card-ink));
+}
+[data-look='b'] [data-look-part='node-state']::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: hsl(var(--card-hue));
+}
+/* The pill has its own dot. */
+[data-look='b'] [data-look-part='node-state'] > span {
+  display: none;
+}
+/* What it waits for or holds, on up to two lines. */
+[data-look='b'] [data-look-part='node-activity'] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 17px;
+}
+[data-look='b'] [data-look-part='node-children'] {
+  border-radius: 9999px;
+  padding: 1px 10px;
+}

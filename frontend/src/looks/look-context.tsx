@@ -9,9 +9,9 @@ import {
   useState,
 } from 'react'
 import type { ReactNode } from 'react'
-import { LOOKS, parseLook, type LookId } from './registry'
+import { CARDS, LOOKS, parseLook, type LookId } from './registry'
 import { classicSlots } from './classic'
-import type { LookDefinition, LookSlots } from './types'
+import type { LookCard, LookDefinition, LookSlots } from './types'
 
 /** Where the chosen look is remembered, per browser. */
 export const LOOK_STORAGE_KEY = 'vizcore-look'
@@ -163,4 +163,9 @@ export function useLookSlot<K extends keyof LookSlots>(name: K): LookSlots[K] {
   const { look } = useLook()
   const definition: LookDefinition | undefined = LOOKS.find(l => l.id === look)
   return definition?.slots?.[name] ?? classicSlots[name]
+}
+
+/** The current look's graph card size; Classic's outside the session page. */
+export function useLookCard(): LookCard {
+  return CARDS[useLook().look]
 }

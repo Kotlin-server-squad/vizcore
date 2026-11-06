@@ -71,3 +71,16 @@ export interface LookDefinition<Id extends string = string> {
   /** The layout this look replaces; any slot left out is Classic's. */
   slots?: Partial<LookSlots>
 }
+
+/**
+ * The size of one coroutine card on the graph (PR L0, per-look cards). The
+ * layout reserves exactly this box for every card, so edges, the "N children"
+ * labels and the spacing follow it. Every look draws the same card markup,
+ * styled through its `data-look-part` hooks (node, node-name, node-state,
+ * node-activity, …) and the card wrapper's `data-state`; a look sets only the
+ * size here, in its folder's `card.ts`.
+ */
+export interface LookCard {
+  width: number
+  height: number
+}
