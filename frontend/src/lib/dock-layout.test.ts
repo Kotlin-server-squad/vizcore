@@ -17,6 +17,11 @@ describe('dock size', () => {
     expect(initialDockHeight(800)).toBe(320)
   })
 
+  it('starts at a look’s own share when it brings one, and at 40 % without', () => {
+    expect(initialDockHeight(900, 0.2)).toBe(180)
+    expect(initialDockHeight(900, undefined)).toBe(360)
+  })
+
   it('leaves the main view at least 320 px of the space it shares with the dock', () => {
     expect(dockMaxHeight(900)).toBe(900 - MAIN_MIN_PX - 12)
   })

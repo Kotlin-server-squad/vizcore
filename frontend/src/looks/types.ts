@@ -91,4 +91,11 @@ export interface LookCard {
    * Leave it out to fit the whole tree however small (Classic).
    */
   fitMinZoom?: number
+  /**
+   * The dock's starting height, as a share of the window (0–1), for a look
+   * whose cards need more of the page. Used only when the page opens and the
+   * browser remembers no dock size of the user's; leave it out for the
+   * default (40 %, `DOCK_SHARE`).
+   */
+  dockShare?: number
 }

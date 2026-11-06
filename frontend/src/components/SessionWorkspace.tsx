@@ -49,7 +49,7 @@ import { openingDockTab, rememberDockTab, rememberedDockTab } from '@/lib/dock-t
 import { projectActivity } from '@/lib/activity'
 import { eventSubject, resourceIds, resourceNames, type Selection } from '@/lib/selection'
 import type { CoroutinePicker } from './sync/CoroutineName'
-import { useLookSlot } from '@/looks/look-context'
+import { useLookCard, useLookSlot } from '@/looks/look-context'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -178,7 +178,8 @@ export function SessionWorkspace({
   const allEvents = streamEnabled ? liveEvents : storedEvents || []
 
   // The dock's size, fold and maximise (S-1), remembered per browser.
-  const dock = useDockLayout()
+  // A look may start the dock smaller, so its cards fit the first view (card.ts `dockShare`).
+  const dock = useDockLayout(useLookCard().dockShare)
   // The layout around the main view and the dock is the look's (PR L0); Classic's by default.
   const sessionBody = useLookSlot('SessionBody')
   // Run / Reset / Clear (S-3). Mutation hooks only — nothing is requested until

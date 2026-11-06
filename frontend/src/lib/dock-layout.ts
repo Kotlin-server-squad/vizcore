@@ -16,14 +16,17 @@ export const DOCK_STEP_PX = 24
 
 export const DOCK_STORAGE_KEY = 'vizcore.dock'
 
+/** The dock's starting height as a share of the window (S-1). A look may start it smaller. */
+export const DOCK_SHARE = 0.4
+
 export interface DockPrefs {
   /** Null until the user has resized the dock. */
   height: number | null
   folded: boolean
 }
 
-export function initialDockHeight(windowHeight: number): number {
-  return Math.round(windowHeight * 0.4)
+export function initialDockHeight(windowHeight: number, share: number = DOCK_SHARE): number {
+  return Math.round(windowHeight * share)
 }
 
 /**

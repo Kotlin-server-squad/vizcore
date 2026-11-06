@@ -75,10 +75,12 @@
 [data-card-look='c'] [data-state] [data-look-part='node-state'] {
   display: inline-flex;
   align-items: center;
-  padding: 2px 10px;
+  /* 13 px on one line: "Waiting for children" (125 px) fits the 180 px card's 146 px. */
+  padding: 2px 8px;
   border-radius: 9999px;
+  white-space: nowrap;
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 20px;
   background: hsl(var(--card-hue));
@@ -90,9 +92,10 @@
 [data-card-look='c'] [data-look-part='node-activity'] {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   max-width: 100%;
   overflow: hidden;
+  /* One line in a 104 px card; the full line is in its tooltip. */
   white-space: normal;
   font-size: 12px;
   line-height: 16px;

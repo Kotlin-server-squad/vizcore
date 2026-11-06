@@ -13,6 +13,46 @@ describe('useDockLayout', () => {
     expect(result.current.maximised).toBe(false)
   })
 
+  it('opens at a look’s own starting share when it brings one', () => {
+    const { result } = renderHook(() => useDockLayout(0.2))
+    expect(result.current.height).toBe(Math.round(window.innerHeight * 0.2))
+  })
+
+  it('opens at 40 % when the look brings no share (Classic, A and B today)', () => {
+    const { result } = renderHook(() => useDockLayout(undefined))
+    expect(result.current.height).toBe(Math.round(window.innerHeight * 0.4))
+  })
+
+  it('keeps the size the user left the dock at, whatever the look’s share', () => {
+    writeDockPrefs({ height: 260, folded: false })
+    const { result } = renderHook(() => useDockLayout(0.2))
+    expect(result.current.height).toBe(260)
+  })
+
+  it('follows a change of look while the page is open, until the user resizes', () => {
+    const { result, rerender } = renderHook(({ share }: { share?: number }) => useDockLayout(share), {
+      initialProps: { share: undefined as number | undefined },
+    })
+    expect(result.current.height).toBe(Math.round(window.innerHeight * 0.4))
+    rerender({ share: 0.2 })
+    expect(result.current.height).toBe(Math.round(window.innerHeight * 0.2))
+    rerender({ share: undefined })
+    expect(result.current.height).toBe(Math.round(window.innerHeight * 0.4))
+    act(() => result.current.resize(300))
+    rerender({ share: 0.2 })
+    expect(result.current.height).toBe(300)
+  })
+
+  it('folding stores no size, so one look’s start never becomes another’s', () => {
+    const { result, unmount } = renderHook(() => useDockLayout(0.2))
+    act(() => result.current.toggleFold())
+    act(() => result.current.toggleFold())
+    expect(readDockPrefs()).toEqual({ height: null, folded: false })
+    unmount()
+    const classic = renderHook(() => useDockLayout())
+    expect(classic.result.current.height).toBe(Math.round(window.innerHeight * 0.4))
+  })
+
   it('opens at the remembered size and fold', () => {
     writeDockPrefs({ height: 260, folded: true })
     const { result } = renderHook(() => useDockLayout())
