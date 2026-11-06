@@ -1,4 +1,6 @@
 import type { ReactElement, ReactNode, Ref } from 'react'
+import type { RunOutcomeFacts } from '@/lib/run-outcome'
+import type { VizEvent } from '@/types/api'
 
 /**
  * The pieces of layout a look may replace where CSS cannot rearrange them.
@@ -17,6 +19,25 @@ import type { ReactElement, ReactNode, Ref } from 'react'
 export interface LookSlots {
   /** The main view and the dock under the header. Classic: a column, the main view above the dock. */
   SessionBody: (props: SessionBodyProps) => ReactElement
+  /**
+   * A line under the session title, from the facts the header already holds
+   * (no request, no other data). Classic: none. Its result is a leaf, so it
+   * may be a component of the look's own.
+   */
+  HeaderSummary: (props: HeaderSummaryProps) => ReactNode
+}
+
+export interface HeaderSummaryProps {
+  /** A demo run's outcome; null for an attached app. */
+  outcome: RunOutcomeFacts | null
+  /** From the first to the last event the page holds. */
+  runSpanNanos: number | null
+  /** Events were dropped, so the span is a floor. */
+  spanIsFloor: boolean
+  replayActive: boolean
+  replayAtNanos: number | null
+  /** The events the page shows: live, paused or up to the replay cursor. */
+  events: readonly VizEvent[]
 }
 
 export interface SessionBodyProps {
