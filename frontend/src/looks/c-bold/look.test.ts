@@ -61,6 +61,8 @@ describe("C's SessionBody", () => {
     expect(body.type).toBe('div')
     const props = body.props as { ref?: unknown; 'data-look-part': string; className: string; children: unknown[] }
     expect(props['data-look-part']).toBe('body')
+    // The dock measures this element: the shared ref must reach it.
+    expect(props.ref).toBe(ref)
     // Classic's column with its 12 px gap (`gap-3`): the dock's size rules assume it.
     expect(props.className).toContain('gap-3')
     expect(props.children[0]).toBe(main)
