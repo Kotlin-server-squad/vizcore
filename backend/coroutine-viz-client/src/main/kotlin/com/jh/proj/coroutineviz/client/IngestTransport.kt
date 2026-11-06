@@ -1,12 +1,15 @@
 package com.jh.proj.coroutineviz.client
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.PollWatermark
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.url
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.appendPathSegments
@@ -80,6 +83,8 @@ internal suspend fun stream(
     buffer: OutboundBuffer,
     timeouts: IngestTimeouts,
     lifetime: SocketLifetime = SocketLifetime(System::currentTimeMillis),
+    // Whether this server takes poll watermarks ([takesWatermarks]); an older one would store them as events.
+    sendWatermarks: Boolean = true,
 ) {
     // Ktor's client WebSockets plugin only performs the upgrade handshake for the ws/wss
     // scheme; an http/https URL is sent as a plain GET (NoTransformationFoundException). Convert
@@ -92,7 +97,7 @@ internal suspend fun stream(
             else -> backendUrl
         }
     try {
-        connectAndDrain(httpClient, wsBackendUrl, sessionId, token, buffer, timeouts, lifetime)
+        connectAndDrain(httpClient, wsBackendUrl, sessionId, token, buffer, timeouts, lifetime, sendWatermarks)
     } catch (gone: SessionGoneException) {
         throw gone
     } catch (silent: IngestHandshakeTimeoutException) {
@@ -112,6 +117,48 @@ internal suspend fun stream(
         throw failure
     }
 }
+
+/** The 503 codes the session-health route answers with; a 503 without one is a proxy's, and says nothing. */
+private val HEALTH_UNAVAILABLE_CODES = listOf("summaries-unavailable", "history-trimmed")
+
+/**
+ * Whether the backend takes poll watermarks as transport state (spec 2026-10-21, C-7): it serves session health
+ * (`GET …/health`, vizcore 1.3). A 1.2 server knows the watermark type but stores every decoded frame as a session
+ * event, so a watermark a second would fill its bounded store. `true` for `200`, or `503` with a health code; `false`
+ * for `404` (a server without session health); `null` when the answer says nothing (no answer within [timeoutMillis],
+ * a refused or failed request, an auth or proxy error), so that connection sends no watermark and the next one asks
+ * again.
+ */
+@Suppress("TooGenericExceptionCaught") // an answer that cannot be read says nothing
+internal suspend fun takesWatermarks(
+    httpClient: HttpClient,
+    backendUrl: String,
+    sessionId: String,
+    token: String,
+    timeoutMillis: Long,
+): Boolean? =
+    withTimeoutOrNull(timeoutMillis) {
+        try {
+            val response =
+                httpClient.get {
+                    url {
+                        if (backendUrl.isNotBlank()) takeFrom(backendUrl)
+                        appendPathSegments("api", "sessions", sessionId, "health")
+                    }
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                }
+            when (response.status) {
+                HttpStatusCode.OK -> true
+                HttpStatusCode.NotFound -> false
+                HttpStatusCode.ServiceUnavailable -> true.takeIf { HEALTH_UNAVAILABLE_CODES.any { it in response.bodyAsText() } }
+                else -> null
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
+    }
 
 /**
  * How long the ingest socket waits on a peer that has stopped talking.
@@ -145,6 +192,9 @@ internal class SocketLifetime(
     fun ended() {
         if (openedAt != UNSET && endedAt == UNSET) endedAt = clock()
     }
+
+    /** Whether the socket opened and has not ended. */
+    val isOpen: Boolean get() = openedAt != UNSET && endedAt == UNSET
 
     /** Whether the socket opened and stayed open for at least [millis]. */
     fun lastedAtLeast(millis: Long): Boolean {
@@ -245,6 +295,7 @@ private suspend fun connectAndDrain(
     buffer: OutboundBuffer,
     timeouts: IngestTimeouts,
     lifetime: SocketLifetime,
+    sendWatermarks: Boolean,
 ) = coroutineScope {
     // Failing from a child cancels the pending upgrade (closing its connection) and makes
     // coroutineScope rethrow the timeout itself, not a CancellationException.
@@ -287,9 +338,13 @@ private suspend fun connectAndDrain(
                 // "client stopping" and exits). Here the failure stays inside the drain and
                 // is reported as itself below.
                 supervisorScope {
+                    // Ktor builds this block's context from scratch, so the loop's VizcoreInternal does not reach it:
+                    // the drain and the probe are vizcore's own coroutines and say so themselves.
                     val drain =
-                        async {
+                        async(VizcoreInternal) {
                             buffer.drain { event ->
+                                // An older server would store a watermark as an event: held back, not counted.
+                                if (event is PollWatermark && !sendWatermarks) return@drain
                                 send(Frame.Text(appJson.encodeToString(PolymorphicSerializer(VizEvent::class), event)))
                             }
                         }
@@ -300,7 +355,7 @@ private suspend fun connectAndDrain(
                     // TimeoutCancellationException would read as "client stopping" to the
                     // reconnect loop.
                     val probe =
-                        async {
+                        async(VizcoreInternal) {
                             while (true) {
                                 delay(timeouts.pingIntervalMillis)
                                 withTimeoutOrNull(timeouts.pingTimeoutMillis) { send(Frame.Ping(ByteArray(0))) }

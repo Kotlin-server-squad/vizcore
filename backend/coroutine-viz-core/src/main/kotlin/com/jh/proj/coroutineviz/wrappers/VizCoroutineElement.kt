@@ -1,5 +1,7 @@
 package com.jh.proj.coroutineviz.wrappers
 
+import com.jh.proj.coroutineviz.session.VizSession
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ThreadContextElement
 import kotlin.coroutines.CoroutineContext
 
@@ -45,6 +47,21 @@ data class VizCoroutineElement(
     }
 
     override val key: CoroutineContext.Key<*> = Key
+
+    /**
+     * The session of the [VizScope] that launched the coroutine this element was made for. Its wrapper events describe
+     * that coroutine, so the DebugProbes source of the same session leaves it out (captured once, spec "Origin").
+     * Not part of equality.
+     */
+    @Volatile
+    internal var owner: VizSession? = null
+
+    /**
+     * The coroutine this element was made for. A coroutine launched from its body with the body's context inherits the
+     * element but is another coroutine, which DebugProbes still captures. `null` until the wrapper records it.
+     */
+    @Volatile
+    internal var ownerJob: Job? = null
 
     override fun updateThreadContext(context: CoroutineContext): VizCoroutineElement? =
         onThisThread.get().also { onThisThread.set(this) }

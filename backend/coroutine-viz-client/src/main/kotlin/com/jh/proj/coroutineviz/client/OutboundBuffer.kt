@@ -1,12 +1,15 @@
 package com.jh.proj.coroutineviz.client
 
+import com.jh.proj.coroutineviz.events.PollWatermark
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.session.EventBus
 import com.jh.proj.coroutineviz.session.VizSession
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicLong
@@ -31,16 +34,12 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Startup race: because `feed` launches its collector on a passed-in scope, the
  * collector has not necessarily registered with the `replay = 0` SharedFlow by the
- * time `launch` returns. [feed] therefore SUSPENDS until the bus
- * [VizSession.bus]'s `subscriptionCount` rises ABOVE the baseline captured just
- * before launch (i.e. the feed's OWN collector is provably registered) before
- * returning, so the caller can drive the source only after the feed is provably
- * subscribed — closing the startup race deterministically, with no sleep.
- *
- * Note the baseline is NOT assumed to be zero: a [VizSession] eagerly subscribes its
- * own ProjectionService collector at construction, so `subscriptionCount` is already
- * >= 1 before [feed]; awaiting a strict increase over the pre-launch baseline is what
- * guarantees the FEED's collector specifically is live.
+ * time `launch` returns. [feed] therefore SUSPENDS until the bus reports the FEED's own
+ * collector registered (its `onSubscribed` callback, which the shared flow runs only once
+ * the collector's slot exists) before returning, so the caller can drive the source only
+ * after the feed is provably subscribed — closing the startup race deterministically,
+ * with no sleep. (A subscriber count would not say whose subscription it is: a
+ * [VizSession] eagerly subscribes its own ProjectionService collector at construction.)
  *
  * Overflow decision (T-07-08): the channel is a plain bounded buffer with NO
  * `onBufferOverflow` policy, so [Channel.trySend] returns a FAILURE when the buffer
@@ -50,6 +49,13 @@ import java.util.concurrent.atomic.AtomicLong
  * loss is OBSERVABLE, never silent, and never floods the host app's log. [capacity] defaults to 10,000 to mirror the EventBus buffer so the bridge
  * is not the narrower bottleneck.
  *
+ * Watermarks, losses and the cutoff (spec 2026-10-21, C-7). [poll] puts a completed poll's [PollWatermark] on the
+ * session bus right after that poll's events, so bus order carries it behind them; the feed forwards at most one per
+ * second, stamped with [lost] (exact: watermarks and the cutoff marker are numbered, so evicted control items are told
+ * apart from evicted events) and [deliveryUncertain]. [cutoff] ends the capture at an exact bus index: the feed then
+ * queues a `final` watermark carrying the newest completed poll (none without one: a watermark is an observation) and
+ * closes the buffer, so the drain sends it last.
+ *
  * Ktor-free: this class depends only on kotlinx-coroutines ([Channel]/[Flow]) and
  * core's [VizSession]; the wire/socket concerns live in [IngestTransport].
  */
@@ -57,6 +63,7 @@ class OutboundBuffer internal constructor(
     private val capacity: Int,
     private val reportIntervalMillis: Long,
     private val clock: () -> Long,
+    private val watermarkIntervalNanos: Long = DEFAULT_WATERMARK_INTERVAL_NANOS,
 ) {
     // @JvmOverloads keeps both JVM constructors the 0.3.0 primary constructor had: () and (int).
     @JvmOverloads
@@ -80,6 +87,44 @@ class OutboundBuffer internal constructor(
     private var dropsSinceReport = 0L
     private var lastReportAt = 0L
 
+    // Control items (poll watermarks and the cutoff marker) are numbered under controlLock as they go on the session
+    // bus, so the feed can tell how many of the entries the bus evicted for it were control items, not events.
+    private val controlLock = Any()
+    private var controlSeq = 0L // guarded by controlLock
+    private var subscribed = false // guarded by controlLock
+    private var cutoffRequested = false // guarded by controlLock
+    private var cutoffIndex = -1L // guarded by controlLock: the marker's bus index
+    private var cutoffSeq = 0L // guarded by controlLock: the marker's number
+
+    @Volatile
+    private var cutoffMarker: PollWatermark? = null
+
+    // Written by the feed; read when stamping, and by tests.
+    private val missedEntries = AtomicLong(0)
+    private val missedControl = AtomicLong(0)
+
+    @Volatile
+    private var uncertain = false
+
+    // Feed-only state: one collector reads and writes it.
+    private var lastIndex = 0L
+    private var lastControlSeq = 0L
+    private var latestPoll: PollWatermark? = null
+    private var lastForwardedNanos: Long? = null
+
+    /**
+     * Events lost before sending, cumulative for the client (spec C-7): dropped because the buffer was full, or evicted
+     * from the session bus before the feed read them. Skipped or evicted watermarks are not events and do not count.
+     * Exact whenever the feed has just received a control item, which is when it stamps a watermark.
+     */
+    internal val lost: Long get() = droppedCount.get() + missedEntries.get() - missedControl.get()
+
+    /**
+     * A socket ended, other than by the buffer closing at the end of a drain, after taking an event that may not have
+     * arrived (there is no delivery acknowledgement). Sticky.
+     */
+    internal val deliveryUncertain: Boolean get() = uncertain
+
     /** Number of events dropped on overflow — surfaced so loss is never silent. */
     val dropped: Long get() = droppedCount.get()
 
@@ -91,13 +136,10 @@ class OutboundBuffer internal constructor(
 
     /**
      * Launch the SINGLE lifetime feed: one long-lived collector on [scope] that
-     * subscribes to `session.bus.stream()` and offers every event into the buffer.
-     * SUSPENDS until the FEED's own collector is provably registered
-     * (`session.bus.subscriptionCount` rises above the pre-launch baseline) before
-     * returning the collector [Job], so the caller may drive the source only
-     * afterwards (no startup race). Awaiting a strict increase over the baseline —
-     * rather than a bare `>= 1` — is required because the session already has its own
-     * ProjectionService subscriber, so the count is non-zero before this launch.
+     * subscribes to the session bus and offers every event into the buffer.
+     * SUSPENDS until the FEED's own collector is registered (the bus's `onSubscribed`)
+     * before returning the collector [Job], so the caller may drive the source only
+     * afterwards (no startup race). The collection ends at the [cutoff].
      *
      * MUST be invoked exactly ONCE per client lifetime, NOT per socket — the single
      * subscription survives every reconnect.
@@ -106,15 +148,87 @@ class OutboundBuffer internal constructor(
         session: VizSession,
         scope: CoroutineScope,
     ): Job {
-        val baseline = session.bus.subscriptionCount.value
+        // Signalled by the bus once the feed's own slot exists: every entry sent from then on reaches it (or is evicted
+        // for it, which it sees).
+        val subscription = CompletableDeferred<Unit>()
         val job =
             scope.launch {
-                session.bus.stream().collect { offer(it) }
+                var reachedCutoff = false
+                session.bus
+                    .indexedStream { start ->
+                        lastIndex = start
+                        synchronized(controlLock) { subscribed = true }
+                        subscription.complete(Unit)
+                    }.takeWhile { entry -> accept(entry).also { if (!it) reachedCutoff = true } }
+                    .collect { offer(it.event) }
+                // The bus never completes: only the cutoff ends the collection.
+                if (reachedCutoff) finish()
             }
-        // Await the feed's OWN collector registering with the replay=0 SharedFlow so
-        // the caller can drive the source without racing the subscribe.
-        session.bus.subscriptionCount.first { it > baseline }
+        subscription.await()
         return job
+    }
+
+    /** Counts what the bus evicted before [entry]; `false` once the capture has reached the cutoff. */
+    private fun accept(entry: EventBus.IndexedEvent): Boolean {
+        if (entry.index - lastIndex > 1) {
+            val (markerIndex, markerSeq) = synchronized(controlLock) { cutoffIndex to cutoffSeq }
+            if (markerIndex in (lastIndex + 1) until entry.index) {
+                // The marker itself was evicted: count what was lost before it, nothing after it.
+                missedEntries.addAndGet(markerIndex - lastIndex - 1)
+                countControl(markerSeq)
+                return false
+            }
+            missedEntries.addAndGet(entry.index - lastIndex - 1)
+        }
+        lastIndex = entry.index
+        val event = entry.event
+        if (event is PollWatermark) countControl(event.seq)
+        return event !== cutoffMarker
+    }
+
+    // Control item [seq] arrived (or the marker was evicted): the numbers skipped since the last one were evicted.
+    private fun countControl(seq: Long) {
+        if (seq <= lastControlSeq) return
+        missedControl.addAndGet(seq - lastControlSeq - 1)
+        lastControlSeq = seq
+    }
+
+    /**
+     * Puts a completed poll's watermark on [session]'s bus (spec C-7), numbered as a control item. Called on the poll
+     * loop right after the poll's events, so the watermark follows them. Nothing after the cutoff.
+     */
+    internal fun poll(
+        session: VizSession,
+        pollNanos: Long,
+        pollEpochMs: Long,
+    ) {
+        synchronized(controlLock) {
+            if (cutoffRequested) return
+            session.bus.send(PollWatermark(session.sessionId, ++controlSeq, pollNanos, pollEpochMs))
+        }
+    }
+
+    /**
+     * Sets the capture cutoff (spec C-7): what [session] sent on its bus before this call is handed to the buffer,
+     * nothing after it is, and none of that counts as lost. The feed then queues the final watermark and closes the
+     * buffer, so a drain sends it last and returns. Before the feed subscribed nothing was captured: the buffer closes
+     * now.
+     */
+    internal fun cutoff(session: VizSession) {
+        synchronized(controlLock) {
+            if (cutoffRequested) return
+            cutoffRequested = true
+            if (!subscribed) {
+                close()
+                return
+            }
+            val marker = PollWatermark(session.sessionId, ++controlSeq, Long.MIN_VALUE, 0)
+            cutoffMarker = marker
+            cutoffSeq = marker.seq
+            cutoffIndex = session.bus.sendIndexed(marker)
+            // Rejected by the bus (not expected under DROP_OLDEST): nothing can mark the end.
+            if (cutoffIndex == 0L) close()
+        }
     }
 
     /**
@@ -132,12 +246,26 @@ class OutboundBuffer internal constructor(
      * (the underlying channel iteration rethrows [kotlinx.coroutines.CancellationException]).
      */
     suspend fun drain(send: suspend (VizEvent) -> Unit) {
-        for (event in channel) {
-            dequeuedCount.incrementAndGet()
-            // Drops that stopped with the app going quiet are still reported once the buffer drains.
-            if (overflowing) reportRecoveryIfDrained()
-            send(event)
-            sentCount.incrementAndGet()
+        var tookEvent = false
+        var closed = false
+        try {
+            for (event in channel) {
+                // Watermarks are transport state: not events for the counters below.
+                if (event is PollWatermark) {
+                    send(event)
+                    continue
+                }
+                tookEvent = true
+                dequeuedCount.incrementAndGet()
+                // Drops that stopped with the app going quiet are still reported once the buffer drains.
+                if (overflowing) reportRecoveryIfDrained()
+                send(event)
+                sentCount.incrementAndGet()
+            }
+            closed = true
+        } finally {
+            // There is no delivery acknowledgement: an event this socket took may not have arrived (spec C-7).
+            if (!closed && tookEvent) uncertain = true
         }
     }
 
@@ -151,6 +279,7 @@ class OutboundBuffer internal constructor(
      * edge, and each single free slot would otherwise start a new outage with a new warning.
      */
     private fun offer(event: VizEvent) {
+        if (event is PollWatermark) return offerWatermark(event)
         val result = channel.trySend(event)
         when {
             result.isSuccess -> {
@@ -162,6 +291,38 @@ class OutboundBuffer internal constructor(
             // Buffer full → surfaced, counted drop-newest-when-full.
             else -> reportDrop(droppedCount.incrementAndGet())
         }
+    }
+
+    /**
+     * Keeps the newest poll for the close message and forwards at most one watermark per interval (by app clock, the
+     * first at once), stamped with the counts as of now. One that does not fit a full buffer is skipped: it is not an
+     * event, and the next one carries the counts.
+     */
+    private fun offerWatermark(poll: PollWatermark) {
+        latestPoll = poll
+        val last = lastForwardedNanos
+        if (last != null && poll.tsNanos - last < watermarkIntervalNanos) return
+        if (channel.trySend(stamped(poll, final = false)).isSuccess) lastForwardedNanos = poll.tsNanos
+    }
+
+    // seq = 0: the numbering is the bus's business; the server does not read a watermark's seq.
+    private fun stamped(
+        poll: PollWatermark,
+        final: Boolean,
+    ): PollWatermark = poll.copy(seq = 0, lostEvents = lost, deliveryUncertain = uncertain, final = final)
+
+    /**
+     * The close message: the newest completed poll before the cutoff with the final counts. Without a completed poll
+     * there is none (a watermark is an observation, spec H-1): the buffer just closes.
+     */
+    private suspend fun finish() {
+        val poll = latestPoll
+        try {
+            if (poll != null) channel.send(stamped(poll, final = true))
+        } catch (_: ClosedSendChannelException) {
+            // close() came first: nobody is waiting for the final watermark.
+        }
+        close()
     }
 
     private fun reportRecoveryIfDrained() {
@@ -232,6 +393,9 @@ class OutboundBuffer internal constructor(
 
         /** At most one drop report per 30 s, so an outage never floods the host app's log (#255). */
         const val DEFAULT_REPORT_INTERVAL_MS = 30_000L
+
+        /** At most one watermark a second (spec C-7). */
+        const val DEFAULT_WATERMARK_INTERVAL_NANOS = 1_000_000_000L
 
         fun monotonicMillis(): Long = System.nanoTime() / 1_000_000
     }

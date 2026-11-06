@@ -11,6 +11,7 @@ import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.session.flowCollectionCancelled
 import com.jh.proj.coroutineviz.session.flowCollectionStarted
 import com.jh.proj.coroutineviz.session.flowValueEmitted
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
@@ -115,7 +116,7 @@ class InstrumentedSharedFlow<T>(
         if (result) {
             val coroutineId =
                 runCatching {
-                    kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.runBlocking(VizcoreInternal) {
                         currentCoroutineContext()[VizCoroutineElement]?.coroutineId
                     }
                 }.getOrNull()

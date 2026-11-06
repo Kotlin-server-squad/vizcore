@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onSubscription
 import org.slf4j.LoggerFactory
 
@@ -80,25 +81,35 @@ class EventBus(
      */
     var onEvicted: ((Long) -> Unit)? = null
 
+    /** An event with its bus-local index: gap-free in send order, so a jump means entries evicted for that subscriber. */
+    class IndexedEvent(
+        val index: Long,
+        val event: VizEvent,
+    )
+
     /**
      * Non-suspending event emission.
      * Returns true if event was emitted, false if it was rejected (not expected
      * under `DROP_OLDEST`).
      */
-    fun send(event: VizEvent): Boolean {
-        val emitted =
+    fun send(event: VizEvent): Boolean = sendIndexed(event) > 0
+
+    /**
+     * [send] that returns the index the event got on this bus, or 0 when it was rejected (not expected under
+     * `DROP_OLDEST`). The SDK records where its capture cutoff lies with it (spec 2026-10-21, C-7).
+     */
+    fun sendIndexed(event: VizEvent): Long {
+        val index =
             synchronized(emitLock) {
-                val accepted = shared.tryEmit(Indexed(lastIndex + 1, event))
-                if (accepted) lastIndex++
-                accepted
+                if (shared.tryEmit(Indexed(lastIndex + 1, event))) ++lastIndex else 0L
             }
-        if (emitted) {
+        if (index > 0) {
             onEmit?.invoke()
         } else {
             logger.error("Event buffer full! Dropped event: ${event.kind} (seq=${event.seq})")
             onDrop?.invoke()
         }
-        return emitted
+        return index
     }
 
     /**
@@ -126,12 +137,21 @@ class EventBus(
      * @return Cold flow that emits all future events
      */
     fun stream(onSubscribed: (suspend () -> Unit)? = null): Flow<VizEvent> =
+        indexedStream { onSubscribed?.invoke() }.map { it.event }
+
+    /**
+     * [stream] with each entry's bus index, for a subscriber that must know exactly what it missed (the SDK's outbound
+     * feed, spec 2026-10-21 C-7). [onSubscribed] gets the index the subscriber starts after: it receives every entry
+     * with a larger index, or sees a jump where entries were evicted for it while it lagged (also reported to
+     * [onEvicted]).
+     */
+    fun indexedStream(onSubscribed: (suspend (startIndex: Long) -> Unit)? = null): Flow<IndexedEvent> =
         flow {
             var seen = 0L
             shared
                 .onSubscription {
                     seen = synchronized(emitLock) { lastIndex }
-                    onSubscribed?.invoke()
+                    onSubscribed?.invoke(seen)
                 }.collect { indexed ->
                     val missed = indexed.idx - seen - 1
                     if (missed > 0) {
@@ -139,7 +159,7 @@ class EventBus(
                         onEvicted?.invoke(missed)
                     }
                     if (indexed.idx > seen) seen = indexed.idx
-                    emit(indexed.event)
+                    emit(IndexedEvent(indexed.idx, indexed.event))
                 }
         }
 

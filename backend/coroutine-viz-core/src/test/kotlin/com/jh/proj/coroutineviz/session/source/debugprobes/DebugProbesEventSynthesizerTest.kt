@@ -1,5 +1,7 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineResumed
@@ -411,5 +413,43 @@ class DebugProbesEventSynthesizerTest {
         assertEquals((e1 as CoroutineCreated).coroutineId, (e2 as CoroutineCompleted).coroutineId)
         assertEquals("debugprobes", e1.scopeId)
         assertTrue(e1.coroutineId.startsWith("dp-"))
+    }
+
+
+    @Test
+    fun `CoroutineCreated carries the snapshot's origin`() {
+        val s = session()
+        val vizcore = snap("a", CoroState.CREATED).also { it.origin = CoroutineOrigin.VIZCORE }
+        val created = synthesizer.synthesize(CoroutineDelta.Appeared(vizcore), s).first() as CoroutineCreated
+        val unset = synthesizer.synthesize(CoroutineDelta.Appeared(snap("b", CoroState.RUNNING)), s).first() as CoroutineCreated
+        assertEquals(CoroutineOrigin.VIZCORE, created.origin)
+        assertNull(unset.origin)
+    }
+
+    private fun suspendedOf(snapshot: CoroutineSnapshot): CoroutineSuspended =
+        synthesizer
+            .synthesize(CoroutineDelta.StateChanged(CoroState.RUNNING, CoroState.SUSPENDED, snapshot), session())
+            .single() as CoroutineSuspended
+
+    @Test
+    fun `a suspension frame read from the observed stack is a real frame`() {
+        val observed = listOf(StackTraceElement("com.acme.Repo", "load", "Repo.kt", 42))
+        val suspended = suspendedOf(snap("a", CoroState.SUSPENDED, function = "main", lastObservedStackTrace = observed))
+        assertEquals("load", suspended.suspensionPoint?.function)
+        assertEquals(SuspensionProvenance.REAL_FRAME, suspended.provenance)
+    }
+
+    @Test
+    fun `the creation frame sent for want of a suspension frame says so`() {
+        val suspended = suspendedOf(snap("a", CoroState.SUSPENDED, function = "main", fileName = "App.kt", lineNumber = 3))
+        assertEquals("main", suspended.suspensionPoint?.function)
+        assertEquals(SuspensionProvenance.CREATION_FALLBACK, suspended.provenance)
+    }
+
+    @Test
+    fun `no frame at all has no provenance`() {
+        val suspended = suspendedOf(snap("a", CoroState.SUSPENDED))
+        assertNull(suspended.suspensionPoint)
+        assertNull(suspended.provenance)
     }
 }

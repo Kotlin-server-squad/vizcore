@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -193,5 +194,24 @@ class CoroutineInfoAdapterTest {
         assertEquals("startWork", snap.function)
         assertEquals("Dispatchers.Default", snap.dispatcherName)
         assertEquals("fetch", snap.reason)
+    }
+
+
+    @Test
+    fun `the snapshot carries the origin of its creation stack, parent links included`() {
+        val adapter = CoroutineInfoAdapter()
+        val sdk = StackTraceElement("com.jh.proj.coroutineviz.client.IngestTransportKt", "connect", "IngestTransport.kt", 9)
+
+        fun raw(
+            stack: List<StackTraceElement>,
+            job: Job = Job(),
+        ) = CoroutineInfoAdapter.RawInfo(CoroState.RUNNING, job, EmptyCoroutineContext, stack, emptyList())
+        assertEquals(CoroutineOrigin.VIZCORE, adapter.toSnapshot(raw(listOf(sdk))).origin)
+        assertEquals(CoroutineOrigin.APP, adapter.toSnapshot(raw(creationStack)).origin)
+        assertEquals(CoroutineOrigin.UNKNOWN, adapter.toSnapshot(raw(emptyList())).origin)
+        val parent = Job()
+        val child = adapter.toSnapshots(listOf(raw(creationStack, parent), raw(listOf(sdk), Job(parent))))[1]
+        assertNotNull(child.parentKey)
+        assertEquals(CoroutineOrigin.VIZCORE, child.origin, "the parentKey copy keeps the origin")
     }
 }
