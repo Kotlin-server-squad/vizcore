@@ -1,5 +1,11 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.session.EventContext
+import com.jh.proj.coroutineviz.session.coroutineCompleted
+import com.jh.proj.coroutineviz.session.coroutineResumed
+import com.jh.proj.coroutineviz.session.coroutineSuspended
+import com.jh.proj.coroutineviz.session.coroutineStarted
+import com.jh.proj.coroutineviz.session.coroutineCreated
 import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
@@ -432,4 +438,149 @@ class DebugProbesSourceTest {
 
         override fun clear() = delegate.clear()
     }
+
+    @Test
+    fun `every completed poll is reported after its events, quiet polls included`() =
+        runTest {
+            val session = VizSession("polls")
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(snap("a", CoroState.RUNNING)) },
+                )
+            val polls = mutableListOf<Pair<Long, Int>>()
+            source.onPollCompleted = { nanos, _ -> polls += nanos to session.store.all().size }
+            source.start()
+            runCurrent()
+            advanceTimeBy(interval)
+            runCurrent()
+            source.stop()
+
+            assertEquals(2, polls.size, "one report per poll, the quiet second one too")
+            assertEquals(2, polls[0].second, "the first poll's Created and Started were sent before it was reported")
+            val firstEvent = session.store.all().first()
+            assertTrue(polls[0].first <= firstEvent.tsNanos, "the poll time is taken before the dump")
+        }
+
+    @Test
+    fun `a failed poll and a stopped source report nothing`() =
+        runTest {
+            val session = VizSession("failed")
+            var tick = 0
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { if (tick++ == 0) error("dump failed") else emptyList() },
+                )
+            var reports = 0
+            source.onPollCompleted = { _, _ -> reports++ }
+            source.start()
+            runCurrent()
+            assertEquals(0, reports, "the failed poll is not reported")
+            advanceTimeBy(interval)
+            runCurrent()
+            assertEquals(1, reports)
+            source.stop()
+            advanceTimeBy(interval * 3)
+            runCurrent()
+            assertEquals(1, reports, "nothing after stop()")
+        }
+
+    private val wrapperElement =
+        com.jh.proj.coroutineviz.wrappers
+            .VizCoroutineElement("coroutine-7", "job-coroutine-7", null, "scope-1", "w")
+
+    private fun wrapperSnap(state: CoroState) =
+        CoroutineSnapshot(
+            key = CoroKey("w"),
+            state = state,
+            lastObservedStackTrace = listOf(StackTraceElement("com.acme.Repo", "load", "Repo.kt", 42)),
+        ).also { it.wrapper = wrapperElement }
+
+    // What the wrapper itself sends for coroutine-7 (VizScope's events), straight into the session.
+    private fun wrapperSays(
+        session: VizSession,
+        kind: String,
+    ) {
+        val ctx =
+            EventContext(session, "coroutine-7", "job-coroutine-7", null, "scope-1", "w")
+        session.send(
+            when (kind) {
+                "created" -> ctx.coroutineCreated()
+                "started" -> ctx.coroutineStarted()
+                "suspended" -> ctx.coroutineSuspended(reason = "delay")
+                "resumed" -> ctx.coroutineResumed()
+                else -> ctx.coroutineCompleted()
+            },
+        )
+    }
+
+    private fun wrapperKinds(session: VizSession) =
+        session.store.all().filterIsInstance<CoroutineEvent>().filter { it.coroutineId == "coroutine-7" }.map { it.kind }
+
+    @Test
+    fun `a wrapper coroutine's plain suspension is added after a resume its wrapper sent between two suspended polls`() =
+        runTest {
+            val session = VizSession("mixed")
+            var state = CoroState.SUSPENDED
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(wrapperSnap(state)) },
+                )
+            wrapperSays(session, "created")
+            wrapperSays(session, "started")
+            source.start()
+            runCurrent() // poll 1: sampled suspended, recorded running -> a suspension is added
+            assertEquals(listOf("CoroutineCreated", "CoroutineStarted", "CoroutineSuspended"), wrapperKinds(session))
+            val added = session.store.all().last() as CoroutineSuspended
+            assertEquals(com.jh.proj.coroutineviz.events.SuspensionProvenance.REAL_FRAME, added.provenance)
+
+            wrapperSays(session, "resumed") // vizDelay() ended …
+            advanceTimeBy(interval) // … and a plain delay() began: poll 2 samples suspended again
+            runCurrent()
+            assertEquals("CoroutineSuspended", wrapperKinds(session).last(), "the second plain suspension is not hidden")
+
+            val before = wrapperKinds(session).size
+            advanceTimeBy(interval) // poll 3: still suspended, already recorded
+            runCurrent()
+            assertEquals(before, wrapperKinds(session).size, "nothing is sent twice")
+
+            state = CoroState.RUNNING
+            advanceTimeBy(interval) // poll 4: sampled running, recorded suspended -> a resume
+            runCurrent()
+            assertEquals("CoroutineResumed", wrapperKinds(session).last())
+            source.stop()
+        }
+
+    @Test
+    fun `nothing is added to a wrapper coroutine once its end is recorded, and nothing is created for it`() =
+        runTest {
+            val session = VizSession("ended")
+            val source =
+                DebugProbesSource(
+                    session = session,
+                    pollInterval = interval,
+                    scope = backgroundScope,
+                    installProbes = false,
+                    dump = { listOf(wrapperSnap(CoroState.SUSPENDED)) },
+                )
+            listOf("created", "started", "completed").forEach { wrapperSays(session, it) }
+            source.start()
+            runCurrent()
+            advanceTimeBy(interval)
+            runCurrent()
+            source.stop()
+            assertEquals(listOf("CoroutineCreated", "CoroutineStarted", "CoroutineCompleted"), wrapperKinds(session))
+            assertTrue(session.store.all().none { it is CoroutineCreated && it.coroutineId.startsWith("dp-") })
+        }
 }

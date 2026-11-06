@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.ContinuationInterceptor
@@ -17,6 +18,21 @@ import kotlin.coroutines.CoroutineContext
  * or frames without a line number.
  */
 object SourceAttribution {
+    /** The SDK client's package: a coroutine created with one of its frames on the stack is vizcore's (spec "Origin"). */
+    const val SDK_CLIENT_PACKAGE: String = "com.jh.proj.coroutineviz.client."
+
+    /**
+     * Who launched a coroutine, read from its creation stack (spec 2026-10-21, "Origin"): [CoroutineOrigin.VIZCORE] when
+     * any frame belongs to the SDK client package, [CoroutineOrigin.APP] otherwise (the public wrapper API is app code),
+     * and [CoroutineOrigin.UNKNOWN] without a creation stack (DebugProbes installed without creation stacks, #217).
+     */
+    fun origin(creationStackTrace: List<StackTraceElement>): CoroutineOrigin =
+        when {
+            creationStackTrace.isEmpty() -> CoroutineOrigin.UNKNOWN
+            creationStackTrace.any { it.className.startsWith(SDK_CLIENT_PACKAGE) } -> CoroutineOrigin.VIZCORE
+            else -> CoroutineOrigin.APP
+        }
+
     /** The function/file/line of the first user (non-infrastructure) frame. */
     data class Location(
         val function: String?,

@@ -90,7 +90,7 @@ fun main() {
             launch(CoroutineName("worker")) { delay(250) }
         }
     } finally {
-        client.stop() // idempotent: stops the probes, closes the socket, cancels the scope
+        client.stop() // sends what is left (at most 5 s), then stops the probes and closes the socket
     }
 }
 ```
@@ -126,9 +126,17 @@ the view as a sampled picture, not a complete trace:
   ties them to the SDK: the socket reader and writer for its connection
   (`cio-from-nio-reader`, `cio-to-nio-writer`), `cio-request-timeout` while it makes an HTTP
   request, and Ktor's process-wide `nonce-generator`
-  ([#225](https://github.com/Kotlin-server-squad/vizcore/issues/225)).
-- `stop()` drops events that have not been sent yet, so a very short program may not show
-  its last completions ([#207](https://github.com/Kotlin-server-squad/vizcore/issues/207)).
+  ([#225](https://github.com/Kotlin-server-squad/vizcore/issues/225)). Of those, the session
+  counts Ktor's `nonce-generator` as vizcore's own connection when the SDK created it; the socket
+  reader and writer are created where nothing names the SDK, so they count as the app's (they
+  only show as long-lived).
+- `stop()` sends what the app produced before it, then a closing message, and only then
+  disconnects; it waits at most 5 s (`stop(timeoutMillis)` to change that; `stop(0)` does not
+  wait), so call it from a shutdown hook. Without that message, or after a lost connection, the
+  session says events may have been lost.
+- Each poll also tells the backend when it looked (at most once a second), which is what lets
+  the session say a coroutine may be blocked. A server without session health (before vizcore
+  1.3) is not sent these.
 
 **JVM flags.** DebugProbes load a Java agent into your running app. On JDK 21 this works
 without flags but prints a warning, and a future JDK will refuse it by default. Two flags

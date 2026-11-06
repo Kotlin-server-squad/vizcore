@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.events.ActorMessageProcessing
 import com.jh.proj.coroutineviz.events.ActorMessageSent
 import com.jh.proj.coroutineviz.events.ActorStateChanged
 import com.jh.proj.coroutineviz.session.VizSession
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -85,7 +86,7 @@ class VizActor<M>(
         // Determine coroutine ID if running inside a viz context
         val coroutineId =
             runCatching {
-                kotlinx.coroutines.runBlocking {
+                kotlinx.coroutines.runBlocking(VizcoreInternal) {
                     currentCoroutineContext()[VizCoroutineElement]?.coroutineId
                 }
             }.getOrNull() ?: "actor-loop-$actorId"

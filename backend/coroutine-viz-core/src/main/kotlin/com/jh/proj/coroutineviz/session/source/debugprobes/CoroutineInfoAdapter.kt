@@ -184,7 +184,7 @@ class CoroutineInfoAdapter {
             lastObservedStackTrace = raw.lastObservedStackTrace,
             threadId = observedThreadId,
             threadName = raw.lastObservedThread?.name,
-        )
+        ).also { it.origin = SourceAttribution.origin(raw.creationStackTrace) }
     }
 
     /**
@@ -251,7 +251,7 @@ class CoroutineInfoAdapter {
         return snapshots.map { (raw, snap) ->
             val job = raw.job ?: return@map snap // null-job: no reliable parent.
             val parentJob = reconstructor.nearestObservedParent(job) ?: return@map snap
-            snap.copy(parentKey = keyFor(parentJob, emptyList(), emptyList()))
+            snap.copy(parentKey = keyFor(parentJob, emptyList(), emptyList())).also { it.origin = snap.origin }
         }
     }
 

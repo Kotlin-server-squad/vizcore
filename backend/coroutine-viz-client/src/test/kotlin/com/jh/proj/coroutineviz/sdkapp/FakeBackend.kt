@@ -1,11 +1,14 @@
 package com.jh.proj.coroutineviz.sdkapp
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
 import kotlinx.serialization.PolymorphicSerializer
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -14,11 +17,20 @@ import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 internal data class Created(
     val label: String?,
     val fileName: String?,
+    val origin: CoroutineOrigin? = null,
+    val coroutineId: String = "",
+    val parentCoroutineId: String? = null,
+    /** The creation frame's function and line, beside [fileName]. */
+    val function: String? = null,
+    val lineNumber: Int? = null,
+    /** The dispatcher it ran on, as the DebugProbes source names it. */
+    val scopeId: String? = null,
 )
 
 /**
@@ -32,11 +44,17 @@ internal class FakeBackend(
     port: Int = 0,
     /** The id every session create answers with. */
     val sessionId: String = "own-1",
+    /** Runs before each session create is answered, so a test can hold the client's create open. */
+    private val beforeSessionCreate: () -> Unit = {},
 ) : AutoCloseable {
+    // On 127.0.0.1, not the wildcard: with reuseAddress, macOS gives a wildcard bind a port that another process
+    // already listens on at 127.0.0.1 (a VPN agent holds 49152 on some machines), and the client's connections to
+    // localhost then reach that process instead and are reset. IPv4 explicitly, because the clients connect to
+    // 127.0.0.1 or to localhost, and the loopback address can be ::1 where IPv6 is preferred.
     private val server =
         ServerSocket().apply {
             reuseAddress = true
-            bind(InetSocketAddress(port))
+            bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port))
         }
     val port: Int get() = server.localPort
     private val sessionRequests = CopyOnWriteArrayList<String>()
@@ -45,6 +63,16 @@ internal class FakeBackend(
     val sessionCreates: List<String> get() = sessionRequests.toList()
     private val events = ConcurrentHashMap<String, Created>()
     val created: List<Created> get() = events.values.toList()
+    private val frameKinds = CopyOnWriteArrayList<String>()
+    private val ingestOpens = AtomicInteger()
+
+    private val suspendedFrames = CopyOnWriteArrayList<CoroutineSuspended>()
+
+    /** Every CoroutineSuspended the ingest socket received, in order. */
+    val suspended: List<CoroutineSuspended> get() = suspendedFrames.toList()
+
+    /** The kind of every frame the ingest socket received, in order (watermarks included). */
+    val kinds: List<String> get() = frameKinds.toList()
 
     init {
         thread(isDaemon = true, name = "fake-backend") {
@@ -60,10 +88,21 @@ internal class FakeBackend(
         }
     }
 
+    fun awaitKind(kind: String) {
+        val deadline = System.currentTimeMillis() + 15_000
+        while (kind !in frameKinds) {
+            check(System.currentTimeMillis() < deadline) { "no $kind frame arrived; got ${frameKinds.toSet()}" }
+            Thread.sleep(50)
+        }
+    }
+
     fun awaitLabel(label: String) {
         val deadline = System.currentTimeMillis() + 15_000
         while (created.none { it.label == label }) {
-            check(System.currentTimeMillis() < deadline) { "$label never arrived; got ${created.map { it.label }}" }
+            check(System.currentTimeMillis() < deadline) {
+                "$label never arrived; got ${created.map { it.label }}, frames ${frameKinds.groupingBy { it }.eachCount()}, " +
+                    "${sessionRequests.size} session creates, ${ingestOpens.get()} ingest sockets opened"
+            }
             Thread.sleep(50)
         }
     }
@@ -81,6 +120,7 @@ internal class FakeBackend(
             requestLine.startsWith("POST /api/sessions ") || requestLine.startsWith("POST /api/sessions?") -> {
                 input.readNBytes(headers["content-length"]?.toInt() ?: 0)
                 sessionRequests += requestLine
+                beforeSessionCreate()
                 val body = """{"sessionId":"$sessionId","message":"ok"}"""
                 out.write(
                     (
@@ -88,6 +128,10 @@ internal class FakeBackend(
                             "Content-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
                     ).toByteArray(),
                 )
+            }
+            // A server that serves session health takes watermarks (vizcore 1.3).
+            requestLine.startsWith("GET /api/sessions/$sessionId/health") -> {
+                out.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".toByteArray())
             }
             requestLine.startsWith("GET /api/sessions/$sessionId/ingest") -> {
                 val accept =
@@ -103,10 +147,24 @@ internal class FakeBackend(
                     ).toByteArray(),
                 )
                 out.flush()
+                ingestOpens.incrementAndGet()
                 readTextFrames(input) { text ->
                     val event = appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), text)
+                    frameKinds += event.kind
+                    if (event is CoroutineSuspended) suspendedFrames += event
                     if (event is CoroutineCreated) {
-                        events[event.coroutineId] = Created(event.label, event.creationPoint?.fileName)
+                        val point = event.creationPoint
+                        events[event.coroutineId] =
+                            Created(
+                                label = event.label,
+                                fileName = point?.fileName,
+                                origin = event.origin,
+                                coroutineId = event.coroutineId,
+                                parentCoroutineId = event.parentCoroutineId,
+                                function = point?.function,
+                                lineNumber = point?.lineNumber,
+                                scopeId = event.scopeId,
+                            )
                     }
                 }
             }
