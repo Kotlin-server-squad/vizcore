@@ -129,7 +129,7 @@ html[data-look='b'] {
 
 /* The graph's canvas: a softer frame (its own background stays, so the
    full-screen graph, which is the same element, stays opaque). */
-[data-look='b'] [data-look-part='main'] [data-export-raster='true']:not(.fixed) {
+[data-look='b'] [data-look-part='main'] [data-export-raster='true'][data-fullscreen='false'] {
   border-radius: 16px;
   border-color: var(--border);
 }

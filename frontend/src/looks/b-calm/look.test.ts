@@ -34,6 +34,7 @@ describe('B’s CSS', () => {
       expect(code, label).toContain(`aria-label="${label}"`)
     }
     expect(code).toContain('data-export-raster="true"')
+    expect(code).toContain("data-fullscreen={isFullscreen ? 'true' : 'false'}")
     expect(code).toContain('id="dock-body"')
   })
 

@@ -87,11 +87,16 @@ describe('switching looks', () => {
   it('adds and removes the line in place: the header itself is not remounted', () => {
     renderHeader('classic')
     const title = screen.getByRole('heading', { name: 'E-commerce Orders' })
+    const replay = screen.getByRole('button', { name: 'Replay' })
+    const more = screen.getByRole('button', { name: 'More actions' })
     act(() => setLook!('b'))
     expect(screen.getByText(/2 coroutines are waiting for inventory-lock/)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'E-commerce Orders' })).toBe(title)
     act(() => setLook!('classic'))
     expect(screen.queryByText(/coroutines are waiting/)).toBeNull()
     expect(screen.getByRole('heading', { name: 'E-commerce Orders' })).toBe(title)
+    // The controls after the line are the same nodes too.
+    expect(screen.getByRole('button', { name: 'Replay' })).toBe(replay)
+    expect(screen.getByRole('button', { name: 'More actions' })).toBe(more)
   })
 })
