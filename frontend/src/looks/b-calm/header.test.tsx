@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { createRef } from 'react'
 import { SessionHeader } from '@/components/workspace/SessionHeader'
-import { LookProvider, forgetVisitLook } from '../look-context'
+import { LookProvider, forgetVisitLook, useLook } from '../look-context'
 import type { SessionSnapshot, VizEvent } from '@/types/api'
 
 vi.mock('@/hooks/use-capabilities', () => ({ useCapabilities: () => ({ data: { sharingEnabled: true } }) }))
@@ -22,9 +22,16 @@ const events = [
   event('coroutine.suspended', 'order-6', { reason: 'mutex', waitKind: 'MUTEX', resourceId: 'mutex-1' }),
 ]
 
+let setLook: ReturnType<typeof useLook>['setLook'] = null
+function Switch() {
+  setLook = useLook().setLook
+  return null
+}
+
 function renderHeader(look: string) {
   render(
     <LookProvider link={look}>
+      <Switch />
       <SessionHeader
         sessionId="s-1"
         session={session}
@@ -73,5 +80,18 @@ describe('the line under the title', () => {
     renderHeader('classic')
     expect(screen.queryByText(/coroutines are waiting/)).toBeNull()
     expect(screen.getByRole('heading', { name: 'E-commerce Orders' }).nextElementSibling).toBe(screen.getByTestId('rung-badge'))
+  })
+})
+
+describe('switching looks', () => {
+  it('adds and removes the line in place: the header itself is not remounted', () => {
+    renderHeader('classic')
+    const title = screen.getByRole('heading', { name: 'E-commerce Orders' })
+    act(() => setLook!('b'))
+    expect(screen.getByText(/2 coroutines are waiting for inventory-lock/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'E-commerce Orders' })).toBe(title)
+    act(() => setLook!('classic'))
+    expect(screen.queryByText(/coroutines are waiting/)).toBeNull()
+    expect(screen.getByRole('heading', { name: 'E-commerce Orders' })).toBe(title)
   })
 })

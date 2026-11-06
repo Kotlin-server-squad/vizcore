@@ -49,7 +49,9 @@ html[data-look='b'] {
   order: 3;
 }
 
-[data-look='b'] [data-look-part='header'] > div:first-child > :is(h1, div:empty, [data-look-part='header-actions']) {
+[data-look='b'] [data-look-part='header'] > div:first-child > h1,
+[data-look='b'] [data-look-part='header'] > div:first-child > div:empty,
+[data-look='b'] [data-look-part='header'] > div:first-child > [data-look-part='header-actions'] {
   order: 0;
 }
 
@@ -125,11 +127,11 @@ html[data-look='b'] {
   border-color: var(--border) !important;
 }
 
-/* The graph's canvas: a soft frame on the page colour. */
-[data-look='b'] [data-look-part='main'] [data-export-raster='true'] {
+/* The graph's canvas: a softer frame (its own background stays, so the
+   full-screen graph, which is the same element, stays opaque). */
+[data-look='b'] [data-look-part='main'] [data-export-raster='true']:not(.fixed) {
   border-radius: 16px;
   border-color: var(--border);
-  background: transparent;
 }
 
 /* Dock: a white card; tabs as soft pills, the chosen one on zinc. */

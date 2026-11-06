@@ -1,3 +1,6 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { calm } from '.'
 import { summarise, type SummaryFacts } from './summary'
@@ -7,6 +10,36 @@ describe('B · Calm', () => {
   it('is the trial look "b", labelled as the ⋯ menu shows it, with its own line under the title', () => {
     expect(calm).toMatchObject({ id: 'b', label: 'B · Calm', trial: true })
     expect(Object.keys(calm.slots)).toEqual(['HeaderSummary'])
+  })
+})
+
+describe('B’s CSS', () => {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const css = readFileSync(join(here, 'tokens.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  /** Every .tsx under src/components and src/routes, as one string. */
+  const sources = (dir: string): string[] =>
+    readdirSync(dir).flatMap(name => {
+      const path = join(dir, name)
+      if (statSync(path).isDirectory()) return sources(path)
+      return path.endsWith('.tsx') && !path.endsWith('.test.tsx') ? [readFileSync(path, 'utf8')] : []
+    })
+  const src = resolve(here, '../..')
+  const code = [...sources(join(src, 'components')), ...sources(join(src, 'routes'))].join('\n')
+
+  it('styles only page parts that exist: every hook and label it targets is in the components', () => {
+    const parts = new Set([...css.matchAll(/data-look-part='([\w-]+)'/g)].map(m => m[1]!))
+    expect([...parts].sort()).toEqual(['dock', 'dock-tabs', 'header', 'header-actions', 'main', 'page', 'workspace'])
+    for (const part of parts) expect(code, part).toContain(`data-look-part="${part}"`)
+    for (const label of [...css.matchAll(/aria-label='([^']+)'/g)].map(m => m[1]!)) {
+      expect(code, label).toContain(`aria-label="${label}"`)
+    }
+    expect(code).toContain('data-export-raster="true"')
+    expect(code).toContain('id="dock-body"')
+  })
+
+  it('leaves the main view and the dock where they are: no gap, size or position change on the body', () => {
+    expect(css).not.toMatch(/data-look-part='body'/)
+    expect(css).not.toMatch(/data-look-part='dock'\][^{]*\{[^}]*\b(height|width|position|margin)\b/)
   })
 })
 
@@ -55,13 +88,13 @@ describe('the sentence under the title (summarise)', () => {
       expect(summarise(facts({ outcome: running, runSpanNanos: 0 }))).toBe('Running.')
     })
 
-    it('a finished demo, and how long it took', () => {
-      expect(summarise(facts({ outcome: finished, runSpanNanos: 0.6e9 }))).toBe('Finished after 600 ms.')
+    it('a finished demo, and the span of its recorded events (not claimed as the run’s length)', () => {
+      expect(summarise(facts({ outcome: finished, runSpanNanos: 0.6e9 }))).toBe('Finished. Its recorded events span 600 ms.')
     })
 
-    it('a finished demo whose events were partly dropped took at least that long', () => {
+    it('a finished demo whose events were partly dropped: at least that span', () => {
       expect(summarise(facts({ outcome: finished, runSpanNanos: 0.6e9, spanIsFloor: true }))).toBe(
-        'Finished after at least 600 ms.',
+        'Finished. Its recorded events span at least 600 ms.',
       )
     })
 
@@ -71,7 +104,10 @@ describe('the sentence under the title (summarise)', () => {
 
     it('a failed run that has ended', () => {
       expect(summarise(facts({ outcome: { outcome: 'failed', failedCount: 1, ended: true }, runSpanNanos: 3e9 }))).toBe(
-        '1 coroutine failed. The run ended after 3.0 s.',
+        '1 coroutine failed. The run has ended; its recorded events span 3.0 s.',
+      )
+      expect(summarise(facts({ outcome: { outcome: 'failed', failedCount: 1, ended: true }, runSpanNanos: null }))).toBe(
+        '1 coroutine failed. The run has ended.',
       )
     })
 
@@ -141,6 +177,18 @@ describe('the sentence under the title (summarise)', () => {
 
     it('says nothing about waits it has no record of', () => {
       expect(summarise(facts({ outcome: running, runSpanNanos: 1e9, waits: [] }))).toBe('Running for at least 1.0 s.')
+    })
+
+    it('a run that has ended waits for nothing, even if a lost resume left a wait behind', () => {
+      const waits = [wait('MUTEX', 'mutex-1')]
+      expect(summarise(facts({ outcome: finished, waits }))).toBe('Finished.')
+      expect(summarise(facts({ outcome: { outcome: 'failed', failedCount: 1, ended: true }, waits }))).toBe(
+        '1 coroutine failed. The run has ended.',
+      )
+      // A failed run that still goes on can still wait.
+      expect(summarise(facts({ outcome: { outcome: 'failed', failedCount: 1, ended: false }, waits }))).toBe(
+        '1 coroutine failed, and the run is still going. 1 coroutine is waiting for inventory-lock.',
+      )
     })
 
     it('in replay, the waits at the cursor', () => {

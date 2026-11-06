@@ -1,7 +1,8 @@
 /**
  * Look B's sentence under the session title (sketch K-B-Calm: "Running for 6.0 s. 3 orders are waiting: 2 for
  * the stock lock, 1 for a payment slot."), worded only from what the page already knows. Where it knows less,
- * it says less: an attached app has no run outcome, a suspension without a wrapper wait is not claimed as a
+ * it says less. The waits are the ones the cards' second lines show (the same projection over the same
+ * events), so the sentence never disagrees with the tree. Also: an attached app has no run outcome, a suspension without a wrapper wait is not claimed as a
  * wait, and a resource without a name is "a lock", never its id.
  */
 import { formatDuration } from '@/lib/format-duration'
@@ -28,7 +29,9 @@ export interface SummaryFacts {
 const NAMED_GROUPS = 3
 
 export function summarise(facts: SummaryFacts): string | null {
-  const sentences = [howItGoes(facts), whatWaits(facts)].filter((s): s is string => s !== null)
+  // A run that has ended waits for nothing: a wait left over from a lost resume is not repeated here.
+  const ended = !facts.replayActive && facts.outcome?.ended === true
+  const sentences = [howItGoes(facts), ended ? null : whatWaits(facts)].filter((s): s is string => s !== null)
   return sentences.length > 0 ? sentences.join(' ') : null
 }
 
@@ -45,12 +48,14 @@ function howItGoes({ outcome, runSpanNanos, spanIsFloor, replayActive, replayAtN
     case 'running':
       // While it runs, the first-to-last-event span is only a floor: the run goes on between events.
       return span !== null ? `Running for at least ${formatDuration(runSpanNanos!)}.` : 'Running.'
+    // Once it has ended, the span is of the events the page holds (a bounded store may have trimmed the
+    // first ones), so it is named as such rather than as the run's length.
     case 'finished':
-      return span !== null ? `Finished after ${span}.` : 'Finished.'
+      return span !== null ? `Finished. Its recorded events span ${span}.` : 'Finished.'
     case 'failed': {
       const failed = `${coroutines(outcome.failedCount)} failed`
       if (!outcome.ended) return `${failed}, and the run is still going.`
-      return span !== null ? `${failed}. The run ended after ${span}.` : `${failed}.`
+      return span !== null ? `${failed}. The run has ended; its recorded events span ${span}.` : `${failed}. The run has ended.`
     }
   }
 }
