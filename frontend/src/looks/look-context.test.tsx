@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, render, renderHook } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { StrictMode, type ReactNode } from 'react'
 import {
   LOOK_STORAGE_KEY,
   LookProvider,
@@ -131,6 +131,60 @@ describe('LookProvider', () => {
     // Another session page in the same visit.
     const second = renderHook(() => useLook(), { wrapper: withProvider() })
     expect(second.result.current.look).toBe(ONE)
+  })
+})
+
+describe('two session pages at once (a route transition)', () => {
+  it('leaves <html> with the look of the page still mounted', () => {
+    const first = render(<LookProvider link={ONE}>{null}</LookProvider>)
+    const second = render(<LookProvider link="classic">{null}</LookProvider>)
+    expect(html().dataset.look).toBe('classic')
+    first.unmount()
+    expect(html().dataset.look).toBe('classic')
+    second.unmount()
+    expect(html().dataset.look).toBeUndefined()
+  })
+
+  it('goes back to the earlier page’s look when the later one leaves first', () => {
+    const first = render(<LookProvider link={ONE}>{null}</LookProvider>)
+    const second = render(<LookProvider link="classic">{null}</LookProvider>)
+    second.unmount()
+    expect(html().dataset.look).toBe(ONE)
+    first.unmount()
+    expect(html().dataset.look).toBeUndefined()
+  })
+})
+
+describe('in StrictMode', () => {
+  it('reads a link once, and keeps data-look on <html>', () => {
+    const onLinkRead = vi.fn()
+    const { unmount } = render(
+      <StrictMode>
+        <LookProvider link={ONE} onLinkRead={onLinkRead}>
+          {null}
+        </LookProvider>
+      </StrictMode>
+    )
+    expect(onLinkRead).toHaveBeenCalledTimes(1)
+    expect(html().dataset.look).toBe(ONE)
+    unmount()
+    expect(html().dataset.look).toBeUndefined()
+  })
+
+  it('reads the same link again when it comes back after leaving the address', () => {
+    const onLinkRead = vi.fn()
+    const page = (link?: string) => (
+      <StrictMode>
+        <LookProvider link={link} onLinkRead={onLinkRead}>
+          {null}
+        </LookProvider>
+      </StrictMode>
+    )
+    const { rerender } = render(page(ONE))
+    rerender(page(undefined))
+    act(() => localStorage.setItem(LOOK_STORAGE_KEY, 'classic'))
+    rerender(page(ONE))
+    expect(onLinkRead).toHaveBeenCalledTimes(2)
   })
 })
 

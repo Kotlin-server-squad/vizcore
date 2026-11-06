@@ -25,6 +25,14 @@ function declarations(css: string, selector: string): Map<string, string> {
   return new Map([...body.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(m => [m[1]!, m[2]!.trim()]))
 }
 
+/** The root font size a look sets in its `selector { … }` block, or null. */
+function rootFontSize(css: string, selector: string): string | null {
+  const start = css.indexOf(`${selector} {`)
+  if (start < 0) return null
+  const body = css.slice(start, css.indexOf('}', start))
+  return /(?:^|[\s;{])font-size:\s*([^;]+);/.exec(body)?.[1]?.trim() ?? null
+}
+
 /** "H S% L%" → relative luminance (WCAG). */
 function luminance(triplet: string): number {
   const [h = 0, s = 0, l = 0] = triplet.split(/\s+/).map(part => parseFloat(part))
@@ -101,11 +109,34 @@ describe('the looks’ CSS', () => {
     }
   )
 
-  it.each(folders)('$name leaves the 12 px between the main view and the dock alone', ({ css }) => {
-    // lib/dock-layout.ts sizes the dock with that gap; a look that changes it
-    // must first make the dock's size rules read it.
-    expect(css).not.toMatch(/data-look-part='body'\][^{]*\{[^}]*\bgap\b/)
+  it.each(folders)('$name keeps 12 px between the main view and the dock', ({ id, css }) => {
+    // lib/dock-layout.ts sizes the dock with that gap (Tailwind's gap-3, 0.75 rem).
+    // A look may pin it to 12px, never change it; a look with another root size must pin it.
+    const bodyGaps = [...css.matchAll(/data-look-part='body'\][^{]*\{([^}]*)\}/g)]
+      .flatMap(m => [...(m[1] ?? '').matchAll(/\bgap:\s*([^;]+);/g)])
+      .map(m => m[1]!.trim())
+    expect(
+      bodyGaps.every(gap => gap === '12px'),
+      bodyGaps.join()
+    ).toBe(true)
+    const rootSize = rootFontSize(css, `html[data-look='${id}']`)
+    if (rootSize !== null && rootSize !== '16px') expect(bodyGaps).toContain('12px')
   })
+
+  it.each(folders)(
+    '$name keeps body and secondary text readable on the page and on cards (WCAG AA)',
+    ({ id, css }) => {
+      for (const theme of ['dark', 'light']) {
+        const tokens = declarations(css, `html.${theme}[data-look='${id}']`)
+        for (const text of ['--heroui-foreground', '--heroui-default-500']) {
+          for (const surface of ['--heroui-background', '--heroui-content1']) {
+            const ratio = contrast(tokens.get(text)!, tokens.get(surface)!)
+            expect(ratio, `${theme} ${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
+          }
+        }
+      }
+    }
+  )
 
   it('has no look rules outside the look folders, so Classic has none at all', () => {
     const offenders = cssOutsideLooks()

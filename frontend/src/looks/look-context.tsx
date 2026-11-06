@@ -62,6 +62,30 @@ function remember(id: LookId) {
   }
 }
 
+/**
+ * The providers that are showing a look on <html>, oldest first. During a
+ * route transition two session pages can be mounted at once; <html> shows the
+ * newest one's look, and a page that leaves never wipes another's.
+ */
+const htmlOwners: { token: object; look: LookId }[] = []
+
+function showOwnersLook() {
+  const newest = htmlOwners[htmlOwners.length - 1]
+  if (newest) document.documentElement.dataset.look = newest.look
+  else delete document.documentElement.dataset.look
+}
+
+function claimHtml(token: object, look: LookId) {
+  htmlOwners.push({ token, look })
+  showOwnersLook()
+}
+
+function releaseHtml(token: object) {
+  const at = htmlOwners.findIndex(owner => owner.token === token)
+  if (at >= 0) htmlOwners.splice(at, 1)
+  showOwnersLook()
+}
+
 interface LookProviderProps {
   /** The raw `?look=` value from the page address, if there is one. It wins and is remembered. */
   link?: string
@@ -86,24 +110,29 @@ export function LookProvider({ link, onLinkRead, children }: LookProviderProps) 
     onLinkReadRef.current = onLinkRead
   })
 
-  // A link, on arrival or later (a client-side navigation to ?look=…), wins and is remembered.
+  // A link, on arrival or later (a client-side navigation to ?look=…), wins and
+  // is remembered. Read once per arrival: StrictMode runs effects twice, and the
+  // page would otherwise rewrite its address twice.
+  const linkRead = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (link === undefined) return
+    if (link === undefined) {
+      linkRead.current = undefined
+      return
+    }
+    if (linkRead.current === link) return
+    linkRead.current = link
     const id = parseLook(link)
     setLookState(id)
     remember(id)
     onLinkReadRef.current?.()
   }, [link])
 
+  const owner = useRef<object>({})
   useLayoutEffect(() => {
-    document.documentElement.dataset.look = look
+    const token = owner.current
+    claimHtml(token, look)
+    return () => releaseHtml(token)
   }, [look])
-  useLayoutEffect(
-    () => () => {
-      delete document.documentElement.dataset.look
-    },
-    []
-  )
 
   const setLook = useCallback((id: LookId) => {
     setLookState(id)

@@ -188,6 +188,10 @@ Light-theme status colours are the text-safe (≈ AA on white) shades, as Classi
 
 - **Codex R2** (revise, no P1): P2 a component-type slot would remount the main view and dock on a look change → slots are render functions with a fixed shape, tested (2.5); P2 the dock's size rules assume a 12 px gap → looks keep it, guarded by a test, and a side dock is named as a shared change for its PR (2.3); P2 storage that reads but will not write lost the visit's choice → the visit's choice comes first, tested (2.2). Not taken to a third round: no P1 in R2, and the code review covers the fixes.
 
+## Code review
+
+- **Codex R1** (request changes): P1 `slots.test.tsx` named look A, so deleting A broke the build → it gives the slot to the registry's first trial look; P2 a leaving provider wiped `data-look` set by another one still mounted (a route transition) → providers own `<html>` in a stack, the newest shows, tested both orders; P2 StrictMode read a link twice (two address rewrites) → read once per arrival, tested in StrictMode; P2 A's light secondary text was 4.0:1 → darker `text-faint` (`#686c7a`), and a test holds foreground and `default-500` at 4.5:1 on the page and on cards in every look; P2 A's 15 px root made the main-view-to-dock gap 11.25 px → A pins it to 12 px, and the test requires that of any look with another root size.
+
 ## Tasks
 
 ### Task 1: Registry and `parseLook` (TDD)

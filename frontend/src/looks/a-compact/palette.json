@@ -27,12 +27,12 @@
     "border-2": "#c9ccd6",
     "text": "#1e1f22",
     "text-muted": "#5a5d6b",
-    "text-faint": "#767a89",
+    "text-faint": "#686c7a",
     "primary": "#3574f0",
     "success": "#1f7a35",
     "warning": "#946100",
     "danger": "#c7303f",
     "secondary": "#834dd1",
-    "created": "#767a89"
+    "created": "#686c7a"
   }
 }

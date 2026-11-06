@@ -3,16 +3,19 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useRef, useState } from 'react'
 import { LookProvider, forgetVisitLook, useLook, useLookSlot } from './look-context'
-import type { SessionBodyProps } from './types'
+import { LOOKS, type LookId } from './registry'
+import type { LookDefinition, SessionBodyProps } from './types'
 
-// A registry with one look that brings its own SessionBody, to prove that
-// switching to and from it keeps what the body holds mounted.
+const lookWithSlot = (LOOKS as readonly LookDefinition[]).find(look => look.slots?.SessionBody)!
+
+// A registry whose first trial look brings its own SessionBody, to prove that
+// switching to and from it keeps what the body holds mounted. Taken from the
+// real registry, so deleting any one look needs no change here.
 vi.mock('./registry', async importOriginal => {
   const real = await importOriginal<typeof import('./registry')>()
-  const sideBySide = {
-    id: 'a',
-    label: 'Side by side',
-    trial: true,
+  const trial = real.LOOKS.find(look => look.trial)!
+  const withSlot = {
+    ...trial,
     slots: {
       SessionBody: ({ sharedRef, main, dock }: SessionBodyProps) => (
         <div ref={sharedRef} data-look-part="body" className="side-by-side">
@@ -23,7 +26,7 @@ vi.mock('./registry', async importOriginal => {
       ),
     },
   }
-  return { ...real, LOOKS: [real.LOOKS[0], sideBySide] }
+  return { ...real, LOOKS: real.LOOKS.map(look => (look === trial ? withSlot : look)) }
 })
 
 /** Counts its own mounts and keeps a click count in state, like the graph's pan and zoom. */
@@ -68,7 +71,7 @@ describe('a look with its own layout slot', () => {
     await userEvent.click(screen.getByRole('button', { name: 'main 0' }))
     await userEvent.click(screen.getByRole('button', { name: 'dock 0' }))
 
-    act(() => setLook!('a'))
+    act(() => setLook!(lookWithSlot.id as LookId))
     expect(container.querySelector('[data-look-part="body"]')).toHaveClass('side-by-side')
     expect(screen.getByText('an extra child after the two')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'main 1' })).toBeInTheDocument()

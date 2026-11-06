@@ -25,6 +25,11 @@ html[data-look='a'] {
   gap: 8px;
 }
 
+/* gap-3 is 0.75 rem, 11.25 px at this root size; the dock's size rules count 12 px. */
+[data-look='a'] [data-look-part='body'] {
+  gap: 12px;
+}
+
 [data-look='a'] [data-look-part='main'],
 [data-look='a'] [data-look-part='dock'] {
   border-radius: var(--radius);
@@ -146,12 +151,12 @@ html.light[data-look='a'] {
   --border-2: #c9ccd6;
   --text: #1e1f22;
   --text-muted: #5a5d6b;
-  --text-faint: #767a89;
+  --text-faint: #686c7a;
   --primary: #3574f0;
   --success: #1f7a35;
   --warning: #946100;
   --danger: #c7303f;
-  --created: #767a89;
+  --created: #686c7a;
   --primary-soft: rgba(53, 116, 240, 0.16);
   --success-soft: rgba(31, 122, 53, 0.16);
   --warning-soft: rgba(148, 97, 0, 0.16);
@@ -170,14 +175,14 @@ html.light[data-look='a'] {
   --heroui-default-50: 220.00 13.04% 95.49%; /* #f2f3f5 */
   --heroui-default-100: 228.00 14.29% 93.14%; /* #ebecf0 */
   --heroui-default-200: 226.15 13.68% 81.37%; /* #c9ccd6 */
-  --heroui-default-300: 228.00 9.93% 70.39%; /* #acafbb */
-  --heroui-default-400: 225.88 8.21% 59.41%; /* #8f93a0 */
-  --heroui-default-500: 227.37 7.45% 50.00%; /* #767a89 */
+  --heroui-default-300: 228.00 9.32% 68.43%; /* #a7aab6 */
+  --heroui-default-400: 225.88 7.49% 55.49%; /* #858996 */
+  --heroui-default-500: 226.67 7.96% 44.31%; /* #686c7a */
   --heroui-default-600: 229.41 8.63% 38.63%; /* #5a5d6b */
   --heroui-default-700: 230.00 8.33% 28.24%; /* #42444e */
   --heroui-default-800: 225.00 7.69% 20.39%; /* #303238 */
   --heroui-default-900: 225.00 6.25% 12.55%; /* #1e1f22 */
-  --heroui-default: 228.00 9.93% 70.39%;
+  --heroui-default: 228.00 9.32% 68.43%;
   --heroui-default-foreground: 225.00 6.25% 12.55%;
   --heroui-primary-50: 220.00 88.24% 96.67%; /* #eff4fe */
   --heroui-primary-100: 220.00 84.62% 92.35%; /* #dbe6fc */
