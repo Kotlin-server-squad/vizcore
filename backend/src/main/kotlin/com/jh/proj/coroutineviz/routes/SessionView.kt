@@ -81,7 +81,7 @@ internal fun readView(
     val allEvents = session.store.all()
     val last = durable.lastEventSeq
     val kept = (binding as? ViewBinding.Bound)?.let { keptCut(session, it, last) }
-    val everyEvent = summariesSeeEveryEvent()
+    val everyEvent = summariesSeeEveryEvent(session)
     val retention = retentionOf(allEvents, firstSeqEver = durable.firstSeqEver(everyEvent))
     if (kept == null && retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
     val kind = sessionKindOf(session.sessionId)

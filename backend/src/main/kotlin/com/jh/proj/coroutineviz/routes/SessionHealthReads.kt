@@ -20,11 +20,13 @@ import com.jh.proj.coroutineviz.session.VizSession
 import java.lang.management.ManagementFactory
 
 /**
- * Whether a session's summaries saw every event it ever had. In memory they are applied on every append and outlive
- * the bounded store's trim; in database mode they are folded from the stored events on every rebuild (until Part 5b
- * persists them), so a trim is invisible to them.
+ * Whether [session]'s summaries saw every event it ever had. In memory they are applied on every append and outlive the
+ * bounded store's trim. A database session's are restored from the trim's checkpoint plus the events after it, which is
+ * every event when a checkpoint was used (spec C-4); without one they are folded from the stored events, which is every
+ * event only while nothing was trimmed (D-8 tells the two apart).
  */
-internal fun summariesSeeEveryEvent(): Boolean = SessionManager.backingStore() !is ExposedSessionStore
+internal fun summariesSeeEveryEvent(session: VizSession): Boolean =
+    SessionManager.backingStore() !is ExposedSessionStore || session.summarySeedSeq != null
 
 /**
  * Retention facts (spec C-3 `retention`). [firstSeqEver] is the first seq the session had: the summaries' first seq
@@ -63,7 +65,8 @@ internal fun transportOf(
     // A row written before this JVM started may have had a connection that ended in the crash, even with no event stored.
     val recovered = session.createdAtMs < PROCESS_STARTED_AT_MS
     val eventsBeforeWatching = lastSeq > 0 && (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
-    val unwatched = !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && (recovered || eventsBeforeWatching)
+    val databaseSession = SessionManager.backingStore() is ExposedSessionStore
+    val unwatched = databaseSession && kind == SessionKind.ATTACHED && (recovered || eventsBeforeWatching)
     return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
 }
 
@@ -144,7 +147,7 @@ internal fun readSessionFacts(
         } catch (_: SummariesUnavailableException) {
             null
         }
-    val everyEvent = summariesSeeEveryEvent()
+    val everyEvent = summariesSeeEveryEvent(session)
     val retention = retentionOf(events, firstSeqEver = durable?.firstSeqEver(everyEvent) ?: 1L)
     return SessionFacts(
         kind = kind,

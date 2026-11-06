@@ -386,6 +386,14 @@ class VizSession(
     }
 
     /**
+     * Abandons the summary table, as an apply failure does: health reads answer "unavailable" (H-3) while every other read
+     * still works. A store calls it when it cannot rebuild the summaries from one consistent cut.
+     */
+    fun abandonSummaries() {
+        synchronized(sendLock) { summariesDegraded = true }
+    }
+
+    /**
      * Runs [block] under the send lock with the live summary table (`null` when the session keeps none or they were
      * abandoned): one consistent cut of store, snapshot and summaries (spec C-6). Keep [block] short, and copy what it
      * returns: the view is only safe under the lock.
