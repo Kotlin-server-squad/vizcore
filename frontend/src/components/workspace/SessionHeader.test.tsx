@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { SessionHeader } from './SessionHeader'
+import { LOOK_STORAGE_KEY, LookProvider, forgetVisitLook } from '@/looks/look-context'
 import type { SessionSnapshot } from '@/types/api'
 
 vi.mock('@/hooks/use-capabilities', () => ({ useCapabilities: () => ({ data: { sharingEnabled: true } }) }))
@@ -10,7 +11,7 @@ vi.mock('../export/ExportMenu', () => ({ ExportMenu: () => <div data-testid="exp
 
 const session = { sessionId: 's-1', coroutineCount: 5, eventCount: 42, coroutines: [] } as unknown as SessionSnapshot
 
-function renderHeader(props: Partial<Parameters<typeof SessionHeader>[0]> = {}) {
+function renderHeader(props: Partial<Parameters<typeof SessionHeader>[0]> = {}, { withLook = false } = {}) {
   const handlers = {
     onToggleStream: vi.fn(),
     onToggleReplay: vi.fn(),
@@ -20,7 +21,7 @@ function renderHeader(props: Partial<Parameters<typeof SessionHeader>[0]> = {}) 
     onOpenShares: vi.fn(),
     onOpenChecks: vi.fn(),
   }
-  render(
+  const header = (
     <SessionHeader
       sessionId="s-1"
       session={session}
@@ -40,8 +41,9 @@ function renderHeader(props: Partial<Parameters<typeof SessionHeader>[0]> = {}) 
       viewMode="graph"
       {...handlers}
       {...props}
-    />,
+    />
   )
+  render(withLook ? <LookProvider>{header}</LookProvider> : header)
   return handlers
 }
 
@@ -189,6 +191,44 @@ describe('SessionHeader', () => {
       const menu = await screen.findByRole('menu')
       expect(within(menu).queryByRole('menuitem', { name: /share/i })).toBeNull()
       expect(within(menu).getByRole('menuitem', { name: /checks/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('the Look choice (trial)', () => {
+    beforeEach(() => {
+      localStorage.clear()
+      forgetVisitLook()
+    })
+
+    async function openMenu() {
+      await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      return screen.findByRole('menu')
+    }
+
+    it('offers the four looks in "⋯", marked as a trial, with the current one marked', async () => {
+      localStorage.setItem(LOOK_STORAGE_KEY, 'b')
+      renderHeader({}, { withLook: true })
+      const menu = await openMenu()
+      const section = within(menu).getByRole('group', { name: 'Look · trial' })
+      const items = within(section).getAllByRole('menuitem')
+      expect(items.map((i) => i.textContent)).toEqual(['Classic', 'A · Compact', 'B · Calm', 'C · Bold'])
+      expect(items.map((i) => i.getAttribute('aria-current'))).toEqual([null, null, 'true', null])
+    })
+
+    it('switches the page to the chosen look', async () => {
+      renderHeader({}, { withLook: true })
+      expect(document.documentElement.dataset.look).toBe('classic')
+      const menu = await openMenu()
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'C · Bold' }))
+      expect(document.documentElement.dataset.look).toBe('c')
+      expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe('c')
+    })
+
+    it('is not offered where the page has no look switch (the shared view)', async () => {
+      renderHeader({ readOnly: true })
+      const menu = await openMenu()
+      expect(within(menu).queryByRole('group', { name: 'Look · trial' })).toBeNull()
+      expect(within(menu).queryByRole('menuitem', { name: 'A · Compact' })).toBeNull()
     })
   })
 })

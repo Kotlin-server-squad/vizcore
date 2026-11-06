@@ -1,7 +1,18 @@
 import type { RefObject } from 'react'
-import { Button, Chip, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Tooltip } from '@heroui/react'
-import { FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
+import {
+  Button,
+  Chip,
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownSection,
+  DropdownTrigger,
+  Tooltip,
+} from '@heroui/react'
+import { FiCheck, FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
+import { useLook } from '@/looks/look-context'
+import { parseLook } from '@/looks/registry'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
 import { formatDuration } from '@/lib/format-duration'
 import type { RunOutcome, RunOutcomeFacts } from '@/lib/run-outcome'
@@ -99,6 +110,8 @@ export function SessionHeader({
   // that 404s (explicit false only — stay enabled while still loading).
   const { data: capabilities } = useCapabilities()
   const sharingDisabled = capabilities?.sharingEnabled === false
+  // The Look switch (PR L0): offered only where the page has one (not the shared view).
+  const { look, setLook, looks } = useLook()
 
   return (
     <header className="space-y-2">
@@ -208,6 +221,7 @@ export function SessionHeader({
                 else if (key === 'refresh') onRefetch()
                 else if (key === 'reset') void scenario?.reset()
                 else if (key === 'clear') scenario?.clear()
+                else if (typeof key === 'string' && key.startsWith(LOOK_KEY)) setLook?.(parseLook(key.slice(LOOK_KEY.length)))
               }}
             >
               {[
@@ -235,6 +249,23 @@ export function SessionHeader({
                       </DropdownItem>,
                     ]
                   : []),
+                // Trial looks for this page (PR L0); the losing ones are deleted after the trial.
+                ...(setLook
+                  ? [
+                      <DropdownSection key="look" title="Look · trial">
+                        {looks.map(l => (
+                          <DropdownItem
+                            key={`${LOOK_KEY}${l.id}`}
+                            textValue={l.label}
+                            aria-current={l.id === look ? 'true' : undefined}
+                            endContent={l.id === look ? <FiCheck aria-hidden /> : undefined}
+                          >
+                            {l.label}
+                          </DropdownItem>
+                        ))}
+                      </DropdownSection>,
+                    ]
+                  : []),
               ]}
             </DropdownMenu>
           </Dropdown>
@@ -248,6 +279,9 @@ export function SessionHeader({
     </header>
   )
 }
+
+/** Menu keys of the Look items: `look:a`. */
+const LOOK_KEY = 'look:'
 
 function OutcomePill({
   facts: { outcome, failedCount, ended },
