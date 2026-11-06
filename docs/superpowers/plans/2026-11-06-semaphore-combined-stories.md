@@ -242,3 +242,11 @@ Each picture is checked by `GuideLabelsTest` on virtual time (all six join `VIRT
 - **The live check found the Rate Limiter's order wrong:** all eight calls start at the same moment, and on `Dispatchers.Default` Oslo and Split got the first two permits. Both burst demos (Rate Limiter, File Processor) now run their coroutines one at a time by default, as the Deadlock demo does; a real-time test checks the permit order (it failed 3 of 3 runs without the change).
 - **Code boxes:** three label comments made the code box scroll sideways by 25-47 px; shortened.
 - **Measured live** (scale 1, `scripts/demo-pacing-audit.py`, backend 18801, frontend 13801): connection pool 11.0 s, rate limiter 12.0 s, file processor 13.0 s, fitting rooms 11.5 s, bakery 21.0 s, sneaker drop 11.0 s; 22, 10, 18, 19, 17 and 21 half-second moments; the busiest half second holds at most 39 % of the events (the burst demos at 0 s). Each picture equals the live tree at its moment, and the session events confirm each caption.
+
+**Round 3 (plan):** no P1/P2.
+
+---
+
+## Codex code review
+
+**Round 1:** no P1/P2; catalog, fixture and guide timelines agree with the code. A wording fix of our own afterwards: a shopper who gives up resumes and at once suspends again (hanging the clothes back), so the guide no longer says the tree shows them "running".
