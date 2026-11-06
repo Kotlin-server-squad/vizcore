@@ -96,9 +96,12 @@ internal fun hierarchyOf(
         if (scopeId != null) {
             emptyList()
         } else {
+            // A summary-only node's children come from the cut's parent links (its creation, which the projection
+            // would have linked them under, is not retained).
+            val childrenOf = summaries.all.filter { it.parentId != null }.groupBy({ it.parentId!! }, { it.id })
             summaries.all.filter { it.id !in known && inRound(it.id) }.map { s ->
                 view.requireKnown(s.id)
-                s.toSummaryOnlyDto(anchoring.roundIdOf(s.id), view.isPartial(s.id))
+                s.toSummaryOnlyDto(anchoring.roundIdOf(s.id), view.isPartial(s.id), childrenOf[s.id].orEmpty())
             }
         }
     return (full + summaryOnly).sortedWith(compareBy<HierarchyNodeDto> { it.createdAtNanos }.thenBy { it.id })
@@ -190,10 +193,11 @@ private fun HierarchyNode.toDto(
 private fun CoroutineSummary.toSummaryOnlyDto(
     roundId: String?,
     partial: Boolean,
+    children: List<String>,
 ) = HierarchyNodeDto(
     id = id,
     parentId = parentId,
-    children = emptyList(),
+    children = children,
     name = name ?: id,
     scopeId = null,
     state = projectionState(state),

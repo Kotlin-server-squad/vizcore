@@ -38,6 +38,9 @@ internal class StaleViewException(
     message: String,
 ) : IllegalStateException(message)
 
+/** Rethrows [e] inside [respondReadErrors], which answers it. */
+internal fun rethrow(e: Exception): Nothing = throw e
+
 /** Answers the read with 400 and [message]. */
 internal fun badParameter(message: String): Nothing = throw BadReadParameter(message)
 

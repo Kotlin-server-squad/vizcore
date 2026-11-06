@@ -124,21 +124,30 @@ internal fun readView(
                 )
             SessionView(session, upTo(cursor), binding, cursor, bound, input)
         }
-        is ViewBinding.Bound -> boundView(session, binding, durable, allEvents, base)
+        // The cut found above, not a second lookup: it may have expired since, after it suppressed history-trimmed.
+        is ViewBinding.Bound -> boundView(BoundRead(session, binding, kept), durable, allEvents, base)
     }
 }
 
+/** A bound read: the session, its binding and the kept cut the read found (one lookup per read). */
+private class BoundRead(
+    val session: VizSession,
+    val binding: ViewBinding.Bound,
+    val kept: HealthCut?,
+)
+
 private fun boundView(
-    session: VizSession,
-    binding: ViewBinding.Bound,
+    read: BoundRead,
     durable: SummaryView,
     allEvents: List<VizEvent>,
     base: HealthInput,
 ): SessionView {
+    val session = read.session
+    val binding = read.binding
+    val kept = read.kept
     val s = minOf(binding.asOfSeq, durable.lastEventSeq)
     val events = allEvents.filter { it.seq <= s }
     val transitions = RetainedTransitions(allEvents, upToSeq = s)::of
-    val kept = keptCut(session, binding, durable.lastEventSeq)
     if (kept != null) {
         val input =
             base.copy(

@@ -243,10 +243,13 @@ fun Route.registerSessionRoutes() {
             val nodes =
                 try {
                     hierarchyOf(readView(session, ingest, binding, call.leakThresholdMs()), scopeId, roundId)
-                } catch (_: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
-                    projectionOnlyHierarchy(session, scopeId).takeIf { roundId == null }.orEmpty()
-                } catch (_: HistoryTrimmedException) {
-                    projectionOnlyHierarchy(session, scopeId).takeIf { roundId == null }.orEmpty()
+                } catch (e: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
+                    // Rounds need the summaries: a round filter cannot be answered, the plain hierarchy can.
+                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
+                    projectionOnlyHierarchy(session, scopeId)
+                } catch (e: HistoryTrimmedException) {
+                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
+                    projectionOnlyHierarchy(session, scopeId)
                 }
             call.respond(HttpStatusCode.OK, nodes)
             return@get

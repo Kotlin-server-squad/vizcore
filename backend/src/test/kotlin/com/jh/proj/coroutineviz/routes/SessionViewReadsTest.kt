@@ -161,4 +161,14 @@ class SessionViewReadsTest {
             client.delete("/api/sessions/$id")
             assertNull(HealthCuts.find(id, health.asOfSeq, null, null))
         }
+
+    @Test
+    fun `a bound read looks its cut up once, so a cut expiring mid-read cannot drop it`() {
+        val session = trimmedSession()
+        val current = view(session, ViewBinding.Current)
+        HealthCuts.remember(current.cut(emptyMap()))
+        HealthCuts.findsForTest = 0
+        view(session, ViewBinding.Bound(current.seq, null, null))
+        assertEquals(1, HealthCuts.findsForTest)
+    }
 }

@@ -319,4 +319,38 @@ class HierarchyReadsTest {
                 assertEquals(HttpStatusCode.BadRequest, client.get("/api/sessions/$id/coroutines/r2-c/timeline$q").status, q)
             }
         }
+
+    @Test
+    fun `a summary-only parent keeps its children`() =
+        testApplication {
+            application { module() }
+            startApplication()
+            SessionManager.configure(maxEventsPerSession = 6)
+            val id = client.createSessionNamed("app-tree-parent")
+            val s = SessionManager.getSession(id)!!
+            s.send(created(id, "parent", sec(1)))
+            for (i in 1..3) s.send(created(id, "filler$i", sec(1)))
+            s.send(created(id, "child", sec(2), parent = "parent"))
+            s.send(created(id, "filler4", sec(2)))
+            s.send(created(id, "filler5", sec(2)))
+            val parent = client.nodes(id).single { it.id == "parent" }
+            assertTrue(parent.summaryOnly)
+            assertEquals(listOf("child"), parent.children)
+        }
+
+    @Test
+    fun `a round filter without summaries answers 503, the plain hierarchy still answers`() =
+        testApplication {
+            application { module() }
+            startApplication()
+            val store = SessionHealthUnavailableTestStore()
+            SessionManager.useStore(store)
+            val session = store.create("app-tree-nosummaries-round")
+            session.send(created(session.sessionId, "a", sec(1)))
+            assertEquals(
+                HttpStatusCode.ServiceUnavailable,
+                client.get("/api/sessions/${session.sessionId}/hierarchy?roundId=round:a").status,
+            )
+            assertEquals(HttpStatusCode.OK, client.get("/api/sessions/${session.sessionId}/hierarchy").status)
+        }
 }

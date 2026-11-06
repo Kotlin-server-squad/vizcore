@@ -44,6 +44,10 @@ internal object HealthCuts {
     @Volatile
     internal var clock: () -> Long = System::currentTimeMillis
 
+    /** Test seam: lookups so far (a read must look its cut up once). */
+    @Volatile
+    internal var findsForTest = 0
+
     private class Entry(
         val cut: HealthCut,
         var usedAtMs: Long,
@@ -82,6 +86,7 @@ internal object HealthCuts {
         transportRevision: Long?,
     ): HealthCut? =
         synchronized(bySession) {
+            findsForTest++
             val now = clock()
             val entries = bySession[sessionId] ?: return null
             val hit =
@@ -111,6 +116,7 @@ internal object HealthCuts {
         synchronized(bySession) {
             bySession.clear()
             total = 0
+            findsForTest = 0
             clock = System::currentTimeMillis
         }
 
