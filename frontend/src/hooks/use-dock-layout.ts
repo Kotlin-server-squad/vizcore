@@ -26,9 +26,13 @@ export interface DockLayout {
  * is kept as asked; what is shown is clamped to the space the main view and
  * the dock share, so a window that grows back gives the dock its size back.
  */
-export function useDockLayout(): DockLayout {
+export function useDockLayout(
+  /** The look's starting share of the window (its card.ts `dockShare`); the default without it. */
+  startShare?: number,
+): DockLayout {
   const [prefs] = useState(readDockPrefs)
-  const [wanted, setWanted] = useState(() => prefs.height ?? initialDockHeight(window.innerHeight))
+  // The size the user left the dock at wins; the look's start applies only without one.
+  const [wanted, setWanted] = useState(() => prefs.height ?? initialDockHeight(window.innerHeight, startShare))
   const [folded, setFolded] = useState(prefs.folded)
   const [maximised, setMaximised] = useState(false)
   const [shared, setShared] = useState(0)

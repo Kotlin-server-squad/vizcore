@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest'
 import { createElement } from 'react'
 import { bold } from '.'
 import { boldSessionBody } from './SessionBody'
+import { boldCard } from './card'
 import {
   ROW_CAP,
   UNNAMED,
@@ -49,6 +50,21 @@ describe('C · Bold', () => {
       trial: true,
       slots: { SessionBody: boldSessionBody },
     })
+  })
+})
+
+describe("C's card and starting dock", () => {
+  // The graph's layout (CoroutineTreeGraph): 40 px between siblings, 64 px between rows,
+  // 32 px padding, 40 px toolbar inset; the canvas is 1,358 px wide in a 1440 px window.
+  it('fits six children across a 1440 px window at full size', () => {
+    expect(boldCard.fitMinZoom).toBe(1)
+    expect(6 * boldCard.width + 5 * 40 + 2 * 32).toBeLessThanOrEqual(1358)
+  })
+
+  it('starts the dock at 17 % of the window, so the root and its children fit the first view', () => {
+    expect(boldCard.dockShare).toBe(0.17)
+    // Two rows of cards need 344 px of canvas; measured at 1440×900 the canvas has more (see the plan).
+    expect(40 + 32 + boldCard.height + 64 + boldCard.height).toBe(344)
   })
 })
 

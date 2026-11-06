@@ -13,6 +13,22 @@ describe('useDockLayout', () => {
     expect(result.current.maximised).toBe(false)
   })
 
+  it('opens at a look’s own starting share when it brings one', () => {
+    const { result } = renderHook(() => useDockLayout(0.2))
+    expect(result.current.height).toBe(Math.round(window.innerHeight * 0.2))
+  })
+
+  it('opens at 40 % when the look brings no share (Classic, A and B today)', () => {
+    const { result } = renderHook(() => useDockLayout(undefined))
+    expect(result.current.height).toBe(Math.round(window.innerHeight * 0.4))
+  })
+
+  it('keeps the size the user left the dock at, whatever the look’s share', () => {
+    writeDockPrefs({ height: 260, folded: false })
+    const { result } = renderHook(() => useDockLayout(0.2))
+    expect(result.current.height).toBe(260)
+  })
+
   it('opens at the remembered size and fold', () => {
     writeDockPrefs({ height: 260, folded: true })
     const { result } = renderHook(() => useDockLayout())
