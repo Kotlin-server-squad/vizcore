@@ -54,8 +54,10 @@ describe('projectWaits', () => {
   })
 
   it('keeps each coroutine apart, and a later wait replaces an earlier one', () => {
+    // Built in order: the reduction follows seq, not the array's order.
+    const earlier = [waitForLock('order-7'), waitForLock('order-8'), event('coroutine.resumed', 'order-7')]
     const later = event('coroutine.suspended', 'order-7', { reason: 'semaphore', waitKind: 'SEMAPHORE', resourceId: 'semaphore-2' })
-    const waits = projectWaits([waitForLock('order-7'), waitForLock('order-8'), event('coroutine.resumed', 'order-7'), later])
+    const waits = projectWaits([...earlier, later])
 
     expect(waits.get('order-7')?.waitKind).toBe('SEMAPHORE')
     expect(waits.get('order-8')?.waitKind).toBe('MUTEX')

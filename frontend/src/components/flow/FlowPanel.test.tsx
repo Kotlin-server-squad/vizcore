@@ -55,6 +55,15 @@ describe('FlowPanel', () => {
     vi.clearAllMocks()
   })
 
+  it('reads the events it is given, so it follows the live stream', () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const events = [
+      makeFlowEvent('FlowCreated', 1, { flowId: 'flow-1', coroutineId: 'c1', flowType: 'Cold', label: 'TestFlow', scopeId: 'scope-1' }),
+    ]
+    render(<FlowPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('flow-panel')).toBeInTheDocument()
+  })
+
   it('renders empty state when no flow events exist', async () => {
     mockedApiClient.getSessionEvents.mockResolvedValue([])
 

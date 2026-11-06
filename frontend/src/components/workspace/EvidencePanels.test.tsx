@@ -3,13 +3,37 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EventCategories } from '@/hooks/use-event-categories'
 import type { EvidenceCounts } from '@/lib/evidence-summary'
-import type { ThreadActivity } from '@/types/api'
+import type { ThreadActivity, VizEvent } from '@/types/api'
 import { EvidencePanels } from './EvidencePanels'
 
-vi.mock('../channels/ChannelPanel', () => ({ ChannelPanel: () => <div data-testid="channel-panel" /> }))
-vi.mock('../flow/FlowPanel', () => ({ FlowPanel: () => <div data-testid="flow-panel" /> }))
-vi.mock('../sync/SyncPanel', () => ({ SyncPanel: () => <div data-testid="sync-panel" /> }))
-vi.mock('../jobs/JobPanel', () => ({ JobPanel: () => <div data-testid="job-panel" /> }))
+vi.mock('../channels/ChannelPanel', () => ({
+  ChannelPanel: (p: { events?: unknown[]; focusChannelId?: string | null; onSelectChannel?: (id: string) => void }) => (
+    <button
+      type="button"
+      data-testid="channel-panel"
+      data-events={p.events?.length ?? 'stored'}
+      data-focus={p.focusChannelId ?? ''}
+      onClick={() => p.onSelectChannel?.('ch-2')}
+    />
+  ),
+}))
+vi.mock('../flow/FlowPanel', () => ({
+  FlowPanel: (p: { events?: unknown[] }) => <div data-testid="flow-panel" data-events={p.events?.length ?? 'stored'} />,
+}))
+vi.mock('../sync/SyncPanel', () => ({
+  SyncPanel: (p: { events?: unknown[]; selectedResourceId?: string | null; selectedCoroutineId?: string | null; picker?: unknown }) => (
+    <div
+      data-testid="sync-panel"
+      data-events={p.events?.length ?? 'stored'}
+      data-resource={p.selectedResourceId ?? ''}
+      data-coroutine={p.selectedCoroutineId ?? ''}
+      data-picker={String(!!p.picker)}
+    />
+  ),
+}))
+vi.mock('../jobs/JobPanel', () => ({
+  JobPanel: (p: { events?: unknown[] }) => <div data-testid="job-panel" data-events={p.events?.length ?? 'stored'} />,
+}))
 vi.mock('../ThreadTable', () => ({ ThreadTable: () => <div data-testid="thread-table" /> }))
 vi.mock('../DispatcherOverview', () => ({ DispatcherOverview: () => <div data-testid="dispatcher-overview" /> }))
 
@@ -23,7 +47,11 @@ function categories(overrides: Partial<EventCategories> = {}): EventCategories {
 }
 
 function renderPanels(props: Partial<Parameters<typeof EvidencePanels>[0]> = {}) {
-  return render(
+  return render(panels(props))
+}
+
+function panels(props: Partial<Parameters<typeof EvidencePanels>[0]> = {}) {
+  return (
     <EvidencePanels
       sessionId="s-1"
       rung="attached"
@@ -34,7 +62,7 @@ function renderPanels(props: Partial<Parameters<typeof EvidencePanels>[0]> = {})
       threadActivity={activity}
       captureStartNanos={0}
       {...props}
-    />,
+    />
   )
 }
 
@@ -142,3 +170,58 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
     expect(threads).toHaveAttribute('aria-expanded', 'false')
   })
 })
+
+describe('EvidencePanels — the page\'s events and selection (S-2)', () => {
+  const synced = {
+    categories: categories({ hasSyncPrimitives: true, hasChannels: true, hasFlowOps: true, hasJobs: true }),
+    counts: { ...none, locks: 1, channels: 1, flows: 1, jobEvents: 1 },
+  }
+  const events = [{ seq: 1 }, { seq: 2 }] as unknown as VizEvent[]
+
+  it('gives every event-backed panel the page\'s events', () => {
+    renderPanels({ ...synced, events })
+    for (const id of ['sync-panel', 'channel-panel', 'flow-panel', 'job-panel']) {
+      expect(screen.getByTestId(id)).toHaveAttribute('data-events', '2')
+    }
+  })
+
+  it('unfolds Locks and permits for a selected lock, and passes the lock on', () => {
+    const { rerender } = renderPanels({ ...synced, events })
+    expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'false')
+    rerender(panels({ ...synced, events, selection: { kind: 'resource', resource: 'mutex', id: 'm-1' } }))
+    expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByTestId('sync-panel')).toHaveAttribute('data-resource', 'm-1')
+  })
+
+  it('re-opens the section when the same lock is selected again after folding it', async () => {
+    const { rerender } = renderPanels({ ...synced, events, selection: { kind: 'resource', resource: 'mutex', id: 'm-1' } })
+    await userEvent.click(screen.getByRole('button', { name: /Locks and permits/ }))
+    expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'false')
+    rerender(panels({ ...synced, events, selection: { kind: 'resource', resource: 'mutex', id: 'm-1' } }))
+    expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('unfolds Channels for a selected channel, shows it, and a pick there selects on the page', async () => {
+    const onSelectResource = vi.fn()
+    const { rerender } = renderPanels({ ...synced, events, onSelectResource })
+    rerender(panels({ ...synced, events, onSelectResource, selection: { kind: 'resource', resource: 'channel', id: 'ch-1' } }))
+    expect(screen.getByRole('button', { name: /Channels/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByTestId('channel-panel')).toHaveAttribute('data-focus', 'ch-1')
+    await userEvent.click(screen.getByTestId('channel-panel'))
+    expect(onSelectResource).toHaveBeenCalledWith({ kind: 'resource', resource: 'channel', id: 'ch-2' })
+  })
+
+  it('passes a selected coroutine to Locks and permits without unfolding anything', () => {
+    renderPanels({ ...synced, events, selection: { kind: 'coroutine', id: 'c-1' }, picker: { select: vi.fn(), canSelect: () => true } })
+    expect(screen.getByTestId('sync-panel')).toHaveAttribute('data-coroutine', 'c-1')
+    expect(screen.getByTestId('sync-panel')).toHaveAttribute('data-picker', 'true')
+    expect(screen.getByRole('button', { name: /Locks and permits/ })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('reads the events it is given in replay too, so Locks and permits carries no live-data warning', async () => {
+    renderPanels({ ...synced, events, replayActive: true })
+    await userEvent.click(screen.getByRole('button', { name: /Locks and permits/ }))
+    expect(within(screen.getByTestId('evidence-section-Locks and permits')).queryByTestId('live-data-notice')).toBeNull()
+  })
+})
+

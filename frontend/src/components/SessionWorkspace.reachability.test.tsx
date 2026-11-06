@@ -39,7 +39,8 @@ vi.mock('@/hooks/use-scenarios', () => ({
   useRunScenario: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
 }))
 
-vi.mock('@/hooks/use-event-categories', () => ({
+vi.mock('@/hooks/use-event-categories', async () => ({
+  categorizeEvents: (await vi.importActual<typeof import('@/hooks/use-event-categories')>('@/hooks/use-event-categories')).categorizeEvents,
   useEventCategories: vi.fn(() => ({
     hasChannels: false,
     hasFlowOps: false,

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Card, CardBody, Chip } from '@heroui/react'
 import { motion, LayoutGroup } from 'framer-motion'
 import type { CoroutineNode, CoroutineState } from '@/types/api'
+import type { ActivityLine } from '@/lib/activity'
 import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
 import { fadeSlideIn, getStateVariant, hoverGlow } from '@/lib/animation-variants'
@@ -29,9 +30,11 @@ interface CoroutineTreeProps {
    * rendered children.
    */
   pendingChildCounts?: ReadonlyMap<string, number>
+  /** Each coroutine's second line: what it waits for or holds (S-6). */
+  activity?: ReadonlyMap<string, ActivityLine>
 }
 
-export function CoroutineTree({ coroutines, onSelect, selectedNodeId, pendingChildCounts }: CoroutineTreeProps) {
+export function CoroutineTree({ coroutines, onSelect, selectedNodeId, pendingChildCounts, activity }: CoroutineTreeProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines), [coroutines])
 
   if (coroutines.length === 0) {
@@ -53,6 +56,7 @@ export function CoroutineTree({ coroutines, onSelect, selectedNodeId, pendingChi
             onSelect={onSelect}
             selectedNodeId={selectedNodeId}
             pendingChildCounts={pendingChildCounts}
+            activity={activity}
           />
         ))}
       </div>
@@ -68,10 +72,12 @@ interface TreeNodeProps {
   onSelect?: (id: string) => void
   selectedNodeId?: string | null
   pendingChildCounts?: ReadonlyMap<string, number>
+  activity?: ReadonlyMap<string, ActivityLine>
 }
 
-function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts }: TreeNodeProps) {
+function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, activity }: TreeNodeProps) {
   const isSelected = selectedNodeId === node.id
+  const line = activity?.get(node.id)
   const colors = getStateColors(node.state)
   const stateVariant = getStateVariant(node.state)
   const shouldAnimate = useAnimationSlot()
@@ -164,6 +170,15 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts }:
                   <div className="text-xs text-default-500">
                     {node.id} • Job: {node.jobId}
                   </div>
+                  {/* What it waits for or holds (S-6): a wait in the Suspended colour, a hold neutral. */}
+                  {line && (
+                    <div
+                      data-testid="activity-line"
+                      className={line.waiting ? 'text-xs text-warning' : 'text-xs text-default-600'}
+                    >
+                      {line.text}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -305,6 +320,7 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts }:
           onSelect={onSelect}
           selectedNodeId={selectedNodeId}
           pendingChildCounts={pendingChildCounts}
+          activity={activity}
         />
       ))}
     </OuterComponent>
