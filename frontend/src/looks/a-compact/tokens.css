@@ -1,7 +1,10 @@
 /*
  * A · Compact: dense and IDE-like (sketch K-A-Compact, JetBrains-style dark).
- * Base tokens only (PR L0): colours, density, shape and spacing. The layout
- * comes in its own PR. Delete this folder to delete the look.
+ * Its tokens (PR L0) and its layout (PR L1): a flat IDE window, with the header
+ * and the main view's toolbar as bars on the surface colour, the tree on the
+ * page, square 1 px cards and a flat dock with underlined tabs. CSS only,
+ * through the data-look-part hooks; plan: docs/superpowers/plans/2026-11-06-look-a.md.
+ * Delete this folder to delete the look.
  */
 html[data-look='a'] {
   /* Density: every rem-based size (text, controls, spacing) shrinks to 15/16. */
@@ -11,18 +14,21 @@ html[data-look='a'] {
   --heroui-radius-small: 3px;
   --heroui-radius-medium: 4px;
   --heroui-radius-large: 6px;
+  /* HeroUI's bordered buttons and dot chips: 1 px lines, as in the sketch. */
+  --heroui-border-width-medium: 1px;
 }
 
-/* The page still fills the window under the navbar (4 rem and its 1 px border). */
+/* The page still fills the window under the navbar (4 rem and its 1 px border).
+   No padding: as in the sketch, the header bar, the toolbar and the dock run
+   edge to edge, like an IDE window. */
 [data-look='a'] [data-look-part='page'] {
   height: calc(100dvh - 4rem - 1px);
-  padding: 8px 12px;
+  padding: 0;
 }
 
-/* Header to body only: the gap between the main view and the dock stays 12 px,
-   which the dock's size rules (lib/dock-layout.ts) assume. */
+/* Header to body: the bars carry their own borders, so no gap between them. */
 [data-look='a'] [data-look-part='workspace'] {
-  gap: 8px;
+  gap: 0;
 }
 
 /* gap-3 is 0.75 rem, 11.25 px at this root size; the dock's size rules count 12 px. */
@@ -30,9 +36,207 @@ html[data-look='a'] {
   gap: 12px;
 }
 
-[data-look='a'] [data-look-part='main'],
-[data-look='a'] [data-look-part='dock'] {
+/* --- Header: one 40 px bar on the surface colour --- */
+[data-look='a'] [data-look-part='header'] {
+  min-height: 40px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+
+[data-look='a'] [data-look-part='header'] h1 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+}
+
+/* The header's pills: square, 1 px, compact. */
+[data-look='a'] [data-look-part='header'] [data-testid='rung-badge'],
+[data-look='a'] [data-look-part='header'] [data-testid='run-outcome'],
+[data-look='a'] [data-look-part='header'] [data-testid='dropped-count'] {
+  height: 1.375rem;
   border-radius: var(--radius);
+}
+
+/* "Updating", "View paused", "Replay at …": the sketch's muted status text.
+   The dot stays: it carries the stream's colour (connecting, error). */
+[data-look='a'] [data-look-part='header'] [data-testid='view-status'] {
+  height: 1.375rem;
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* The header's buttons (Run, Replay, Pause view, Export, ⋯): small, 1 px border. */
+[data-look='a'] [data-look-part='header-actions'] button {
+  height: 1.75rem;
+  min-height: 1.75rem;
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+}
+
+/* Export is a flat button; here it looks like its neighbours. */
+[data-look='a'] [data-look-part='header-actions'] [data-testid='export-menu-trigger'] {
+  border: var(--heroui-border-width-medium) solid hsl(var(--heroui-default-200));
+  background: transparent;
+}
+
+/* --- Main view: flat on the page, its toolbar a bar with a border below --- */
+[data-look='a'] [data-look-part='main'] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+[data-look='a'] [data-look-part='main-toolbar'] {
+  gap: 6px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+[data-look='a'] [data-look-part='main-toolbar'] h2 {
+  font-size: 0.8rem;
+  margin-inline: 4px;
+}
+
+/* The view switch: no tray; the pressed view gets a square grey fill. */
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='View'] {
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+}
+
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='View'] > button {
+  border-radius: var(--radius);
+  box-shadow: none;
+  padding: 3px 10px;
+}
+
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='View'] > button[aria-pressed='true'] {
+  background: hsl(var(--heroui-default-200));
+}
+
+/* The state bar as the sketch's legend: no pill, a square dot, the count in body text.
+   Only its filter chips (button[aria-pressed]); the Checks action keeps its dashed outline.
+   StateBar sets the border inline, so an unpressed chip's transparent border needs
+   !important; a pressed chip keeps its inline tint and border (the filter is on). */
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='Coroutine state'] {
+  gap: 2px;
+}
+
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='Coroutine state'] > button {
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+}
+
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='Coroutine state'] > button[aria-pressed] {
+  gap: 6px;
+}
+
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='Coroutine state'] > button[aria-pressed='false'] {
+  border-color: transparent !important;
+}
+
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='Coroutine state'] > button[aria-pressed] > span[aria-hidden='true'] {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+[data-look='a'] [data-look-part='main'] [role='group'][aria-label='Coroutine state'] > button[aria-pressed] > span:last-child {
+  color: var(--text);
+}
+
+/* Show completed, Maximise: as small as the header's buttons. */
+[data-look='a'] [data-look-part='main-toolbar'] > button {
+  height: 1.75rem;
+  min-height: 1.75rem;
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+}
+
+/* The graph sits on the page itself, without a box of its own. */
+[data-look='a'] [data-look-part='main'] [data-testid='graph-canvas'][data-fullscreen='false'] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* --- Dock: flat, full width, a border on top --- */
+[data-look='a'] [data-look-part='dock'] {
+  border-width: 1px 0 0;
+  border-radius: 0;
+}
+
+/* Its bar: the tabs and Fold. */
+[data-look='a'] [data-look-part='dock'] > div:nth-child(2) {
+  padding: 0 6px;
+}
+
+[data-look='a'] [data-look-part='dock'] > div:nth-child(2) > button {
+  height: 1.75rem;
+  min-height: 1.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* The tabs: underlined when selected, no pill. */
+[data-look='a'] [data-look-part='dock-tabs'] {
+  gap: 0;
+  padding-block: 0;
+}
+
+[data-look='a'] [data-look-part='dock-tabs'] > [role='tab'] {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 400;
+  /* The tab row scrolls sideways, so it clips anything drawn outside a tab:
+     the focus ring goes inside. */
+  --tw-ring-inset: inset;
+}
+
+[data-look='a'] [data-look-part='dock-tabs'] > [role='tab'][aria-selected='true'] {
+  border-bottom-color: var(--primary);
+  color: var(--text);
+}
+
+[data-look='a'] [data-look-part='dock'] #dock-body {
+  padding: 12px 14px;
+}
+
+/* The Inspector: its cards lose their boxes; a rule splits the two columns on a wide dock. */
+[data-look='a'] [data-look-part='dock'] [data-testid='inspector'] section[data-testid] {
+  padding: 0 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+[data-look='a'] [data-look-part='dock'] [data-testid='inspector'] section[data-testid] h4 {
+  margin-bottom: 6px;
+  font-size: 0.7rem;
+}
+
+[data-look='a'] [data-look-part='dock'] [data-testid='inspector'] > div:last-child {
+  column-gap: 0;
+}
+
+/* Side by side only from 1,024 px, as the Inspector's own lg:grid-cols-2. (Nested, so
+   every rule of this file starts with its look's selector.) */
+[data-look='a'] [data-look-part='dock'] [data-testid='inspector'] > div:last-child > div + div {
+  @media (min-width: 1024px) {
+    padding-left: 14px;
+    margin-left: 14px;
+    border-left: 1px solid var(--border);
+  }
 }
 
 /* --- generated by gen-look-tokens.mjs from palette.json (edit palette.json and re-run, or hand-edit) --- */
