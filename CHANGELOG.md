@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A Look switch on the session page, for a trial of three new looks next to today's (Classic, still the default): the "⋯" menu's "Look · trial" section offers Classic, A · Compact, B · Calm and C · Bold, and a link such as `/sessions/<id>?look=b` picks one too. The choice is remembered in the browser; an unknown look reads as Classic. Only the session page changes; other pages, exports and recorded replays stay Classic. A, B and C carry only their colours, type, density and spacing so far; their layouts follow, and the looks that lose the trial are deleted
 - "New demo session" offers all 32 demos, grouped: real life, basics, channels, Flow, patterns, Mutex, Semaphore and combined. Flow, patterns and the Mutex and Semaphore demos were unreachable since the gallery was retired. `GET /api/scenarios` lists every one with its `group`, `groupLabel` and `method`; a demo refused by the demo limit reads "Server busy" instead of a server failure
 - `MAX_CONCURRENT_DEMOS` (default 3): at most this many demos run on the server at once, across all clients. A demo holds its slot until its coroutines end; one started while every slot is taken gets `503` with `Retry-After`
 - `MAX_DEMO_RUN_SECONDS` (default 60): a demo still running after this many seconds is cancelled and frees its slot
