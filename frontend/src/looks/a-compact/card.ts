@@ -7,4 +7,4 @@ import './card.css'
  * side, the 18 px name row, a 2 px gap and two 16 px lines. Its smallest text is
  * 12 px, so the graph's fit never zooms below 1 (12 px on screen).
  */
-export const compactCard: LookCard = { width: 208, height: 66, fitMinZoom: 1 }
+export const compactCard: LookCard = { width: 232, height: 66, fitMinZoom: 1 }
