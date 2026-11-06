@@ -246,4 +246,31 @@ class SharedHealthRoutesTest {
             val shared = client.get("/api/shared/$token/coroutines/child/timeline")
             assertEquals(HttpStatusCode.OK, shared.status, shared.bodyAsText())
         }
+
+    @Test
+    fun `an event arriving after the session was resolved does not move the loaded health's receipt time`() =
+        testApplication {
+            app()
+            val id = runBlocking { SessionManager.createSession("shared-receipt") }.sessionId
+            val connection = IngestStates.connectionOpened(id, firstSeq = 1)
+            IngestStates.eventReceived(connection, receivedEpochMs = 1_000)
+            SessionManager.getSession(id)!!.ingest(HealthEvents.created(id, "a", sec(1)))
+            val created =
+                client.post("/api/sessions/$id/share") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"expiresIn":"7d"}""")
+                }
+            val token =
+                appJson
+                    .parseToJsonElement(created.bodyAsText())
+                    .jsonObject["token"]!!
+                    .jsonPrimitive.content
+            afterSessionResolvedForTest = { sid ->
+                IngestStates.eventReceived(connection, receivedEpochMs = 9_000)
+                SessionManager.getSession(sid)!!.ingest(HealthEvents.created(sid, "b", sec(2)))
+            }
+            val payload = client.payload(token)
+            assertEquals(1_000L, payload.session.lastIngestEpochMs)
+            assertEquals(payload.session.lastIngestEpochMs, payload.health?.asOf?.receivedEpochMs)
+        }
 }

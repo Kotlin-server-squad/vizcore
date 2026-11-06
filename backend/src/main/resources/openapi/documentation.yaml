@@ -1508,6 +1508,8 @@ paths:
       - Validation
       summary: The session's last checks run
       operationId: getSessionChecks
+      parameters:
+      - $ref: "#/components/parameters/SessionIdPath"
       responses:
         "200":
           description: The last run, null before any

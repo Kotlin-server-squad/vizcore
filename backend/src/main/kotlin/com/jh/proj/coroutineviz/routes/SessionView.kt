@@ -80,11 +80,8 @@ internal fun readView(
 ): SessionView {
     // One cut: the events are read under the same send lock as the summary copy, so an append in between cannot trim
     // evidence the copy still describes (memory mode appends and trims under that lock).
-    val (durable, allEvents) =
-        cut?.let { (it.summaries ?: rethrow(SummariesUnavailableException("no summaries in the cut"))) to it.events }
-            ?: session.readSummaries { it.snapshot() to (session.rehydratedEvents ?: session.store.all()) }
-    // Transport facts are sticky and only grow: read after the copy, they cover every event in it (5a D-9c).
-    val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = ingestCut.watermark)
+    val (durable, allEvents) = summariesAndEvents(session, cut)
+    val ingest = ingestFor(session, ingestCut, cut)
     val last = durable.lastEventSeq
     val kept = (binding as? ViewBinding.Bound)?.let { keptCut(session, it, last) }
     // A health named by its cut id cannot be rebuilt from retained events: its evidence may differ (a trim since).
@@ -216,4 +213,27 @@ internal class ReadCut(
                 ReadCut(table?.snapshot(), session.rehydratedEvents ?: session.store.all(), session.snapshot.nodes(), session.lastSeq)
             }
     }
+}
+
+/** The summary copy and the stored events of one cut: [cut]'s, else read under the send lock (database: as rebuilt). */
+private fun summariesAndEvents(
+    session: VizSession,
+    cut: ReadCut?,
+): Pair<SummaryView, List<VizEvent>> =
+    cut?.let { (it.summaries ?: rethrow(SummariesUnavailableException("no summaries in the cut"))) to it.events }
+        ?: session.readSummaries { it.snapshot() to (session.rehydratedEvents ?: session.store.all()) }
+
+/**
+ * The ingest facts of a read: the watermark read before the session was resolved (5a D-9c) and the transport read now
+ * (sticky: it covers every event copied). A one-cut read (a share) also keeps the receipt time it read before the session,
+ * as its session facts do (spec C-6); other reads may show a newer one (5a D-3).
+ */
+private fun ingestFor(
+    session: VizSession,
+    ingestCut: IngestSnapshot,
+    cut: ReadCut?,
+): IngestSnapshot {
+    val now = IngestStates.snapshot(session.sessionId)
+    val receivedAt = if (cut != null) ingestCut.lastIngestEpochMs else now.lastIngestEpochMs
+    return now.copy(watermark = ingestCut.watermark, lastIngestEpochMs = receivedAt)
 }
