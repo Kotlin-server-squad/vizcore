@@ -37,17 +37,27 @@ internal fun attributeToWrappers(
 ): List<CoroutineSnapshot> {
     val elements = raws.map { raw -> raw.context[VizCoroutineElement]?.takeIf { it.owner === session } }
     if (elements.all { it == null }) return snapshots
+    val owned = raws.indices.filter { isWrapperOwned(raws[it], session) }.toSet()
+    val wrapperIds = HashMap<CoroKey, String>()
+    for (i in owned) {
+        snapshots[i].wrapper = elements[i]
+        wrapperIds[snapshots[i].key] = elements[i]!!.coroutineId
+    }
     val indexByKey = snapshots.indices.associateBy { snapshots[it].key }
     for (i in raws.indices) {
-        val element = elements[i] ?: continue
-        if (isWrapperOwned(raws[i], session)) {
-            snapshots[i].wrapper = element
+        if (i in owned) continue
+        val parentKey = snapshots[i].parentKey
+        // An observed wrapper parent is named by its own id, whatever the child carries (no element, another session's).
+        val wrapperParent = parentKey?.let(wrapperIds::get)
+        if (wrapperParent != null) {
+            snapshots[i].parentCoroutineId = wrapperParent
             continue
         }
-        // Inherited: the wrapper is an ancestor. Its id is the parent unless the nearest observed parent is a nearer
-        // descendant of the same wrapper (it carries the same element), which keeps its own id.
-        val parent = snapshots[i].parentKey?.let(indexByKey::get)
-        val parentIsDescendant = parent != null && elements[parent] === element && !isWrapperOwned(raws[parent], session)
+        // Inherited from a wrapper DebugProbes do not list (its body returned): that wrapper is the parent, unless the
+        // nearest observed parent is a nearer descendant of it (it carries the same element) and keeps its own id.
+        val element = elements[i] ?: continue
+        val parent = parentKey?.let(indexByKey::get)
+        val parentIsDescendant = parent != null && elements[parent] === element
         if (!parentIsDescendant) snapshots[i].parentCoroutineId = element.coroutineId
     }
     return snapshots

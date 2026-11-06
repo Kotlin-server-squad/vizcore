@@ -121,4 +121,22 @@ class WrapperOwnedCoroutinesTest {
         assertNull(snapshots[2].parentCoroutineId, "its observed parent is a descendant of the wrapper: kept as dp-")
         assertEquals(snapshots[1].key, snapshots[2].parentKey)
     }
+
+    @Test
+    fun `a child of an observed wrapper is named under the wrapper's id even without the element`() {
+        val wrapperJob = Job()
+        val raws =
+            listOf(
+                raw("wrapper", wrapperJob, element(session, wrapperJob)),
+                // CoroutineScope(currentCoroutineContext()[Job]!!).launch { }: the wrapper's Job, not its element
+                raw("plain", Job(wrapperJob), CoroutineName("plain")),
+                // a VizScope of another session nested in the wrapper
+                raw("foreign", Job(wrapperJob), VizCoroutineElement("coroutine-9", "job-9", "coroutine-1", "s2", "f").also {
+                    it.owner = VizSession("other")
+                }),
+            )
+        val snapshots = attributeToWrappers(raws, CoroutineInfoAdapter().toSnapshots(raws), session)
+        assertEquals("coroutine-1", snapshots[1].parentCoroutineId)
+        assertEquals("coroutine-1", snapshots[2].parentCoroutineId)
+    }
 }
