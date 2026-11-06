@@ -224,40 +224,11 @@ fun Route.registerSessionRoutes() {
     // Nodes at one moment, with their derived round and C-2 summary (spec C-3; plan E-6): current, at a replay cursor
     // (atSeq) or bound to a health (asOfSeq), optionally one scope or one round.
     get("/api/sessions/{id}/hierarchy") {
-        val scopeId = call.request.queryParameters["scopeId"]
-        val roundId = call.request.queryParameters["roundId"]
-        val binding =
-            try {
-                parseViewBinding(call.request.queryParameters)
-            } catch (e: BadReadParameter) {
-                call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "bad parameter"))
-                return@get
-            }
-        if (binding == ViewBinding.Current) {
-            // Not a health read: without usable summaries the projection still answers, without rounds.
-            val sessionId = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("Missing session ID"))
-            val ingest = IngestStates.snapshot(sessionId)
-            val session =
-                call.resolveScopedSession(sessionId)
-                    ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Session not found"))
-            val nodes =
-                try {
-                    hierarchyOf(readView(session, ingest, binding, call.leakThresholdMs()), scopeId, roundId)
-                } catch (e: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
-                    // Rounds need the summaries: a round filter cannot be answered, the plain hierarchy can.
-                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
-                    projectionOnlyHierarchy(session, scopeId)
-                } catch (e: HistoryTrimmedException) {
-                    if (roundId != null) return@get call.respondReadErrors { rethrow(e) }
-                    projectionOnlyHierarchy(session, scopeId)
-                }
-            call.respond(HttpStatusCode.OK, nodes)
-            return@get
-        }
-        call.withSessionView { view ->
-            call.response.headers.append(AS_OF_SEQ_HEADER, view.seq.toString())
-            call.respond(HttpStatusCode.OK, hierarchyOf(view, scopeId, roundId))
-        }
+        val sessionId = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("Missing session ID"))
+        val ingest = IngestStates.snapshot(sessionId)
+        val session =
+            call.resolveScopedSession(sessionId) ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Session not found"))
+        call.respondHierarchy(session, ingest)
     }
 
     get("/api/sessions/{id}/metrics") {
@@ -301,7 +272,7 @@ fun Route.registerSessionRoutes() {
             } catch (_: HistoryTrimmedException) {
                 null
             }
-        call.respond(HttpStatusCode.OK, view?.let { metricsByOrigin(base, it) } ?: base)
+        call.respond(HttpStatusCode.OK, view?.let { metricsByOrigin(base, it) } ?: base.withRetainedOnly(session))
     }
 
     get("/api/sessions/{id}/threads") {

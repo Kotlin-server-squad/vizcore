@@ -205,4 +205,24 @@ class SummaryCheckpointTest {
         assertEquals(memory.toState(), rebuilt.readSummaries { it.toState() })
         assertTrue(rebuilt.summarySeedSeq != null)
     }
+
+    @Test
+    fun `a read of a rebuilt session uses the events it was rebuilt from, not a store that moved on`() {
+        val id = runBlocking { store.createSession("cut-read") }.sessionId
+        ingest(id, history(id))
+        val rebuilt = fresh(id)
+        // Another writer appends past the store's cap and the trim runs: the store moved on.
+        ingest(id, (1..15).map { HealthEvents.created(id, "late$it", sec(100L + it)) })
+        DbRetentionPolicy(db, maxEventsPerSession = 10).cleanup()
+        val view =
+            com.jh.proj.coroutineviz.routes.readView(
+                rebuilt,
+                com.jh.proj.coroutineviz.routes
+                    .IngestSnapshot(),
+                com.jh.proj.coroutineviz.routes.ViewBinding.Current,
+                30_000,
+            )
+        assertEquals(30L, view.seq)
+        assertEquals((1L..30L).toList(), view.events.map { it.seq })
+    }
 }

@@ -267,4 +267,43 @@ class IngestStatePersistenceTest {
         restart()
         assertTrue(IngestStates.snapshot(id).transport.deliveryUncertain)
     }
+
+    @Test
+    fun `a write held up on one thread keeps the next change waiting, so stored revisions never go back`() {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val fake = FakePersistence()
+        var holdNext = false
+        IngestStates.persistence =
+            object : IngestStatePersistence by fake {
+                override fun save(
+                    sessionId: String,
+                    state: PersistedIngestState,
+                    openSince: Long?,
+                ) {
+                    if (holdNext) {
+                        holdNext = false
+                        entered.countDown()
+                        release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    }
+                    fake.save(sessionId, state, openSince)
+                }
+            }
+        val a = IngestStates.connectionOpened("s", firstSeq = 1)
+        val b = IngestStates.connectionOpened("s", firstSeq = 5)
+        holdNext = true
+        val first = kotlin.concurrent.thread { IngestStates.watermarkReceived(a, HealthEvents.watermark("s", sec(1), lost = 2), 1) }
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val second = kotlin.concurrent.thread { IngestStates.frameSkipped(b) }
+        Thread.sleep(100)
+        assertTrue(second.isAlive, "the second change waits for the first write")
+        release.countDown()
+        first.join(5_000)
+        second.join(5_000)
+        val revisions = fake.writes.map { it.first.transport.revision }
+        assertEquals(revisions.sorted(), revisions)
+        assertEquals(IngestStates.snapshot("s").transport.revision, revisions.last())
+        IngestStates.connectionClosed(a)
+        assertEquals(5L, fake.writes.last().second, "b is still open")
+    }
 }

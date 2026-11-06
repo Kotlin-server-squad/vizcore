@@ -62,6 +62,14 @@ internal object HealthCuts {
     private var total = 0
     private var nextId = 0L
 
+    // Ids of one process never match another's, so an id held across a backend restart names no new cut.
+    private val processPrefix =
+        java.util.UUID
+            .randomUUID()
+            .toString()
+            .take(PREFIX_LENGTH)
+    private const val PREFIX_LENGTH = 8
+
     /**
      * Keeps [cut]; an equivalent kept cut (same binding and evidence) is replaced. Two cuts with one binding but different
      * evidence are both kept, and a follow-up gets the newer (a database trim between two healths at one seq, Part 5b-2).
@@ -70,7 +78,7 @@ internal object HealthCuts {
         synchronized(bySession) {
             val entries = bySession.getOrPut(cut.sessionId) { ArrayDeque() }
             val equivalent = entries.firstOrNull { it.cut.equivalent(cut) }
-            cut.id = equivalent?.cut?.id ?: "c${++nextId}"
+            cut.id = equivalent?.cut?.id ?: "$processPrefix-${++nextId}"
             if (equivalent != null) {
                 entries.remove(equivalent)
                 total--

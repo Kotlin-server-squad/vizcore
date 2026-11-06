@@ -158,6 +158,16 @@ class VizSession(
     var summarySeedSeq: Long? = null
         private set
 
+    /**
+     * The events this session was rebuilt from by [rehydrateFrom], until anything is appended to it: what its snapshot,
+     * projections and summaries describe. A database store hands out a fresh session per read, and the store itself may
+     * change (appends, trims) after it was read; reads of such a session use these events, not the store, so they describe
+     * one cut (spec C-4, C-6). Guarded by the send lock.
+     */
+    var rehydratedEvents: List<VizEvent>? = null
+        get() = synchronized(sendLock) { field }
+        private set
+
     /** Test hook: runs before each event is applied to the summary table, to inject a failure. */
     @Volatile
     internal var summaryFailureForTest: ((VizEvent) -> Unit)? = null
@@ -319,6 +329,7 @@ class VizSession(
         synchronized(sendLock) {
             finalizeSeq()
             lastSentSeq = event.seq
+            rehydratedEvents = null
             store.record(event)
             applier.apply(event)
             applyToSummaries(event)
@@ -366,6 +377,7 @@ class VizSession(
         }
         if (events.isEmpty()) return
         synchronized(sendLock) {
+            rehydratedEvents = events
             if (seed != null && summaryTable != null) {
                 summaryTable = SummaryTable.restore(seed)
                 summarySeedSeq = seed.lastEventSeq

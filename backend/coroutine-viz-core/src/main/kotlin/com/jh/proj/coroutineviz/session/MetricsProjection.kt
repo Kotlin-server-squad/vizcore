@@ -129,8 +129,10 @@ class MetricsProjection(
     /** Live bus path: acquire the lock, then apply. */
     private fun processEvent(event: VizEvent) {
         synchronized(lock) {
+            // The bucket before the event applies: a terminal event removes it, and still counts.
+            val bucket = bucketFor(event)
             applyLocked(event)
-            recordReceipt(event, System.nanoTime())
+            bucket?.let { recordReceipt(it, System.nanoTime()) }
         }
     }
 
@@ -185,11 +187,17 @@ class MetricsProjection(
         bucketOf.remove(coroutineId)?.let { activeByBucket[it] = (activeByBucket[it] ?: 1) - 1 }
     }
 
+    private fun bucketFor(event: VizEvent): OriginBucket? =
+        when (event) {
+            is CoroutineCreated -> bucketOf[event.coroutineId] ?: OriginBucket.of(event.origin)
+            is CoroutineEvent -> bucketOf[event.coroutineId]
+            else -> null
+        }
+
     private fun recordReceipt(
-        event: VizEvent,
+        bucket: OriginBucket,
         receiptNanos: Long,
     ) {
-        val bucket = (event as? CoroutineEvent)?.let { bucketOf[it.coroutineId] } ?: return
         val window = receiptsByBucket.getOrPut(bucket) { ArrayDeque() }
         window.addLast(receiptNanos)
         while (window.isNotEmpty() && window.peekFirst() < receiptNanos - THROUGHPUT_WINDOW_NANOS) window.removeFirst()

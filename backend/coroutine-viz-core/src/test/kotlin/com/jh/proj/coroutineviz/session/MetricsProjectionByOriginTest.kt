@@ -53,4 +53,15 @@ class MetricsProjectionByOriginTest {
         while (!done() && System.currentTimeMillis() < deadline) kotlinx.coroutines.delay(10)
         return session.metricsProjection.byOrigin()
     }
+
+    @Test
+    fun `a whole lifecycle counts in its origin's throughput, terminal event included`() {
+        EventScript("m").apply {
+            created("one", at = appClock)
+            started("one", at = appClock)
+            completed("one", at = appClock + 1)
+        }.events.forEach(session::send)
+        val buckets = runBlocking { awaitApplied { session.metricsProjection.byOrigin().getValue(OriginBucket.APP).throughputPerSec == 0.3 } }
+        assertEquals(0.3, buckets.getValue(OriginBucket.APP).throughputPerSec)
+    }
 }

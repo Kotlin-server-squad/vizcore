@@ -6,7 +6,6 @@ import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.currentPrincipal
 import com.jh.proj.coroutineviz.health.SummariesUnavailableException
-import com.jh.proj.coroutineviz.routes.AS_OF_SEQ_HEADER
 import com.jh.proj.coroutineviz.routes.CUT_HEADER
 import com.jh.proj.coroutineviz.routes.ChecksResults
 import com.jh.proj.coroutineviz.routes.ChecksRun
@@ -18,13 +17,13 @@ import com.jh.proj.coroutineviz.routes.ReadCut
 import com.jh.proj.coroutineviz.routes.SessionView
 import com.jh.proj.coroutineviz.routes.ViewBinding
 import com.jh.proj.coroutineviz.routes.badParameter
-import com.jh.proj.coroutineviz.routes.hierarchyOf
 import com.jh.proj.coroutineviz.routes.leakThresholdMs
 import com.jh.proj.coroutineviz.routes.listRounds
 import com.jh.proj.coroutineviz.routes.parseViewBinding
 import com.jh.proj.coroutineviz.routes.readSessionHealth
 import com.jh.proj.coroutineviz.routes.readView
 import com.jh.proj.coroutineviz.routes.respondHealthItems
+import com.jh.proj.coroutineviz.routes.respondHierarchy
 import com.jh.proj.coroutineviz.routes.respondReadErrors
 import com.jh.proj.coroutineviz.routes.snapshotResponseOf
 import com.jh.proj.coroutineviz.routes.timelineAt
@@ -218,13 +217,7 @@ fun Route.registerSharedPublicRoute(service: ShareService) {
         call.withSharedView(service) { view -> call.respond(HttpStatusCode.OK, listRounds(view, call.request.queryParameters)) }
     }
     get("/api/shared/{token}/hierarchy") {
-        call.withSharedView(service) { view ->
-            call.response.headers.append(AS_OF_SEQ_HEADER, view.seq.toString())
-            call.respond(
-                HttpStatusCode.OK,
-                hierarchyOf(view, call.request.queryParameters["scopeId"], call.request.queryParameters["roundId"]),
-            )
-        }
+        call.withSharedSession(service) { session, ingest, _ -> call.respondHierarchy(session, ingest) }
     }
     get("/api/shared/{token}/coroutines/{coroutineId}/timeline") {
         call.withSharedView(service) { view ->

@@ -49,8 +49,8 @@ internal fun metricsByOrigin(
         return OriginSlice(
             captured = members.size,
             active = active.size,
-            // Several buckets merged (demo, unknown session): their peaks need not coincide, so the largest is a lower bound.
-            peak = maxOf(fed.maxOfOrNull { it.peak } ?: 0, active.size),
+            // Every bucket merged into one origin (demo, unknown session): the session's own peak is that origin's.
+            peak = maxOf(if (fed.size == OriginBucket.entries.size) base.peak else fed.maxOfOrNull { it.peak } ?: 0, active.size),
             throughputPerSec = if (throughputs.any { it == null }) null else throughputs.sumOf { it ?: 0.0 },
             dispatcherUtilization = active.groupingBy { it.dispatcher ?: "unknown" }.eachCount(),
             longLived = longLived.count { it.first == origin },
@@ -74,4 +74,14 @@ internal fun metricsByOrigin(
         retainedOnly = rebuilt,
         oldestRetainedAppNanos = retention?.oldestRetainedAppNanos?.takeIf { rebuilt },
     )
+}
+
+/**
+ * Without usable summaries, the retention facts still say whether the projection figures cover retained events only: a
+ * database session's oldest stored event later than seq 1, the first seq every session gets (5a D-8).
+ */
+internal fun MetricsResponse.withRetainedOnly(session: com.jh.proj.coroutineviz.session.VizSession): MetricsResponse {
+    val oldest = (session.rehydratedEvents ?: session.store.all()).firstOrNull()
+    val trimmed = SessionManager.backingStore() is ExposedSessionStore && oldest != null && oldest.seq > 1
+    return if (trimmed) copy(retainedOnly = true, oldestRetainedAppNanos = oldest?.tsNanos) else this
 }

@@ -11,6 +11,7 @@ import com.jh.proj.coroutineviz.models.CoroutineTimeline
 import com.jh.proj.coroutineviz.models.HierarchyNode
 import com.jh.proj.coroutineviz.session.EventStore
 import com.jh.proj.coroutineviz.session.VizSession
+import io.ktor.server.response.respond
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -236,3 +237,35 @@ private fun CoroutineSummary.synthesizedCreation(sessionId: String) =
         creationPoint = creationLocation,
         origin = origin,
     )
+
+/**
+ * `…/hierarchy` for a resolved session, shared by the session and the shared routes (plan E-6): nodes at one moment with
+ * their round and summary; bound or replay views answer the read errors; the current hierarchy without usable summaries
+ * still answers from the projection, unless a round filter needs the summaries (503).
+ */
+internal suspend fun io.ktor.server.application.ApplicationCall.respondHierarchy(
+    session: VizSession,
+    ingest: IngestSnapshot,
+) {
+    val scopeId = request.queryParameters["scopeId"]
+    val roundId = request.queryParameters["roundId"]
+    respondReadErrors {
+        val binding = parseViewBinding(request.queryParameters)
+        val view =
+            try {
+                readView(session, ingest, binding, leakThresholdMs())
+            } catch (e: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
+                if (binding != ViewBinding.Current || roundId != null) rethrow(e)
+                null
+            } catch (e: HistoryTrimmedException) {
+                if (binding != ViewBinding.Current || roundId != null) rethrow(e)
+                null
+            }
+        if (view == null) {
+            respond(io.ktor.http.HttpStatusCode.OK, projectionOnlyHierarchy(session, scopeId))
+        } else {
+            if (binding != ViewBinding.Current) response.headers.append(AS_OF_SEQ_HEADER, view.seq.toString())
+            respond(io.ktor.http.HttpStatusCode.OK, hierarchyOf(view, scopeId, roundId))
+        }
+    }
+}

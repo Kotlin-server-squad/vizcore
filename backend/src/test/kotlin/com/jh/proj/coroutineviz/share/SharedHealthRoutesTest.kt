@@ -222,4 +222,16 @@ class SharedHealthRoutesTest {
             assertNull(payload.health)
             assertEquals("history-trimmed", payload.healthUnavailable)
         }
+
+    @Test
+    fun `the shared hierarchy of a session without a health still answers, like the session's`() =
+        testApplication {
+            app()
+            val (id, token) = client.failingShared()
+            transaction(db) { EventsTable.deleteWhere { (EventsTable.sessionId eq id) and (EventsTable.seq eq 1L) } }
+            assertEquals(HttpStatusCode.OK, client.get("/api/sessions/$id/hierarchy").status)
+            assertEquals(HttpStatusCode.OK, client.get("/api/shared/$token/hierarchy").status)
+            val metrics = client.get("/api/sessions/$id/metrics")
+            assertTrue(metrics.bodyAsText().contains("\"retainedOnly\":true"), metrics.bodyAsText())
+        }
 }

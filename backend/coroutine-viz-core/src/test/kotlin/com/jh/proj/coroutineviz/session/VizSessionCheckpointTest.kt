@@ -98,4 +98,18 @@ class VizSessionCheckpointTest {
         val noSummaries = VizSession("n", keepSummaries = false).also { sessions += it }
         assertNull(noSummaries.readCut { it })
     }
+
+    @Test
+    fun `events up to the checkpoint never reach the restored summaries`() {
+        val events = script().events
+        // r1 completed at seq 5, inside the checkpoint (seq 6). A seed that, on purpose, still has r1 running tells the
+        // two apart: had event 5 been applied again, r1 would read completed.
+        val seed =
+            SummaryTable().also { t -> events.take(6).forEach(t::apply) }.toState().let { s ->
+                s.copy(summaries = s.summaries.map { if (it.id == "r1") it.copy(terminal = null, lastTransition = it.lastRunStart!!) else it })
+            }
+        val b = session(events)
+        b.rehydrateFrom(events, seed)
+        assertEquals(com.jh.proj.coroutineviz.models.CoroutineState.ACTIVE, b.readSummaries { it.get("r1")!!.state })
+    }
 }

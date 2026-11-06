@@ -81,12 +81,14 @@ internal fun readView(
     // One cut: the events are read under the same send lock as the summary copy, so an append in between cannot trim
     // evidence the copy still describes (memory mode appends and trims under that lock).
     val (durable, allEvents) =
-        cut?.let { (it.summaries ?: throw SummariesUnavailableException("no summaries in the cut")) to it.events }
-            ?: session.readSummaries { it.snapshot() to session.store.all() }
+        cut?.let { (it.summaries ?: rethrow(SummariesUnavailableException("no summaries in the cut"))) to it.events }
+            ?: session.readSummaries { it.snapshot() to (session.rehydratedEvents ?: session.store.all()) }
     // Transport facts are sticky and only grow: read after the copy, they cover every event in it (5a D-9c).
     val ingest = IngestStates.snapshot(session.sessionId).copy(watermark = ingestCut.watermark)
     val last = durable.lastEventSeq
     val kept = (binding as? ViewBinding.Bound)?.let { keptCut(session, it, last) }
+    // A health named by its cut id cannot be rebuilt from retained events: its evidence may differ (a trim since).
+    if (binding is ViewBinding.Bound && binding.cutId != null && kept == null) rethrow(StaleViewException("cut ${binding.cutId} is gone"))
     val everyEvent = summariesSeeEveryEvent(session)
     val retention = retentionOf(allEvents, firstSeqEver = durable.firstSeqEver(everyEvent))
     if (kept == null && retention.trimmed && !everyEvent) throw HistoryTrimmedException("session ${session.sessionId} was trimmed")
@@ -189,7 +191,12 @@ private fun keptCut(
     last: Long,
 ): HealthCut? {
     val seq = minOf(binding.asOfSeq, last)
-    return binding.cutId?.let { HealthCuts.findById(session.sessionId, seq, it) }
+    return binding.cutId?.let { id ->
+        HealthCuts.findById(session.sessionId, seq, id)?.takeIf { cut ->
+            (binding.watermarkNanos == null || cut.watermarkNanos == binding.watermarkNanos) &&
+                (binding.transportRevision == null || cut.transportRevision == binding.transportRevision)
+        }
+    }
         ?: HealthCuts.find(session.sessionId, seq, binding.watermarkNanos, binding.transportRevision).takeIf { binding.cutId == null }
 }
 
@@ -205,6 +212,8 @@ internal class ReadCut(
 ) {
     companion object {
         fun of(session: VizSession): ReadCut =
-            session.readCut { table -> ReadCut(table?.snapshot(), session.store.all(), session.snapshot.nodes(), session.lastSeq) }
+            session.readCut { table ->
+                ReadCut(table?.snapshot(), session.rehydratedEvents ?: session.store.all(), session.snapshot.nodes(), session.lastSeq)
+            }
     }
 }

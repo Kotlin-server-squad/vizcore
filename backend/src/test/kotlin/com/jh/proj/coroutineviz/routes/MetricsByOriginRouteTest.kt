@@ -105,4 +105,18 @@ class MetricsByOriginRouteTest {
             assertEquals(emptyList(), m.leaks)
             assertNull(m.byOrigin)
         }
+
+    @Test
+    fun `a demo's app peak is the session's, even after everything finished`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("scenario-peak")
+            val s = SessionManager.getSession(id)!!
+            s.send(created(id, "a", sec(1), origin = CoroutineOrigin.APP))
+            s.send(created(id, "b", sec(1), origin = CoroutineOrigin.VIZCORE))
+            s.send(HealthEvents.completed(id, "a", sec(2)))
+            s.send(HealthEvents.completed(id, "b", sec(2)))
+            eventually { client.metrics(id).peak == 2 }
+            assertEquals(2, assertNotNull(client.metrics(id).byOrigin).app.peak)
+        }
 }
