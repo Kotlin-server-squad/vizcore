@@ -139,6 +139,47 @@ Responses: `400` when `atSeq` is not a non-negative integer, `404` when the sess
 `code: "summaries-unavailable"` when the session's summaries were abandoned, or `code: "history-trimmed"` for a
 database session whose early events were trimmed (its health returns once summaries are persisted, Part 5b).
 
+### Follow-up reads: binding a view
+
+The reads below (`rounds`, `health/items`, `hierarchy`, a coroutine's `timeline`) describe the same moment as the health
+a page holds when they pass that health's binding:
+
+- `asOfSeq=<health.asOfSeq>&asOfWatermark=<health.asOfWatermark.appNanos>&asOfTransport=<health.transport.revision>`
+  (live or shared view): answered from exactly what that health saw. The backend keeps each live health's inputs for
+  60 s (up to 8 per session); after that it rebuilds the moment from retained events, and when a coroutine's state then
+  cannot be known exactly it answers `409` with `code: "stale"` ("this view has moved on": fetch the health again).
+- `atSeq=<cursor>` (replay view): the moment at the cursor, never `409`; what it does not know is flagged
+  (`unknownAtSeq` on pages, `unknownMembers` on rounds, `partial` on nodes and timelines).
+- Neither: the session as it is now. `atSeq` and `asOfSeq` are exclusive; both are clamped to the last event.
+
+Pages carry `asOfSeq`, `total` and `nextCursor` (`null` on the last page); pass `cursor=<nextCursor>`; `limit` is
+1..200 (default 50).
+
+### List Rounds
+
+```
+GET /api/sessions/{id}/rounds?cursor=&limit=&q=&problemsOnly=true&includeVizcore=true[&binding]
+```
+
+Every round (an anchor and its subtree), problem rounds first, then newest anchor first. Each entry: `roundId`,
+`anchorId`, `anchorName`, `anchorOrigin`, `anchorCreatedNanos`, `anchorCreatedSeq`, `inProgress`, `countsByState`,
+`memberCount`, `problem`, `problemKinds`, and with `q` the matching members (`matches`). `q` is the server-side "find in
+all rounds": a case-insensitive substring of a member's name, creation function or creation file (at most 200
+characters); matches with no round come back in `ungroupedMatches`. Rounds anchored by vizcore's own coroutines appear
+only with a problem or `includeVizcore=true`.
+
+### Health Items
+
+```
+GET /api/sessions/{id}/health/items?list=incidents[&kind=FAILED|POSSIBLY_BLOCKED]
+GET /api/sessions/{id}/health/items?list=round-members&incidentId=failed:round:<anchor>
+GET /api/sessions/{id}/health/items?list=long-lived|long-suspended
+```
+
+A health list past its first 50 entries, in the health's order (with the same `leakThresholdMs`). `round-members`:
+a failed round's failures, then the cancellations recorded after its first failure; `404` with
+`code: "incident-not-found"` when the incident is not a failed round in this view.
+
 ### Delete Session
 
 ```
@@ -158,10 +199,14 @@ Response `200`: JSON array of `VizEvent` objects with `kind` field injected.
 ### Get Coroutine Hierarchy
 
 ```
-GET /api/sessions/{id}/hierarchy?scopeId={optional}
+GET /api/sessions/{id}/hierarchy?scopeId={optional}&roundId={optional}[&binding]
 ```
 
-Response `200`: Hierarchy tree structure.
+Response `200`: the nodes of one moment (rebuilt from the retained events up to it). Each node keeps its projection
+fields and gains `roundId`, `summary` (the per-coroutine summary) and `summaryState` (the health's classification:
+a failure with a cancellation exception reads `state: "FAILED"`, `summaryState: "CANCELLED"`). A coroutine whose creation
+is no longer retained is a summary-only node (`summaryOnly: true`, `scopeId`/`jobId` null). `roundId` limits the
+response to one round. At a bound or replay view the header `X-Viz-As-Of-Seq` names the seq described.
 
 ### Get Thread Activity
 
@@ -183,6 +228,11 @@ For a coroutine that has not finished, `openPhase` (`ACTIVE` or `SUSPENDED`) and
 `openPhaseSinceNanos` give the phase since its last recorded transition. `createdAtNanos`,
 `createdAtEpochMs` and `observedAtEpochMs` (the backend's wall clock) let a client count that
 phase up to now; `activeDuration` and `suspendedDuration` cover closed intervals only.
+
+With `atSeq` or `asOfSeq` the timeline describes that moment: only events up to it, its state then, no `openPhase` and
+no `observedAtEpochMs` (nothing to extrapolate). `eventsTrimmed: true` when the coroutine's creation is no longer
+retained (its retained events are listed, durations are `null`); `partial: true` in replay when its state at the cursor
+is not known.
 
 ### SSE Event Stream
 

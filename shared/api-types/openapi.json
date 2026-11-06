@@ -224,17 +224,69 @@
               "type": "string"
             },
             "description": "Optional scope ID to filter hierarchy"
+          },
+          {
+            "name": "roundId",
+            "in": "query",
+            "required": false,
+            "description": "Only this round's nodes",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "atSeq",
+            "in": "query",
+            "required": false,
+            "description": "Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfSeq",
+            "in": "query",
+            "required": false,
+            "description": "Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfWatermark",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's asOfWatermark.appNanos",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "asOfTransport",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's transport.revision",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Hierarchy tree of coroutines",
+            "description": "Nodes at one moment, with their round and summary (header X-Viz-As-Of-Seq at a bound or replay view)",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/HierarchyNode"
+                    "$ref": "#/components/schemas/HierarchyNodeDto"
                   }
                 }
               }
@@ -242,6 +294,26 @@
           },
           "404": {
             "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A parameter does not parse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This view has moved on (code stale)",
             "content": {
               "application/json": {
                 "schema": {
@@ -383,6 +455,359 @@
         }
       }
     },
+    "/api/sessions/{id}/health/items": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "A health list past its first 50 entries",
+        "operationId": "getSessionHealthItems",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "required": true,
+            "description": "incidents, round-members, long-lived or long-suspended",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "With list=incidents: FAILED or POSSIBLY_BLOCKED",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "incidentId",
+            "in": "query",
+            "required": false,
+            "description": "With list=round-members: a FAILED_ROUND incident id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Keyset cursor from nextCursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size 1..200 (default 50)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "leakThresholdMs",
+            "in": "query",
+            "required": false,
+            "description": "Long-lived threshold in milliseconds, as on /metrics",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "atSeq",
+            "in": "query",
+            "required": false,
+            "description": "Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfSeq",
+            "in": "query",
+            "required": false,
+            "description": "Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfWatermark",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's asOfWatermark.appNanos",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "asOfTransport",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's transport.revision",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of the list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/IncidentsPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RoundMembersPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ObservedAgesPage"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found, or incident-not-found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A parameter does not parse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This view has moved on (code stale)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Health unavailable: code summaries-unavailable or history-trimmed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/rounds": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Every round of the session, with server-side find",
+        "operationId": "getSessionRounds",
+        "description": "Problem rounds first, then newest anchor first, keyset paged (spec 2026-10-21 C-3, T-4).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Keyset cursor from nextCursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size 1..200 (default 50)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Find: a substring of a member's name, creation function or file (at most 200 characters)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "problemsOnly",
+            "in": "query",
+            "required": false,
+            "description": "Only rounds holding a problem",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "includeVizcore",
+            "in": "query",
+            "required": false,
+            "description": "Also rounds anchored by vizcore's own coroutines",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "leakThresholdMs",
+            "in": "query",
+            "required": false,
+            "description": "Long-lived threshold in milliseconds, as on /metrics",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "atSeq",
+            "in": "query",
+            "required": false,
+            "description": "Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfSeq",
+            "in": "query",
+            "required": false,
+            "description": "Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfWatermark",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's asOfWatermark.appNanos",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "asOfTransport",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's transport.revision",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of rounds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoundsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A parameter does not parse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This view has moved on (code stale)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Health unavailable: code summaries-unavailable or history-trimmed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{id}/coroutines/{coroutineId}/timeline": {
       "get": {
         "operationId": "getCoroutineTimeline",
@@ -406,6 +831,49 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "atSeq",
+            "in": "query",
+            "required": false,
+            "description": "Replay cursor (event seq): the view at that moment, lenient (unknown states are flagged)",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfSeq",
+            "in": "query",
+            "required": false,
+            "description": "Bind to a health response's asOfSeq: strict, 409 code stale when it cannot be answered exactly",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "asOfWatermark",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's asOfWatermark.appNanos",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "asOfTransport",
+            "in": "query",
+            "required": false,
+            "description": "With asOfSeq: the health's transport.revision",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -428,8 +896,19 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "This view has moved on (code stale)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
-        }
+        },
+        "description": "With atSeq or asOfSeq: the timeline at that moment (no open phase, no observedAtEpochMs), with eventsTrimmed and partial."
       }
     },
     "/api/scenarios": {
@@ -1530,6 +2009,14 @@
             "format": "int64",
             "nullable": true,
             "description": "The backend's wall clock when it built this timeline. With createdAtNanos and createdAtEpochMs a client can estimate the emitting JVM's current tsNanos, assuming both hosts' wall clocks agree."
+          },
+          "eventsTrimmed": {
+            "type": "boolean",
+            "description": "At a bound or replay view only: the coroutine's creation is not retained"
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "Replay only: the state at the cursor is not known"
           }
         }
       },
@@ -2693,7 +3180,8 @@
         "required": [
           "lostEvents",
           "deliveryUncertain",
-          "sinceSeq"
+          "sinceSeq",
+          "revision"
         ],
         "properties": {
           "lostEvents": {
@@ -2710,6 +3198,11 @@
             "format": "int64",
             "nullable": true,
             "description": "First seq that may be incomplete"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bumped on every change of the facts above"
           }
         }
       },
@@ -2890,6 +3383,619 @@
               }
             ],
             "nullable": true
+          }
+        }
+      },
+      "MemberRole": {
+        "type": "string",
+        "enum": [
+          "FAILED",
+          "CANCELLED_AFTER"
+        ]
+      },
+      "RoundMember": {
+        "type": "object",
+        "description": "One member of a failed round's incident",
+        "required": [
+          "coroutineId",
+          "name",
+          "role",
+          "exceptionType",
+          "message",
+          "terminalSeq",
+          "detailsDropped"
+        ],
+        "properties": {
+          "coroutineId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          },
+          "exceptionType": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "terminalSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "detailsDropped": {
+            "type": "boolean",
+            "description": "The summary was reduced to a stub: type and message are no longer known"
+          }
+        }
+      },
+      "RoundEntry": {
+        "type": "object",
+        "description": "One round (an anchor and its subtree)",
+        "required": [
+          "roundId",
+          "anchorId",
+          "anchorName",
+          "anchorOrigin",
+          "anchorCreatedNanos",
+          "anchorCreatedSeq",
+          "inProgress",
+          "countsByState",
+          "memberCount",
+          "problem",
+          "problemKinds",
+          "matches",
+          "unknownMembers"
+        ],
+        "properties": {
+          "roundId": {
+            "type": "string"
+          },
+          "anchorId": {
+            "type": "string"
+          },
+          "anchorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "anchorOrigin": {
+            "type": "string",
+            "enum": [
+              "APP",
+              "VIZCORE",
+              "UNKNOWN"
+            ],
+            "nullable": true
+          },
+          "anchorCreatedNanos": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "anchorCreatedSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "inProgress": {
+            "type": "boolean"
+          },
+          "countsByState": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Members by state (CoroutineState names)"
+          },
+          "memberCount": {
+            "type": "integer"
+          },
+          "problem": {
+            "type": "boolean"
+          },
+          "problemKinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentKind"
+            }
+          },
+          "matches": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CappedStrings"
+              }
+            ],
+            "nullable": true,
+            "description": "With q: the matching members, newest first"
+          },
+          "unknownMembers": {
+            "type": "integer",
+            "description": "Replay only: members whose state at the cursor is not known"
+          }
+        }
+      },
+      "RoundsPage": {
+        "type": "object",
+        "description": "A page of rounds: problem rounds first, then newest anchor first",
+        "required": [
+          "asOfSeq",
+          "total",
+          "items",
+          "nextCursor",
+          "unknownAtSeq",
+          "ungroupedMatches"
+        ],
+        "properties": {
+          "asOfSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoundEntry"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "unknownAtSeq": {
+            "type": "integer",
+            "description": "Replay only: coroutines whose state at the cursor is not known"
+          },
+          "ungroupedMatches": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CappedStrings"
+              }
+            ],
+            "nullable": true,
+            "description": "With q: matching coroutines that belong to no round"
+          }
+        }
+      },
+      "IncidentsPage": {
+        "type": "object",
+        "required": [
+          "list",
+          "asOfSeq",
+          "total",
+          "items",
+          "nextCursor",
+          "unknownAtSeq"
+        ],
+        "properties": {
+          "list": {
+            "type": "string",
+            "enum": [
+              "incidents"
+            ]
+          },
+          "asOfSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Incident"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "unknownAtSeq": {
+            "type": "integer"
+          }
+        }
+      },
+      "RoundMembersPage": {
+        "type": "object",
+        "required": [
+          "list",
+          "asOfSeq",
+          "total",
+          "items",
+          "nextCursor",
+          "unknownAtSeq"
+        ],
+        "properties": {
+          "list": {
+            "type": "string",
+            "enum": [
+              "round-members"
+            ]
+          },
+          "asOfSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoundMember"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "unknownAtSeq": {
+            "type": "integer"
+          }
+        }
+      },
+      "ObservedAgesPage": {
+        "type": "object",
+        "required": [
+          "list",
+          "asOfSeq",
+          "total",
+          "items",
+          "nextCursor",
+          "unknownAtSeq"
+        ],
+        "properties": {
+          "list": {
+            "type": "string",
+            "enum": [
+              "long-lived",
+              "long-suspended"
+            ]
+          },
+          "asOfSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObservedAge"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "unknownAtSeq": {
+            "type": "integer"
+          }
+        }
+      },
+      "FailureInfo": {
+        "type": "object",
+        "required": [
+          "exceptionType",
+          "message"
+        ],
+        "properties": {
+          "exceptionType": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "CoroutineSummary": {
+        "type": "object",
+        "description": "The durable per-coroutine summary (spec C-2)",
+        "required": [
+          "id",
+          "parentId",
+          "origin",
+          "name",
+          "creationLocation",
+          "createdAtEpochMs",
+          "firstObserved",
+          "lastTransition",
+          "lastObservedNanos",
+          "lastRunStart",
+          "everSuspended",
+          "terminal",
+          "failed",
+          "cancelled",
+          "failure",
+          "lastSuspension",
+          "lastSuspensionProvenance",
+          "lastThread",
+          "dispatcher",
+          "lastModifiedSeq",
+          "promotedAtSeq",
+          "grewAfterPromotion",
+          "reduced"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "APP",
+              "VIZCORE",
+              "UNKNOWN"
+            ],
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "creationLocation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SuspensionPoint"
+              }
+            ],
+            "nullable": true
+          },
+          "createdAtEpochMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "firstObserved": {
+            "$ref": "#/components/schemas/Transition"
+          },
+          "lastTransition": {
+            "$ref": "#/components/schemas/Transition"
+          },
+          "lastObservedNanos": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastRunStart": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Transition"
+              }
+            ],
+            "nullable": true
+          },
+          "everSuspended": {
+            "type": "boolean"
+          },
+          "terminal": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Transition"
+              }
+            ],
+            "nullable": true
+          },
+          "failed": {
+            "type": "boolean"
+          },
+          "cancelled": {
+            "type": "boolean"
+          },
+          "failure": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FailureInfo"
+              }
+            ],
+            "nullable": true
+          },
+          "lastSuspension": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SuspensionPoint"
+              }
+            ],
+            "nullable": true
+          },
+          "lastSuspensionProvenance": {
+            "type": "string",
+            "enum": [
+              "REAL_FRAME",
+              "CREATION_FALLBACK",
+              "STALE"
+            ],
+            "nullable": true
+          },
+          "lastThread": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ThreadObservation"
+              }
+            ],
+            "nullable": true
+          },
+          "dispatcher": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastModifiedSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "promotedAtSeq": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "grewAfterPromotion": {
+            "type": "boolean"
+          },
+          "reduced": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HierarchyNodeDto": {
+        "type": "object",
+        "description": "A hierarchy node with its round and summary",
+        "required": [
+          "id",
+          "parentId",
+          "children",
+          "name",
+          "scopeId",
+          "state",
+          "createdAtNanos",
+          "completedAtNanos",
+          "dispatcherId",
+          "dispatcherName",
+          "currentThreadId",
+          "currentThreadName",
+          "jobId",
+          "exceptionType",
+          "exceptionMessage",
+          "activeChildrenIds",
+          "activeChildrenCount",
+          "creationPoint",
+          "lastSuspensionPoint",
+          "roundId",
+          "summary",
+          "summaryState",
+          "summaryOnly",
+          "partial"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "The projection's state string"
+          },
+          "createdAtNanos": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completedAtNanos": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "dispatcherId": {
+            "type": "string",
+            "nullable": true
+          },
+          "dispatcherName": {
+            "type": "string",
+            "nullable": true
+          },
+          "currentThreadId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "currentThreadName": {
+            "type": "string",
+            "nullable": true
+          },
+          "jobId": {
+            "type": "string",
+            "nullable": true
+          },
+          "exceptionType": {
+            "type": "string",
+            "nullable": true
+          },
+          "exceptionMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "activeChildrenIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "activeChildrenCount": {
+            "type": "integer"
+          },
+          "creationPoint": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SuspensionPoint"
+              }
+            ],
+            "nullable": true
+          },
+          "lastSuspensionPoint": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SuspensionPoint"
+              }
+            ],
+            "nullable": true
+          },
+          "roundId": {
+            "type": "string",
+            "nullable": true
+          },
+          "summary": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CoroutineSummary"
+              }
+            ],
+            "nullable": true
+          },
+          "summaryState": {
+            "type": "string",
+            "enum": [
+              "CREATED",
+              "ACTIVE",
+              "SUSPENDED",
+              "WAITING_FOR_CHILDREN",
+              "COMPLETED",
+              "CANCELLED",
+              "FAILED"
+            ],
+            "nullable": true,
+            "description": "The health's classification of the summary (what problem counts use)"
+          },
+          "summaryOnly": {
+            "type": "boolean",
+            "description": "Built from the summary only: the events that created it are not retained"
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "Replay only: this coroutine's state at the cursor is not known"
           }
         }
       }
