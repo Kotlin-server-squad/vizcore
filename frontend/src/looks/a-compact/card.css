@@ -5,7 +5,9 @@
  * Rules are keyed on the graph's own data-card-look, not on <html>'s
  * data-look: an export sets the page's look aside (Classic dark), and the
  * cards must keep the styling that fits their size.
- * Shown: the name, a state pill and the second line. Hidden: the icon, the
+ * Sketch K-A-Compact: a 1 px card, the name in mono with its state's square
+ * dot, the state on the right, the second line under them (up to two lines).
+ * Text is at least 12 px. Shown: the name, a state pill and the second line. Hidden: the icon, the
  * running tint, the progress bar and the ID / Job / Scope rows (the Inspector
  * shows those for the selected coroutine).
  */
@@ -40,7 +42,10 @@
   border-color: hsl(var(--heroui-default-200));
   border-radius: 4px;
   background: hsl(var(--heroui-content1));
-  /* No drop shadow; the selection ring (also a box-shadow) stays. */
+}
+/* No drop shadow, also on hover (hence the extra [data-state]: above hover:shadow-2xl);
+   the selection ring, also a box-shadow, stays. */
+[data-card-look='a'] [data-state] [data-look-part='node'] {
   --tw-shadow: 0 0 #0000;
   --tw-shadow-colored: 0 0 #0000;
 }
@@ -53,13 +58,15 @@
 [data-card-look='a'] [data-look-part='node-head'] {
   margin: 0;
 }
+/* As the sketch: the name with its state's square dot on the left, the state on the
+   right, the second line under both. */
 [data-card-look='a'] [data-look-part='node-text'] {
   display: grid;
   /* The name keeps at least half the row; a long state ("Waiting for children") is cut short instead. */
   grid-template-columns: minmax(50%, 1fr) minmax(0, max-content);
   align-items: center;
   column-gap: 6px;
-  row-gap: 3px;
+  row-gap: 2px;
 }
 [data-card-look='a'] [data-look-part='node-name'] {
   font-family: var(--font-mono);
@@ -68,39 +75,45 @@
   line-height: 18px;
   -webkit-line-clamp: 1;
 }
+[data-card-look='a'] [data-look-part='node-name']::before {
+  content: '';
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: hsl(var(--card-hue));
+}
+/* The state: the sketch's coloured word, on a faint tint of its colour. */
 [data-card-look='a'] [data-look-part='node-state'] {
   display: block;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  padding: 0 6px;
+  padding: 0 5px;
   border-radius: 3px;
-  font-size: 11px;
-  line-height: 16px;
-  background: hsl(var(--card-hue) / 0.16);
+  font-size: 12px;
+  line-height: 17px;
+  background: hsl(var(--card-hue) / 0.14);
   color: hsl(var(--card-ink));
 }
-[data-card-look='a'] [data-look-part='node-state']::before {
-  content: '';
-  display: inline-block;
-  margin-right: 4px;
-  vertical-align: 1px;
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: hsl(var(--card-hue));
-}
-/* The pill has its own dot. */
+/* The name has the dot; the state's running mark goes. */
 [data-card-look='a'] [data-look-part='node-state'] > span {
   display: none;
 }
+/* What it waits for or holds: up to two lines, as in the sketch (its colour is Part 4's). */
 [data-card-look='a'] [data-look-part='node-activity'] {
   grid-column: 1 / -1;
-  font-size: 11px;
-  line-height: 15px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 16px;
 }
 [data-card-look='a'] [data-look-part='node-children'] {
   padding: 0 6px;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 12px;
 }
