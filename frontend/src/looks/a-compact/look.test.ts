@@ -99,6 +99,13 @@ describe('A · Compact', () => {
     expect(layoutCss).not.toMatch(/--tw-ring-[\w-]*\s*:\s*0/)
   })
 
+  it('draws the dock tabs’ focus ring inside the tab, where the sideways-scrolling tab row cannot clip it', () => {
+    const tabRules = rules.filter(rule =>
+      rule.selectors.includes("[data-look='a'] [data-look-part='dock-tabs'] > [role='tab']")
+    )
+    expect(tabRules.map(rule => rule.body).join()).toMatch(/--tw-ring-inset:\s*inset;/)
+  })
+
   it('uses !important only to beat the state chips’ inline border', () => {
     const important = rules.filter(rule => rule.body.includes('!important'))
     expect(important.map(rule => rule.selectors)).toEqual([
