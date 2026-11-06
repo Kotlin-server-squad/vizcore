@@ -5,8 +5,10 @@
  * Rules are keyed on the graph's own data-card-look, not on <html>'s
  * data-look: an export sets the page's look aside (Classic dark), and the
  * cards must keep the styling that fits their size.
- * Text is 16 px (name) and 13 px (pill, second line): with card.ts's fit floor
- * it stays at least 12 px on screen at the first fit.
+ * Text is 16 px (name) and 13 px (pill, second line, children label): with
+ * card.ts's fit floor it stays at least 12 px on screen at the first fit. The
+ * card is short (82 px), so on 1440 × 900 with the default dock the first view
+ * holds the root and its whole first row of children.
  * Shown: the name, a state pill and the second line. Hidden: the icon, the
  * running tint, the progress bar and the ID / Job / Scope rows (the Inspector
  * shows those for the selected coroutine).
@@ -37,7 +39,7 @@
 }
 
 [data-card-look='b'] [data-look-part='node'] {
-  padding: 13px 14px;
+  padding: 7px 12px;
   border-width: 1px;
   border-color: hsl(var(--heroui-default-200));
   border-radius: 14px;
@@ -59,13 +61,13 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 4px;
 }
 [data-card-look='b'] [data-look-part='node-name'] {
   max-width: 100%;
   font-size: 16px;
   font-weight: 600;
-  line-height: 22px;
+  line-height: 20px;
   -webkit-line-clamp: 1;
 }
 [data-card-look='b'] [data-look-part='node-state'] {
@@ -76,7 +78,7 @@
   border-radius: 9999px;
   font-size: 13px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: 16px;
   background: hsl(var(--card-hue) / 0.16);
   color: hsl(var(--card-ink));
 }
@@ -91,18 +93,19 @@
 [data-card-look='b'] [data-look-part='node-state'] > span {
   display: none;
 }
-/* What it waits for or holds, on up to two lines. */
+/* What it waits for or holds, on one line (the full text is in the Inspector). */
 [data-card-look='b'] [data-look-part='node-activity'] {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
   max-width: 100%;
   overflow: hidden;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
-  line-height: 18px;
+  line-height: 17px;
 }
 [data-card-look='b'] [data-look-part='node-children'] {
   border-radius: 9999px;
   padding: 1px 10px;
+  font-size: 13px;
+  line-height: 17px;
 }

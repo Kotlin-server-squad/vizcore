@@ -47,18 +47,60 @@ describe('B’s CSS', () => {
 
 describe('B’s graph card', () => {
   const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'card.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-  const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map(m => Number(m[1]))
+  /** The declarations of the rules whose selector ends on the part itself, as name → value. */
+  const rule = (part: string) =>
+    new Map(
+      [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+        .filter(m => (m[1] ?? '').split(',').some(sel => sel.trim().endsWith(`[data-look-part='${part}']`)))
+        .flatMap(m => [...(m[2] ?? '').matchAll(/([\w-]+):\s*([^;]+);/g)].map(d => [d[1]!, d[2]!.trim()] as const)),
+    )
+  const px = (value: string | undefined) => Number.parseFloat(value ?? 'NaN')
+  /** "8px 12px" → [top, bottom]. */
+  const vertical = (padding: string | undefined): [number, number] => {
+    const [top = Number.NaN, , bottom = top] = (padding ?? '').split(/\s+/).map(px)
+    return [top, bottom]
+  }
 
-  it('keeps every card text at least 12 px on screen at the fit floor', () => {
-    expect(sizes.length).toBeGreaterThanOrEqual(3)
-    expect(calmCard.fitMinZoom).toBeDefined()
-    expect(Math.min(...sizes) * calmCard.fitMinZoom!).toBeGreaterThanOrEqual(12)
+  it('declares the size of every text it shows, and each is at least 12 px on screen at the fit floor', () => {
+    const floor = calmCard.fitMinZoom!
+    expect(floor).toBeGreaterThanOrEqual(0.9)
+    for (const part of ['node-name', 'node-state', 'node-activity', 'node-children']) {
+      const size = px(rule(part).get('font-size'))
+      expect(size, part).toBeGreaterThan(0)
+      expect(size * floor, part).toBeGreaterThanOrEqual(12)
+    }
   })
 
-  it('reserves room for the name, the pill and two lines of the second line', () => {
-    // padding 13 + name 22 + gap 6 + pill 22 + gap 6 + 2 lines × 18 + padding 13
-    expect(calmCard.height).toBeGreaterThanOrEqual(13 + 22 + 6 + 22 + 6 + 2 * 18 + 13)
-    expect(calmCard).toEqual({ width: 200, height: 120, fitMinZoom: 0.93 })
+  it('holds the name, the pill and one line of the second line inside its box, as card.css draws them', () => {
+    const node = rule('node')
+    const [padTop, padBottom] = vertical(node.get('padding'))
+    const border = 2 * px(node.get('border-width'))
+    const gap = px(rule('node-text').get('gap'))
+    const pill = rule('node-state')
+    const [pillTop, pillBottom] = vertical(pill.get('padding'))
+    const contentHeight =
+      border +
+      padTop +
+      padBottom +
+      px(rule('node-name').get('line-height')) +
+      gap +
+      (pillTop + px(pill.get('line-height')) + pillBottom) +
+      gap +
+      px(rule('node-activity').get('line-height'))
+    expect(contentHeight).toBeLessThanOrEqual(calmCard.height)
+    // The name and the second line keep to one line each, so nothing grows past that.
+    expect(rule('node-name').get('-webkit-line-clamp')).toBe('1')
+    expect(rule('node-activity').get('white-space')).toBe('nowrap')
+  })
+
+  it('is short enough for the root and its first row of children above the default dock at 1440 × 900', () => {
+    // The graph canvas there is 287 px tall in B (measured); the fit starts 40 px down (the zoom buttons), and the
+    // layout puts 32 px of padding above the root and 64 px between the rows (CoroutineTreeGraph).
+    const canvas = 287
+    const bottomOfChildren = 40 + (32 + calmCard.height + 64 + calmCard.height) * calmCard.fitMinZoom!
+    expect(bottomOfChildren).toBeLessThanOrEqual(canvas)
+    // Six children (the E-commerce demo) side by side fit the canvas's 1,374 px width at the floor.
+    expect((6 * calmCard.width + 5 * 40 + 64) * calmCard.fitMinZoom!).toBeLessThanOrEqual(1374)
   })
 })
 

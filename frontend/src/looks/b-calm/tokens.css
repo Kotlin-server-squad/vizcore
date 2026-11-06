@@ -11,14 +11,17 @@ html[data-look='b'] {
   --heroui-radius-large: 16px;
 }
 
+/* The bottom padding is 16 px (the sketch's 24 px less 8): with the tighter
+   header and toolbar below, it gives the graph the height to show a root and
+   its first row of children at a readable size above the default dock. */
 [data-look='b'] [data-look-part='page'] {
-  padding: 24px 32px;
+  padding: 24px 32px 16px;
 }
 
 /* Header to body only: the gap between the main view and the dock stays 12 px,
    which the dock's size rules (lib/dock-layout.ts) assume. */
 [data-look='b'] [data-look-part='workspace'] {
-  gap: 18px;
+  gap: 14px;
 }
 
 [data-look='b'] [data-look-part='main'],
@@ -32,7 +35,7 @@ html[data-look='b'] {
    The negative margins cancel the page's padding at the top and the sides. */
 [data-look='b'] [data-look-part='header'] {
   margin: -24px -32px 0;
-  padding: 18px 32px;
+  padding: 14px 32px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -94,7 +97,7 @@ html[data-look='b'] {
 
 [data-look='b'] [data-look-part='main'] > div:first-child {
   gap: 8px 10px;
-  padding: 0 0 14px;
+  padding: 0 0 8px;
   border-bottom-color: transparent;
 }
 
@@ -111,14 +114,14 @@ html[data-look='b'] {
 }
 
 [data-look='b'] [data-look-part='main'] [role='group'][aria-label='View'] > button {
-  padding: 6px 14px;
+  padding: 5px 14px;
   border-radius: 8px;
   font-size: 13px;
 }
 
 /* The state chips: white pills with a hairline border (a chosen chip keeps its tint). */
 [data-look='b'] [data-look-part='main'] [role='group'][aria-label='Coroutine state'] > button {
-  padding: 6px 12px;
+  padding: 4px 12px;
   font-size: 13px;
 }
 
