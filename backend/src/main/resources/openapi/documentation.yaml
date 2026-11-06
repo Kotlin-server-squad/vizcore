@@ -1566,10 +1566,12 @@ paths:
   /api/sync/mutex/counter:
     get:
       tags: [Scenarios - Sync]
-      summary: Run thread-safe counter scenario
+      summary: "Run Thread-Safe Counter: Festival Gates"
       description: >
-        Demonstrates using a Mutex for atomic counter increments from
-        multiple coroutines.
+        Three gates count festival visitors into one shared count. Each update
+        holds a lock while it reads, shows and writes the count, so the other
+        gates wait for it, suspended, and no visitor is lost. About 14 s at
+        scale 1; answers once the demo has ended.
       operationId: runMutexCounterScenario
       responses:
         "200":
@@ -1588,10 +1590,12 @@ paths:
   /api/sync/mutex/bank-transfer:
     get:
       tags: [Scenarios - Sync]
-      summary: Run bank account transfer scenario
+      summary: "Run Bank Account Transfer: Household Bills"
       description: >
-        Demonstrates safe money transfer between accounts with consistent
-        lock ordering to prevent deadlocks.
+        Anna and Ben send each other money. Each transfer locks both accounts,
+        always Anna's first, so the transfers queue instead of deadlocking; the
+        one Ben cannot afford is declined. About 12 s at scale 1; answers once
+        the demo has ended.
       operationId: runMutexBankTransferScenario
       responses:
         "200":
@@ -1610,10 +1614,12 @@ paths:
   /api/sync/mutex/cache:
     get:
       tags: [Scenarios - Sync]
-      summary: Run cache read-through scenario
+      summary: "Run Cache Read-Through: Product Prices"
       description: >
-        Demonstrates thread-safe lazy initialization and cache read-through
-        pattern using Mutex.
+        Eight requests for two prices meet an empty cache. The first miss loads
+        a price under the lock; the others wait, check again and find it cached;
+        later requests read the cache without the lock. Two loads in all. About
+        11.5 s at scale 1; answers once the demo has ended.
       operationId: runMutexCacheScenario
       responses:
         "200":
@@ -1632,15 +1638,16 @@ paths:
   /api/sync/mutex/deadlock-demo:
     get:
       tags: [Scenarios - Sync]
-      summary: Run deadlock demonstration scenario
+      summary: "Run Deadlock Demo: Two Transfers at Month End"
       description: >
-        Intentionally creates a deadlock to demonstrate deadlock detection
-        capabilities. Two coroutines attempt to acquire two mutexes in
-        opposite order.
+        Anna pays Ben and Ben pays Anna, each locking the payer's account
+        first. Each holds one account and waits, suspended, for the other's.
+        After 10 s a watchdog cancels both, which releases their accounts.
+        About 11 s at scale 1; answers once the demo has ended.
       operationId: runMutexDeadlockScenario
       responses:
         "200":
-          description: Scenario completed (deadlock detected and resolved)
+          description: Scenario completed (the watchdog cancelled the deadlocked transfers)
           content:
             application/json:
               schema:
