@@ -240,12 +240,14 @@ html[data-look='a'] [data-look-part='node'] {
   font-size: 0.7rem;
 }
 
-@media (min-width: 1024px) {
-  [data-look='a'] [data-look-part='dock'] [data-testid='inspector'] > div:last-child {
-    column-gap: 0;
-  }
+[data-look='a'] [data-look-part='dock'] [data-testid='inspector'] > div:last-child {
+  column-gap: 0;
+}
 
-  [data-look='a'] [data-look-part='dock'] [data-testid='inspector'] > div:last-child > div + div {
+/* Side by side only from 1,024 px, as the Inspector's own lg:grid-cols-2. (Nested, so
+   every rule of this file starts with its look's selector.) */
+[data-look='a'] [data-look-part='dock'] [data-testid='inspector'] > div:last-child > div + div {
+  @media (min-width: 1024px) {
     padding-left: 14px;
     margin-left: 14px;
     border-left: 1px solid var(--border);
