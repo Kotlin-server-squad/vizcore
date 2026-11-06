@@ -52,7 +52,8 @@
 }
 [data-look='a'] [data-look-part='node-text'] {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* The name keeps at least half the row; a long state ("Waiting for children") is cut short instead. */
+  grid-template-columns: minmax(50%, 1fr) minmax(0, max-content);
   align-items: center;
   column-gap: 6px;
   row-gap: 3px;
@@ -65,9 +66,10 @@
   -webkit-line-clamp: 1;
 }
 [data-look='a'] [data-look-part='node-state'] {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   padding: 0 6px;
   border-radius: 3px;
   font-size: 11px;
@@ -77,6 +79,9 @@
 }
 [data-look='a'] [data-look-part='node-state']::before {
   content: '';
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: 1px;
   width: 6px;
   height: 6px;
   border-radius: 2px;
