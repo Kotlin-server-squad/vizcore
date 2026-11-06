@@ -173,29 +173,41 @@ class VizSemaphore(
      * Release a permit back to the pool. It counts as the releasing coroutine's own (its oldest) when that
      * coroutine holds one; otherwise whose permit came back is unknown, and the event says so (`holderUnknown`)
      * instead of naming a holder.
+     *
+     * The release is reported before it is made: once the delegate has the permit back, a waiter can take it and
+     * report its acquire on another thread straight away, and a release reported after that would show one more
+     * holder than there are permits. The permit is given back even if reporting it fails.
      */
     fun release() {
+        // A release the delegate would refuse (every permit already free) fails as before, without reporting a
+        // release or changing what is tracked.
+        if (delegate.availablePermits >= totalPermits) delegate.release()
+
         val coroutineElement = VizCoroutineElement.current()
         val released = coroutineElement?.let { takeOldestPermit(it.coroutineId) }
+        val available = delegate.availablePermits
 
-        delegate.release()
+        try {
+            session.send(
+                SemaphorePermitReleased(
+                    sessionId = session.sessionId,
+                    seq = session.nextSeq(),
+                    tsNanos = System.nanoTime(),
+                    semaphoreId = semaphoreId,
+                    semaphoreLabel = label,
+                    releaserId = coroutineElement?.coroutineId ?: "unknown",
+                    releaserLabel = coroutineElement?.label,
+                    // A queued waiter takes the permit at once; otherwise it is free.
+                    newAvailablePermits = if (waitQueue.isEmpty()) minOf(available + 1, totalPermits) else available,
+                    holdDurationNanos = released?.let { System.nanoTime() - it.acquireTime } ?: 0L,
+                    holderUnknown = released == null,
+                ),
+            )
+        } finally {
+            delegate.release()
+        }
         trimHoldersToPermitsInUse()
         retireEndedHolders()
-
-        session.send(
-            SemaphorePermitReleased(
-                sessionId = session.sessionId,
-                seq = session.nextSeq(),
-                tsNanos = System.nanoTime(),
-                semaphoreId = semaphoreId,
-                semaphoreLabel = label,
-                releaserId = coroutineElement?.coroutineId ?: "unknown",
-                releaserLabel = coroutineElement?.label,
-                newAvailablePermits = delegate.availablePermits,
-                holdDurationNanos = released?.let { System.nanoTime() - it.acquireTime } ?: 0L,
-                holderUnknown = released == null,
-            ),
-        )
 
         emitStateChanged()
     }
