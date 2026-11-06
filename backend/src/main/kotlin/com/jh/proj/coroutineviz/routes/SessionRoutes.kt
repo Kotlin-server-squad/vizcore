@@ -42,6 +42,9 @@ private val logger = LoggerFactory.getLogger("CoroutineVizRouting")
  */
 const val DEFAULT_LEAK_MS: Long = 30_000
 
+/** The seq a hierarchy response at a bound or replay view describes (its body stays a JSON array). */
+const val AS_OF_SEQ_HEADER = "X-Viz-As-Of-Seq"
+
 /** Lower clamp bound for the leak threshold — guards against absurdly-small values (V5). */
 const val MIN_LEAK_MS: Long = 1_000
 
@@ -218,23 +221,40 @@ fun Route.registerSessionRoutes() {
         call.respond(HttpStatusCode.OK, events)
     }
 
+    // Nodes at one moment, with their derived round and C-2 summary (spec C-3; plan E-6): current, at a replay cursor
+    // (atSeq) or bound to a health (asOfSeq), optionally one scope or one round.
     get("/api/sessions/{id}/hierarchy") {
-        val sessionId =
-            call.parameters["id"] ?: run {
-                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing session ID"))
+        val scopeId = call.request.queryParameters["scopeId"]
+        val roundId = call.request.queryParameters["roundId"]
+        val binding =
+            try {
+                parseViewBinding(call.request.queryParameters)
+            } catch (e: BadReadParameter) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "bad parameter"))
                 return@get
             }
-
-        val session = call.resolveScopedSession(sessionId)
-        if (session == null) {
-            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
+        if (binding == ViewBinding.Current) {
+            // Not a health read: without usable summaries the projection still answers, without rounds.
+            val sessionId = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("Missing session ID"))
+            val ingest = IngestStates.snapshot(sessionId)
+            val session =
+                call.resolveScopedSession(sessionId)
+                    ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Session not found"))
+            val nodes =
+                try {
+                    hierarchyOf(readView(session, ingest, binding, call.leakThresholdMs()), scopeId, roundId)
+                } catch (_: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
+                    projectionOnlyHierarchy(session, scopeId).takeIf { roundId == null }.orEmpty()
+                } catch (_: HistoryTrimmedException) {
+                    projectionOnlyHierarchy(session, scopeId).takeIf { roundId == null }.orEmpty()
+                }
+            call.respond(HttpStatusCode.OK, nodes)
             return@get
         }
-
-        val scopeId = call.request.queryParameters["scopeId"]
-        val tree = session.projectionService.getHierarchyTree(scopeId)
-
-        call.respond(HttpStatusCode.OK, tree)
+        call.withSessionView { view ->
+            call.response.headers.append(AS_OF_SEQ_HEADER, view.seq.toString())
+            call.respond(HttpStatusCode.OK, hierarchyOf(view, scopeId, roundId))
+        }
     }
 
     get("/api/sessions/{id}/metrics") {
@@ -302,6 +322,22 @@ fun Route.registerSessionRoutes() {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing coroutine ID"))
                 return@get
             }
+
+        // At a replay cursor or bound to a health: the timeline of that moment (plan E-7).
+        if (call.request.queryParameters
+                .names()
+                .any { it == "atSeq" || it == "asOfSeq" }
+        ) {
+            call.withSessionView { view ->
+                val body = timelineAt(view, coroutineId)
+                if (body == null) {
+                    call.respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
+                } else {
+                    call.respond(HttpStatusCode.OK, body)
+                }
+            }
+            return@get
+        }
 
         val session = call.resolveScopedSession(sessionId)
         if (session == null) {

@@ -37,6 +37,8 @@ data class RoundsPage(
     val nextCursor: String?,
     /** 0 outside replay; in replay, how many coroutines' state at the cursor is not known. */
     val unknownAtSeq: Int,
+    /** With `q`: matching coroutines that belong to no round (their ancestry reaches an untracked parent), else null. */
+    val ungroupedMatches: Capped<String>? = null,
 )
 
 internal const val MAX_QUERY_LENGTH = 200
@@ -70,14 +72,7 @@ internal fun listRounds(
                 val vizcoreAnchor = anchor != null && derived.originOf(anchor) == CoroutineOrigin.VIZCORE
                 val members = membersByAnchor[r.anchorId].orEmpty()
                 val matches =
-                    query?.let { q ->
-                        members
-                            .filter {
-                                it.matches(
-                                    q,
-                                )
-                            }.sortedWith(compareByDescending<CoroutineSummary> { it.firstObserved.seq }.thenBy { it.id })
-                    }
+                    query?.let { q -> members.filter { it.matches(q) }.sortedWith(NEWEST_FIRST_OBSERVED) }
                 when {
                     problemsOnly && kinds.isEmpty() -> null
                     !includeVizcore && vizcoreAnchor && kinds.isEmpty() -> null
@@ -101,10 +96,22 @@ internal fun listRounds(
                 }
             }.sortedWith(compareBy(::roundKey))
     val page = Keyset.page(entries, ::roundKey, params["cursor"], limit)
-    return RoundsPage(view.seq, entries.size, page.items, page.nextCursor, view.unknownAtSeq)
+    val ungrouped = query?.let { q -> membersByAnchor[null].orEmpty().filter { it.matches(q) }.sortedWith(NEWEST_FIRST_OBSERVED) }
+    return RoundsPage(
+        view.seq,
+        entries.size,
+        page.items,
+        page.nextCursor,
+        view.unknownAtSeq,
+        ungrouped?.let { m ->
+            Capped.of(m.map { it.id })
+        },
+    )
 }
 
 private fun roundKey(r: RoundEntry) = Keyset.Key(if (r.problem) 0 else 1, r.anchorCreatedNanos, r.anchorCreatedSeq, r.anchorId)
 
 private fun CoroutineSummary.matches(needle: String): Boolean =
     listOfNotNull(name, creationLocation?.function, creationLocation?.fileName).any { it.lowercase().contains(needle) }
+
+private val NEWEST_FIRST_OBSERVED = compareByDescending<CoroutineSummary> { it.firstObserved.seq }.thenBy { it.id }

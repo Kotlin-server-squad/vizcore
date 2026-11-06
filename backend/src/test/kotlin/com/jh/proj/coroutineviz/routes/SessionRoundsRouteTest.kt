@@ -139,6 +139,22 @@ class SessionRoundsRouteTest {
         }
 
     @Test
+    fun `find also reports matches that belong to no round, healthy or failed`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("app-rounds-orphans")
+            val s = SessionManager.getSession(id)!!
+            // Their parent was never captured: no round (spec "Rounds", orphans).
+            s.send(created(id, "orphan-ok", sec(1), parent = "gone"))
+            s.send(created(id, "orphan-bad", sec(2), parent = "gone"))
+            s.send(failed(id, "orphan-bad", sec(3), parent = "gone"))
+            val page = client.rounds(id, "?q=orphan")
+            assertEquals(0, page.total)
+            assertEquals(listOf("orphan-bad", "orphan-ok"), page.ungroupedMatches!!.items)
+            assertNull(client.rounds(id).ungroupedMatches, "only with q")
+        }
+
+    @Test
     fun `problems only, and vizcore rounds only on request`() =
         testApplication {
             application { module() }

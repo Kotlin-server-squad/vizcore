@@ -152,3 +152,26 @@ internal suspend fun eventually(
         delay(20)
     }
 }
+
+/** A store whose sessions keep no summaries: `readSummaries` throws as it does for an abandoned table. */
+internal class SessionHealthUnavailableTestStore : com.jh.proj.coroutineviz.session.SessionStoreInterface {
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, com.jh.proj.coroutineviz.session.VizSession>()
+
+    fun create(name: String): com.jh.proj.coroutineviz.session.VizSession =
+        com.jh.proj.coroutineviz.session
+            .VizSession(name, keepSummaries = false)
+            .also { sessions[it.sessionId] = it }
+
+    override suspend fun createSession(name: String?): com.jh.proj.coroutineviz.session.VizSession = create(name ?: "s-${sessions.size}")
+
+    override fun getSession(sessionId: String): com.jh.proj.coroutineviz.session.VizSession? = sessions[sessionId]
+
+    override fun listSessions(): List<com.jh.proj.coroutineviz.models.SessionInfo> = emptyList()
+
+    override fun deleteSession(sessionId: String): Boolean = sessions.remove(sessionId)?.also { it.close() } != null
+
+    override fun clearAll() {
+        sessions.values.forEach { it.close() }
+        sessions.clear()
+    }
+}
