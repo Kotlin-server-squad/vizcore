@@ -274,6 +274,7 @@ cd frontend && pnpm test                          # TypeScript: Vitest
 - [CONTRIBUTING.md](CONTRIBUTING.md) — conventions, commit style, how to submit changes
 - [docs/README.md](docs/README.md) — documentation index (guides, ADRs, topics)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — production deployment
+- [docs/guides/look-experiment.md](docs/guides/look-experiment.md) — the look experiment: what it collects (anonymous, on your server only) and how to switch it off
 - [CLAUDE.md](CLAUDE.md) — repository map and conventions for AI coding agents
 - [CHANGELOG.md](CHANGELOG.md) — release history
 

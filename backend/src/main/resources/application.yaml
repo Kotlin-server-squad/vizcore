@@ -82,6 +82,16 @@ scenarios:
   # small scale. Anything else runs them as scripted.
   timeScale: ${DEMO_TIME_SCALE:1.0}
 
+lookExperiment:
+  # The look experiment on the session page (docs/guides/look-experiment.md). Off by default: nothing is
+  # assigned or recorded, and every page is as without it. Read at startup; restart to change.
+  enabled: ${LOOK_EXPERIMENT_ENABLED:false}
+  # New visitors' share of each look, as look:weight pairs (classic, a, b, c; a look left out gets 0).
+  # Invalid lists fall back to the even split.
+  weights: "${LOOK_EXPERIMENT:classic:25,a:25,b:25,c:25}"
+  # Optional link to an outside survey, shown as "Tell us more" next to the vote, with look=<id> added.
+  surveyUrl: ${LOOK_SURVEY_URL:}
+
 share:
   rateLimit:
     # Per-IP limit on GET /api/shared/{token} (D-12). Applied at install(RateLimit)
