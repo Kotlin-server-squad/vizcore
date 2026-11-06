@@ -264,15 +264,27 @@ class VizSession(
      * increasing counter.
      */
     fun send(event: VizEvent) {
-        append(event) {
-            if (event.seq <= lastSentSeq) {
-                // A concurrent sender appended a higher seq after this event was
-                // constructed (or the event carries a stale/placeholder seq):
-                // re-stamp so seq order matches append order.
-                event.seq = assignNextSeq()
-            } else {
-                seqGenerator.updateAndGet { maxOf(it, event.seq) }
-            }
+        append(event, guard = { true }) { finalizeSentSeq(event) }
+    }
+
+    /**
+     * [send] only if [condition] holds when the event would be appended: it is checked under the send lock, against the
+     * [snapshot] as every event so far left it, so no other event can land between the check and the append. The
+     * DebugProbes source adds a sampled state change to a wrapper coroutine this way, only while the session still
+     * records the state it contradicts (triage PR 3). Returns whether the event was sent.
+     */
+    internal fun sendIf(
+        event: VizEvent,
+        condition: (RuntimeSnapshot) -> Boolean,
+    ): Boolean = append(event, guard = { condition(snapshot) }) { finalizeSentSeq(event) }
+
+    // A concurrent sender appended a higher seq after this event was constructed (or the event carries a
+    // stale/placeholder seq): re-stamp so seq order matches append order. Caller holds [sendLock].
+    private fun finalizeSentSeq(event: VizEvent) {
+        if (event.seq <= lastSentSeq) {
+            event.seq = assignNextSeq()
+        } else {
+            seqGenerator.updateAndGet { maxOf(it, event.seq) }
         }
     }
 
@@ -287,7 +299,7 @@ class VizSession(
      * strictly increasing even when ingest interleaves with in-process [send].
      */
     fun ingest(event: VizEvent) {
-        append(event) { event.seq = assignNextSeq() }
+        append(event, guard = { true }) { event.seq = assignNextSeq() }
     }
 
     /**
@@ -303,14 +315,16 @@ class VizSession(
      */
     private inline fun append(
         event: VizEvent,
+        guard: () -> Boolean,
         finalizeSeq: () -> Unit,
-    ) {
+    ): Boolean {
         // Capture the callback once: assigning onEventProcessed between a null
         // check and the invocation must not produce a garbage `nanoTime - 0`
         // duration sample (WR-12 check-then-act race).
         val onProcessed = onEventProcessed
         val startNanos = if (onProcessed != null) System.nanoTime() else 0L
         synchronized(sendLock) {
+            if (!guard()) return false
             finalizeSeq()
             lastSentSeq = event.seq
             store.record(event)
@@ -322,6 +336,7 @@ class VizSession(
         }
         onEventEmitted?.invoke()
         onProcessed?.invoke(System.nanoTime() - startNanos)
+        return true
     }
 
     /**

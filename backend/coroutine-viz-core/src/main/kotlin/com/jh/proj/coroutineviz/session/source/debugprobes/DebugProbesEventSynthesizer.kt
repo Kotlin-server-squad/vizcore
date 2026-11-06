@@ -211,7 +211,9 @@ class DebugProbesEventSynthesizer(
                 is CoroutineDelta.StateChanged -> delta.now.wrapper
                 is CoroutineDelta.Vanished -> delta.last.wrapper
             }
-        if (wrapper != null) return wrapperEvents(delta, session, wrapper)
+        // A wrapper coroutine's creation, start and end are its wrapper's events; DebugProbesSource reconciles its sampled
+        // state every poll instead (DebugProbesSource.reconcileWrapper), so its deltas add nothing here.
+        if (wrapper != null) return emptyList()
         return when (delta) {
             is CoroutineDelta.Appeared -> appearedEvents(contextFor(session, delta.now), delta.now)
             is CoroutineDelta.StateChanged -> stateChangedEvents(contextFor(session, delta.now), delta)
@@ -219,32 +221,30 @@ class DebugProbesEventSynthesizer(
         }
     }
 
-    /**
-     * A [com.jh.proj.coroutineviz.wrappers.VizScope] coroutine ([CoroutineSnapshot.wrapper]): its wrapper events give its
-     * creation, start and end, so DebugProbes add only the state changes they sampled — a suspension (a plain `delay()`
-     * suspends without a wrapper event, and without it the coroutine would read as running) and the resume after it —
-     * under the wrapper's own id. Nothing once its Job completed: its terminal event is the wrapper's, and nothing
-     * follows it.
-     */
-    private fun wrapperEvents(
-        delta: CoroutineDelta,
+    private fun wrapperContext(
         session: VizSession,
         element: VizCoroutineElement,
-    ): List<VizEvent> {
-        if (element.ownerJob?.isCompleted == true) return emptyList()
-        val ctx = EventContext(session, element.coroutineId, element.jobId, element.parentCoroutineId, element.scopeId, element.label)
-        return when (delta) {
-            is CoroutineDelta.Appeared -> if (delta.now.state == CoroState.SUSPENDED) suspendedEvents(ctx, delta.now) else emptyList()
-            is CoroutineDelta.StateChanged ->
-                when {
-                    delta.to == CoroState.SUSPENDED -> suspendedEvents(ctx, delta.now)
-                    delta.from == CoroState.SUSPENDED && delta.to == CoroState.RUNNING ->
-                        listOf(ctx.coroutineResumed()) + threadEvents(ctx, delta.now)
-                    else -> emptyList()
-                }
-            is CoroutineDelta.Vanished -> emptyList()
-        }
-    }
+    ) = EventContext(session, element.coroutineId, element.jobId, element.parentCoroutineId, element.scopeId, element.label)
+
+    /** A sampled suspension of a wrapper coroutine, under the wrapper's own id (with the frame's provenance). */
+    internal fun wrapperSuspended(
+        session: VizSession,
+        snapshot: CoroutineSnapshot,
+        element: VizCoroutineElement,
+    ): VizEvent = suspendedEvents(wrapperContext(session, element), snapshot).single()
+
+    /** A sampled resume of a wrapper coroutine, under the wrapper's own id. */
+    internal fun wrapperResumed(
+        session: VizSession,
+        element: VizCoroutineElement,
+    ): VizEvent = wrapperContext(session, element).coroutineResumed()
+
+    /** The thread a sampled resume of a wrapper coroutine runs on, when observed. */
+    internal fun wrapperThreadEvents(
+        session: VizSession,
+        snapshot: CoroutineSnapshot,
+        element: VizCoroutineElement,
+    ): List<VizEvent> = threadEvents(wrapperContext(session, element), snapshot)
 
     /**
      * Appeared mapping: created/started per observed state, then the one-shot

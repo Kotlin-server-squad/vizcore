@@ -1,5 +1,8 @@
 package com.jh.proj.coroutineviz.session.source.debugprobes
 
+import com.jh.proj.coroutineviz.wrappers.VizCoroutineElement
+import com.jh.proj.coroutineviz.models.RuntimeSnapshot
+import com.jh.proj.coroutineviz.models.CoroutineState
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.session.EventSampler
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -196,6 +199,7 @@ class DebugProbesSource(
                 // This delta's events are all out — fold it into the committed state.
                 applyDelta(committed, delta)
             }
+            next.values.forEach { snapshot -> snapshot.wrapper?.let { reconcileWrapper(snapshot, it) } }
             // Fully successful tick: committed == next.
             prev = next
             if (polling) onPollCompleted?.invoke(pollNanos, pollEpochMs)
@@ -212,6 +216,37 @@ class DebugProbesSource(
             logger.warn("DebugProbesSource poll tick failed; loop continues, prev advanced past emitted deltas", t)
         }
     }
+
+    /**
+     * A wrapper coroutine ([CoroutineSnapshot.wrapper]) gets its creation, start and end from its wrapper events, and so
+     * do the suspensions the wrappers instrument; a plain suspension (a `delay()` outside them) has no wrapper event, and
+     * without one the coroutine would read as running. Each poll therefore compares what DebugProbes sampled with the
+     * state the session last recorded for the wrapper's id, from either source, and adds only the missing change: a
+     * suspension while the session records it running, a resume while it records it suspended. The check and the append
+     * are one step under the session's send lock ([VizSession.sendIf]), so nothing is added after the wrapper's end and
+     * nothing is sent twice.
+     */
+    private fun reconcileWrapper(
+        snapshot: CoroutineSnapshot,
+        element: VizCoroutineElement,
+    ) {
+        if (loop?.isActive == false) return
+        val id = element.coroutineId
+        fun recorded(state: CoroutineState) = { s: RuntimeSnapshot -> s.coroutines[id]?.state == state }
+        when (snapshot.state) {
+            CoroState.SUSPENDED -> sendSampled(synthesizer.wrapperSuspended(session, snapshot, element), recorded(CoroutineState.ACTIVE))
+            CoroState.RUNNING ->
+                if (sendSampled(synthesizer.wrapperResumed(session, element), recorded(CoroutineState.SUSPENDED))) {
+                    synthesizer.wrapperThreadEvents(session, snapshot, element).forEach { sendSampled(it, recorded(CoroutineState.ACTIVE)) }
+                }
+            CoroState.CREATED -> Unit
+        }
+    }
+
+    private fun sendSampled(
+        event: VizEvent,
+        condition: (RuntimeSnapshot) -> Boolean,
+    ): Boolean = (sampler == null || sampler.shouldKeep(event)) && session.sendIf(event, condition)
 
     /** Fold a fully-emitted delta into the running committed snapshot. */
     private fun applyDelta(
