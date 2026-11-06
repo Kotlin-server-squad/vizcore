@@ -5,6 +5,7 @@ import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.job.JobStateChanged
 import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.SummaryTable
+import com.jh.proj.coroutineviz.health.SummaryTableState
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.models.RuntimeSnapshot
 import kotlinx.coroutines.CoroutineScope
@@ -150,7 +151,12 @@ class VizSession(
     private val applier = EventApplier(snapshot)
 
     // Durable per-coroutine summaries (spec 2026-10-21, C-2); guarded by [sendLock] like the snapshot.
-    private val summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
+    private var summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
+
+    /** The last seq of the checkpoint the summaries were restored from, `null` when they were folded from the events alone. */
+    @Volatile
+    var summarySeedSeq: Long? = null
+        private set
 
     /** Test hook: runs before each event is applied to the summary table, to inject a failure. */
     @Volatile
@@ -342,13 +348,32 @@ class VizSession(
      * send lock. A summary failure degrades the
      * summaries only; the rest of the rehydration still completes.
      */
-    fun rehydrateFromStore() {
-        val events = store.all() // ExposedEventStore returns these ordered by seq
+    fun rehydrateFromStore() = rehydrateFrom(store.all(), seed = null)
+
+    /**
+     * Rebuilds the read models from [events] (in seq order) and, when [seed] is given, the summaries from that checkpoint
+     * plus the events after it (spec C-4); events up to the checkpoint rebuild the snapshot and projections only. The
+     * caller reads [events] and [seed] as one cut: [seed] must not be newer than the newest event. Call it once, before
+     * the session is published. A summary failure degrades the summaries only.
+     */
+    fun rehydrateFrom(
+        events: List<VizEvent>,
+        seed: SummaryTableState?,
+    ) {
+        val newest = events.lastOrNull()?.seq ?: 0L
+        require(seed == null || seed.lastEventSeq <= newest) {
+            "checkpoint at ${seed?.lastEventSeq} is newer than the newest event $newest"
+        }
         if (events.isEmpty()) return
         synchronized(sendLock) {
+            if (seed != null && summaryTable != null) {
+                summaryTable = SummaryTable.restore(seed)
+                summarySeedSeq = seed.lastEventSeq
+            }
+            val after = summarySeedSeq ?: Long.MIN_VALUE
             events.forEach {
                 applier.apply(it)
-                applyToSummaries(it)
+                if (it.seq > after) applyToSummaries(it)
             }
             val maxSeq = events.maxOf { it.seq }
             if (maxSeq > lastSentSeq) {
@@ -359,6 +384,13 @@ class VizSession(
         projectionService.rebuildFrom(events)
         metricsProjection.rebuildFrom(events)
     }
+
+    /**
+     * Runs [block] under the send lock with the live summary table (`null` when the session keeps none or they were
+     * abandoned): one consistent cut of store, snapshot and summaries (spec C-6). Keep [block] short, and copy what it
+     * returns: the view is only safe under the lock.
+     */
+    fun <T> readCut(block: (SummaryView?) -> T): T = synchronized(sendLock) { block(summaryTable?.takeUnless { summariesDegraded }) }
 
     /**
      * Async event send - for non-coroutine contexts.
