@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.session.source.debugprobes.DebugProbesSource
 import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -38,6 +39,9 @@ private const val DEFAULT_STABLE_CONNECTION_MS = 5_000L
 
 // Threads the SDK's Ktor client may use at once: its selector loop holds one, the WebSocket the rest.
 private const val TRANSPORT_PARALLELISM = 4
+
+// The CIO engine's own default request timeout, kept when the HttpTimeout plugin takes it over.
+private const val REQUEST_TIMEOUT_MILLIS = 15_000L
 
 /**
  * How long [VizcoreClient.start] waits for the backend to create the session before it returns
@@ -262,8 +266,10 @@ class VizcoreClient internal constructor(
      * Wait up to [timeoutMillis] until the client takes the session's events (its outbound feed subscribed to the bus):
      * an event the app sends from then on is sent, or counted as lost. The factory calls it before returning, because a
      * wrapper coroutine's events have no other way to the backend (DebugProbes leave it to them).
+     * The wait is vizcore's own coroutine, so [VizcoreInternal] keeps it out of the app's session.
      */
-    internal fun awaitCapture(timeoutMillis: Long): Boolean = runBlocking { withTimeoutOrNull(timeoutMillis) { capturing.await() } } != null
+    internal fun awaitCapture(timeoutMillis: Long): Boolean =
+        runBlocking(VizcoreInternal) { withTimeoutOrNull(timeoutMillis) { capturing.await() } } != null
 
     /**
      * The single reconnect loop: connect, stream until the socket ends, back off,
@@ -450,7 +456,8 @@ class VizcoreClient internal constructor(
         val remainingMillis = (deadlineNanos - System.nanoTime()) / NANOS_PER_MILLI
         val delivered =
             try {
-                remainingMillis > 0 && runBlocking { withTimeoutOrNull(remainingMillis) { loop.join() } } != null
+                // VizcoreInternal: the probes still poll while stop() waits here, and the wait is vizcore's own coroutine.
+                remainingMillis > 0 && runBlocking(VizcoreInternal) { withTimeoutOrNull(remainingMillis) { loop.join() } } != null
             } catch (_: InterruptedException) {
                 // The caller wants out: keep its interrupt and release everything without waiting.
                 Thread.currentThread().interrupt()
@@ -567,6 +574,10 @@ class VizcoreClient internal constructor(
                         HttpClient(CIO) {
                             engine { dispatcher = transport }
                             install(WebSockets)
+                            // The same request timeout as the engine's, run by the plugin: the engine times a request
+                            // from a GlobalScope coroutine ("cio-request-timeout") that nothing ties to this client,
+                            // so it reached the app's session. The plugin's timer runs on the client's dispatcher.
+                            install(HttpTimeout) { requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS }
                         },
                     internalDispatchers = setOf(transport),
                     pollInterval = pollIntervalMillis.milliseconds,
@@ -677,8 +688,8 @@ class VizcoreClient internal constructor(
                 try {
                     // createSession is suspend; this is a one-shot blocking call before the async loop
                     // takes over. Bounded, because a forwarder or proxy in front of a backend that is
-                    // down can accept the connection and never answer.
-                    runBlocking { withTimeoutOrNull(timeout) { create() } }?.let { return it }
+                    // down can accept the connection and never answer. VizcoreInternal keeps this wait out of the session.
+                    runBlocking(VizcoreInternal) { withTimeoutOrNull(timeout) { create() } }?.let { return it }
                     "no answer within ${timeout.inWholeMilliseconds} ms"
                 } catch (e: InterruptedException) {
                     throw e

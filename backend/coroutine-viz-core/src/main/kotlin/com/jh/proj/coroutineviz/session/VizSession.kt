@@ -7,6 +7,7 @@ import com.jh.proj.coroutineviz.health.SummariesUnavailableException
 import com.jh.proj.coroutineviz.health.SummaryTable
 import com.jh.proj.coroutineviz.health.SummaryView
 import com.jh.proj.coroutineviz.models.RuntimeSnapshot
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -377,10 +378,11 @@ class VizSession(
 
     /**
      * Async event send - for non-coroutine contexts.
-     * Launches on session scope to emit event asynchronously.
+     * Launches on session scope to emit event asynchronously. The app launches on that scope too, so this
+     * coroutine carries [VizcoreInternal] to stay out of the app's session.
      */
     fun sendAsync(event: VizEvent) {
-        sessionScope.launch {
+        sessionScope.launch(VizcoreInternal) {
             send(event)
         }
     }

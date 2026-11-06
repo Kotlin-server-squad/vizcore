@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.client
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.events.PollWatermark
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.session.source.debugprobes.VizcoreInternal
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
@@ -337,8 +338,10 @@ private suspend fun connectAndDrain(
                 // "client stopping" and exits). Here the failure stays inside the drain and
                 // is reported as itself below.
                 supervisorScope {
+                    // Ktor builds this block's context from scratch, so the loop's VizcoreInternal does not reach it:
+                    // the drain and the probe are vizcore's own coroutines and say so themselves.
                     val drain =
-                        async {
+                        async(VizcoreInternal) {
                             buffer.drain { event ->
                                 // An older server would store a watermark as an event: held back, not counted.
                                 if (event is PollWatermark && !sendWatermarks) return@drain
@@ -352,7 +355,7 @@ private suspend fun connectAndDrain(
                     // TimeoutCancellationException would read as "client stopping" to the
                     // reconnect loop.
                     val probe =
-                        async {
+                        async(VizcoreInternal) {
                             while (true) {
                                 delay(timeouts.pingIntervalMillis)
                                 withTimeoutOrNull(timeouts.pingTimeoutMillis) { send(Frame.Ping(ByteArray(0))) }
