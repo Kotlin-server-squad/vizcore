@@ -75,8 +75,11 @@ function showOwnersLook() {
   else delete document.documentElement.dataset.look
 }
 
-function claimHtml(token: object, look: LookId) {
-  htmlOwners.push({ token, look })
+/** Joins the owners as the newest, or updates this owner's look where it stands. */
+function showOnHtml(token: object, look: LookId) {
+  const mine = htmlOwners.find(owner => owner.token === token)
+  if (mine) mine.look = look
+  else htmlOwners.push({ token, look })
   showOwnersLook()
 }
 
@@ -127,12 +130,16 @@ export function LookProvider({ link, onLinkRead, children }: LookProviderProps) 
     onLinkReadRef.current?.()
   }, [link])
 
+  // Joining <html>'s owners on mount and leaving on unmount only, so a change of
+  // look keeps this page's place behind a newer one.
   const owner = useRef<object>({})
   useLayoutEffect(() => {
-    const token = owner.current
-    claimHtml(token, look)
-    return () => releaseHtml(token)
+    showOnHtml(owner.current, look)
   }, [look])
+  useLayoutEffect(() => {
+    const token = owner.current
+    return () => releaseHtml(token)
+  }, [])
 
   const setLook = useCallback((id: LookId) => {
     setLookState(id)

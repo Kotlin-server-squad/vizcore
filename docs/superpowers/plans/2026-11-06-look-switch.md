@@ -191,6 +191,7 @@ Light-theme status colours are the text-safe (≈ AA on white) shades, as Classi
 ## Code review
 
 - **Codex R1** (request changes): P1 `slots.test.tsx` named look A, so deleting A broke the build → it gives the slot to the registry's first trial look; P2 a leaving provider wiped `data-look` set by another one still mounted (a route transition) → providers own `<html>` in a stack, the newest shows, tested both orders; P2 StrictMode read a link twice (two address rewrites) → read once per arrival, tested in StrictMode; P2 A's light secondary text was 4.0:1 → darker `text-faint` (`#686c7a`), and a test holds foreground and `default-500` at 4.5:1 on the page and on cards in every look; P2 A's 15 px root made the main-view-to-dock gap 11.25 px → A pins it to 12 px, and the test requires that of any look with another root size.
+- **Codex R2** (request changes, one P2): an older page that changed its look jumped ahead of a newer one on `<html>` → a page joins the owners on mount and leaves on unmount only; a change of look updates it in place, tested.
 
 ## Tasks
 

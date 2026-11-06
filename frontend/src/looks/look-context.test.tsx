@@ -153,6 +153,17 @@ describe('two session pages at once (a route transition)', () => {
     first.unmount()
     expect(html().dataset.look).toBeUndefined()
   })
+
+  it('keeps the newer page’s look on <html> when the older page changes its look', () => {
+    const older = (look?: string) => <LookProvider link={look}>{null}</LookProvider>
+    const first = render(older(ONE))
+    const second = render(<LookProvider link="classic">{null}</LookProvider>)
+    first.rerender(older(TWO))
+    expect(html().dataset.look).toBe('classic')
+    second.unmount()
+    expect(html().dataset.look).toBe(TWO)
+    first.unmount()
+  })
 })
 
 describe('in StrictMode', () => {
