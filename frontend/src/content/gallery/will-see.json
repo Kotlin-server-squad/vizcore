@@ -258,5 +258,89 @@
       { "label": "ben-pays-anna", "state": "SUSPENDED", "depth": 1 },
       { "label": "watchdog", "state": "SUSPENDED", "depth": 1 }
     ]
+  },
+  "sync/semaphore/connection-pool": {
+    "atSeconds": 6.25,
+    "moment": "About 6 s in: three requests are done. track-parcel and write-review render their pages without a connection; checkout, wish-list and store-hours hold the three connections; loyalty-points waits for one. All six show as suspended",
+    "coroutines": [
+      { "label": "shop-backend", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "show-basket", "state": "COMPLETED", "depth": 1 },
+      { "label": "search-shoes", "state": "COMPLETED", "depth": 1 },
+      { "label": "order-history", "state": "COMPLETED", "depth": 1 },
+      { "label": "track-parcel", "state": "SUSPENDED", "depth": 1 },
+      { "label": "write-review", "state": "SUSPENDED", "depth": 1 },
+      { "label": "checkout", "state": "SUSPENDED", "depth": 1 },
+      { "label": "wish-list", "state": "SUSPENDED", "depth": 1 },
+      { "label": "store-hours", "state": "SUSPENDED", "depth": 1 },
+      { "label": "loyalty-points", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/semaphore/rate-limiter": {
+    "atSeconds": 3.5,
+    "moment": "About 3.5 s in: Rome and Paris have answered. Vienna and Prague hold the two permits; the other four calls wait for one; trip-page waits for Vienna's forecast. All show as suspended",
+    "coroutines": [
+      { "label": "trip-planner", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "weather-rome", "state": "COMPLETED", "depth": 1 },
+      { "label": "weather-paris", "state": "COMPLETED", "depth": 1 },
+      { "label": "weather-vienna", "state": "SUSPENDED", "depth": 1 },
+      { "label": "weather-prague", "state": "SUSPENDED", "depth": 1 },
+      { "label": "weather-lisbon", "state": "SUSPENDED", "depth": 1 },
+      { "label": "weather-oslo", "state": "SUSPENDED", "depth": 1 },
+      { "label": "weather-split", "state": "SUSPENDED", "depth": 1 },
+      { "label": "weather-krakow", "state": "SUSPENDED", "depth": 1 },
+      { "label": "trip-page", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/semaphore/file-processor": {
+    "atSeconds": 6.5,
+    "moment": "About 6.5 s in: three small files are done while the bank statements still hold one permit; donations holds the other; four files wait for the disk. All show as suspended",
+    "coroutines": [
+      { "label": "tax-folder", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "payslips.pdf", "state": "COMPLETED", "depth": 1 },
+      { "label": "bank-statements.pdf", "state": "SUSPENDED", "depth": 1 },
+      { "label": "receipts.zip", "state": "COMPLETED", "depth": 1 },
+      { "label": "insurance.pdf", "state": "COMPLETED", "depth": 1 },
+      { "label": "donations.pdf", "state": "SUSPENDED", "depth": 1 },
+      { "label": "pension.pdf", "state": "SUSPENDED", "depth": 1 },
+      { "label": "childcare.pdf", "state": "SUSPENDED", "depth": 1 },
+      { "label": "invoices.zip", "state": "SUSPENDED", "depth": 1 },
+      { "label": "doctor-bills.pdf", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/semaphore/resource-timeout": {
+    "atSeconds": 7.25,
+    "moment": "About 7 s in: Anna and Ben have paid; Eva and Finn gave up after 3 s and left; Carla pays at the till; Dan and Gina are in the rooms",
+    "coroutines": [
+      { "label": "clothes-shop", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "anna", "state": "COMPLETED", "depth": 1 },
+      { "label": "ben", "state": "COMPLETED", "depth": 1 },
+      { "label": "carla", "state": "SUSPENDED", "depth": 1 },
+      { "label": "dan", "state": "SUSPENDED", "depth": 1 },
+      { "label": "eva", "state": "COMPLETED", "depth": 1 },
+      { "label": "finn", "state": "COMPLETED", "depth": 1 },
+      { "label": "gina", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/semaphore/producer-consumer": {
+    "atSeconds": 8,
+    "moment": "About 8 s in: the rack is full. The baker waits for a free place while the shop assistant sells loaf 3. Both show as suspended, for different reasons",
+    "coroutines": [
+      { "label": "bakery", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "baker", "state": "SUSPENDED", "depth": 1 },
+      { "label": "shop-assistant", "state": "SUSPENDED", "depth": 1 }
+    ]
+  },
+  "sync/combined/ecommerce": {
+    "atSeconds": 9.25,
+    "moment": "About 9 s in: Anna and Carla bought, Ben's card was declined, Dan was told sold out. Eva pays for Ben's returned pair; Finn holds the stock lock and will find none left",
+    "coroutines": [
+      { "label": "sneaker-drop", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "order-anna", "state": "COMPLETED", "depth": 1 },
+      { "label": "order-ben", "state": "COMPLETED", "depth": 1 },
+      { "label": "order-carla", "state": "COMPLETED", "depth": 1 },
+      { "label": "order-dan", "state": "COMPLETED", "depth": 1 },
+      { "label": "order-eva", "state": "SUSPENDED", "depth": 1 },
+      { "label": "order-finn", "state": "SUSPENDED", "depth": 1 }
+    ]
   }
 }

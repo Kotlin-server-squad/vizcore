@@ -1,4 +1,7 @@
 import type { ReactElement, ReactNode, Ref } from 'react'
+import type { ActivityLine } from '@/lib/activity'
+import type { StateCounts } from '@/lib/state-counts'
+import type { CoroutineNode } from '@/types/api'
 import type { RunOutcomeFacts } from '@/lib/run-outcome'
 import type { VizEvent } from '@/types/api'
 
@@ -45,6 +48,18 @@ export interface SessionBodyProps {
   sharedRef: Ref<HTMLDivElement>
   main: ReactNode
   dock: ReactNode
+  /** What the page already knows, for a look that summarises it (C's "Right now"). Classic ignores it. */
+  overview?: SessionOverview
+}
+
+/** Values the page has already computed; a look only presents them. */
+export interface SessionOverview {
+  /** The state bar's counts, over the whole snapshot. */
+  counts: StateCounts
+  /** The page's coroutines (replay-aware), for their names and states. */
+  coroutines: readonly CoroutineNode[]
+  /** Each coroutine's "waits for / holds" line (S-6), keyed by coroutine id. */
+  activity: ReadonlyMap<string, ActivityLine>
 }
 
 export interface LookDefinition<Id extends string = string> {
@@ -55,4 +70,17 @@ export interface LookDefinition<Id extends string = string> {
   trial: boolean
   /** The layout this look replaces; any slot left out is Classic's. */
   slots?: Partial<LookSlots>
+}
+
+/**
+ * The size of one coroutine card on the graph (PR L0, per-look cards). The
+ * layout reserves exactly this box for every card, so edges, the "N children"
+ * labels and the spacing follow it. Every look draws the same card markup,
+ * styled through its `data-look-part` hooks (node, node-name, node-state,
+ * node-activity, …) and the card wrapper's `data-state`; a look sets only the
+ * size here, in its folder's `card.ts`.
+ */
+export interface LookCard {
+  width: number
+  height: number
 }

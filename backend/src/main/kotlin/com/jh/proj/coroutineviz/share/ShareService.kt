@@ -109,9 +109,13 @@ class ShareService(
     /**
      * Resolve a token for the public read path. A valid resolution increments
      * `access_count` and stamps `last_accessed_at` ATOMICALLY in the same
-     * transaction as the read (so concurrent reads cannot lose an increment).
+     * transaction as the read (so concurrent reads cannot lose an increment). The shared view's follow-up reads pass
+     * [countAccess] false: they are part of the one access that loaded the payload.
      */
-    fun resolve(token: String): ShareResolution =
+    fun resolve(
+        token: String,
+        countAccess: Boolean = true,
+    ): ShareResolution =
         transaction(db) {
             val row =
                 SharesTable
@@ -128,10 +132,12 @@ class ShareService(
             }
 
             // Access tracking: increment count + stamp last-accessed in the same tx.
-            val newCount = row[SharesTable.accessCount] + 1
-            SharesTable.update({ SharesTable.token eq token }) {
-                it[SharesTable.accessCount] = newCount
-                it[SharesTable.lastAccessedAt] = now
+            val newCount = row[SharesTable.accessCount] + if (countAccess) 1 else 0
+            if (countAccess) {
+                SharesTable.update({ SharesTable.token eq token }) {
+                    it[SharesTable.accessCount] = newCount
+                    it[SharesTable.lastAccessedAt] = now
+                }
             }
 
             ShareResolution.Valid(
@@ -143,7 +149,7 @@ class ShareService(
                     expiresAt = expiresAt,
                     permission = row[SharesTable.permission],
                     accessCount = newCount,
-                    lastAccessedAt = now,
+                    lastAccessedAt = if (countAccess) now else row[SharesTable.lastAccessedAt],
                 ),
             )
         }

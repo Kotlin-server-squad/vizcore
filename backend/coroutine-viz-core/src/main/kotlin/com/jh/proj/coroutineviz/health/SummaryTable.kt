@@ -167,6 +167,43 @@ class SummaryTable(
         }
     }
 
+    /**
+     * Loads [state] into this empty table: the summaries in their order, the subtree index from their parents (added in
+     * first-observation order, then closed for the finished ones, which yields the original counts), and the creation
+     * order and reduction queues from the full (non-stub) summaries, so promotion and reduction go on as before.
+     */
+    private fun load(state: SummaryTableState) {
+        check(summaries.isEmpty() && lastEventSeq == 0L) { "restore into an empty table only" }
+        require(state.version == 1) { "unknown summary state version ${state.version}" }
+        for (s in state.summaries) {
+            summaries[s.id] = s
+            subtrees.add(s.id, s.parentId)
+            if (!s.reduced) {
+                creationOrder[s.id] = nextCreationOrder++
+                fullSummaryCount++
+            }
+        }
+        for (s in state.summaries) {
+            if (!s.isTerminal) continue
+            subtrees.close(s.id)
+            if (!s.reduced) (if (s.failed) finishedFailed else finishedOk)[creationOrder.getValue(s.id)] = s.id
+        }
+        untrackedCount = state.untrackedCount
+        lastEventSeq = state.lastEventSeq
+        latestEventAppNanos = state.latestEventAppNanos
+        firstEventSeq = state.firstEventSeq
+        earliestEventAppNanos = state.earliestEventAppNanos
+    }
+
+    companion object {
+        /** The table [state] was taken from, ready for more events (spec C-4). Use the original's limits. */
+        fun restore(
+            state: SummaryTableState,
+            fullSummaryTarget: Int = HealthThresholds.DEFAULT_FULL_SUMMARY_TARGET,
+            trackedCapacity: Int = HealthThresholds.DEFAULT_TRACKED_CAPACITY,
+        ): SummaryTable = SummaryTable(fullSummaryTarget, trackedCapacity).also { it.load(state) }
+    }
+
     private class SeedStep(
         val at: Transition,
         val summary: CoroutineSummary,

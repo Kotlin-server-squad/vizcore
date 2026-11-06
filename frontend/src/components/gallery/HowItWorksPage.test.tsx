@@ -137,15 +137,15 @@ describe('HowItWorksPage', () => {
   })
 
   it('finds a demo whose id has slashes by its slug', () => {
-    renderPage('sync-semaphore-connection-pool')
+    renderPage('order-processing')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('No guide for this example yet')
   })
 
   it('offers Run for a demo that has no guide yet', async () => {
-    renderPage('sync-semaphore-connection-pool')
+    renderPage('order-processing')
     expect(screen.getByRole('link', { name: /back to the gallery/i })).toHaveAttribute('href', '/gallery')
     await userEvent.click(screen.getByRole('button', { name: 'Run this example' }))
-    expect(start).toHaveBeenCalledWith(all.find((s) => s.id === 'sync/semaphore/connection-pool'))
+    expect(start).toHaveBeenCalledWith(all.find((s) => s.id === 'order-processing'))
   })
 
   it('has no Run for an unknown slug', () => {

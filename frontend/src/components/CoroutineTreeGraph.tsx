@@ -14,6 +14,7 @@ import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
 import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state-colors'
 import { chooseRowWidth, layoutTree, type TreeLayout } from '@/lib/tree-layout'
+import { useLook, useLookCard } from '@/looks/look-context'
 import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize2, FiMinimize2, FiCrosshair } from 'react-icons/fi'
 
 interface CoroutineTreeGraphProps {
@@ -38,12 +39,10 @@ interface TreeNode extends CoroutineNode {
 const isRunning = isActiveState
 
 /**
- * Card size and spacing the layout reserves; the card is drawn at exactly this size. The height
- * holds the tallest card (measured): border + padding 36, a two-line name, the state and the
- * second line (S-6) 80 + 12, four detail rows 92, the progress bar of a running coroutine 16 — 236 px.
+ * Spacing the layout reserves between cards. The card size is the look's
+ * (`useLookCard`, Classic's 280 × 240 outside the session page); the card is
+ * drawn at exactly that size.
  */
-const NODE_WIDTH = 280
-const NODE_HEIGHT = 240
 const H_GAP = 40
 const V_GAP = 64
 /** Space around the tree inside the canvas. */
@@ -97,26 +96,29 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
   const [isFullscreen, setIsFullscreen] = useState(false)
   // Fit the tree to the canvas until the user pans or zooms; "Fit to view" goes back to that.
   const [followFit, setFollowFit] = useState(true)
+  // The look's card size; the layout reserves exactly this box for each card.
+  const { width: cardWidth, height: cardHeight } = useLookCard()
+  const { look } = useLook()
 
   const layout = useMemo<TreeLayout>(
     () =>
       layoutTree(tree, {
-        nodeWidth: NODE_WIDTH,
-        nodeHeight: NODE_HEIGHT,
+        nodeWidth: cardWidth,
+        nodeHeight: cardHeight,
         hGap: H_GAP,
         vGap: V_GAP,
         maxRowWidth: Math.max(
-          NODE_WIDTH,
+          cardWidth,
           chooseRowWidth(
             tree.length,
             canvasSize.width - 2 * PADDING,
             canvasSize.height - 2 * PADDING - TOOLBAR_INSET,
-            { nodeWidth: NODE_WIDTH, nodeHeight: NODE_HEIGHT, hGap: H_GAP, vGap: V_GAP, minReadableScale: MIN_READABLE_SCALE },
+            { nodeWidth: cardWidth, nodeHeight: cardHeight, hGap: H_GAP, vGap: V_GAP, minReadableScale: MIN_READABLE_SCALE },
             DEFAULT_ROW_WIDTH,
           ),
         ),
       }),
-    [tree, canvasSize]
+    [tree, canvasSize, cardWidth, cardHeight]
   )
 
   // Ctrl/⌘ + wheel (and a trackpad pinch, which arrives as Ctrl + wheel) zooms around the cursor;
@@ -276,6 +278,9 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
     <div
       ref={canvasRef}
       data-testid="graph-canvas"
+      // Whose cards these are: the look's card.css keys on it. On the graph, not only on <html>,
+      // so an export (which sets the page's look aside) keeps the cards that fit their size.
+      data-card-look={look}
       data-fullscreen={isFullscreen ? 'true' : 'false'}
       // HTML cards over an SVG layer: export it as a picture, not as one of its svgs
       data-export-raster="true"
@@ -365,8 +370,10 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
                     <div
                       key={id}
                       data-testid={`graph-node-${id}`}
+                      // The state, for a look's CSS to colour the card by (Classic: unused).
+                      data-state={node.state}
                       className="absolute"
-                      style={{ left: pos.x + PADDING, top: pos.y + PADDING, width: NODE_WIDTH, height: NODE_HEIGHT }}
+                      style={{ left: pos.x + PADDING, top: pos.y + PADDING, width: cardWidth, height: cardHeight }}
                     >
                       <NodeCard
                         node={node}
@@ -378,8 +385,9 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
                       />
                       {node.children.length > 0 && (
                         <div
+                          data-look-part="node-children"
                           className="absolute left-1/2 z-10 ml-3 whitespace-nowrap rounded-lg border border-default-200 bg-default-100/80 px-2 py-0.5 text-xs font-medium text-default-700 backdrop-blur-sm"
-                          style={{ top: NODE_HEIGHT + 6 }}
+                          style={{ top: cardHeight + 6 }}
                         >
                           {node.children.length === 1 ? '1 child' : `${node.children.length} children`}
                         </div>
@@ -462,6 +470,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
 
   return (
     <div
+      data-look-part="node"
       className={className}
       {...(onSelect
         ? {
@@ -483,6 +492,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
         <AnimatePresence>
           {running && (
             <motion.div
+              data-look-part="node-tint"
               className={`absolute inset-0 rounded-2xl ${colors.bgTint}`}
               initial={{ opacity: 0 }}
               animate={{
@@ -498,14 +508,15 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
           )}
         </AnimatePresence>
       ) : (
-        running && <div className={`absolute inset-0 rounded-2xl ${colors.bgTint} opacity-30`} />
+        running && <div data-look-part="node-tint" className={`absolute inset-0 rounded-2xl ${colors.bgTint} opacity-30`} />
       )}
 
-      <div className="relative z-10">
+      <div data-look-part="node-body" className="relative z-10">
         {/* Header with Icon and Label */}
-        <div className="mb-3 flex items-center gap-3">
+        <div data-look-part="node-head" className="mb-3 flex items-center gap-3">
           {shouldAnimate && node.state === 'ACTIVE' ? (
             <motion.div
+              data-look-part="node-icon"
               className={`${colors.text} flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${colors.iconBg}`}
               animate={{ rotate: 360 }}
               transition={{ rotate: { duration: 2, repeat: Infinity, ease: 'linear' } }}
@@ -513,16 +524,23 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
               <StateIcon className="h-5 w-5" />
             </motion.div>
           ) : (
-            <div className={`${colors.text} flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${colors.iconBg}`}>
+            <div
+              data-look-part="node-icon"
+              className={`${colors.text} flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${colors.iconBg}`}
+            >
               <StateIcon className="h-5 w-5" />
             </div>
           )}
-          <div className="min-w-0 flex-1">
+          <div data-look-part="node-text" className="min-w-0 flex-1">
             {/* Names like dashboard.notifications.unread have no spaces: let them break anywhere, over two lines. */}
-            <div className="line-clamp-2 text-base font-bold leading-6 [overflow-wrap:anywhere]" title={node.label || node.id}>
+            <div
+              data-look-part="node-name"
+              className="line-clamp-2 text-base font-bold leading-6 [overflow-wrap:anywhere]"
+              title={node.label || node.id}
+            >
               {node.label || node.id}
             </div>
-            <div className="text-xs text-default-500">
+            <div data-look-part="node-state" className="text-xs text-default-500">
               {stateLabel(node.state)}
               {node.state === 'ACTIVE' && <span className="ml-2 inline-block">●</span>}
             </div>
@@ -530,6 +548,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
             {activity && (
               <div
                 data-testid="activity-line"
+                data-look-part="node-activity"
                 className={activity.waiting ? 'truncate text-xs text-warning' : 'truncate text-xs text-default-600'}
                 title={activity.text}
               >
@@ -540,7 +559,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
         </div>
 
         {/* Details */}
-        <div className="space-y-1 text-sm">
+        <div data-look-part="node-details" className="space-y-1 text-sm">
           <DetailRow label="ID" value={node.id} />
           <DetailRow label="Job" value={node.jobId} />
           <DetailRow label="Scope" value={node.scopeId} />
@@ -550,7 +569,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
 
         {/* Progress Bar for Active State */}
         {node.state === 'ACTIVE' && (
-          <div className="mt-3 h-1 overflow-hidden rounded-full bg-default-200">
+          <div data-look-part="node-progress" className="mt-3 h-1 overflow-hidden rounded-full bg-default-200">
             {shouldAnimate ? (
               <motion.div
                 className="h-full bg-primary"

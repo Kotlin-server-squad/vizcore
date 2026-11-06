@@ -493,6 +493,7 @@ export function SessionWorkspace({
           out by the look (Classic: a column, the main view above the dock). */}
       {sessionBody({
         sharedRef: dock.sharedRef,
+        overview: { counts: stateCounts, coroutines: panelCoroutines, activity },
         main: (
           <CoroutineCanvas
             coroutines={renderedCoroutines}
