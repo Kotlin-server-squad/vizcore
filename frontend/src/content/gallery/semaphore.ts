@@ -24,7 +24,7 @@ export const SEMAPHORE_GUIDES: DemoGuide[] = [
 launch {                                          // shop-backend
     for (request in lunchtimeRequests) {
         delay(500)
-        launch {                                  // show-basket … loyalty-points
+        launch {                           // show-basket … loyalty-points
             pool.withPermit {                     // 1
                 runQuery(request)                 // 2, takes 1.5 to 3.5 s
             }                                     // 3
@@ -63,7 +63,7 @@ launch {                                          // shop-backend
 
 launch {                                          // trip-planner
     val forecasts = cities.map { city ->          // 1
-        async {                                   // weather-rome … weather-krakow
+        async {                           // weather-rome … weather-krakow
             weatherApi.withPermit {               // 2
                 fetchWeather(city)   // takes 2 to 3 s
             }                                     // 3
@@ -106,7 +106,7 @@ launch {                                          // trip-planner
 
 launch {                                          // tax-folder
     for (file in taxFolder) {
-        launch {                                  // payslips.pdf … doctor-bills.pdf
+        launch {                        // payslips.pdf … doctor-bills.pdf
             disk.withPermit {                     // 1
                 for (part in file.parts) {
                     compress(part)                // 2, takes 1 to 3 s
