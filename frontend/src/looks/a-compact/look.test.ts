@@ -105,6 +105,13 @@ describe('A · Compact', () => {
     expect(compactCard).toEqual({ width: 188, height: 66, fitMinZoom: 1 })
   })
 
+  it('fits a root and six children side by side at full size on a 1440 px window', () => {
+    // The graph is 1,417 px wide there (1440 minus the main view's padding), and lays cards
+    // 40 px apart inside 32 px of padding (CoroutineTreeGraph's H_GAP and PADDING).
+    expect(6 * compactCard.width + 5 * 40 + 2 * 32).toBeLessThanOrEqual(1417)
+    expect(compactCard.fitMinZoom).toBe(1)
+  })
+
   it('keeps every word on the card at 12 px or more', () => {
     const sizes = [...cardCss.matchAll(/font-size:\s*([\d.]+)px/g)].map(m => Number(m[1]))
     expect(sizes.length).toBeGreaterThan(0)

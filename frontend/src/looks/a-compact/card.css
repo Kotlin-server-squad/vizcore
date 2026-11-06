@@ -62,19 +62,23 @@
    right, the second line under both. */
 [data-card-look='a'] [data-look-part='node-text'] {
   display: grid;
-  /* The name first: it takes the width it needs (up to the whole row), and the state
-     has what is left, cut short if need be. Its colour is also the name's dot. */
-  grid-template-columns: fit-content(100%) minmax(0, 1fr);
+  /* The name takes the row; the state at most 6em of it, on the right ("Waiting for…"
+     is cut short; its colour is also the name's dot). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
   align-items: center;
   column-gap: 6px;
   row-gap: 2px;
 }
+/* One line with an ellipsis (a plain block, so the grid reads its full width). */
 [data-card-look='a'] [data-look-part='node-name'] {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
-  -webkit-line-clamp: 1;
 }
 [data-card-look='a'] [data-look-part='node-name']::before {
   content: '';
@@ -92,8 +96,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  justify-self: end;
-  max-width: 100%;
+  max-width: 6em;
   padding: 0 4px;
   border-radius: 3px;
   font-size: 12px;
