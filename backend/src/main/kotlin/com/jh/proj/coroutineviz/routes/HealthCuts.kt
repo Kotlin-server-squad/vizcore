@@ -17,6 +17,10 @@ internal class HealthCut(
     val retention: RetentionInfo,
     val transitions: Map<String, List<Transition>>,
 ) {
+    /** Assigned by [HealthCuts.remember]: what a follow-up passes as `asOfCut` to name this cut exactly. */
+    var id: String = ""
+        internal set
+
     val watermarkNanos: Long? get() = ingest.watermark?.appNanos
     val transportRevision: Long get() = ingest.transport.revision
 
@@ -56,15 +60,29 @@ internal object HealthCuts {
     // Guarded by itself. Each session's entries least recently used first.
     private val bySession = HashMap<String, ArrayDeque<Entry>>()
     private var total = 0
+    private var nextId = 0L
+
+    // Ids of one process never match another's, so an id held across a backend restart names no new cut.
+    private val processPrefix =
+        java.util.UUID
+            .randomUUID()
+            .toString()
+            .take(PREFIX_LENGTH)
+    private const val PREFIX_LENGTH = 8
 
     /**
      * Keeps [cut]; an equivalent kept cut (same binding and evidence) is replaced. Two cuts with one binding but different
      * evidence are both kept, and a follow-up gets the newer (a database trim between two healths at one seq, Part 5b-2).
      */
-    fun remember(cut: HealthCut) =
+    fun remember(cut: HealthCut): String =
         synchronized(bySession) {
             val entries = bySession.getOrPut(cut.sessionId) { ArrayDeque() }
-            if (entries.removeAll { it.cut.equivalent(cut) }) total--
+            val equivalent = entries.firstOrNull { it.cut.equivalent(cut) }
+            cut.id = equivalent?.cut?.id ?: "$processPrefix-${++nextId}"
+            if (equivalent != null) {
+                entries.remove(equivalent)
+                total--
+            }
             entries.addLast(Entry(cut, clock()))
             total++
             if (entries.size > PER_SESSION) {
@@ -72,6 +90,24 @@ internal object HealthCuts {
                 total--
             }
             while (total > MAX_TOTAL) dropLeastRecentlyUsed()
+            cut.id
+        }
+
+    /** The kept cut named [cutId] (see [HealthCut.id]) at [seq], or null; a hit counts as a use. */
+    fun findById(
+        sessionId: String,
+        seq: Long,
+        cutId: String,
+    ): HealthCut? =
+        synchronized(bySession) {
+            findsForTest++
+            val now = clock()
+            val entries = bySession[sessionId] ?: return null
+            val hit = entries.lastOrNull { it.cut.id == cutId && it.cut.seq == seq && now - it.usedAtMs <= TTL_MS } ?: return null
+            hit.usedAtMs = now
+            entries.remove(hit)
+            entries.addLast(hit)
+            hit.cut
         }
 
     /**

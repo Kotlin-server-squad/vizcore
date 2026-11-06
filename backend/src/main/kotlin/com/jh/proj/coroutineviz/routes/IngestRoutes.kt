@@ -97,9 +97,23 @@ fun Route.registerIngestRoutes() {
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session not found"))
             return@webSocket
         }
-        // This connection's events get seqs after everything appended so far (spec C-3 `transport.sinceSeq`).
-        val connection = IngestStates.connectionOpened(sessionId, firstSeq = session.lastSeq + 1)
+        var connection: IngestStates.Connection? = null
         try {
+            // This connection's events get seqs after everything appended so far (spec C-3 `transport.sinceSeq`). In
+            // database mode its state and "ingest open" marker are stored first; if they cannot be, the socket is refused
+            // before any event is accepted (plan E-13), and the finally below undoes the registrations above.
+            connection =
+                try {
+                    IngestStates.connectionOpened(
+                        sessionId,
+                        firstSeq = session.lastSeq + 1,
+                        inheritedDoubt = transportOf(IngestStates.snapshot(sessionId), session, sessionKindOf(sessionId), session.lastSeq),
+                    )
+                } catch (e: IngestStateNotStoredException) {
+                    ingestLogger.warn("Refused an ingest socket for session {}: {}", sessionId, e.message)
+                    close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Ingest state could not be stored"))
+                    return@webSocket
+                }
             for (frame in incoming) {
                 // Frames already queued when the session was deleted must not land in it;
                 // the watcher above is closing the socket.
@@ -114,7 +128,7 @@ fun Route.registerIngestRoutes() {
         } finally {
             // Transport facts first (in memory, cannot fail): once the session reads as disconnected,
             // how the connection ended is already known.
-            IngestStates.connectionClosed(connection)
+            connection?.let(IngestStates::connectionClosed)
             IngestConnections.closed(sessionId)
             sessionRemoved.cancel()
             session.ingestSocketClosed()

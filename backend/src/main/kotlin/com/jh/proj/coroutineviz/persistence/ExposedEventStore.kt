@@ -131,7 +131,7 @@ class ExposedEventStore(
         }
     }
 
-    private fun decode(json: String): VizEvent = appJson.decodeFromString(serializer, json)
+    private fun decode(json: String): VizEvent = decodeStoredEvent(json)
 
     private companion object {
         private val logger = LoggerFactory.getLogger(ExposedEventStore::class.java)
@@ -151,3 +151,6 @@ class ExposedEventStore(
         fun lockFor(sessionId: String): ReentrantLock = appendLocks.computeIfAbsent(sessionId) { ReentrantLock() }
     }
 }
+
+/** Decodes one stored event payload (the SSE wire shape, see [ExposedEventStore]). */
+internal fun decodeStoredEvent(json: String): VizEvent = appJson.decodeFromString(PolymorphicSerializer(VizEvent::class), json)

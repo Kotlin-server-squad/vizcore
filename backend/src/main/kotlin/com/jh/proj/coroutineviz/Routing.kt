@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz
 
 import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.UserStore
+import com.jh.proj.coroutineviz.routes.ChecksResults
 import com.jh.proj.coroutineviz.routes.CorrelationRegistry
 import com.jh.proj.coroutineviz.routes.HealthCuts
 import com.jh.proj.coroutineviz.routes.IngestStates
@@ -43,6 +44,8 @@ fun Application.configureRouting() {
     SessionManager.addOnSessionClosed { sessionId -> IngestStates.forget(sessionId) }
     // So do the health cuts kept for its follow-up reads (their summary copies can be large).
     SessionManager.addOnSessionClosed { sessionId -> HealthCuts.forget(sessionId) }
+    // And its last checks run (memory mode; a database row goes with its session).
+    SessionManager.addOnSessionClosed { sessionId -> ChecksResults.forget(sessionId) }
 
     // Stores built by configureAuth() (runs first in module()); reused for the token endpoint.
     val userStore = attributes.getOrNull(UserStoreKey) ?: UserStore(emptyList())

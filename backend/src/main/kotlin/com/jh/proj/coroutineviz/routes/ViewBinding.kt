@@ -25,6 +25,8 @@ internal sealed interface ViewBinding {
         val asOfSeq: Long,
         val watermarkNanos: Long?,
         val transportRevision: Long?,
+        /** The health's cut id (header `X-Viz-Cut`, the share payload's `healthCut`): names its cut exactly. */
+        val cutId: String? = null,
     ) : ViewBinding
 }
 
@@ -52,11 +54,15 @@ internal fun parseViewBinding(params: Parameters): ViewBinding {
     val asOfSeq = nonNegative("asOfSeq")
     val watermark = params["asOfWatermark"]?.let { it.toLongOrNull() ?: badParameter("asOfWatermark must be an integer") }
     val transport = nonNegative("asOfTransport")
+    val cutId = params["asOfCut"]
     if (atSeq != null && asOfSeq != null) badParameter("atSeq and asOfSeq are exclusive")
-    if (asOfSeq == null && (watermark != null || transport != null)) badParameter("asOfWatermark and asOfTransport need asOfSeq")
+    val boundOnly = listOf(watermark, transport, cutId).any { it != null }
+    if (asOfSeq == null && boundOnly) {
+        badParameter("asOfWatermark, asOfTransport and asOfCut need asOfSeq")
+    }
     return when {
         atSeq != null -> ViewBinding.Replay(atSeq)
-        asOfSeq != null -> ViewBinding.Bound(asOfSeq, watermark, transport)
+        asOfSeq != null -> ViewBinding.Bound(asOfSeq, watermark, transport, cutId)
         else -> ViewBinding.Current
     }
 }

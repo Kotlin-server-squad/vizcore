@@ -7,11 +7,15 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 
+/** The live health's kept cut id: follow-ups pass it as `asOfCut` to name exactly that cut (plan E-17). */
+const val CUT_HEADER = "X-Viz-Cut"
+
 /**
  * `GET /api/sessions/{id}/health[?atSeq=N][&leakThresholdMs=M]` (spec 2026-10-21, C-3): the session's derived health,
  * live or at a replay cursor. Bounded for a once-per-second refetch: every list is capped with its total. Tenant
  * scoped like every session read.
  */
+
 fun Route.registerSessionHealthRoutes() {
     // GET /api/sessions/{id}/rounds (spec C-3, T-4): every round, problem rounds first, with server-side find.
     get("/api/sessions/{id}/rounds") {
@@ -45,6 +49,9 @@ fun Route.registerSessionHealthRoutes() {
         val health =
             try {
                 readSessionHealth(session, ingest, atSeq, call.leakThresholdMs())
+                    .also { read ->
+                        read.cutId?.let { call.response.headers.append(CUT_HEADER, it) }
+                    }.health
             } catch (_: SummariesUnavailableException) {
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,

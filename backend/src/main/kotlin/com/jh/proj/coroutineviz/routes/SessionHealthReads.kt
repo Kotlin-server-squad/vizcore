@@ -20,11 +20,13 @@ import com.jh.proj.coroutineviz.session.VizSession
 import java.lang.management.ManagementFactory
 
 /**
- * Whether a session's summaries saw every event it ever had. In memory they are applied on every append and outlive
- * the bounded store's trim; in database mode they are folded from the stored events on every rebuild (until Part 5b
- * persists them), so a trim is invisible to them.
+ * Whether [session]'s summaries saw every event it ever had. In memory they are applied on every append and outlive the
+ * bounded store's trim. A database session's are restored from the trim's checkpoint plus the events after it, which is
+ * every event when a checkpoint was used (spec C-4); without one they are folded from the stored events, which is every
+ * event only while nothing was trimmed (D-8 tells the two apart).
  */
-internal fun summariesSeeEveryEvent(): Boolean = SessionManager.backingStore() !is ExposedSessionStore
+internal fun summariesSeeEveryEvent(session: VizSession): Boolean =
+    SessionManager.backingStore() !is ExposedSessionStore || session.summarySeedSeq != null
 
 /**
  * Retention facts (spec C-3 `retention`). [firstSeqEver] is the first seq the session had: the summaries' first seq
@@ -48,11 +50,10 @@ internal class HistoryTrimmedException(
 ) : IllegalStateException(message)
 
 /**
- * The transport a read reports (spec C-3 `transport`). A database session outlives this process: a row written before
- * this JVM started, or events stored before the first connection this process saw, came through connections nobody
- * here watched end (a crash runs no close handler), so nothing vouches that all their events arrived (H-3). Until Part
- * 5b persists the transport and the "ingest open" marker, such an ATTACHED session reads delivery-uncertain from its
- * first seq.
+ * The transport a read reports (spec C-3 `transport`). In database mode the transport and the "ingest open" marker are
+ * persisted (plan E-13; a crash leaves the marker set and the startup sweep marks the session uncertain), so only what no
+ * recorded connection vouches for is added here: events stored while no connection was ever recorded, and, for a row from
+ * before Part 5b-2, any row written before this JVM started (5a D-9b). Memory sessions report their ingest facts as is.
  */
 internal fun transportOf(
     ingest: IngestSnapshot,
@@ -60,11 +61,14 @@ internal fun transportOf(
     kind: SessionKind,
     lastSeq: Long,
 ): TransportStatus {
-    // A row written before this JVM started may have had a connection that ended in the crash, even with no event stored.
-    val recovered = session.createdAtMs < PROCESS_STARTED_AT_MS
+    val store = SessionManager.backingStore() as? ExposedSessionStore
+    if (store == null || kind != SessionKind.ATTACHED) return ingest.transport
+    // Events stored while no connection was ever recorded came through one nobody watched end.
     val eventsBeforeWatching = lastSeq > 0 && (ingest.firstConnectionSeq ?: Long.MAX_VALUE) > 1
-    val unwatched = !summariesSeeEveryEvent() && kind == SessionKind.ATTACHED && (recovered || eventsBeforeWatching)
-    return if (unwatched) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
+    // A row from before Part 5b-2 stores no ingest state (no marker either): a row written before this JVM started may
+    // have had a connection that ended in a crash, even with no event stored (5a D-9b). Newer rows have the marker.
+    val recovered = session.createdAtMs < PROCESS_STARTED_AT_MS && !store.hasIngestState(session.sessionId)
+    return if (eventsBeforeWatching || recovered) ingest.transport.copy(deliveryUncertain = true, sinceSeq = 1) else ingest.transport
 }
 
 private val PROCESS_STARTED_AT_MS: Long = ManagementFactory.getRuntimeMXBean().startTime
@@ -84,10 +88,11 @@ internal fun readSessionHealth(
     watermarkCut: IngestSnapshot,
     atSeq: Long?,
     leakThresholdMs: Long,
-): SessionHealth {
+    cut: ReadCut? = null,
+): HealthRead {
     val binding = atSeq?.let { ViewBinding.Replay(it) } ?: ViewBinding.Current
-    val view = readView(session, watermarkCut, binding, leakThresholdMs)
-    if (binding != ViewBinding.Current) return SessionHealthDerivation.derive(view.input)
+    val view = readView(session, watermarkCut, binding, leakThresholdMs, cut)
+    if (binding != ViewBinding.Current) return HealthRead(SessionHealthDerivation.derive(view.input), cutId = null)
     // Record the retained transitions the derivation reads, so the cut's follow-ups show the same evidence after a trim.
     val read = HashMap<String, List<Transition>>()
     val health =
@@ -96,9 +101,14 @@ internal fun readSessionHealth(
                 view.input.transitionsFor(id).also { read[id] = it }
             }),
         )
-    HealthCuts.remember(view.cut(read))
-    return health
+    return HealthRead(health, HealthCuts.remember(view.cut(read)))
 }
+
+/** A health and, for a live one, the id of its kept cut (the follow-ups' `asOfCut`, plan E-17). */
+internal data class HealthRead(
+    val health: SessionHealth,
+    val cutId: String?,
+)
 
 /** Retained lifecycle transitions per coroutine up to [upToSeq], indexed on first use (`HealthInput.transitionsFor`). */
 internal class RetainedTransitions(
@@ -134,17 +144,23 @@ internal data class SessionFacts(
 internal fun readSessionFacts(
     session: VizSession,
     events: List<VizEvent>,
+    cut: ReadCut? = null,
+    ingestCut: IngestSnapshot? = null,
 ): SessionFacts {
     val kind = sessionKindOf(session.sessionId)
-    val ingest = IngestStates.snapshot(session.sessionId)
+    val ingest = ingestCut ?: IngestStates.snapshot(session.sessionId)
     // Abandoned summaries leave origin and capture start unknown (H-3); the rest of the session still answers.
     val durable =
-        try {
-            session.readSummaries { it.snapshot() }
-        } catch (_: SummariesUnavailableException) {
-            null
+        if (cut != null) {
+            cut.summaries
+        } else {
+            try {
+                session.readSummaries { it.snapshot() }
+            } catch (_: SummariesUnavailableException) {
+                null
+            }
         }
-    val everyEvent = summariesSeeEveryEvent()
+    val everyEvent = summariesSeeEveryEvent(session)
     val retention = retentionOf(events, firstSeqEver = durable?.firstSeqEver(everyEvent) ?: 1L)
     return SessionFacts(
         kind = kind,

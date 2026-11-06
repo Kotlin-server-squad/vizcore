@@ -19,5 +19,16 @@ object SessionsTable : Table("sessions") {
     val tenantId = varchar("tenant_id", 128).nullable()
     val metadata = text("metadata").nullable()
 
+    /** The summary checkpoint the trim wrote (V2, spec C-4): a `SummaryTableState` as JSON, and its last seq. */
+    val summaries = text("summaries").nullable()
+    val summariesSeq = long("summaries_seq").nullable()
+
+    /** What the backend knows about the session's ingest (V2, spec C-4), and the "ingest open" marker (spec C-3). */
+    val ingestState = text("ingest_state").nullable()
+    val ingestOpenSince = long("ingest_open_since").nullable()
+
+    /** The last checks run (V2, spec C-5). */
+    val checks = text("checks").nullable()
+
     override val primaryKey = PrimaryKey(id)
 }

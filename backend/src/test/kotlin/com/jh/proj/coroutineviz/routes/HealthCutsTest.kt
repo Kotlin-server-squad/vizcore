@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 /** The exact cuts health responses used, kept briefly for their follow-up reads (plan E-17). */
 class HealthCutsTest {
@@ -141,5 +142,18 @@ class HealthCutsTest {
         HealthCuts.remember(cut("s", 5)) // equivalent to base: replaces it
         for (seq in 1L..HealthCuts.PER_SESSION - 2) HealthCuts.remember(cut("s", 100 + seq))
         assertNotNull(find("s", 5))
+    }
+
+    @Test
+    fun `a cut id names one of two cuts that share a binding, as after a database trim between two healths`() {
+        val a = cut("s", 5)
+        val aId = HealthCuts.remember(a)
+        val b = HealthCut("s", 5, SummaryTable(), IngestSnapshot(), RetentionInfo(4, 1, trimmed = true), transitions = emptyMap())
+        val bId = HealthCuts.remember(b)
+        assertTrue(aId != bId)
+        assertSame(a, HealthCuts.findById("s", 5, aId))
+        assertSame(b, HealthCuts.findById("s", 5, bId))
+        assertNull(HealthCuts.findById("s", 6, aId), "the seq must match too")
+        assertEquals(aId, HealthCuts.remember(cut("s", 5)), "an equivalent cut keeps the id")
     }
 }
