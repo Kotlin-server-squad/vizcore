@@ -2358,3 +2358,21 @@ class SdkSessionHealthTest {
   reports those losses (`lostEvents`), so possibly blocked reads `NOT_EVALUATED (EVENTS_DROPPED)` (P-6, P-8).
 - `stop()` blocks the caller up to its deadline; an app that must not block calls `stop(0)`.
 - The SDK version bump and publication (release PR); the Problems tab and the "vizcore connection (n)" toggle (Parts 6/7).
+
+## Changes during the build (Codex code review)
+
+- **Wrapper coroutines are reconciled, not dropped (code review rounds 1–2, replaces the dropping in Task 3).** Leaving a
+  `VizScope` coroutine to its wrapper events alone made a plain `delay()` invisible (the wrapper reported `Started` and
+  nothing else, so the coroutine read as running and could be flagged possibly blocked). A delta-based fix still missed a
+  plain suspension that followed a resume the wrapper itself sent between two suspended polls, and could land a sampled
+  event after the wrapper's terminal. Final behaviour: wrapper-owned snapshots stay in the diff but the synthesizer
+  emits nothing for them; every poll, `DebugProbesSource.reconcileWrapper` compares the sampled state with the state
+  the session's `RuntimeSnapshot` last recorded for the wrapper's id (from either source) and adds only the missing
+  suspension (with provenance) or resume, through the new core-internal `VizSession.sendIf` (condition checked under
+  the send lock). Nothing follows the wrapper's end, nothing is sent twice, and their completion outcomes are consumed
+  when they vanish.
+- **A failed start stops the constructed client first** (round 1), so its asynchronous start cannot start the source
+  after the factory's cleanup stopped it (e.g. an interrupt during the capture wait).
+- `SdkSessionHealthTest` asserts `asOfWatermark` rather than `asOf.kind == WATERMARK`: the backend JVM keeps producing
+  events after each poll, so `asOf` can name a later event while the health is still derived with the SDK's watermark.
+- Tests whose fake socket never drains the buffer stop with `stop(0)` (they would otherwise wait out the 5 s deadline).
