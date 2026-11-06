@@ -628,10 +628,11 @@ object SyncScenarios {
                     pause(1000) // tell the customer the drop is sold out
                     return
                 }
-                val paid = paymentGateway.withPermit {
-                    pause(2500) // charge the card
-                    o.cardAccepted
-                }
+                val paid =
+                    paymentGateway.withPermit {
+                        pause(2500) // charge the card
+                        o.cardAccepted
+                    }
                 if (paid) {
                     bought += "order-${o.customer}"
                 } else {

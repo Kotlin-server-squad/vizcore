@@ -29,7 +29,10 @@ class WaitsAsSuspensionDemoTest {
     @Test
     fun `an order waiting for the payment gateway is suspended, then resumed before it ends`() =
         runTest {
-            val events = runOnVirtualTime("combined-waits") { session, context -> SyncScenarios.runOrderProcessing(session, context) }.events
+            val events =
+                runOnVirtualTime(
+                    "combined-waits",
+                ) { session, context -> SyncScenarios.runOrderProcessing(session, context) }.events
             val gateway = events.filterIsInstance<SemaphoreCreated>().single { it.semaphoreLabel == "payment-gateway" }.semaphoreId
             val waits = events.filterIsInstance<CoroutineSuspended>().filter { it.waitKind == WaitKind.SEMAPHORE }
             assertTrue(waits.isNotEmpty(), "no order waited for the payment gateway")

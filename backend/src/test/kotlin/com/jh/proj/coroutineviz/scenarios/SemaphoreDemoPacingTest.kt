@@ -87,8 +87,16 @@ class SemaphoreDemoPacingTest {
             "sync/semaphore/connection-pool" -> SyncScenarios.runConnectionPool(session)
             "sync/semaphore/rate-limiter" -> SyncScenarios.runRateLimiter(session) { forecasts.complete(it) }
             "sync/semaphore/file-processor" -> SyncScenarios.runFileProcessor(session)
-            "sync/semaphore/resource-timeout" -> SyncScenarios.runResourceTimeout(session) { tried, left -> shoppers.complete(tried to left) }
-            "sync/semaphore/producer-consumer" -> SyncScenarios.runProducerConsumer(session) { loaves, most -> loavesSold.complete(loaves to most) }
+            "sync/semaphore/resource-timeout" ->
+                SyncScenarios.runResourceTimeout(
+                    session,
+                ) { tried, left -> shoppers.complete(tried to left) }
+            "sync/semaphore/producer-consumer" ->
+                SyncScenarios.runProducerConsumer(session) { loaves, most ->
+                    loavesSold.complete(
+                        loaves to most,
+                    )
+                }
             "sync/combined/ecommerce" -> SyncScenarios.runOrderProcessing(session) { bought, left -> sneakers.complete(bought to left) }
             else -> error("not a Sync: Semaphore or Combined demo: $id")
         }
