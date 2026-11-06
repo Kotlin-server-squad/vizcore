@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { SyncPanel } from './SyncPanel'
@@ -180,6 +181,9 @@ describe('SemaphoreGauge', () => {
           totalPermits: 5,
           availablePermits: 3,
           activeHolders: [],
+          unknownHolderPermits: 0,
+          unsettled: false,
+          availableKnown: true,
           waitQueue: [],
         }}
       />,
@@ -238,5 +242,188 @@ describe('WaitQueueList', () => {
     expect(screen.getAllByTestId('wait-queue-entry')).toHaveLength(2)
     expect(screen.getByText('First')).toBeInTheDocument()
     expect(screen.getByText('Second')).toBeInTheDocument()
+  })
+})
+
+describe('SyncPanel — live facts and one selection (S-2, S-6)', () => {
+  const lockEvents = [
+    makeSyncEvent('MutexCreated', 1, { mutexId: 'm-1', mutexLabel: 'inventory-lock', ownerCoroutineId: null }),
+    makeSyncEvent('MutexLockAcquired', 2, { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'c-1', acquirerLabel: 'order-1', waitDurationNanos: 0 }),
+    makeSyncEvent('MutexQueueChanged', 3, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-2'], waitingLabels: ['order-2'] }),
+  ]
+  const permits = (fields: Record<string, unknown>) => [
+    makeSyncEvent('SemaphoreCreated', 4, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
+    makeSyncEvent('SemaphoreStateChanged', 5, {
+      semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3,
+      activeHolders: ['c-3', 'c-4'], activeHolderLabels: ['order-3', 'order-4'], waitingCoroutines: [], waitingLabels: [],
+      ...fields,
+    }),
+  ]
+  const anyone = (select = vi.fn()) => ({ select, canSelect: () => true })
+
+  beforeEach(() => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+  })
+
+  it('reads the events it is given, so it follows the live stream', () => {
+    render(<SyncPanel sessionId="session-1" events={lockEvents} />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('mutex-state')).toHaveTextContent('order-1')
+  })
+
+  it('lists a semaphore\'s holders with their permits', () => {
+    render(<SyncPanel sessionId="session-1" events={permits({ availablePermits: 0, activeHolderPermits: [2, 1] })} />, {
+      wrapper: createWrapper(),
+    })
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('order-3 (2 permits)')
+    expect(held).toHaveTextContent('order-4')
+    expect(held).not.toHaveTextContent('holder unknown')
+  })
+
+  it('says "holder unknown" when a permit came back from a coroutine that held none (S-6, S-7)', () => {
+    // Two permits listed, one in use: one of the two was released by somebody else, and which is unknown.
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 2, activeHolderPermits: [1, 1], unknownHolderPermits: 1 })} />,
+      { wrapper: createWrapper() },
+    )
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown')
+    expect(held).toHaveTextContent('1 of 3 permits in use')
+    expect(held).toHaveTextContent('last recorded holders order-3, order-4')
+  })
+
+  it('says the holder is unknown when permits are in use with no holder recorded', () => {
+    // A semaphore created with permits already taken (acquiredPermits) lists no holder for them.
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 0, activeHolders: [], activeHolderLabels: [] })} />,
+      { wrapper: createWrapper() },
+    )
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown')
+    expect(held).toHaveTextContent('3 of 3 permits in use; no holder was recorded')
+    expect(held).not.toHaveTextContent('none')
+  })
+
+  it('names the recorded holders and counts the permits no holder was recorded for', () => {
+    render(
+      <SyncPanel sessionId="session-1" events={permits({ availablePermits: 1, activeHolders: ['c-3'], activeHolderLabels: ['order-3'], activeHolderPermits: [1] })} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('order-3, and 1 permit with no recorded holder')
+  })
+
+  it('after an acquire or release since the last snapshot, says "holder unknown" and counts nothing per holder', () => {
+    // A acquires twice between snapshots: two permits in use, both acquisitions name order-3; no
+    // "no recorded holder" count is guessed.
+    const acquire = (seq: number, remainingPermits: number) =>
+      makeSyncEvent('SemaphorePermitAcquired', seq, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits, waitDurationNanos: 0,
+      })
+    const events = [
+      makeSyncEvent('SemaphoreCreated', 1, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 }),
+      makeSyncEvent('SemaphoreStateChanged', 2, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3, availablePermits: 3,
+        activeHolders: [], activeHolderLabels: [], waitingCoroutines: [], waitingLabels: [],
+      }),
+      acquire(3, 2),
+      acquire(4, 1),
+    ]
+    render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    const held = screen.getByTestId('semaphore-holders')
+    expect(held).toHaveTextContent('holder unknown — 2 of 3 permits in use; last recorded holders order-3')
+    expect(held).not.toHaveTextContent('no recorded holder')
+    expect(held).not.toHaveTextContent('permits)')
+  })
+
+  it('with no total in the retained events, says the permits in use are unknown rather than "none"', () => {
+    const events = [
+      makeSyncEvent('SemaphorePermitAcquired', 1, {
+        semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', acquirerId: 'c-3', acquirerLabel: 'order-3', remainingPermits: 1, waitDurationNanos: 0,
+      }),
+    ]
+    render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    const gauge = screen.getByTestId('semaphore-gauge')
+    expect(gauge).toHaveTextContent('total unknown')
+    // No negative count: the used figure is unknown.
+    expect(gauge).toHaveTextContent('?used')
+    expect(gauge).not.toHaveTextContent(/-\d+used/)
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('holder unknown')
+    expect(screen.getByTestId('semaphore-holders')).not.toHaveTextContent('none')
+  })
+
+  it('keeps focus on a waiter\'s name when the waiter ahead of it leaves the queue', async () => {
+    const queue = (ids: string[], seq: number) =>
+      makeSyncEvent('MutexQueueChanged', seq, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ids, waitingLabels: ids })
+    const base = lockEvents.slice(0, 2)
+    const wrapper = createWrapper()
+    const picker = anyone()
+    const { rerender } = render(<SyncPanel sessionId="session-1" events={[...base, queue(['c-2', 'c-3'], 3)]} picker={picker} />, { wrapper })
+    screen.getByRole('button', { name: 'c-3' }).focus()
+    rerender(<SyncPanel sessionId="session-1" events={[...base, queue(['c-3'], 4)]} picker={picker} />)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'c-3' }))
+  })
+
+  it('right after creation, says availability is not known yet (permits may be taken at creation)', () => {
+    const events = [makeSyncEvent('SemaphoreCreated', 1, { semaphoreId: 'sem-1', semaphoreLabel: 'payment-gateway', totalPermits: 3 })]
+    render(<SyncPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    const gauge = screen.getByTestId('semaphore-gauge')
+    expect(gauge).toHaveTextContent('3 permits · availability unknown')
+    expect(gauge).toHaveTextContent('?used')
+    expect(screen.getByTestId('semaphore-holders')).toHaveTextContent('holder unknown')
+    expect(screen.getByTestId('semaphore-holders')).not.toHaveTextContent('none')
+  })
+
+  it('selects a holder or a waiter by name', async () => {
+    const select = vi.fn()
+    render(<SyncPanel sessionId="session-1" events={lockEvents} picker={anyone(select)} />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: 'order-1' }))
+    await userEvent.click(screen.getByRole('button', { name: 'order-2' }))
+    expect(select.mock.calls).toEqual([['c-1'], ['c-2']])
+  })
+
+  it('offers no button for a coroutine the page cannot select, and names no coroutine for "unknown"', () => {
+    const events = [
+      makeSyncEvent('MutexCreated', 1, { mutexId: 'm-1', mutexLabel: 'inventory-lock', ownerCoroutineId: null }),
+      makeSyncEvent('MutexLockAcquired', 2, { mutexId: 'm-1', mutexLabel: 'inventory-lock', acquirerId: 'unknown-42', acquirerLabel: null, waitDurationNanos: 0 }),
+      makeSyncEvent('MutexQueueChanged', 3, { mutexId: 'm-1', mutexLabel: 'inventory-lock', waitingCoroutineIds: ['c-gone'], waitingLabels: ['gone'] }),
+    ]
+    render(
+      <SyncPanel sessionId="session-1" events={events} picker={{ select: vi.fn(), canSelect: id => id === 'c-1' }} />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('mutex-state')).toHaveTextContent('outside any coroutine')
+    expect(screen.getByText('gone')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'gone' })).toBeNull()
+  })
+
+  it('scrolls the selected resource into view, again when it is selected again', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    const wrapper = createWrapper()
+    const { rerender } = render(
+      <SyncPanel sessionId="session-1" events={lockEvents} selectedResourceId="m-1" revealKey={{}} />,
+      { wrapper },
+    )
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByTestId('resource-m-1'))
+    rerender(<SyncPanel sessionId="session-1" events={lockEvents} selectedResourceId="m-1" revealKey={{}} />)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it('marks the selected coroutine and rings the selected resource', () => {
+    render(
+      <SyncPanel
+        sessionId="session-1"
+        events={[...lockEvents, ...permits({ availablePermits: 0, activeHolderPermits: [2, 1] })]}
+        selectedCoroutineId="c-1"
+        selectedResourceId="sem-1"
+        picker={anyone()}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByRole('button', { name: 'order-1' })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: 'order-2' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByTestId('resource-sem-1')).toHaveAttribute('data-selected', 'true')
+    expect(screen.getByTestId('resource-m-1')).toHaveAttribute('data-selected', 'false')
   })
 })

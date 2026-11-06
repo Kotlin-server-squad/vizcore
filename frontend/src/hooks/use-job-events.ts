@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useSessionEvents } from '@/hooks/use-sessions'
+import { inSeqOrder } from '@/lib/projections/in-seq-order'
 import { JOB_EVENT_KINDS } from '@/types/api'
 import type {
   JobStateChangedEvent,
@@ -52,9 +53,14 @@ function deriveStatus(isActive: boolean, isCompleted: boolean, isCancelled: bool
 /**
  * Filters session events to job events, tracks job states,
  * parent-child relationships, and waiting-for-children blocking.
+ *
+ * Reads `given` when passed — the events the page shows, so the facts follow
+ * the live stream and the replay cursor — else the stored history, which live
+ * updates never invalidate. It subscribes to that history either way (#124).
  */
-export function useJobEvents(sessionId: string): UseJobEventsResult {
-  const { data: events } = useSessionEvents(sessionId)
+export function useJobEvents(sessionId: string, given?: readonly VizEvent[]): UseJobEventsResult {
+  const { data: stored } = useSessionEvents(sessionId)
+  const events = given ?? stored
 
   return useMemo(() => {
     const jobEvents: VizEvent[] = []
@@ -71,7 +77,8 @@ export function useJobEvents(sessionId: string): UseJobEventsResult {
       }
     }
 
-    for (const event of events) {
+    // In seq order: the live stream can deliver an earlier event late (inSeqOrder).
+    for (const event of inSeqOrder(events)) {
       if (!JOB_EVENT_KINDS.has(event.kind)) continue
 
       jobEvents.push(event)

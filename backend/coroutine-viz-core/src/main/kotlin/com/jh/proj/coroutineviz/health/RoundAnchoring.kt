@@ -89,7 +89,9 @@ class RoundAnchoring private constructor(
                     countsByState = roundMembers.groupingBy { it.state }.eachCount(),
                     memberCount = roundMembers.size,
                 )
-            }.sortedWith(compareByDescending<RoundSummary> { it.anchorCreatedNanos }.thenByDescending { it.anchorCreatedSeq })
+            }.sortedWith(
+                compareByDescending<RoundSummary> { it.anchorCreatedNanos }.thenByDescending { it.anchorCreatedSeq }.thenBy { it.anchorId },
+            )
     }
 
     companion object {

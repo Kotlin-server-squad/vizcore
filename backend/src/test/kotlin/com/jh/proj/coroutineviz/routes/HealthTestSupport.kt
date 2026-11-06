@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.events.PollWatermark
 import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
@@ -35,6 +36,7 @@ internal object HealthEvents {
         at: Long,
         parent: String? = null,
         origin: CoroutineOrigin? = CoroutineOrigin.APP,
+        creationPoint: SuspensionPoint? = null,
     ) = CoroutineCreated(
         sessionId = sessionId,
         seq = 0,
@@ -45,6 +47,7 @@ internal object HealthEvents {
         scopeId = "scope",
         label = id,
         origin = origin,
+        creationPoint = creationPoint,
     )
 
     fun started(
@@ -79,6 +82,13 @@ internal object HealthEvents {
         at: Long,
         parent: String? = null,
     ) = CoroutineCompleted(sessionId, 0, at, id, "job-$id", parent, "scope", id)
+
+    fun cancelled(
+        sessionId: String,
+        id: String,
+        at: Long,
+        parent: String? = null,
+    ) = CoroutineCancelled(sessionId, 0, at, id, "job-$id", parent, "scope", id, cause = null)
 
     fun failed(
         sessionId: String,
@@ -140,5 +150,28 @@ internal suspend fun eventually(
     while (!check()) {
         if (System.currentTimeMillis() > deadline) fail("condition not met within $timeoutMs ms")
         delay(20)
+    }
+}
+
+/** A store whose sessions keep no summaries: `readSummaries` throws as it does for an abandoned table. */
+internal class SessionHealthUnavailableTestStore : com.jh.proj.coroutineviz.session.SessionStoreInterface {
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, com.jh.proj.coroutineviz.session.VizSession>()
+
+    fun create(name: String): com.jh.proj.coroutineviz.session.VizSession =
+        com.jh.proj.coroutineviz.session
+            .VizSession(name, keepSummaries = false)
+            .also { sessions[it.sessionId] = it }
+
+    override suspend fun createSession(name: String?): com.jh.proj.coroutineviz.session.VizSession = create(name ?: "s-${sessions.size}")
+
+    override fun getSession(sessionId: String): com.jh.proj.coroutineviz.session.VizSession? = sessions[sessionId]
+
+    override fun listSessions(): List<com.jh.proj.coroutineviz.models.SessionInfo> = emptyList()
+
+    override fun deleteSession(sessionId: String): Boolean = sessions.remove(sessionId)?.also { it.close() } != null
+
+    override fun clearAll() {
+        sessions.values.forEach { it.close() }
+        sessions.clear()
     }
 }

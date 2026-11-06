@@ -1,5 +1,6 @@
 import { Chip } from '@heroui/react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { CoroutineName, type CoroutinePicker } from './CoroutineName'
 
 interface WaitQueueEntry {
   id: string
@@ -9,9 +10,13 @@ interface WaitQueueEntry {
 interface WaitQueueListProps {
   queue: WaitQueueEntry[]
   title?: string
+  /** Selects a waiter, when the page can (S-2). */
+  picker?: CoroutinePicker
+  /** The page's selected coroutine, marked in the queue. */
+  selectedId?: string | null
 }
 
-export function WaitQueueList({ queue, title = 'Wait Queue' }: WaitQueueListProps) {
+export function WaitQueueList({ queue, title = 'Wait Queue', picker, selectedId = null }: WaitQueueListProps) {
   if (queue.length === 0) {
     return (
       <div className="text-xs text-default-400" data-testid="wait-queue-empty">
@@ -27,7 +32,7 @@ export function WaitQueueList({ queue, title = 'Wait Queue' }: WaitQueueListProp
         <AnimatePresence mode="popLayout">
           {queue.map((entry, idx) => (
             <motion.div
-              key={`${entry.id}-${idx}`}
+              key={entry.id}
               className="flex items-center gap-2 rounded bg-default-50 px-2 py-1 text-xs"
               data-testid="wait-queue-entry"
               initial={{ opacity: 0, y: -10 }}
@@ -36,7 +41,9 @@ export function WaitQueueList({ queue, title = 'Wait Queue' }: WaitQueueListProp
               transition={{ duration: 0.2, delay: idx * 0.03 }}
             >
               <Chip size="sm" variant="flat" color="warning">#{idx + 1}</Chip>
-              <span className="font-mono truncate">{entry.label || entry.id}</span>
+              <span className="truncate">
+                <CoroutineName id={entry.id} label={entry.label} picker={picker} selected={entry.id === selectedId} />
+              </span>
             </motion.div>
           ))}
         </AnimatePresence>

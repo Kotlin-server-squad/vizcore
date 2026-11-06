@@ -6,10 +6,14 @@ import { CoroutineCanvas } from './CoroutineCanvas'
 import type { CoroutineNode } from '@/types/api'
 
 vi.mock('../CoroutineTreeGraph', () => ({
-  CoroutineTreeGraph: () => <div data-testid="coroutine-tree-graph" />,
+  CoroutineTreeGraph: ({ activity }: { activity?: Map<string, unknown> }) => (
+    <div data-testid="coroutine-tree-graph" data-activity={activity?.size ?? 0} />
+  ),
 }))
 vi.mock('../CoroutineTree', () => ({
-  CoroutineTree: () => <div data-testid="coroutine-tree" />,
+  CoroutineTree: ({ activity }: { activity?: Map<string, unknown> }) => (
+    <div data-testid="coroutine-tree" data-activity={activity?.size ?? 0} />
+  ),
 }))
 
 const node = { id: 'c-1', jobId: 'j-1', parentId: null, scopeId: 's', label: 'a', state: 'ACTIVE' } as CoroutineNode
@@ -36,6 +40,18 @@ function renderCanvas(props: Partial<Parameters<typeof CoroutineCanvas>[0]> = {}
 }
 
 describe('CoroutineCanvas — the main view', () => {
+  it('passes the second lines to the graph and the list', () => {
+    const activity = new Map([['c-1', { text: 'holds x', waiting: false }]])
+    renderCanvas({ activity })
+    expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-activity', '1')
+  })
+
+  it('passes them to the list view too', () => {
+    const activity = new Map([['c-1', { text: 'holds x', waiting: false }]])
+    renderCanvas({ activity, viewMode: 'list' })
+    expect(screen.getByTestId('coroutine-tree')).toHaveAttribute('data-activity', '1')
+  })
+
   it('is a labelled region with its toolbar first and the canvas filling the rest', () => {
     renderCanvas()
     const main = screen.getByRole('region', { name: 'Main view' })

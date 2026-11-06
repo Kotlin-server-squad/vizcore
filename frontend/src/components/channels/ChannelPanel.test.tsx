@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { ChannelPanel } from './ChannelPanel'
@@ -47,6 +48,73 @@ function makeChannelEvent(kind: string, seq: number, overrides: Record<string, u
 describe('ChannelPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('reads the events it is given, so it follows the live stream', () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const events = [
+      makeChannelEvent('ChannelCreated', 1, { channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' }),
+    ]
+    render(<ChannelPanel sessionId="session-1" events={events} />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('channel-selector-ch-1')).toBeInTheDocument()
+  })
+
+  it('shows the channel the page selected', () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const events = [
+      makeChannelEvent('ChannelCreated', 1, { channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' }),
+      makeChannelEvent('ChannelCreated', 2, { channelId: 'ch-2', name: 'invoices', capacity: 0, channelType: 'RENDEZVOUS' }),
+    ]
+    render(<ChannelPanel sessionId="session-1" events={events} focusChannelId="ch-2" />, { wrapper: createWrapper() })
+    expect(screen.getByText('Buffer State: invoices')).toBeInTheDocument()
+  })
+
+  it('marks the channel the page selected and scrolls it into view', () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    const events = [
+      makeChannelEvent('ChannelCreated', 1, { channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' }),
+      makeChannelEvent('ChannelCreated', 2, { channelId: 'ch-2', name: 'invoices', capacity: 0, channelType: 'RENDEZVOUS' }),
+    ]
+    render(<ChannelPanel sessionId="session-1" events={events} focusChannelId="ch-2" revealKey={{}} />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('channel-selector-ch-2')).toHaveAttribute('data-focused', 'true')
+    expect(screen.getByTestId('channel-selector-ch-1')).toHaveAttribute('data-focused', 'false')
+    expect(scrollIntoView.mock.contexts[0]).toBe(screen.getByTestId('channel-selector-ch-2'))
+  })
+
+  it('tells assistive technology which channel is selected and which is shown', () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const events = [
+      makeChannelEvent('ChannelCreated', 1, { channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' }),
+      makeChannelEvent('ChannelCreated', 2, { channelId: 'ch-2', name: 'invoices', capacity: 0, channelType: 'RENDEZVOUS' }),
+    ]
+    render(<ChannelPanel sessionId="session-1" events={events} focusChannelId="ch-2" />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('channel-selector-ch-2')).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByTestId('channel-selector-ch-2')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('channel-selector-ch-1')).not.toHaveAttribute('aria-current')
+    expect(screen.getByTestId('channel-selector-ch-1')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('picking a channel selects it on the page, which then shows it (one selection, S-2)', async () => {
+    mockedApiClient.getSessionEvents.mockResolvedValue([])
+    const events = [
+      makeChannelEvent('ChannelCreated', 1, { channelId: 'ch-1', name: 'orders', capacity: 0, channelType: 'RENDEZVOUS' }),
+      makeChannelEvent('ChannelCreated', 2, { channelId: 'ch-2', name: 'invoices', capacity: 0, channelType: 'RENDEZVOUS' }),
+    ]
+    const onSelectChannel = vi.fn()
+    const wrapper = createWrapper()
+    const { rerender } = render(
+      <ChannelPanel sessionId="session-1" events={events} focusChannelId="ch-1" onSelectChannel={onSelectChannel} />,
+      { wrapper },
+    )
+    await userEvent.click(screen.getByTestId('channel-selector-ch-2'))
+    expect(onSelectChannel).toHaveBeenCalledWith('ch-2')
+    // The page's selection decides what is shown: still ch-1 until the page says otherwise.
+    expect(screen.getByText('Buffer State: orders')).toBeInTheDocument()
+    rerender(<ChannelPanel sessionId="session-1" events={events} focusChannelId="ch-2" onSelectChannel={onSelectChannel} />)
+    // The detail swaps with an exit animation (AnimatePresence mode="wait").
+    expect(await screen.findByText('Buffer State: invoices')).toBeInTheDocument()
   })
 
   it('renders empty state when no channel events exist', async () => {

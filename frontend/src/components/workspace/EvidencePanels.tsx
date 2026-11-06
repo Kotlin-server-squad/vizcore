@@ -12,7 +12,9 @@ import { plural, resourceSummary, type EvidenceCounts } from '@/lib/evidence-sum
 import { groupThreadsByName, threadSummary } from '@/lib/thread-groups'
 import type { EventCategories } from '@/hooks/use-event-categories'
 import type { Rung } from '@/lib/fidelity-rung'
-import type { ThreadActivity } from '@/types/api'
+import type { ThreadActivity, VizEvent } from '@/types/api'
+import type { Selection } from '@/lib/selection'
+import type { CoroutinePicker } from '../sync/CoroutineName'
 
 interface EvidencePanelsProps {
   sessionId: string
@@ -32,6 +34,24 @@ interface EvidencePanelsProps {
    * loading, and after a failed read, unavailable.
    */
   history?: 'ready' | 'loading' | 'unavailable'
+  /**
+   * The events the page shows: live, paused, or at the replay cursor. Locks
+   * and permits, Channels, Flows and Jobs follow them, so their facts refresh
+   * with each new event; without them each reads the stored history.
+   */
+  events?: readonly VizEvent[]
+  /** The page's one selection (S-2). A resource unfolds its section; a coroutine is marked in it. */
+  selection?: Selection | null
+  /** Selects a coroutine named in Locks and permits, when the page can (S-2). */
+  picker?: CoroutinePicker
+  /** Selects a resource on the page: a channel picked in Channels (S-2). */
+  onSelectResource?: (selection: Selection) => void
+}
+
+/** The section a selected resource lives in. */
+function sectionOf(selection: Selection | null): string | null {
+  if (selection?.kind !== 'resource') return null
+  return selection.resource === 'channel' ? 'Channels' : 'Locks and permits'
 }
 
 /**
@@ -60,7 +80,10 @@ interface Capability {
  * telling its user to swap in `VizMutex` names code that is not theirs.
  *
  * Folded sections are hidden, not unmounted: every panel subscribes at page
- * load, exactly as before, so opening one later never refetches.
+ * load, exactly as before, so opening one later never refetches. Locks and
+ * permits, Channels, Flows and Jobs read the events the page shows, so they
+ * refresh live and follow the replay cursor; a selected resource unfolds its
+ * section (S-2).
  */
 export function EvidencePanels({
   sessionId,
@@ -72,8 +95,16 @@ export function EvidencePanels({
   threadActivity,
   captureStartNanos,
   history = 'ready',
+  events,
+  selection = null,
+  picker,
+  onSelectResource,
 }: EvidencePanelsProps) {
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
+  // A resource already selected when Evidence mounts has its section open.
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => {
+    const section = sectionOf(selection)
+    return new Set(section ? [section] : [])
+  })
   const toggle = (title: string) =>
     setOpen(prev => {
       const next = new Set(prev)
@@ -81,6 +112,17 @@ export function EvidencePanels({
       else next.add(title)
       return next
     })
+
+  // A resource selected anywhere on the page unfolds its section (S-2). Each
+  // selection is a new object, so choosing the same lock again re-opens it.
+  const [seenSelection, setSeenSelection] = useState<Selection | null>(selection)
+  if (selection !== seenSelection) {
+    setSeenSelection(selection)
+    const section = sectionOf(selection)
+    if (section && !open.has(section)) setOpen(prev => new Set(prev).add(section))
+  }
+  const selectedResource = selection?.kind === 'resource' ? selection : null
+  const selectedCoroutineId = selection?.kind === 'coroutine' ? selection.id : null
 
   const groups = useMemo(() => groupThreadsByName(threadActivity), [threadActivity])
   const dispatchers = useMemo(() => {
@@ -98,7 +140,16 @@ export function EvidencePanels({
       summary: resourceSummary([plural(counts.locks, 'lock'), plural(counts.semaphores, 'semaphore')]) ?? 'captured',
       whatYouWouldSee: 'Who holds each mutex and semaphore, who is queued behind it, and for how long.',
       unlockWith: 'Swap Mutex() for VizMutex() in the code you want to watch.',
-      panel: <SyncPanel sessionId={sessionId} />,
+      panel: (
+        <SyncPanel
+          sessionId={sessionId}
+          events={events}
+          selectedResourceId={selectedResource && selectedResource.resource !== 'channel' ? selectedResource.id : null}
+          selectedCoroutineId={selectedCoroutineId}
+          picker={picker}
+          revealKey={selection}
+        />
+      ),
     },
     {
       title: 'Channels',
@@ -106,7 +157,17 @@ export function EvidencePanels({
       summary: resourceSummary([plural(counts.channels, 'channel')]) ?? 'captured',
       whatYouWouldSee: 'Send and receive pairs, buffer occupancy, and which side is waiting.',
       unlockWith: 'Create the channel with InstrumentedChannel(...).',
-      panel: <ChannelPanel sessionId={sessionId} />,
+      panel: (
+        <ChannelPanel
+          sessionId={sessionId}
+          events={events}
+          focusChannelId={selectedResource?.resource === 'channel' ? selectedResource.id : null}
+          revealKey={selection}
+          onSelectChannel={
+            onSelectResource ? id => onSelectResource({ kind: 'resource', resource: 'channel', id }) : undefined
+          }
+        />
+      ),
     },
     {
       title: 'Flows',
@@ -114,7 +175,7 @@ export function EvidencePanels({
       summary: resourceSummary([plural(counts.flows, 'flow')]) ?? 'captured',
       whatYouWouldSee: 'Emissions, operator stages, and where a slow collector is stalling the producer.',
       unlockWith: 'Wrap the flow you care about with .instrumented().',
-      panel: <FlowPanel sessionId={sessionId} />,
+      panel: <FlowPanel sessionId={sessionId} events={events} />,
     },
     {
       title: 'Jobs',
@@ -125,7 +186,7 @@ export function EvidencePanels({
       // does not promote a session to instrumented), so there is no honest
       // one-line unlock to offer for them.
       unlockWith: '',
-      panel: <JobPanel sessionId={sessionId} />,
+      panel: <JobPanel sessionId={sessionId} events={events} />,
     },
   ]
 
@@ -168,7 +229,8 @@ export function EvidencePanels({
             summary={c.summary}
             open={open.has(c.title)}
             onToggle={() => toggle(c.title)}
-            replayActive={replayActive}
+            // Read from the page's events, so it follows the replay cursor like Threads (D-17).
+            replayActive={false}
           >
             {c.panel}
           </Section>
