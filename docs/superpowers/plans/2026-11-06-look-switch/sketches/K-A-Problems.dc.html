@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch A: Problems</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: #1e1f22; color: #dfe1e5; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 12px; background: #2b2d30; border-bottom: 1px solid #43454a">
+    <span style="font-family: Inter, system-ui, sans-serif; font-size: 15px; font-weight: 700">shop-api</span>
+    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 4px; background: #25324d; color: #7fcf84; font-size: 12px; font-weight: 600"><span style="width: 7px; height: 7px; border-radius: 50%; background: #7fcf84"></span>App connected · last data 1 s ago</span>
+    <span style="color: #9da0a8; font-size: 12px">updating · round 21:14:02</span>
+    <div style="flex: 1"></div>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Replay</button>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Pause view</button>
+    <button type="button" aria-label="More actions" style="font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">⋯</button>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #43454a">
+    <div role="group" aria-label="Main view" style="display: flex; gap: 2px; padding: 2px; border-radius: 4px; border: 1px solid #43454a">
+      <button type="button" aria-pressed="true" style="font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 4px; border: 0; background: #393b40; color: #dfe1e5; font-weight: 600">Tree</button>
+      <button type="button" aria-pressed="false" style="font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 4px; border: 0; background: transparent; color: #9da0a8">Timeline</button>
+    </div>
+    <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px; color: #9da0a8"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{c.dot}}"></span>{{c.n}} {{c.label}}</span>
+    </sc-for>
+  </div>
+  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 18px 12px">
+    <div style="font-family: JetBrains Mono, monospace; font-size: 12px; padding: 6px 12px; border-radius: 4px; border: 1px solid #43454a; background: #2b2d30">checkout-worker <span style="color: #9da0a8">· waiting for children</span></div>
+    <span aria-hidden="true" style="width: 2px; height: 14px; background: #43454a"></span>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; border-top: 2px solid #43454a; padding-top: 14px">
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+        <button type="button" aria-pressed="{{g.pressed}}" style="display: flex; flex-direction: column; gap: 4px; width: 220px; padding: 10px 12px; border-radius: 4px; border: {{g.border}}; {{g.style}}; font: inherit; text-align: left">
+          <span style="font-family: JetBrains Mono, monospace; font-size: 13px; font-weight: 600">{{g.name}}</span>
+          <span style="font-size: 12px">{{g.state}}</span>
+          <span style="font-size: 11px; opacity: 0.85">{{g.note}}</span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+  <section aria-label="Dock" style="height: 330px; display: flex; flex-direction: column; margin: 0 0 0; border: 1px solid #43454a; border-radius: 0; background: #2b2d30">
+    <div role="tablist" aria-label="Dock" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid #43454a">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+        <button type="button" role="tab" aria-selected="{{t.sel}}" style="display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: {{t.weight}}; padding: 6px 12px; border-radius: 4px; border: 0; background: {{t.bg}}; color: {{t.color}}">{{t.label}}<span style="font-size: 11px; font-weight: 700; padding: {{t.badgePad}}; border-radius: 999px; background: #e5534b; color: #ffffff">{{t.badge}}</span></button>
+      </sc-for>
+      <div style="flex: 1"></div>
+      <button type="button" style="font: inherit; font-size: 12px; padding: 4px 10px; border: 0; background: transparent; color: #9da0a8">Fold</button>
+    </div>
+    <div style="padding: 12px 12px; display: flex; flex-direction: column; gap: 10px; overflow: auto">
+      <span style="font-family: Inter, system-ui, sans-serif; font-size: 16px; font-weight: 700">2 problems detected <span style="font-weight: 400; color: #9da0a8; font-size: 13px">· as of 21:14:05, from what vizcore captured</span></span>
+      <sc-for list="{{problems}}" as="p" hint-placeholder-count="2">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 4px; border: 1px solid {{p.border}}; background: {{p.bg}}">
+          <span style="font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: {{p.tagBg}}; color: #ffffff">{{p.tag}}</span>
+          <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 300px">
+            <span style="font-weight: 600">{{p.title}}</span>
+            <span style="font-size: 12px; color: #9da0a8">{{p.why}}</span>
+          </div>
+          <button type="button" style="font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 4px; border: 0; background: #548af7; color: #ffffff">Show</button>
+        </div>
+      </sc-for>
+      <span style="font-size: 12px; color: #9da0a8">Observations, not problems: Long-lived (2) · Checks: not run yet</span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const S = { act: '#548af7', sus: '#e5a50a', wfc: '#a571e6', done: '#5fb865', fail: '#e5534b', surf2: '#393b40', text: '#dfe1e5', muted: '#9da0a8' };
+    const tabs = [['Problems', '2'], ['Inspector', ''], ['Evidence · 3 locks', ''], ['Events', ''], ['Learn', '']].map(([label, badge]) => ({ label, sel: label === 'Problems' ? 'true' : 'false', weight: label === 'Problems' ? 700 : 400,
+      bg: label === 'Problems' ? S.surf2 : 'transparent', color: label === 'Problems' ? S.text : S.muted, badge: badge || '', badgePad: badge ? '1px 7px' : '0' }));
+
+    const fill = false;
+    const st = (bg, fg) => fill ? 'background: ' + bg + '; color: ' + fg : 'background: #2b2d30; color: #dfe1e5';
+    return {
+      tabs,
+      groups: [
+        { name: 'order-* (120)', state: '117 Completed · 3 Failed', note: 'grouped by name · same parent', style: st('#e5534b', '#ff8f88'), border: '2px solid #e5534b', pressed: 'true' },
+        { name: 'report-export', state: 'Active for 14.2 s', note: 'no suspension seen since 21:13:51', style: st('#e5a50a', '#f2c55c'), border: '2px solid #e5a50a', pressed: 'false' },
+        { name: 'cache-refresh', state: 'Suspended', note: 'in delay · every 30 s', style: st('#393b40', '#dfe1e5'), border: '1px solid #43454a', pressed: 'false' },
+        { name: 'metrics-flush', state: 'Suspended', note: 'waits for flush-lock', style: st('#393b40', '#dfe1e5'), border: '1px solid #43454a', pressed: 'false' }
+      ],
+      problems: [
+        { tag: 'Failed', tagBg: '#e5534b', bg: 'transparent', border: '#e5534b', title: '3 of 120 orders failed in round 21:14:02', why: 'PaymentDeclinedException at PaymentClient.kt:88 · their siblings kept running (supervisor)' },
+        { tag: 'Possibly blocked', tagBg: '#e5a50a', bg: 'transparent', border: '#e5a50a', title: 'report-export has run 14.2 s without suspending', why: 'over the 10 s threshold · it may be blocking its thread (a blocking call inside a coroutine)' }
+      ],
+      counts: [ { label: 'active', n: 2, dot: S.act }, { label: 'suspended', n: 2, dot: S.sus }, { label: 'failed', n: 3, dot: S.fail }, { label: 'completed', n: 117, dot: S.done } ]
+    };
+  }
+}
+</script>
+</body>
+</html>

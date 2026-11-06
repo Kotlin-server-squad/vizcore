@@ -1,6 +1,7 @@
 /**
  * Exports keep the dark look in both themes (spec: "Exported PNG and SVG keep
- * today's dark look").
+ * today's dark look"), and the Classic look whichever trial look the page wears
+ * (PR L0): the look's `data-look` on <html> is set aside like the light class.
  */
 
 /** Turns CSS transitions off (rule in index.css) while the theme is swapped for an export. */
@@ -12,8 +13,8 @@ function flushStyles(): void {
 }
 
 /**
- * Runs `read` with <html> switched to dark. The switch and the restore happen
- * in one synchronous task, so the browser never paints the dark state.
+ * Runs `read` with <html> switched to Classic dark. The switch and the restore
+ * happen in one synchronous task, so the browser never paints the dark state.
  *
  * Transitions are off for the whole swap: otherwise an element with a colour
  * transition (HeroUI buttons, for one) would still report its light colour when
@@ -21,21 +22,26 @@ function flushStyles(): void {
  */
 export function withDarkTheme<T>(read: () => T): T {
   const root = document.documentElement
-  if (!root.classList.contains('light')) return read()
+  const light = root.classList.contains('light')
+  const look = root.dataset.look
+  if (!light && look === undefined) return read()
   root.classList.add(NO_TRANSITIONS_CLASS)
-  root.classList.replace('light', 'dark')
+  if (light) root.classList.replace('light', 'dark')
+  if (look !== undefined) delete root.dataset.look
   flushStyles()
   try {
     return read()
   } finally {
-    root.classList.replace('dark', 'light')
+    if (light) root.classList.replace('dark', 'light')
+    if (look !== undefined) root.dataset.look = look
     flushStyles()
     root.classList.remove(NO_TRANSITIONS_CLASS)
   }
 }
 
-/** html2canvas `onclone` hook: renders the clone in the dark theme. */
+/** html2canvas `onclone` hook: renders the clone in the Classic dark theme. */
 export function asDarkClone(doc: Document): void {
   doc.documentElement.classList.remove('light')
   doc.documentElement.classList.add('dark')
+  delete doc.documentElement.dataset.look
 }

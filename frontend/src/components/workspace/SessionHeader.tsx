@@ -1,7 +1,18 @@
 import type { RefObject } from 'react'
-import { Button, Chip, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Tooltip } from '@heroui/react'
-import { FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
+import {
+  Button,
+  Chip,
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownSection,
+  DropdownTrigger,
+  Tooltip,
+} from '@heroui/react'
+import { FiCheck, FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
+import { useLook, useLookSlot } from '@/looks/look-context'
+import { parseLook } from '@/looks/registry'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
 import { formatDuration } from '@/lib/format-duration'
 import type { RunOutcome, RunOutcomeFacts } from '@/lib/run-outcome'
@@ -99,11 +110,50 @@ export function SessionHeader({
   // that 404s (explicit false only — stay enabled while still loading).
   const { data: capabilities } = useCapabilities()
   const sharingDisabled = capabilities?.sharingEnabled === false
+  // The Look switch (PR L0): offered only where the page has one (not the shared view).
+  const { look, setLook, looks } = useLook()
+  // A line under the title, if the look has one (Classic: none).
+  const headerSummary = useLookSlot('HeaderSummary')
+  // The page's own actions in "⋯".
+  const actionItems = [
+    // Owner only: a shared link can never re-share (ADR-019, T-03-22).
+    ...(readOnly
+      ? []
+      : [
+          <DropdownItem
+            key="share"
+            description={sharingDisabled ? 'Sharing requires storage.type=database' : undefined}
+          >
+            Share
+          </DropdownItem>,
+        ]),
+    // Session checks (M-3) — validation is an action, not a tab.
+    <DropdownItem key="checks">Checks</DropdownItem>,
+    <DropdownItem key="refresh">Refresh</DropdownItem>,
+    ...(scenario
+      ? [
+          <DropdownItem key="reset" description="Deletes this session and starts a fresh one">
+            Reset session
+          </DropdownItem>,
+          <DropdownItem key="clear" description="Empties the live event list; keeps the session">
+            Clear events
+          </DropdownItem>,
+        ]
+      : []),
+  ]
 
   return (
-    <header className="space-y-2">
+    <header data-look-part="header" className="space-y-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="text-xl font-bold">{title}</h1>
+        {headerSummary({
+          outcome,
+          runSpanNanos,
+          spanIsFloor: droppedCount > 0,
+          replayActive,
+          replayAtNanos,
+          events: panelEvents,
+        })}
         {/* Which fidelity rung this session is on (D-6). */}
         <Chip size="sm" variant="flat" color={rung === 'demo' ? 'default' : 'primary'} data-testid="rung-badge">
           {RUNG_LABEL[rung]}
@@ -156,7 +206,7 @@ export function SessionHeader({
 
         <div className="flex-1" />
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-look-part="header-actions" className="flex flex-wrap items-center gap-2">
           {scenario && outcome && (
             <RunScenarioButton outcome={outcome.outcome} isPending={scenario.isRunPending} onRun={() => void scenario.run()} />
           )}
@@ -208,34 +258,31 @@ export function SessionHeader({
                 else if (key === 'refresh') onRefetch()
                 else if (key === 'reset') void scenario?.reset()
                 else if (key === 'clear') scenario?.clear()
+                else if (typeof key === 'string' && key.startsWith(LOOK_KEY)) {
+                  setLook?.(parseLook(key.slice(LOOK_KEY.length)))
+                }
               }}
             >
-              {[
-                // Owner only: a shared link can never re-share (ADR-019, T-03-22).
-                ...(readOnly
-                  ? []
-                  : [
-                      <DropdownItem
-                        key="share"
-                        description={sharingDisabled ? 'Sharing requires storage.type=database' : undefined}
-                      >
-                        Share
-                      </DropdownItem>,
-                    ]),
-                // Session checks (M-3) — validation is an action, not a tab.
-                <DropdownItem key="checks">Checks</DropdownItem>,
-                <DropdownItem key="refresh">Refresh</DropdownItem>,
-                ...(scenario
-                  ? [
-                      <DropdownItem key="reset" description="Deletes this session and starts a fresh one">
-                        Reset session
-                      </DropdownItem>,
-                      <DropdownItem key="clear" description="Empties the live event list; keeps the session">
-                        Clear events
-                      </DropdownItem>,
-                    ]
-                  : []),
-              ]}
+              {setLook
+                ? [
+                    <DropdownSection key="actions" aria-label="Session actions" showDivider>
+                      {actionItems}
+                    </DropdownSection>,
+                    // Trial looks for this page (PR L0); the losing ones are deleted after the trial.
+                    <DropdownSection key="look" title="Look · trial">
+                      {looks.map(l => (
+                        <DropdownItem
+                          key={`${LOOK_KEY}${l.id}`}
+                          textValue={l.label}
+                          aria-current={l.id === look ? 'true' : undefined}
+                          endContent={l.id === look ? <FiCheck aria-hidden /> : undefined}
+                        >
+                          {l.label}
+                        </DropdownItem>
+                      ))}
+                    </DropdownSection>,
+                  ]
+                : actionItems}
             </DropdownMenu>
           </Dropdown>
         </div>
@@ -248,6 +295,9 @@ export function SessionHeader({
     </header>
   )
 }
+
+/** Menu keys of the Look items: `look:a`. */
+const LOOK_KEY = 'look:'
 
 function OutcomePill({
   facts: { outcome, failedCount, ended },

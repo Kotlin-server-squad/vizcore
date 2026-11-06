@@ -45,6 +45,7 @@ export function DockTabs({
 
   return (
     <div
+      data-look-part="dock-tabs"
       role="tablist"
       aria-label="Dock"
       onKeyDown={onKeyDown}

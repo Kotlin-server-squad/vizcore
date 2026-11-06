@@ -1,0 +1,38 @@
+{
+  "id": "a",
+  "name": "A · Compact",
+  "dark": {
+    "bg": "#1e1f22",
+    "surface": "#2b2d30",
+    "surface-2": "#313337",
+    "surface-3": "#393b40",
+    "border": "#393b40",
+    "border-2": "#4e5157",
+    "text": "#dfe1e5",
+    "text-muted": "#9da0a8",
+    "text-faint": "#6f737a",
+    "primary": "#548af7",
+    "success": "#5fb865",
+    "warning": "#e5a50a",
+    "danger": "#e5534b",
+    "secondary": "#a571e6",
+    "created": "#868a91"
+  },
+  "light": {
+    "bg": "#f7f8fa",
+    "surface": "#ffffff",
+    "surface-2": "#f2f3f5",
+    "surface-3": "#ebecf0",
+    "border": "#ebecf0",
+    "border-2": "#c9ccd6",
+    "text": "#1e1f22",
+    "text-muted": "#5a5d6b",
+    "text-faint": "#686c7a",
+    "primary": "#3574f0",
+    "success": "#1f7a35",
+    "warning": "#946100",
+    "danger": "#c7303f",
+    "secondary": "#834dd1",
+    "created": "#686c7a"
+  }
+}

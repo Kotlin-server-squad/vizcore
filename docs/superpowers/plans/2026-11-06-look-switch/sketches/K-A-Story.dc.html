@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch A: Story mode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: #1e1f22; color: #dfe1e5; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 12px; background: #2b2d30; border-bottom: 1px solid #43454a">
+    <span style="font-family: Inter, system-ui, sans-serif; font-size: 15px; font-weight: 700">Exception: One Backend Call Fails</span>
+    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 4px; background: #25324d; color: #c4a1f5; font-size: 12px; font-weight: 600"><span style="width: 7px; height: 7px; border-radius: 50%; background: #c4a1f5"></span>Story · chapter 3 of 5</span>
+    <span style="color: #9da0a8; font-size: 12px">paused at 4.0 s</span>
+    <div style="flex: 1"></div>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Replay</button>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Pause view</button>
+    <button type="button" aria-label="More actions" style="font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">⋯</button>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #43454a">
+    <div role="group" aria-label="Main view" style="display: flex; gap: 2px; padding: 2px; border-radius: 4px; border: 1px solid #43454a">
+      <button type="button" aria-pressed="true" style="font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 4px; border: 0; background: #393b40; color: #dfe1e5; font-weight: 600">Tree</button>
+      <button type="button" aria-pressed="false" style="font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 4px; border: 0; background: transparent; color: #9da0a8">Timeline</button>
+    </div>
+    <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px; color: #9da0a8"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{c.dot}}"></span>{{c.n}} {{c.label}}</span>
+    </sc-for>
+  </div>
+  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 18px 12px">
+    <div style="font-family: JetBrains Mono, monospace; font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 2px solid #a571e6; background: #2b2d30">load-account-page <span style="color: #9da0a8">· waiting for children</span></div>
+    <span aria-hidden="true" style="width: 2px; height: 14px; background: #43454a"></span>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; border-top: 2px solid #43454a; padding-top: 14px">
+      <sc-for list="{{kids}}" as="k" hint-placeholder-count="5">
+        <div style="display: flex; flex-direction: column; gap: 4px; width: 170px; padding: 10px 12px; border-radius: 4px; border: {{k.border}}; {{k.style}}">
+          <span style="font-family: JetBrains Mono, monospace; font-size: 13px; font-weight: 600">{{k.name}}</span>
+          <span style="font-size: 12px">{{k.state}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <section aria-label="Dock" style="height: 330px; display: flex; flex-direction: column; margin: 0 0 0; border: 1px solid #43454a; border-radius: 0; background: #2b2d30">
+    <div role="tablist" aria-label="Dock" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid #43454a">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+        <button type="button" role="tab" aria-selected="{{t.sel}}" style="display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: {{t.weight}}; padding: 6px 12px; border-radius: 4px; border: 0; background: {{t.bg}}; color: {{t.color}}">{{t.label}}<span style="font-size: 11px; font-weight: 700; padding: {{t.badgePad}}; border-radius: 999px; background: #e5534b; color: #ffffff">{{t.badge}}</span></button>
+      </sc-for>
+      <div style="flex: 1"></div>
+      <button type="button" style="font: inherit; font-size: 12px; padding: 4px 10px; border: 0; background: transparent; color: #9da0a8">Fold</button>
+    </div>
+    <div style="padding: 12px 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; line-height: 1.5">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: #9da0a8">Chapter 3 of 5 · Learn tab</span>
+        <span style="font-family: Inter, system-ui, sans-serif; font-size: 17px; font-weight: 700">fetch-loyalty-points is about to fail</span>
+        <span>The page loads five things at once. The loyalty service will throw an exception in a moment.</span>
+        <span style="font-weight: 600">What happens to fetch-orders and fetch-invoices?</span>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <sc-for list="{{answers}}" as="a" hint-placeholder-count="3">
+            <label style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; border: 1px solid #43454a; background: #393b40"><input type="radio" name="guess"> {{a}}</label>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; justify-content: flex-end">
+        <span style="color: #9da0a8; font-size: 13px">Guess first. Reveal moves the replay to the moment it happens and shows the answer.</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" style="font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Previous chapter</button>
+          <button type="button" style="font: inherit; font-size: 14px; font-weight: 700; padding: 8px 18px; border-radius: 4px; border: 0; background: #548af7; color: #ffffff">Reveal</button>
+        </div>
+        <span style="font-size: 12px; color: #9da0a8">Chapters 4 and 5 stay hidden until you reveal this one.</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const S = { act: '#548af7', sus: '#e5a50a', wfc: '#a571e6', done: '#5fb865', fail: '#e5534b', surf2: '#393b40', text: '#dfe1e5', muted: '#9da0a8' };
+    const tabs = [['Inspector', ''], ['Evidence', ''], ['Events', ''], ['Learn', '']].map(([label, badge]) => ({ label, sel: label === 'Learn' ? 'true' : 'false', weight: label === 'Learn' ? 700 : 400,
+      bg: label === 'Learn' ? S.surf2 : 'transparent', color: label === 'Learn' ? S.text : S.muted, badge: badge || '', badgePad: badge ? '1px 7px' : '0' }));
+
+    const fill = false;
+    const st = (bg, fg) => fill ? 'background: ' + bg + '; color: ' + fg : 'background: #2b2d30; color: #dfe1e5';
+    return {
+      tabs,
+      kids: [
+        { name: 'fetch-profile', state: 'Completed', style: st('#5fb865', '#7fcf84'), border: '1px solid #5fb865' },
+        { name: 'fetch-delivery-status', state: 'Completed', style: st('#5fb865', '#7fcf84'), border: '1px solid #5fb865' },
+        { name: 'fetch-loyalty-points', state: 'Active · about to fail', style: st('#548af7', '#8ab4ff'), border: '2px solid #e5534b' },
+        { name: 'fetch-orders', state: 'Suspended · in delay', style: st('#e5a50a', '#f2c55c'), border: '1px solid #e5a50a' },
+        { name: 'fetch-invoices', state: 'Suspended · in delay', style: st('#e5a50a', '#f2c55c'), border: '1px solid #e5a50a' }
+      ],
+      answers: ['They keep running and finish', 'They are cancelled', 'They wait until the failure is handled'],
+      counts: [ { label: 'active', n: 1, dot: S.act }, { label: 'suspended', n: 2, dot: S.sus }, { label: 'waiting for children', n: 1, dot: S.wfc }, { label: 'completed', n: 2, dot: S.done } ]
+    };
+  }
+}
+</script>
+</body>
+</html>

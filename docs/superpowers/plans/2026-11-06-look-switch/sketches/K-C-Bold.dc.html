@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch C: Bold and visual</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: #0b0d12; color: #f4f4f5; font-family: Inter, system-ui, sans-serif">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 28px">
+    <span style="font-family: Space Grotesk, Inter, sans-serif; font-size: 22px; font-weight: 700">E-commerce Orders</span>
+    <span style="font-family: JetBrains Mono, monospace; font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #1d4ed8; color: #ffffff">LIVE 6.0 s</span>
+    <div style="flex: 1"></div>
+    <button type="button" style="font: inherit; font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 999px; border: 0; background: #f4f4f5; color: #0b0d12">Replay</button>
+    <button type="button" style="font: inherit; font-size: 14px; padding: 10px 18px; border-radius: 999px; border: 1px solid #3f3f46; background: transparent; color: #f4f4f5">Pause view</button>
+    <button type="button" aria-label="More actions" style="font: inherit; font-size: 14px; padding: 10px 14px; border-radius: 999px; border: 1px solid #3f3f46; background: transparent; color: #f4f4f5">⋯</button>
+  </header>
+  <div style="margin: 0 28px; padding: 14px 18px; border-radius: 14px; background: #1c1917; border: 1px solid #78350f; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+    <span style="font-family: Space Grotesk, Inter, sans-serif; font-size: 18px; font-weight: 700; color: #fbbf24">Right now</span>
+    <span style="font-size: 15px">order-4 holds the stock lock. order-5 and order-6 wait for it. order-3 waits for a payment slot.</span>
+  </div>
+  <div style="margin: 14px 28px 0; display: flex; height: 10px; border-radius: 999px; overflow: hidden">
+    <sc-for list="{{bar}}" as="b" hint-placeholder-count="4">
+      <span style="flex: {{b.n}}; background: {{b.c}}"></span>
+    </sc-for>
+  </div>
+  <div style="margin: 6px 28px 0; display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: #a1a1aa">
+    <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{c.dot}}"></span>{{c.n}} {{c.label}}</span>
+    </sc-for>
+  </div>
+  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; padding: 22px 28px">
+    <div style="font-family: Space Grotesk, Inter, sans-serif; font-weight: 700; padding: 10px 20px; border-radius: 999px; background: #2e1065; color: #e9d5ff">checkout · waiting for children</div>
+    <span aria-hidden="true" style="width: 3px; height: 16px; background: #3f3f46"></span>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; border-top: 3px solid #3f3f46; padding-top: 16px">
+      <sc-for list="{{nodes}}" as="n" hint-placeholder-count="7">
+        <button type="button" aria-pressed="{{n.pressed}}" style="display: flex; flex-direction: column; gap: 6px; width: 170px; padding: 12px 14px; border-radius: 16px; border: {{n.border}}; background: {{n.bg}}; color: {{n.fg}}; font: inherit; text-align: left">
+          <span style="font-family: JetBrains Mono, monospace; font-size: 14px; font-weight: 500">{{n.name}}</span>
+          <span style="font-family: Space Grotesk, Inter, sans-serif; font-size: 16px; font-weight: 700">{{n.label}}</span>
+          <span style="font-size: 12px; line-height: 1.35; opacity: 0.9">{{n.note}}</span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+  <section aria-label="Dock" style="margin: 0 28px 20px; border-radius: 18px; background: #18181b; display: flex; flex-direction: column">
+    <div role="tablist" aria-label="Dock" style="display: flex; flex-wrap: wrap; gap: 6px; padding: 10px">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+        <button type="button" role="tab" aria-selected="{{t.sel}}" style="font: inherit; font-size: 14px; font-weight: 600; padding: 8px 16px; border-radius: 999px; border: 0; background: {{t.bg}}; color: {{t.color}}">{{t.label}}</button>
+      </sc-for>
+    </div>
+    <div style="padding: 6px 20px 18px; display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-family: Space Grotesk, Inter, sans-serif; font-size: 26px; font-weight: 700; color: #fbbf24">5.6 s</span>
+        <span style="font-size: 13px; color: #a1a1aa">order-5 waiting for inventory-lock</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-family: Space Grotesk, Inter, sans-serif; font-size: 26px; font-weight: 700">1st</span>
+        <span style="font-size: 13px; color: #a1a1aa">in the queue, behind holder order-4</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-family: JetBrains Mono, monospace; font-size: 14px">SyncScenarios.kt:487</span>
+        <span style="font-size: 13px; color: #a1a1aa">where it was started</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+
+    const orders = [
+      { name: 'order-1', st: 'ACTIVE', note: 'holds a payment-gateway permit', kind: 'hold' },
+      { name: 'order-2', st: 'ACTIVE', note: 'holds a payment-gateway permit', kind: 'hold' },
+      { name: 'order-3', st: 'SUSPENDED', note: 'waits for a payment-gateway permit · 1st', kind: 'wait' },
+      { name: 'order-4', st: 'ACTIVE', note: 'holds inventory-lock', kind: 'hold' },
+      { name: 'order-5', st: 'SUSPENDED', note: 'waits for inventory-lock · 1st', kind: 'wait', selected: true },
+      { name: 'order-6', st: 'SUSPENDED', note: 'waits for inventory-lock · 2nd', kind: 'wait' },
+      { name: 'order-7', st: 'COMPLETED', note: 'done at 5.1 s', kind: 'muted' }
+    ];
+
+    const pal = { ACTIVE: ['#1d4ed8', '#eff6ff', 'Active'], SUSPENDED: ['#b45309', '#fffbeb', 'Suspended'], COMPLETED: ['#14532d', '#dcfce7', 'Completed'] };
+    return {
+      bar: [ { n: 3, c: '#1d4ed8' }, { n: 3, c: '#d97706' }, { n: 1, c: '#7c3aed' }, { n: 1, c: '#16a34a' } ],
+      counts: [ { label: 'active', n: 3, dot: '#3b82f6' }, { label: 'suspended', n: 3, dot: '#f59e0b' }, { label: 'waiting for children', n: 1, dot: '#a78bfa' }, { label: 'completed', n: 1, dot: '#22c55e' } ],
+      nodes: orders.map((o) => ({ name: o.name, bg: pal[o.st][0], fg: pal[o.st][1], label: pal[o.st][2], note: o.note,
+        border: o.selected ? '3px solid #fbbf24' : '3px solid transparent', pressed: o.selected ? 'true' : 'false' })),
+      tabs: [ ['Problems', false], ['Inspector', true], ['Evidence', false], ['Events', false], ['Learn', false] ].map(([label, on]) => ({ label, sel: on ? 'true' : 'false', bg: on ? '#f4f4f5' : '#27272a', color: on ? '#0b0d12' : '#d4d4d8' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

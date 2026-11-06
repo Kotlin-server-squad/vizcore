@@ -37,6 +37,7 @@ export function SessionDock({
 }: SessionDockProps) {
   return (
     <section
+      data-look-part="dock"
       id="session-dock"
       aria-label="Dock"
       hidden={hidden}
