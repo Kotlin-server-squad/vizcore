@@ -49,6 +49,7 @@ import { openingDockTab, rememberDockTab, rememberedDockTab } from '@/lib/dock-t
 import { projectActivity } from '@/lib/activity'
 import { eventSubject, resourceIds, resourceNames, type Selection } from '@/lib/selection'
 import type { CoroutinePicker } from './sync/CoroutineName'
+import { useLookSlot } from '@/looks/look-context'
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -178,6 +179,8 @@ export function SessionWorkspace({
 
   // The dock's size, fold and maximise (S-1), remembered per browser.
   const dock = useDockLayout()
+  // The layout around the main view and the dock is the look's (PR L0); Classic's by default.
+  const SessionBody = useLookSlot('SessionBody')
   // Run / Reset / Clear (S-3). Mutation hooks only — nothing is requested until
   // an action is used, and none is offered in the shared view.
   const scenarioActions = useScenarioActions({
@@ -407,7 +410,7 @@ export function SessionWorkspace({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div data-look-part="workspace" className="flex min-h-0 flex-1 flex-col gap-3">
       <SessionHeader
         sessionId={sessionId}
         session={session}
@@ -486,163 +489,167 @@ export function SessionWorkspace({
         onCancel={recordReplay.cancelConfirm}
       />
 
-      {/* The main view and the dock share the rest of the page (S-1). Each
-          keeps its own minimum, so a maximised view needs only the main view's. */}
-      <div ref={dock.sharedRef} className="flex min-h-0 flex-1 flex-col gap-3">
-        <CoroutineCanvas
-          coroutines={renderedCoroutines}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          completedCount={completedCount}
-          allFinished={allFinished}
-          showCompleted={showCompleted}
-          onToggleCompleted={() => setShowCompleted(prev => !prev)}
-          moreCount={moreCount}
-          pendingChildCounts={pendingChildCounts}
-          stateFilter={stateFilter}
-          stateBar={
-            // The state bar (D-4): what the session is doing, and the canvas filter.
-            <StateBar
-              bare
-              counts={stateCounts}
-              filter={stateFilter}
-              onFilterChange={setStateFilter}
-              // Shown only once a run has actually failed something (M-3): a chip
-              // reading zero for a session nobody validated is a claim we cannot make.
-              action={
-                failedChecks > 0
-                  ? { label: 'Checks', count: failedChecks, onPress: () => setChecksOpen(true) }
-                  : undefined
-              }
-            />
-          }
-          isDemo={isDemo}
-          selectedCoroutineId={selectedCoroutineId}
-          activity={activity}
-          // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
-          // view stay presentational, with no added interactivity.
-          onSelect={
-            isLiveView
-              ? (id: string) => {
-                  setSelection({ kind: 'coroutine', id })
-                  // A selection is read in the Inspector: show it (S-4).
-                  selectDockTab('inspector')
-                }
-              : undefined
-          }
-          panelRef={panelRef}
-          maximised={dock.maximised}
-          onToggleMaximise={dock.toggleMaximise}
-        />
-
-        {/* The dock (S-1): one tab per question (S-4). Maximise hides it,
-            never unmounts it, and so do folding and switching tabs: a panel
-            that re-subscribed later would refetch a stale query (#124). */}
-        <SessionDock
-          height={dock.height}
-          maxHeight={dock.maxHeight}
-          folded={dock.folded}
-          hidden={dock.maximised}
-          onResize={dock.resize}
-          onToggleFold={dock.toggleFold}
-          bar={
-            <DockTabs
-              // Problems ("what is wrong?") is the fifth question of S-4. It
-              // stays hidden, not empty, until the health API (Part 5) and its
-              // tab (Part 7) land.
-              tabs={[
-                { id: 'inspector', label: 'Inspector' },
-                { id: 'evidence', label: evidenceTabLabel(evidenceCounts) },
-                { id: 'events', label: 'Events' },
-                { id: 'learn', label: 'Learn' },
-              ]}
-              selected={dockTab}
-              onSelect={selectDockTab}
-            />
-          }
-        >
-          <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>
-            <Inspector
-              sessionId={sessionId}
-              coroutine={isLiveView ? selectedCoroutine : null}
-              readOnly={readOnly}
-              // T-3's session summary, live view only: in replay the metrics
-              // would report now over a frozen view, and the shared shell has
-              // no Bearer for /metrics (M-4).
-              emptyState={
-                isLiveView ? (
-                  <SessionSummary
-                    sessionId={sessionId}
-                    enabled={!readOnly}
-                    coroutineCount={session.coroutineCount}
-                    eventCount={session.eventCount}
-                  />
-                ) : undefined
-              }
-              // Selection is live-only, so outside the live view the inspector
-              // must not invite a click that cannot work (#145).
-              placeholder={
-                replayActive
-                  ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
-                  : readOnly
-                    ? 'Coroutine details are not included in a shared link.'
+      {/* The main view and the dock share the rest of the page (S-1), laid
+          out by the look (Classic: a column, the main view above the dock). */}
+      <SessionBody
+        sharedRef={dock.sharedRef}
+        main={
+          <CoroutineCanvas
+            coroutines={renderedCoroutines}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            completedCount={completedCount}
+            allFinished={allFinished}
+            showCompleted={showCompleted}
+            onToggleCompleted={() => setShowCompleted(prev => !prev)}
+            moreCount={moreCount}
+            pendingChildCounts={pendingChildCounts}
+            stateFilter={stateFilter}
+            stateBar={
+              // The state bar (D-4): what the session is doing, and the canvas filter.
+              <StateBar
+                bare
+                counts={stateCounts}
+                filter={stateFilter}
+                onFilterChange={setStateFilter}
+                // Shown only once a run has actually failed something (M-3): a chip
+                // reading zero for a session nobody validated is a claim we cannot make.
+                action={
+                  failedChecks > 0
+                    ? { label: 'Checks', count: failedChecks, onPress: () => setChecksOpen(true) }
                     : undefined
-              }
-              threadActivity={panelThreadActivity}
-              // Back to the session summary (T-3) from a selection.
-              onClearSelection={isLiveView ? () => setSelection(null) : undefined}
-              activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}
-            />
-          </DockTabPanel>
-          <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
-            {/* What the resources did (M-1/M-2), and — where the rung is the
-                reason nothing was captured — what unlocks it (D-5). */}
-            <EvidencePanels
-              sessionId={sessionId}
-              rung={rung}
-              categories={evidenceCategories}
-              counts={evidenceCounts}
-              replayActive={replayActive}
-              readOnly={readOnly}
-              threadActivity={panelThreadActivity}
-              captureStartNanos={captureStartNanos}
-              history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
-              events={panelEvents}
-              selection={isLiveView ? selection : null}
-              picker={isLiveView ? picker : undefined}
-              onSelectResource={isLiveView ? setSelection : undefined}
-            />
-          </DockTabPanel>
-          <DockTabPanel id="events" selected={dockTab === 'events'}>
-            {/* Mounted only while shown: a long event list is the heaviest
-                render on the page, and a hidden one would re-render on every
-                live flush. It fetches nothing, so mounting later costs no
-                request. Every other panel stays mounted and is hidden. */}
-            {dockTab === 'events' && (
-              <EventsPanel
+                }
+              />
+            }
+            isDemo={isDemo}
+            selectedCoroutineId={selectedCoroutineId}
+            activity={activity}
+            // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
+            // view stay presentational, with no added interactivity.
+            onSelect={
+              isLiveView
+                ? (id: string) => {
+                    setSelection({ kind: 'coroutine', id })
+                    // A selection is read in the Inspector: show it (S-4).
+                    selectDockTab('inspector')
+                  }
+                : undefined
+            }
+            panelRef={panelRef}
+            maximised={dock.maximised}
+            onToggleMaximise={dock.toggleMaximise}
+          />
+        }
+        // The dock (S-1): one tab per question (S-4). Maximise hides it,
+        // never unmounts it, and so do folding and switching tabs: a panel
+        // that re-subscribed later would refetch a stale query (#124).
+        dock={
+          <SessionDock
+            height={dock.height}
+            maxHeight={dock.maxHeight}
+            folded={dock.folded}
+            hidden={dock.maximised}
+            onResize={dock.resize}
+            onToggleFold={dock.toggleFold}
+            bar={
+              <DockTabs
+                // Problems ("what is wrong?") is the fifth question of S-4. It
+                // stays hidden, not empty, until the health API (Part 5) and its
+                // tab (Part 7) land.
+                tabs={[
+                  { id: 'inspector', label: 'Inspector' },
+                  { id: 'evidence', label: evidenceTabLabel(evidenceCounts) },
+                  { id: 'events', label: 'Events' },
+                  { id: 'learn', label: 'Learn' },
+                ]}
+                selected={dockTab}
+                onSelect={selectDockTab}
+              />
+            }
+          >
+            <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>
+              <Inspector
+                sessionId={sessionId}
+                coroutine={isLiveView ? selectedCoroutine : null}
+                readOnly={readOnly}
+                // T-3's session summary, live view only: in replay the metrics
+                // would report now over a frozen view, and the shared shell has
+                // no Bearer for /metrics (M-4).
+                emptyState={
+                  isLiveView ? (
+                    <SessionSummary
+                      sessionId={sessionId}
+                      enabled={!readOnly}
+                      coroutineCount={session.coroutineCount}
+                      eventCount={session.eventCount}
+                    />
+                  ) : undefined
+                }
+                // Selection is live-only, so outside the live view the inspector
+                // must not invite a click that cannot work (#145).
+                placeholder={
+                  replayActive
+                    ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
+                    : readOnly
+                      ? 'Coroutine details are not included in a shared link.'
+                      : undefined
+                }
+                threadActivity={panelThreadActivity}
+                // Back to the session summary (T-3) from a selection.
+                onClearSelection={isLiveView ? () => setSelection(null) : undefined}
+                activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}
+              />
+            </DockTabPanel>
+            <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
+              {/* What the resources did (M-1/M-2), and — where the rung is the
+                  reason nothing was captured — what unlocks it (D-5). */}
+              <EvidencePanels
+                sessionId={sessionId}
+                rung={rung}
+                categories={evidenceCategories}
+                counts={evidenceCounts}
+                replayActive={replayActive}
+                readOnly={readOnly}
+                threadActivity={panelThreadActivity}
+                captureStartNanos={captureStartNanos}
+                history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
                 events={panelEvents}
                 selection={isLiveView ? selection : null}
-                selectionLabel={selectionLabel}
-                subjectOf={isLiveView ? subjectOf : undefined}
-                onSelect={isLiveView ? selectFromEvent : undefined}
-                onShowAll={() => setSelection(null)}
-                resourceNames={names}
+                picker={isLiveView ? picker : undefined}
+                onSelectResource={isLiveView ? setSelection : undefined}
               />
-            )}
-          </DockTabPanel>
-          <DockTabPanel id="learn" selected={dockTab === 'learn'}>
-            <LearnPanel>
-              {/* Scenario Pipeline View - shown for realistic scenarios */}
-              {scenarioId === 'order-processing' && allEvents.length > 0 && (
-                <OrderProcessingView events={allEvents} />
+            </DockTabPanel>
+            <DockTabPanel id="events" selected={dockTab === 'events'}>
+              {/* Mounted only while shown: a long event list is the heaviest
+                  render on the page, and a hidden one would re-render on every
+                  live flush. It fetches nothing, so mounting later costs no
+                  request. Every other panel stays mounted and is hidden. */}
+              {dockTab === 'events' && (
+                <EventsPanel
+                  events={panelEvents}
+                  selection={isLiveView ? selection : null}
+                  selectionLabel={selectionLabel}
+                  subjectOf={isLiveView ? subjectOf : undefined}
+                  onSelect={isLiveView ? selectFromEvent : undefined}
+                  onShowAll={() => setSelection(null)}
+                  resourceNames={names}
+                />
               )}
-              {scenarioId === 'user-registration' && allEvents.length > 0 && (
-                <RegistrationFlowView events={allEvents} />
-              )}
-            </LearnPanel>
-          </DockTabPanel>
-        </SessionDock>
-      </div>
+            </DockTabPanel>
+            <DockTabPanel id="learn" selected={dockTab === 'learn'}>
+              <LearnPanel>
+                {/* Scenario Pipeline View - shown for realistic scenarios */}
+                {scenarioId === 'order-processing' && allEvents.length > 0 && (
+                  <OrderProcessingView events={allEvents} />
+                )}
+                {scenarioId === 'user-registration' && allEvents.length > 0 && (
+                  <RegistrationFlowView events={allEvents} />
+                )}
+              </LearnPanel>
+            </DockTabPanel>
+          </SessionDock>
+        }
+      />
     </div>
   )
 }

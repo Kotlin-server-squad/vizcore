@@ -8,6 +8,7 @@ const root = () => document.documentElement
 
 beforeEach(() => {
   root().className = 'light'
+  delete root().dataset.look
 })
 
 describe('export theme', () => {
@@ -59,5 +60,39 @@ describe('export theme', () => {
     const css = readFileSync(resolve(here, '../index.css'), 'utf8')
     expect(css).toContain(`html.${NO_TRANSITIONS_CLASS} *`)
     expect(css).toMatch(/transition:\s*none\s*!important/)
+  })
+
+  describe('with a trial look on the page (PR L0)', () => {
+    it('reads styles as Classic dark, then puts the look back', () => {
+      for (const theme of ['light', 'dark']) {
+        root().className = theme
+        root().dataset.look = 'b'
+        let during: { classes: string[]; look: string | undefined } | undefined
+        withDarkTheme(() => {
+          during = { classes: [...root().classList], look: root().dataset.look }
+        })
+        expect(during?.look).toBeUndefined()
+        expect(during?.classes).toContain('dark')
+        expect(root().dataset.look).toBe('b')
+        expect(root().className).toBe(theme)
+      }
+    })
+
+    it('puts the look back even when the export throws', () => {
+      root().dataset.look = 'a'
+      expect(() =>
+        withDarkTheme(() => {
+          throw new Error('boom')
+        }),
+      ).toThrow('boom')
+      expect(root().dataset.look).toBe('a')
+    })
+
+    it('renders an html2canvas clone without the look', () => {
+      const clone = document.implementation.createHTMLDocument('clone')
+      clone.documentElement.dataset.look = 'c'
+      asDarkClone(clone)
+      expect(clone.documentElement.dataset.look).toBeUndefined()
+    })
   })
 })

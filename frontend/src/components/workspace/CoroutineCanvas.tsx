@@ -72,6 +72,7 @@ export function CoroutineCanvas({
 }: CoroutineCanvasProps) {
   return (
     <section
+      data-look-part="main"
       aria-label="Main view"
       className="flex min-h-[320px] min-w-0 flex-1 flex-col rounded-xl border border-default-200 bg-content1"
     >

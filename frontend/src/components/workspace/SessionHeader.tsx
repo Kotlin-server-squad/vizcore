@@ -114,7 +114,7 @@ export function SessionHeader({
   const { look, setLook, looks } = useLook()
 
   return (
-    <header className="space-y-2">
+    <header data-look-part="header" className="space-y-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="text-xl font-bold">{title}</h1>
         {/* Which fidelity rung this session is on (D-6). */}
