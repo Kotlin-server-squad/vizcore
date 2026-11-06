@@ -9,9 +9,11 @@ const src = resolve(looksDir, '..')
 
 /** Every look folder that carries CSS, keyed by the look id its palette.json names. */
 const folders = readdirSync(looksDir)
-  .filter((name) => existsSync(join(looksDir, name, 'palette.json')))
-  .map((name) => {
-    const palette = JSON.parse(readFileSync(join(looksDir, name, 'palette.json'), 'utf8')) as { id: string }
+  .filter(name => existsSync(join(looksDir, name, 'palette.json')))
+  .map(name => {
+    const palette = JSON.parse(readFileSync(join(looksDir, name, 'palette.json'), 'utf8')) as {
+      id: string
+    }
     return { name, id: palette.id, css: readFileSync(join(looksDir, name, 'tokens.css'), 'utf8') }
   })
 
@@ -20,12 +22,12 @@ function declarations(css: string, selector: string): Map<string, string> {
   const start = css.indexOf(`${selector} {`)
   if (start < 0) return new Map()
   const body = css.slice(start, css.indexOf('}', start))
-  return new Map([...body.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]))
+  return new Map([...body.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(m => [m[1]!, m[2]!.trim()]))
 }
 
 /** "H S% L%" → relative luminance (WCAG). */
 function luminance(triplet: string): number {
-  const [h = 0, s = 0, l = 0] = triplet.split(/\s+/).map((part) => parseFloat(part))
+  const [h = 0, s = 0, l = 0] = triplet.split(/\s+/).map(part => parseFloat(part))
   const a = (s / 100) * Math.min(l / 100, 1 - l / 100)
   const channel = (n: number) => {
     const k = (n + h / 30) % 12
@@ -42,7 +44,7 @@ function contrast(a: string, b: string): number {
 
 /** Every .css file under src/, except the look folders. */
 function cssOutsideLooks(dir = src): string[] {
-  return readdirSync(dir).flatMap((name) => {
+  return readdirSync(dir).flatMap(name => {
     const path = join(dir, name)
     if (statSync(path).isDirectory()) return path === looksDir ? [] : cssOutsideLooks(path)
     return path.endsWith('.css') ? [path] : []
@@ -51,17 +53,17 @@ function cssOutsideLooks(dir = src): string[] {
 
 describe('the looks’ CSS', () => {
   it('gives every trial look in the registry a folder with tokens, and Classic none', () => {
-    const trial = LOOKS.filter((look) => look.trial).map((look) => look.id)
-    expect(folders.map((f) => f.id).sort()).toEqual([...trial].sort())
+    const trial = LOOKS.filter(look => look.trial).map(look => look.id)
+    expect(folders.map(f => f.id).sort()).toEqual([...trial].sort())
   })
 
   it.each(folders)('$name scopes every rule to its own look', ({ id, css }) => {
     const selectors = css
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('}')
-      .map((rule) => (rule.split('{')[0] ?? '').replace(/@import[^;]+;/g, '').trim())
+      .map(rule => (rule.split('{')[0] ?? '').replace(/@import[^;]+;/g, '').trim())
       .filter(Boolean)
-    for (const selector of selectors.flatMap((s) => s.split(','))) {
+    for (const selector of selectors.flatMap(s => s.split(','))) {
       expect(selector, selector).toContain(`[data-look='${id}']`)
     }
   })
@@ -72,26 +74,43 @@ describe('the looks’ CSS', () => {
     expect(dark.size).toBeGreaterThan(50)
     expect([...light.keys()].sort()).toEqual([...dark.keys()].sort())
     // Everything tokens.css gives Classic, the look overrides.
-    for (const name of ['--bg', '--surface', '--border', '--text', '--text-muted', '--primary', '--danger']) {
+    for (const name of [
+      '--bg',
+      '--surface',
+      '--border',
+      '--text',
+      '--text-muted',
+      '--primary',
+      '--danger',
+    ]) {
       expect(dark.has(name), name).toBe(true)
     }
   })
 
-  it.each(folders)('$name keeps text on solid buttons and chips readable (WCAG AA)', ({ id, css }) => {
-    for (const theme of ['dark', 'light']) {
-      const tokens = declarations(css, `html.${theme}[data-look='${id}']`)
-      for (const role of ['primary', 'secondary', 'success', 'warning', 'danger']) {
-        const fill = tokens.get(`--heroui-${role}`)!
-        const text = tokens.get(`--heroui-${role}-foreground`)!
-        expect(contrast(fill, text), `${theme} ${role}`).toBeGreaterThanOrEqual(4.5)
+  it.each(folders)(
+    '$name keeps text on solid buttons and chips readable (WCAG AA)',
+    ({ id, css }) => {
+      for (const theme of ['dark', 'light']) {
+        const tokens = declarations(css, `html.${theme}[data-look='${id}']`)
+        for (const role of ['primary', 'secondary', 'success', 'warning', 'danger']) {
+          const fill = tokens.get(`--heroui-${role}`)!
+          const text = tokens.get(`--heroui-${role}-foreground`)!
+          expect(contrast(fill, text), `${theme} ${role}`).toBeGreaterThanOrEqual(4.5)
+        }
       }
     }
+  )
+
+  it.each(folders)('$name leaves the 12 px between the main view and the dock alone', ({ css }) => {
+    // lib/dock-layout.ts sizes the dock with that gap; a look that changes it
+    // must first make the dock's size rules read it.
+    expect(css).not.toMatch(/data-look-part='body'\][^{]*\{[^}]*\bgap\b/)
   })
 
   it('has no look rules outside the look folders, so Classic has none at all', () => {
     const offenders = cssOutsideLooks()
-      .filter((path) => readFileSync(path, 'utf8').includes('data-look'))
-      .map((path) => relative(src, path))
+      .filter(path => readFileSync(path, 'utf8').includes('data-look'))
+      .map(path => relative(src, path))
     expect(offenders).toEqual([])
   })
 })

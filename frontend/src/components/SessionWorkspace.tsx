@@ -180,7 +180,7 @@ export function SessionWorkspace({
   // The dock's size, fold and maximise (S-1), remembered per browser.
   const dock = useDockLayout()
   // The layout around the main view and the dock is the look's (PR L0); Classic's by default.
-  const SessionBody = useLookSlot('SessionBody')
+  const sessionBody = useLookSlot('SessionBody')
   // Run / Reset / Clear (S-3). Mutation hooks only — nothing is requested until
   // an action is used, and none is offered in the shared view.
   const scenarioActions = useScenarioActions({
@@ -491,9 +491,9 @@ export function SessionWorkspace({
 
       {/* The main view and the dock share the rest of the page (S-1), laid
           out by the look (Classic: a column, the main view above the dock). */}
-      <SessionBody
-        sharedRef={dock.sharedRef}
-        main={
+      {sessionBody({
+        sharedRef: dock.sharedRef,
+        main: (
           <CoroutineCanvas
             coroutines={renderedCoroutines}
             viewMode={viewMode}
@@ -539,11 +539,11 @@ export function SessionWorkspace({
             maximised={dock.maximised}
             onToggleMaximise={dock.toggleMaximise}
           />
-        }
+        ),
         // The dock (S-1): one tab per question (S-4). Maximise hides it,
         // never unmounts it, and so do folding and switching tabs: a panel
         // that re-subscribed later would refetch a stale query (#124).
-        dock={
+        dock: (
           <SessionDock
             height={dock.height}
             maxHeight={dock.maxHeight}
@@ -648,8 +648,8 @@ export function SessionWorkspace({
               </LearnPanel>
             </DockTabPanel>
           </SessionDock>
-        }
-      />
+        ),
+      })}
     </div>
   )
 }

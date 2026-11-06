@@ -15,8 +15,9 @@ html[data-look='b'] {
   padding: 24px 32px;
 }
 
-[data-look='b'] [data-look-part='workspace'],
-[data-look='b'] [data-look-part='body'] {
+/* Header to body only: the gap between the main view and the dock stays 12 px,
+   which the dock's size rules (lib/dock-layout.ts) assume. */
+[data-look='b'] [data-look-part='workspace'] {
   gap: 18px;
 }
 

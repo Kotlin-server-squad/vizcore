@@ -1,4 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { ReactNode } from 'react'
 import { LOOKS, parseLook, type LookId } from './registry'
 import { classicSlots } from './classic'
@@ -19,9 +28,9 @@ const LookContext = createContext<LookState | null>(null)
 const OUTSIDE: LookState = { look: 'classic', setLook: null, looks: LOOKS }
 
 /**
- * The look chosen during this page visit, for when storage is blocked: every
- * session page mounts its own provider, so without it the choice would be lost
- * on the next navigation.
+ * The look chosen during this page visit. Every session page mounts its own
+ * provider, so without it a choice that storage refused would be lost on the
+ * next navigation.
  */
 let visitLook: LookId | null = null
 
@@ -30,12 +39,17 @@ export function forgetVisitLook() {
   visitLook = null
 }
 
-/** The stored look, or this visit's when storage cannot be read. */
+/**
+ * The look chosen earlier in this visit, else the stored one. The visit's
+ * choice comes first, so it also survives storage that reads but will not
+ * write (full, or a policy).
+ */
 function storedLook(): LookId {
+  if (visitLook !== null) return visitLook
   try {
     return parseLook(localStorage.getItem(LOOK_STORAGE_KEY))
   } catch {
-    return visitLook ?? 'classic'
+    return 'classic'
   }
 }
 
@@ -63,7 +77,9 @@ interface LookProviderProps {
  * Leaving the page takes the attribute off, so every other page is Classic.
  */
 export function LookProvider({ link, onLinkRead, children }: LookProviderProps) {
-  const [look, setLookState] = useState<LookId>(() => (link !== undefined ? parseLook(link) : storedLook()))
+  const [look, setLookState] = useState<LookId>(() =>
+    link !== undefined ? parseLook(link) : storedLook()
+  )
 
   const onLinkReadRef = useRef(onLinkRead)
   useEffect(() => {
@@ -86,7 +102,7 @@ export function LookProvider({ link, onLinkRead, children }: LookProviderProps) 
     () => () => {
       delete document.documentElement.dataset.look
     },
-    [],
+    []
   )
 
   const setLook = useCallback((id: LookId) => {
@@ -103,9 +119,12 @@ export function useLook(): LookState {
   return useContext(LookContext) ?? OUTSIDE
 }
 
-/** The current look's version of a layout slot, or Classic's when the look has none. */
+/**
+ * The current look's version of a layout slot, or Classic's when the look has
+ * none. Call the result as a function (`slot(props)`): see `LookSlots`.
+ */
 export function useLookSlot<K extends keyof LookSlots>(name: K): LookSlots[K] {
   const { look } = useLook()
-  const definition: LookDefinition | undefined = LOOKS.find((l) => l.id === look)
+  const definition: LookDefinition | undefined = LOOKS.find(l => l.id === look)
   return definition?.slots?.[name] ?? classicSlots[name]
 }

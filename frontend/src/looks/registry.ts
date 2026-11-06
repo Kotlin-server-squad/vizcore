@@ -18,5 +18,5 @@ export const DEFAULT_LOOK: LookId = classic.id
 
 /** A known look id as it is; anything else (an unknown or deleted look, garbage) is Classic. */
 export function parseLook(value: unknown): LookId {
-  return LOOKS.find((look) => look.id === value)?.id ?? DEFAULT_LOOK
+  return LOOKS.find(look => look.id === value)?.id ?? DEFAULT_LOOK
 }
