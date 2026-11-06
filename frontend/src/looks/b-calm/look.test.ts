@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { calm } from '.'
+import { calmCard } from './card'
 import { summarise, type SummaryFacts } from './summary'
 import type { WaitKind } from '@/types/api'
 
@@ -41,6 +42,23 @@ describe('B’s CSS', () => {
   it('leaves the main view and the dock where they are: no gap, size or position change on the body', () => {
     expect(css).not.toMatch(/data-look-part='body'/)
     expect(css).not.toMatch(/data-look-part='dock'\][^{]*\{[^}]*\b(height|width|position|margin)\b/)
+  })
+})
+
+describe('B’s graph card', () => {
+  const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'card.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map(m => Number(m[1]))
+
+  it('keeps every card text at least 12 px on screen at the fit floor', () => {
+    expect(sizes.length).toBeGreaterThanOrEqual(3)
+    expect(calmCard.fitMinZoom).toBeDefined()
+    expect(Math.min(...sizes) * calmCard.fitMinZoom!).toBeGreaterThanOrEqual(12)
+  })
+
+  it('reserves room for the name, the pill and two lines of the second line', () => {
+    // padding 13 + name 22 + gap 6 + pill 22 + gap 6 + 2 lines × 18 + padding 13
+    expect(calmCard.height).toBeGreaterThanOrEqual(13 + 22 + 6 + 22 + 6 + 2 * 18 + 13)
+    expect(calmCard).toEqual({ width: 200, height: 120, fitMinZoom: 0.93 })
   })
 })
 
