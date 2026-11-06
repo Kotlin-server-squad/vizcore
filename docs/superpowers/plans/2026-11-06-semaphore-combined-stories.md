@@ -21,17 +21,15 @@
 - That holder line is #297's text (open). On `main` today Locks and permits shows *n / m available*, the permits in use, *n waiting* and the semaphore's wait queue, with no holder lines. The guides describe the panel as #297 makes it, because the user asked for that rule; **merge #297 first**, or the holder sentence describes text that appears only once #297 lands (flagged in the PR). What the guides say about waiting (Suspended, the wait queue) is true on `main` as well.
 
 **The wrapper fix (as #296's `VizMutex.unlock`):** `VizSemaphore.release` calls `delegate.release()` and only then sends `SemaphorePermitReleased`. A waiter resumed by that release can, on another thread, send its `SemaphorePermitAcquired` first, so the events show one more holder than there are permits for a moment (the panel's availability goes 0 → 0 → 1 instead of 0 → 1 → 0). Fix:
-- releases are reported one at a time (a `releaseLock`), each **before** its permit goes back; the delegate release is in a `finally`, so a failing event sink still frees the permit;
-- a release with every permit already free fails before anything is reported (if a permit is taken meanwhile, the release is valid and done, then reported);
-- `newAvailablePermits` is what the release frees: 0 when it is handed to a waiter, else one more than now. Waiters are counted in the delegate (`unservedWaiters`, decremented when a release is handed to one, `servedWaiters` until that waiter runs), not read from the display queue, where a resumed waiter stays until it runs. It is exact unless an acquire or a cancelled wait races the release; the state snapshot right after each release reads the delegate.
+- each release is reported **before** its permit goes back; the delegate release is in a `finally`, so a failing event sink still frees the permit;
+- a release with every permit already free throws at once (`check`), before anything is reported or untracked; the delegate is never called first;
+- `newAvailablePermits` is one more than were free just before the release: the permit it frees. A waiter that takes it at once reports its acquire next, with one fewer (0 → 1 → 0). Releases at the same instant on several threads can report the same number; the state snapshot each release sends afterwards reads the delegate, and #297 reads permit counts from snapshots only. (Round 1 tried to make this number exact with a lock and waiter counts; round 2 showed that lock could deadlock and the counts go stale. Exactness was cut, by the rule for ever-smaller findings.)
 
 Tests in `SemaphoreWaitTest` (seen failing as noted):
 1. many hand-offs on `Dispatchers.Default` (1 permit, 8 workers × 400 `withPermit`): replayed in seq order, never more holders than permits. Fails on the old code (probabilistic);
 2. a waiter on `Dispatchers.Unconfined` resumes inside the release, on the releasing thread: Acquired, Released, Acquired, Released, in that order. Fails on the old code every time (deterministic);
-3. two releases at the same moment (2 permits, 300 rounds, a barrier): they report 1 and 2. Fails on the old code ([2, 2]) and on a first reorder without the lock ([1, 1]);
-4. a waiter handed a permit that has not run yet (virtual time), then a second release: reports 0, then 1. Fails on a reorder that reads the display queue ([0, 0]);
-5. a failing event sink still frees the permit, and 6. a release with every permit free reports nothing. Both pass on the old code (it released first) and failed on a naive reorder (send, then release, no guard): they keep the new order safe;
-7. a cancelled waiter does not take the next release: it reports 1.
+3. a failing event sink still frees the permit, and 4. a release with every permit free reports nothing. Both pass on the old code (it released first) and failed on a naive reorder (send, then release, no guard): they keep the new order safe;
+5. a cancelled waiter does not take the next release: it reports 1.
 
 **Model:** #296 (Mutex), #289 (Patterns), #287 (Channels). Follow their patterns, test style and wording.
 
@@ -223,10 +221,14 @@ Each picture is checked by `GuideLabelsTest` on virtual time (all six join `VIRT
 
 **Round 1** (1 P1, 5 P2), all taken:
 - **P1, fitting rooms:** `withTimeoutOrNull { rooms.acquire() } != null` could leak a room taken just as the timeout fires. Now a flag set inside the block and a release in an outer `finally`. Every demo is also checked to end with each semaphore as it started.
-- **P2, the wrapper's reported availability:** two releases at the same moment could both report 1, and a waiter already handed a permit still counted as waiting. Releases are now reported one at a time and waiters are counted in the delegate (above), with tests 3, 4 and 7, seen failing first.
+- **P2, the wrapper's reported availability:** two releases at the same moment could both report 1, and a waiter already handed a permit still counted as waiting. First fixed with a lock and waiter counts (tests seen failing first); replaced in round 2, below.
 - **P2, the fail-first claims:** the failing-sink test passes on the old code; the plan now says which tests fail where, and a deterministic hand-off test (`Dispatchers.Unconfined`) joins the probabilistic one.
 - **P2, Combined on real time:** three sales and stock 0 depend on Ben's rollback beating Eva's check by 50 ms; the real-time test now checks conservation only.
 - **P2, a 3.5 s root step before Eva:** Eva now comes at 6.0 s and a sixth order, Finn (9.0 s, sold out), keeps the run at 11 s. The pacing test had caught it too.
 - **P2, the guides' holder wording** is #297's: kept as the user asked, with the merge order flagged (above).
 
 **Codex's model of the event counts** (round 1): the busiest moment is t = 0 in Weather (61 of 168 events) and the Tax Folder (62 of 158), under half; every demo has 10 or more moments.
+
+**Round 2** (1 P1, 2 P2):
+- **P1:** `delegate.release()` and `session.send` ran under the new `releaseLock`; an unconfined waiter resumed inline could release another semaphore and deadlock against a second thread. **P2:** the waiter counts went stale after a hand-off whose waiter was cancelled. **P2:** the over-release guard could call the delegate's release successfully before reporting it.
+- These were smaller and smaller findings from one piece of accounting, so scope was cut instead of adding more: the lock and the counts are gone. `newAvailablePermits` is one more than were free just before the release, honest about what the release frees and not exact when releases race (the snapshot after each release is). The guard now throws at once. The two tests that asserted the accounting are removed; the order tests (1, 2), the sink and guard tests and the cancelled-waiter test stay.

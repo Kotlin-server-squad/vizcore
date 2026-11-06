@@ -56,13 +56,6 @@ class VizSemaphore(
     // Wait queue tracking
     private val waitQueue = ConcurrentLinkedQueue<WaiterInfo>()
 
-    // Reporting a release: releases are reported one at a time, each before its permit goes back, so each can say
-    // what it frees. `unservedWaiters` counts coroutines waiting in the delegate that no release has been handed to
-    // yet; `servedWaiters` those a release was handed to that have not run yet. Both are guarded by `releaseLock`.
-    private val releaseLock = Any()
-    private var unservedWaiters = 0
-    private var servedWaiters = 0
-
     data class HolderInfo(
         val coroutineId: String,
         val label: String?,
@@ -165,19 +158,13 @@ class VizSemaphore(
     private suspend fun waitInQueue(waiter: WaiterInfo) {
         waitQueue.add(waiter)
         emitStateChanged()
-        synchronized(releaseLock) { unservedWaiters++ }
         var acquired = false
         try {
             session.recordWait(WaitKind.SEMAPHORE, semaphoreId) { delegate.acquire() }
             acquired = true
         } finally {
-            synchronized(releaseLock) {
-                // With a permit: a release was handed to this waiter, or (it got a permit freed before it queued in
-                // the delegate) none was. Without one (cancelled, or a timeout around the wait): it leaves unserved.
-                if (acquired && servedWaiters > 0) servedWaiters-- else unservedWaiters = (unservedWaiters - 1).coerceAtLeast(0)
-            }
-            // Without a permit the waiter no longer waits; left in the queue it would show waiting for ever. With a
-            // permit, `acquire` reports the new state after Acquired.
+            // Without a permit (cancelled, or a timeout around the wait) the waiter no longer waits; left in the
+            // queue it would show waiting for ever. With a permit, `acquire` reports the new state after Acquired.
             if (waitQueue.remove(waiter) && !acquired) emitStateChanged()
         }
     }
@@ -189,56 +176,37 @@ class VizSemaphore(
      *
      * The release is reported before it is made: once the delegate has the permit back, a waiter can take it and
      * report its acquire on another thread straight away, and a release reported after that would show one more
-     * holder than there are permits. The permit is given back even if reporting it fails. Releases are reported one at
-     * a time, so two at the same moment report 1 and 2 free, not 1 twice. `newAvailablePermits` is exact unless an
-     * acquire or a cancelled wait races the release; the state snapshot sent right after it reads the delegate.
+     * holder than there are permits. The permit is given back even if reporting it fails.
+     *
+     * `newAvailablePermits` is one more than were free just before: the permit this release frees. A waiter that takes
+     * it at once reports its acquire next, with one fewer. Releases at the same moment on several threads can report
+     * the same number; the state snapshot each release sends afterwards reads the delegate.
      */
     fun release() {
-        val coroutineElement = VizCoroutineElement.current()
-        synchronized(releaseLock) {
-            // A release the delegate would refuse (every permit already free) fails as before, without reporting a
-            // release or changing what is tracked. Should a permit be taken meanwhile, this release is valid and done.
-            val releasedEarly =
-                if (delegate.availablePermits >= totalPermits) {
-                    delegate.release()
-                    true
-                } else {
-                    false
-                }
-            val released = coroutineElement?.let { takeOldestPermit(it.coroutineId) }
-            val available = delegate.availablePermits
-            // With no permit free, the delegate hands the permit to its oldest waiter, if any; otherwise it is free.
-            // With a permit free, nobody waits in the delegate.
-            if (available > 0) unservedWaiters = 0
-            val handedOff = !releasedEarly && available == 0 && unservedWaiters > 0
-            if (handedOff) {
-                unservedWaiters--
-                servedWaiters++
-            }
+        // A release the delegate would refuse fails as before, before anything is reported or untracked.
+        val available = delegate.availablePermits
+        check(available < totalPermits) { "The number of released permits cannot be greater than $totalPermits" }
 
-            try {
-                session.send(
-                    SemaphorePermitReleased(
-                        sessionId = session.sessionId,
-                        seq = session.nextSeq(),
-                        tsNanos = System.nanoTime(),
-                        semaphoreId = semaphoreId,
-                        semaphoreLabel = label,
-                        releaserId = coroutineElement?.coroutineId ?: "unknown",
-                        releaserLabel = coroutineElement?.label,
-                        newAvailablePermits =
-                            when {
-                                releasedEarly -> available
-                                handedOff -> 0
-                                else -> minOf(available + 1, totalPermits)
-                            },
-                        holdDurationNanos = released?.let { System.nanoTime() - it.acquireTime } ?: 0L,
-                        holderUnknown = released == null,
-                    ),
-                )
-            } finally {
-                if (!releasedEarly) delegate.release()
-            }
+        val coroutineElement = VizCoroutineElement.current()
+        val released = coroutineElement?.let { takeOldestPermit(it.coroutineId) }
+
+        try {
+            session.send(
+                SemaphorePermitReleased(
+                    sessionId = session.sessionId,
+                    seq = session.nextSeq(),
+                    tsNanos = System.nanoTime(),
+                    semaphoreId = semaphoreId,
+                    semaphoreLabel = label,
+                    releaserId = coroutineElement?.coroutineId ?: "unknown",
+                    releaserLabel = coroutineElement?.label,
+                    newAvailablePermits = available + 1,
+                    holdDurationNanos = released?.let { System.nanoTime() - it.acquireTime } ?: 0L,
+                    holderUnknown = released == null,
+                ),
+            )
+        } finally {
+            delegate.release()
         }
         trimHoldersToPermitsInUse()
         retireEndedHolders()
