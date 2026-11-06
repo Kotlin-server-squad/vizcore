@@ -264,6 +264,8 @@ fun Route.registerSessionRoutes() {
                 return@get
             }
 
+        // Before the session is resolved (5a D-9c): the leak ages may end at the live watermark.
+        val ingest = IngestStates.snapshot(sessionId)
         // MANDATORY tenant scoping (Pitfall 3 / T-08-04): a cross-tenant id resolves
         // to null → 404 (never 403, never leaking another tenant's metrics existence).
         val session = call.resolveScopedSession(sessionId)
@@ -276,20 +278,27 @@ fun Route.registerSessionRoutes() {
         // falls back to the server default; negative/absurd values are clamped to bounds.
         val leakThresholdMs = call.leakThresholdMs()
 
-        // Wall-clock read basis (CR-01): leak age must subtract a fixed-origin epoch-millis
-        // clock so it stays well-defined on the DB-rehydrated path across a restart.
+        // Wall-clock read basis (CR-01) for the projection totals; leak ages come from the summaries (frozen, plan E-15).
         val snapshot = session.metricsProjection.snapshot(System.currentTimeMillis(), leakThresholdMs)
-        call.respond(
-            HttpStatusCode.OK,
+        val base =
             MetricsResponse(
                 active = snapshot.active,
                 peak = snapshot.peak,
                 throughputPerSec = snapshot.throughputPerSec,
                 dispatcherUtilization = snapshot.dispatcherUtilization,
-                leaks = snapshot.leaks.map { LeakDto(it.coroutineId, it.label, it.aliveMs) },
+                leaks = emptyList(),
                 leakThresholdMs = leakThresholdMs,
-            ),
-        )
+                leaksAvailable = false,
+            )
+        val view =
+            try {
+                readView(session, ingest, ViewBinding.Current, leakThresholdMs)
+            } catch (_: com.jh.proj.coroutineviz.health.SummariesUnavailableException) {
+                null
+            } catch (_: HistoryTrimmedException) {
+                null
+            }
+        call.respond(HttpStatusCode.OK, view?.let { metricsByOrigin(base, it) } ?: base)
     }
 
     get("/api/sessions/{id}/threads") {
