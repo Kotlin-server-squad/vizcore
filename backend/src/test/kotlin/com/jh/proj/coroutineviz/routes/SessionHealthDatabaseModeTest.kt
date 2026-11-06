@@ -9,6 +9,7 @@ import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
 import com.jh.proj.coroutineviz.persistence.ExposedSessionStore
+import com.jh.proj.coroutineviz.persistence.tables.EventsTable
 import com.jh.proj.coroutineviz.persistence.tables.SessionsTable
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -22,8 +23,12 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.AfterEach
@@ -104,13 +109,32 @@ class SessionHealthDatabaseModeTest {
         }
 
     @Test
-    fun `a trimmed database session's health is unavailable rather than overcounted`() =
+    fun `a trimmed database session keeps its health, from the checkpoint the trim wrote`() =
         testApplication {
             application { module() }
             val sessionId = client.createSessionNamed("db-trimmed")
             storedByAnEarlierProcess(sessionId)
 
             DbRetentionPolicy(db = db, maxEventsPerSession = 2).cleanup()
+            val health = client.health(sessionId)
+
+            assertEquals(1, health.failedRoundCount, "the round of the trimmed parent stays one round")
+            assertEquals(0, health.ungroupedFailureCount)
+            assertEquals(true, health.retention?.trimmed)
+            val session = client.getJson("/api/sessions/$sessionId")
+            assertEquals(sec(1), session["captureStartAppNanos"]!!.jsonPrimitive.long)
+            val replay = client.get("/api/sessions/$sessionId/health?atSeq=1")
+            assertEquals(HttpStatusCode.OK, replay.status, replay.bodyAsText())
+        }
+
+    @Test
+    fun `a database session trimmed before checkpoints existed is still unavailable rather than overcounted`() =
+        testApplication {
+            application { module() }
+            val sessionId = client.createSessionNamed("db-trimmed-legacy")
+            storedByAnEarlierProcess(sessionId)
+            transaction(db) { EventsTable.deleteWhere { (EventsTable.sessionId eq sessionId) and (EventsTable.seq eq 1L) } }
+
             val response = client.get("/api/sessions/$sessionId/health")
 
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
@@ -145,13 +169,17 @@ class SessionHealthDatabaseModeTest {
         }
 
     @Test
-    fun `a session stored before this backend started is not vouched for, even without events`() =
+    fun `a row from before ingest state was persisted, stored before this backend started, is not vouched for`() =
         testApplication {
             application { module() }
             val sessionId = client.createSessionNamed("db-recovered")
-            // As if the row was written by an earlier backend process (crashed before any event was stored).
+            // As if the row was written by a backend from before Part 5b-2 (no ingest state, no marker), which may have
+            // crashed before any event was stored. Rows written since keep a marker instead (IngestStatePersistenceTest).
             transaction(db) {
-                SessionsTable.update({ SessionsTable.id eq sessionId }) { it[createdAt] = Instant.fromEpochMilliseconds(0) }
+                SessionsTable.update({ SessionsTable.id eq sessionId }) {
+                    it[createdAt] = Instant.fromEpochMilliseconds(0)
+                    it[ingestState] = null
+                }
             }
 
             val health = client.health(sessionId)

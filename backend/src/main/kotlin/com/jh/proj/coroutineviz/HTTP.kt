@@ -90,6 +90,10 @@ private fun Application.configureCors() {
         allowHeader(HttpHeaders.CacheControl)
         allowHeader(HttpHeaders.Connection)
 
+        // Health read binding (spec C-3): a cross-origin page reads the cut id and a bound read's seq.
+        exposeHeader(com.jh.proj.coroutineviz.routes.CUT_HEADER)
+        exposeHeader(com.jh.proj.coroutineviz.routes.AS_OF_SEQ_HEADER)
+
         // Allow credentials (cookies, authorization headers)
         allowCredentials = true
 

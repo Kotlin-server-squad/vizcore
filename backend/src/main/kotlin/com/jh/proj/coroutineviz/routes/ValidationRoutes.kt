@@ -70,7 +70,24 @@ fun Route.registerValidationRoutes() {
                 stillRunning = LifecycleValidator.unfinishedCoroutineIds(events).size,
             )
 
+        // The last run is kept for the checks status (spec C-5, T-8); the response is unchanged.
+        ChecksResults.save(sessionId, ChecksRun.of(results, events, System.currentTimeMillis()))
         call.respond(HttpStatusCode.OK, response)
+    }
+
+    // The last checks run of a session (spec C-5): null before any; newEventsSince counts the events after it.
+    get("/api/validate/session/{id}") {
+        val sessionId =
+            call.parameters["id"] ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing session ID"))
+                return@get
+            }
+        val session = call.resolveScopedSession(sessionId)
+        if (session == null) {
+            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Session not found"))
+            return@get
+        }
+        call.respond(HttpStatusCode.OK, ChecksResults.status(sessionId, ChecksResults.load(sessionId), session.lastSeq))
     }
 
     get("/api/validate/rules") {

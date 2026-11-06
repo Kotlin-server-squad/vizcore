@@ -306,7 +306,7 @@ class SessionHealthRouteTest {
             // Then a frame could not be read before the summaries were copied.
             IngestStates.frameSkipped(connection)
 
-            val health = readSessionHealth(session, cut, atSeq = null, leakThresholdMs = 30_000)
+            val health = readSessionHealth(session, cut, atSeq = null, leakThresholdMs = 30_000).health
 
             assertTrue(health.transport.deliveryUncertain)
             assertTrue(health.failuresAtLeast)

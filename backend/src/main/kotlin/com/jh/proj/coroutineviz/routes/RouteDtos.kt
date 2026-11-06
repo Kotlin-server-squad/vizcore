@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.health.SessionKind
 import com.jh.proj.coroutineviz.health.SessionOrigin
@@ -101,6 +102,34 @@ data class MetricsResponse(
     val dispatcherUtilization: Map<String, Int>,
     val leaks: List<LeakDto>,
     val leakThresholdMs: Long,
+    /** False when the session's summaries are unavailable: then `leaks` is empty rather than aged on the wall clock (H-3). */
+    val leaksAvailable: Boolean = true,
+    /** Per effective origin (spec C-3); null when the summaries are unavailable. */
+    val byOrigin: OriginMetrics? = null,
+    /** The projection figures come from retained events only (a database session rebuilt after a trim). */
+    val retainedOnly: Boolean = false,
+    /** With [retainedOnly]: the app time of the oldest retained event. */
+    val oldestRetainedAppNanos: Long? = null,
+)
+
+/** One origin's figures: counts from the summaries, peak and throughput from the projection (plan E-15). */
+@Serializable
+data class OriginSlice(
+    val captured: Int,
+    val active: Int,
+    val peak: Int,
+    /** Events per second of this origin's coroutines (backend receipt time); null for a rebuilt database session. */
+    val throughputPerSec: Double?,
+    val dispatcherUtilization: Map<String, Int>,
+    val longLived: Int,
+)
+
+@Serializable
+data class OriginMetrics(
+    val app: OriginSlice,
+    val vizcore: OriginSlice,
+    val unknown: OriginSlice,
+    val untracked: Long,
 )
 
 /** A still-active coroutine flagged as a potential leak (alive past the threshold). */
@@ -109,4 +138,6 @@ data class LeakDto(
     val coroutineId: String,
     val label: String?,
     val aliveMs: Long,
+    /** The coroutine's effective origin (spec C-3 `/metrics` by origin); null when the summaries are unavailable. */
+    val origin: CoroutineOrigin? = null,
 )
