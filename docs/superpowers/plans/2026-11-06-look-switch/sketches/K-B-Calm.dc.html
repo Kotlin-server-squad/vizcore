@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch B: Calm and clear</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: #f7f7f8; color: #18181b; font-family: Inter, system-ui, sans-serif">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 18px 32px; background: #ffffff; border-bottom: 1px solid #e4e4e7">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 20px; font-weight: 700">E-commerce Orders</span>
+      <span style="font-size: 14px; color: #52525b">Running for 6.0 s. 3 orders are waiting: 2 for the stock lock, 1 for a payment slot.</span>
+    </div>
+    <div style="flex: 1"></div>
+    <button type="button" style="font: inherit; font-size: 14px; padding: 10px 16px; border-radius: 10px; border: 1px solid #d4d4d8; background: #ffffff; color: #18181b">Replay</button>
+    <button type="button" style="font: inherit; font-size: 14px; padding: 10px 16px; border-radius: 10px; border: 1px solid #d4d4d8; background: #ffffff; color: #18181b">Pause view</button>
+    <button type="button" aria-label="More actions" style="font: inherit; font-size: 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid #d4d4d8; background: #ffffff; color: #18181b">⋯</button>
+  </header>
+  <div style="flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 24px 32px">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+      <div role="group" aria-label="Main view" style="display: flex; padding: 3px; border-radius: 10px; background: #e4e4e7">
+        <button type="button" aria-pressed="true" style="font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 8px; border: 0; background: #ffffff; color: #18181b">Tree</button>
+        <button type="button" aria-pressed="false" style="font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px; border: 0; background: transparent; color: #52525b">Timeline</button>
+      </div>
+      <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 12px; border-radius: 999px; background: #ffffff; border: 1px solid #e4e4e7; color: #3f3f46"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{c.dot}}"></span>{{c.n}} {{c.label}}</span>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 0">
+      <div style="padding: 10px 18px; border-radius: 12px; background: #ffffff; border: 1px solid #e4e4e7; font-size: 14px"><b>checkout</b> <span style="color: #6b21a8">· waiting for its 7 orders</span></div>
+      <span aria-hidden="true" style="width: 2px; height: 16px; background: #d4d4d8"></span>
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; width: 100%; border-top: 2px solid #d4d4d8; padding-top: 16px">
+        <sc-for list="{{nodes}}" as="n" hint-placeholder-count="7">
+          <button type="button" aria-pressed="{{n.pressed}}" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; border: {{n.border}}; background: #ffffff; color: inherit; font: inherit; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.05)">
+            <span style="font-size: 15px; font-weight: 600">{{n.name}}</span>
+            <span style="display: inline-flex; align-self: flex-start; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: {{n.tint}}; color: {{n.color}}"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{n.dot}}"></span>{{n.label}}</span>
+            <span style="font-size: 12px; line-height: 1.4; color: #52525b">{{n.note}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <section aria-label="Dock" style="margin: 0 32px 24px; border-radius: 16px; border: 1px solid #e4e4e7; background: #ffffff; display: flex; flex-direction: column">
+    <div role="tablist" aria-label="Dock" style="display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #f0f0f2">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+        <button type="button" role="tab" aria-selected="{{t.sel}}" style="font: inherit; font-size: 14px; font-weight: {{t.weight}}; padding: 8px 14px; border-radius: 10px; border: 0; background: {{t.bg}}; color: {{t.color}}">{{t.label}}</button>
+      </sc-for>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 18px 20px">
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.55">
+        <span style="font-size: 17px; font-weight: 700">order-5 is waiting for the stock lock</span>
+        <span>It asked for <b>inventory-lock</b> at 0.4 s. <b>order-4</b> holds it now, and order-5 is first in line. Waiting so far: 5.6 s.</span>
+        <span style="color: #52525b">Waiting is normal here: only one order may change the stock at a time.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+        <span style="color: #52525b">Where it was started</span>
+        <span style="font-family: JetBrains Mono, monospace; padding: 10px 12px; border-radius: 10px; background: #f4f4f5">SyncScenarios.kt:487 · launch { reserveStock(order) }</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+
+    const orders = [
+      { name: 'order-1', st: 'ACTIVE', note: 'holds a payment-gateway permit', kind: 'hold' },
+      { name: 'order-2', st: 'ACTIVE', note: 'holds a payment-gateway permit', kind: 'hold' },
+      { name: 'order-3', st: 'SUSPENDED', note: 'waits for a payment-gateway permit · 1st', kind: 'wait' },
+      { name: 'order-4', st: 'ACTIVE', note: 'holds inventory-lock', kind: 'hold' },
+      { name: 'order-5', st: 'SUSPENDED', note: 'waits for inventory-lock · 1st', kind: 'wait', selected: true },
+      { name: 'order-6', st: 'SUSPENDED', note: 'waits for inventory-lock · 2nd', kind: 'wait' },
+      { name: 'order-7', st: 'COMPLETED', note: 'done at 5.1 s', kind: 'muted' }
+    ];
+
+    const pal = { ACTIVE: ['#2563eb', '#1d4ed8', '#dbeafe', 'Active'], SUSPENDED: ['#d97706', '#92400e', '#fef3c7', 'Suspended'], COMPLETED: ['#16a34a', '#166534', '#dcfce7', 'Completed'] };
+    return {
+      counts: [ { label: 'active', n: 3, dot: '#2563eb' }, { label: 'waiting (suspended)', n: 3, dot: '#d97706' }, { label: 'waiting for children', n: 1, dot: '#9333ea' }, { label: 'completed', n: 1, dot: '#16a34a' } ],
+      nodes: orders.map((o) => ({ name: o.name, dot: pal[o.st][0], color: pal[o.st][1], tint: pal[o.st][2], label: pal[o.st][3], note: o.note,
+        border: o.selected ? '2px solid #2563eb' : '1px solid #e4e4e7', pressed: o.selected ? 'true' : 'false' })),
+      tabs: [ ['Problems', false], ['Inspector', true], ['Evidence', false], ['Events', false], ['Learn', false] ].map(([label, on]) => ({ label, sel: on ? 'true' : 'false', weight: on ? 600 : 400, bg: on ? '#f4f4f5' : 'transparent', color: on ? '#18181b' : '#52525b' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch A: Compact IDE</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: #1e1f22; color: #dfe1e5; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; height: 40px; padding: 0 12px; background: #2b2d30; border-bottom: 1px solid #393b40">
+    <span style="font-weight: 600">E-commerce Orders</span>
+    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: #25324d; color: #8ab4ff; font-size: 12px"><span style="width: 6px; height: 6px; border-radius: 50%; background: #548af7"></span>Running · 6.0 s</span>
+    <span style="color: #9da0a8; font-size: 12px">updating · 8 coroutines · 142 events</span>
+    <div style="flex: 1"></div>
+    <button type="button" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Replay</button>
+    <button type="button" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Pause view</button>
+    <button type="button" aria-label="More actions" style="font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">⋯</button>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 12px; border-bottom: 1px solid #393b40; font-size: 12px">
+    <button type="button" aria-pressed="true" style="font: inherit; padding: 3px 10px; border-radius: 4px; border: 0; background: #43454a; color: #fff">Tree</button>
+    <button type="button" aria-pressed="false" style="font: inherit; padding: 3px 10px; border-radius: 4px; border: 0; background: transparent; color: #9da0a8">Timeline</button>
+    <span style="width: 12px"></span>
+    <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+      <span style="display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; color: #9da0a8"><span style="width: 7px; height: 7px; border-radius: 2px; background: {{c.dot}}"></span>{{c.label}} <b style="color: #dfe1e5; font-family: JetBrains Mono, monospace">{{c.n}}</b></span>
+    </sc-for>
+  </div>
+  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; padding: 22px 16px 10px; gap: 0">
+    <div style="font-family: JetBrains Mono, monospace; font-size: 12px; padding: 5px 10px; border: 1px solid #4e5157; border-radius: 4px; background: #2b2d30">checkout <span style="color: #9da0a8">· waiting for children</span></div>
+    <span aria-hidden="true" style="width: 1px; height: 14px; background: #4e5157"></span>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; border-top: 1px solid #4e5157; padding-top: 14px">
+      <sc-for list="{{nodes}}" as="n" hint-placeholder-count="7">
+        <button type="button" aria-pressed="{{n.pressed}}" style="display: flex; flex-direction: column; gap: 2px; width: 168px; padding: 6px 8px; border-radius: 4px; border: {{n.border}}; background: #2b2d30; color: inherit; font: inherit; text-align: left">
+          <span style="display: flex; align-items: center; gap: 6px; font-family: JetBrains Mono, monospace; font-size: 12px"><span style="width: 7px; height: 7px; border-radius: 2px; background: {{n.dot}}"></span>{{n.name}}<span style="margin-left: auto; font-family: Inter, sans-serif; font-size: 11px; color: {{n.color}}">{{n.label}}</span></span>
+          <span style="font-size: 11px; color: {{n.noteColor}}">{{n.note}}</span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+  <section aria-label="Dock" style="height: 330px; display: flex; flex-direction: column; border-top: 1px solid #393b40; background: #2b2d30">
+    <div role="tablist" aria-label="Dock" style="display: flex; align-items: center; gap: 0; height: 30px; padding: 0 6px; border-bottom: 1px solid #393b40; font-size: 12px">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+        <button type="button" role="tab" aria-selected="{{t.sel}}" style="font: inherit; height: 30px; padding: 0 12px; border: 0; border-bottom: 2px solid {{t.line}}; background: transparent; color: {{t.color}}">{{t.label}}</button>
+      </sc-for>
+      <div style="flex: 1"></div>
+      <button type="button" style="font: inherit; padding: 2px 8px; border: 0; background: transparent; color: #9da0a8">Fold</button>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0">
+      <div style="padding: 12px 14px; border-right: 1px solid #393b40; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: JetBrains Mono, monospace; font-size: 13px; font-weight: 600">order-5</span>
+        <span style="color: #f2c55c">Suspended · waits for inventory-lock · 1st in queue</span>
+        <span style="color: #9da0a8">held by order-4 for 0.8 s so far</span>
+        <span style="color: #9da0a8">waiting since 0.4 s (5.6 s)</span>
+      </div>
+      <div style="padding: 12px 14px; border-right: 1px solid #393b40; display: flex; flex-direction: column; gap: 4px; font-family: JetBrains Mono, monospace; font-size: 12px">
+        <span style="font-family: Inter, sans-serif; color: #9da0a8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em">Created at</span>
+        <span>SyncScenarios.kt:<span style="color: #8ab4ff">487</span></span>
+        <span style="color: #9da0a8">launch { reserveStock(order) }</span>
+      </div>
+      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; font-family: JetBrains Mono, monospace; font-size: 12px">
+        <span style="font-family: Inter, sans-serif; color: #9da0a8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em">Its events</span>
+        <sc-for list="{{events}}" as="e" hint-placeholder-count="4">
+          <span><span style="color: #9da0a8">{{e.t}}</span>  {{e.what}}</span>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+
+    const orders = [
+      { name: 'order-1', st: 'ACTIVE', note: 'holds a payment-gateway permit', kind: 'hold' },
+      { name: 'order-2', st: 'ACTIVE', note: 'holds a payment-gateway permit', kind: 'hold' },
+      { name: 'order-3', st: 'SUSPENDED', note: 'waits for a payment-gateway permit · 1st', kind: 'wait' },
+      { name: 'order-4', st: 'ACTIVE', note: 'holds inventory-lock', kind: 'hold' },
+      { name: 'order-5', st: 'SUSPENDED', note: 'waits for inventory-lock · 1st', kind: 'wait', selected: true },
+      { name: 'order-6', st: 'SUSPENDED', note: 'waits for inventory-lock · 2nd', kind: 'wait' },
+      { name: 'order-7', st: 'COMPLETED', note: 'done at 5.1 s', kind: 'muted' }
+    ];
+
+    const pal = { ACTIVE: ['#548af7', '#8ab4ff', 'Active'], SUSPENDED: ['#e5a50a', '#f2c55c', 'Suspended'], COMPLETED: ['#5fb865', '#7fcf84', 'Completed'] };
+    return {
+      counts: [ { label: 'Active', n: 3, dot: '#548af7' }, { label: 'Suspended', n: 3, dot: '#e5a50a' }, { label: 'Waiting for children', n: 1, dot: '#a571e6' }, { label: 'Completed', n: 1, dot: '#5fb865' } ],
+      nodes: orders.map((o) => ({ name: o.name, dot: pal[o.st][0], color: pal[o.st][1], label: pal[o.st][2], note: o.note,
+        noteColor: o.kind === 'wait' ? '#f2c55c' : o.kind === 'hold' ? '#8ab4ff' : '#9da0a8',
+        border: o.selected ? '1px solid #548af7' : '1px solid #43454a', pressed: o.selected ? 'true' : 'false' })),
+      tabs: [ ['Problems', false], ['Inspector', true], ['Evidence · 1 lock, 1 semaphore', false], ['Events', false], ['Learn', false] ].map(([label, on]) => ({ label, sel: on ? 'true' : 'false', line: on ? '#548af7' : 'transparent', color: on ? '#ffffff' : '#9da0a8' })),
+      events: [ { t: '0.3 s', what: 'created' }, { t: '0.3 s', what: 'started' }, { t: '0.4 s', what: 'suspended · MUTEX inventory-lock' } ]
+    };
+  }
+}
+</script>
+</body>
+</html>

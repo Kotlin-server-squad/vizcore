@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch A: Timeline</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: #1e1f22; color: #dfe1e5; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 12px; background: #2b2d30; border-bottom: 1px solid #43454a">
+    <span style="font-family: Inter, system-ui, sans-serif; font-size: 15px; font-weight: 700">E-commerce Orders</span>
+    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 4px; background: #25324d; color: #8ab4ff; font-size: 12px; font-weight: 600"><span style="width: 7px; height: 7px; border-radius: 50%; background: #8ab4ff"></span>Running · 6.0 s</span>
+    <span style="color: #9da0a8; font-size: 12px">updating</span>
+    <div style="flex: 1"></div>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Replay</button>
+    <button type="button" style="font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">Pause view</button>
+    <button type="button" aria-label="More actions" style="font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 4px; border: 1px solid #4e5157; background: transparent; color: #dfe1e5">⋯</button>
+  </header>
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #43454a">
+    <div role="group" aria-label="Main view" style="display: flex; gap: 2px; padding: 2px; border-radius: 4px; border: 1px solid #43454a">
+      <button type="button" aria-pressed="false" style="font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 4px; border: 0; background: transparent; color: #9da0a8">Tree</button>
+      <button type="button" aria-pressed="true" style="font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 4px; border: 0; background: #393b40; color: #dfe1e5; font-weight: 600">Timeline</button>
+    </div>
+    <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px; color: #9da0a8"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{c.dot}}"></span>{{c.n}} {{c.label}}</span>
+    </sc-for>
+  </div>
+  <div style="flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 14px 12px">
+    <div style="display: flex; align-items: flex-end; gap: 0; padding-left: 128px; position: relative; height: 18px">
+      <sc-for list="{{ticks}}" as="k" hint-placeholder-count="9">
+        <span style="position: absolute; left: {{k.left}}; font-size: 11px; color: #9da0a8; font-family: JetBrains Mono, monospace">{{k.label}}</span>
+      </sc-for>
+    </div>
+    <sc-for list="{{rows}}" as="row" hint-placeholder-count="8">
+      <div style="display: flex; align-items: center; gap: 8px; height: 40px">
+        <button type="button" aria-pressed="{{row.pressed}}" style="width: 120px; flex: none; text-align: left; font: inherit; font-family: JetBrains Mono, monospace; font-size: 12px; padding: 4px 6px; border-radius: 4px; border: {{row.border}}; background: transparent; color: #dfe1e5">{{row.name}}</button>
+        <div style="position: relative; flex: 1; height: 40px; border-left: 1px solid #43454a">
+          <sc-for list="{{row.holds}}" as="h" hint-placeholder-count="1">
+            <span title="{{h.title}}" style="position: absolute; top: 4px; left: {{h.left}}; width: {{h.width}}; height: 7px; border-radius: 4px; background: {{h.color}}"></span>
+          </sc-for>
+          <sc-for list="{{row.segs}}" as="g" hint-placeholder-count="2">
+            <span style="position: absolute; top: 14px; left: {{g.left}}; width: {{g.width}}; height: 18px; border-radius: 4px; background: {{g.color}}"></span>
+          </sc-for>
+          <sc-for list="{{row.marks}}" as="m" hint-placeholder-count="1">
+            <span style="position: absolute; top: 12px; left: {{m.left}}; width: 3px; height: 22px; background: #dfe1e5"></span>
+          </sc-for>
+          <span style="position: absolute; top: 0; bottom: 0; left: 75%; width: 2px; background: #548af7"></span>
+        </div>
+      </div>
+    </sc-for>
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; padding-left: 128px; font-size: 12px; color: #9da0a8">
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 18px; height: 7px; border-radius: 4px; background: #8ab4ff"></span>band above: holds the lock or a permit</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 18px; height: 12px; border-radius: 3px; background: #548af7"></span>Active</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 18px; height: 12px; border-radius: 3px; background: #e5a50a"></span>Suspended (waiting)</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 18px; height: 12px; border-radius: 3px; background: #a571e6"></span>Waiting for children</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 3px; height: 12px; background: #dfe1e5"></span>finished</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 2px; height: 12px; background: #548af7"></span>now, 6.0 s</span>
+    </div>
+  </div>
+  <section aria-label="Dock" style="height: 220px; display: flex; flex-direction: column; margin: 0 0 0; border: 1px solid #43454a; border-radius: 0; background: #2b2d30">
+    <div role="tablist" aria-label="Dock" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid #43454a">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+        <button type="button" role="tab" aria-selected="{{t.sel}}" style="display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: {{t.weight}}; padding: 6px 12px; border-radius: 4px; border: 0; background: {{t.bg}}; color: {{t.color}}">{{t.label}}<span style="font-size: 11px; font-weight: 700; padding: {{t.badgePad}}; border-radius: 999px; background: #e5534b; color: #ffffff">{{t.badge}}</span></button>
+      </sc-for>
+      <div style="flex: 1"></div>
+      <button type="button" style="font: inherit; font-size: 12px; padding: 4px 10px; border: 0; background: transparent; color: #9da0a8">Fold</button>
+    </div>
+    <div style="padding: 12px 12px; display: flex; flex-direction: column; gap: 6px; line-height: 1.5">
+      <span style="font-family: Inter, system-ui, sans-serif; font-size: 16px; font-weight: 700">order-5 has waited 5.6 s for inventory-lock</span>
+      <span>Four orders held the lock before it, 1.2 s each: order-7, order-1, order-2, order-3. order-4 holds it now (since 5.2 s). order-5 is first in line.</span>
+      <span style="color: #9da0a8">Its bar is amber the whole time: Suspended, waiting. No band above it: it holds nothing.</span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const S = { act: '#548af7', sus: '#e5a50a', wfc: '#a571e6', done: '#5fb865', fail: '#e5534b', surf2: '#393b40', text: '#dfe1e5', muted: '#9da0a8' };
+    const tabs = [['Problems', ''], ['Inspector', ''], ['Evidence · 1 lock, 1 semaphore', ''], ['Events', ''], ['Learn', '']].map(([label, badge]) => ({ label, sel: label === 'Inspector' ? 'true' : 'false', weight: label === 'Inspector' ? 700 : 400,
+      bg: label === 'Inspector' ? S.surf2 : 'transparent', color: label === 'Inspector' ? S.text : S.muted, badge: badge || '', badgePad: badge ? '1px 7px' : '0' }));
+
+    const span = 8, cut = 6.0;
+    const pct = (t) => (Math.min(t, cut) / span * 100).toFixed(2) + '%';
+    const seg = (a, b, c) => ({ left: pct(a), width: ((Math.min(b, cut) - a) / span * 100).toFixed(2) + '%', color: c });
+    const hold = (a, b, what) => ({ left: pct(a), width: ((Math.min(b, cut) - a) / span * 100).toFixed(2) + '%', color: '#8ab4ff', title: what });
+    const A = S.act, Su = S.sus, W = S.wfc;
+    const rows = [
+      { name: 'checkout', segs: [seg(0, 0.3, A), seg(0.3, 6, W)], holds: [], marks: [] },
+      { name: 'order-7', segs: [seg(0.3, 5.1, A)], holds: [hold(0.4, 1.6, 'inventory-lock'), hold(1.6, 5.1, 'payment permit')], marks: [{ left: pct(5.1) }] },
+      { name: 'order-1', segs: [seg(0.3, 0.4, A), seg(0.4, 1.6, Su), seg(1.6, 6, A)], holds: [hold(1.6, 2.8, 'inventory-lock'), hold(2.8, 6, 'payment permit')], marks: [] },
+      { name: 'order-2', segs: [seg(0.3, 0.4, A), seg(0.4, 2.8, Su), seg(2.8, 4.0, A), seg(4.0, 5.1, Su), seg(5.1, 6, A)], holds: [hold(2.8, 4.0, 'inventory-lock'), hold(5.1, 6, 'payment permit')], marks: [] },
+      { name: 'order-3', segs: [seg(0.3, 0.4, A), seg(0.4, 4.0, Su), seg(4.0, 5.2, A), seg(5.2, 6, Su)], holds: [hold(4.0, 5.2, 'inventory-lock')], marks: [] },
+      { name: 'order-4', segs: [seg(0.3, 0.4, A), seg(0.4, 5.2, Su), seg(5.2, 6, A)], holds: [hold(5.2, 6, 'inventory-lock')], marks: [] },
+      { name: 'order-5', segs: [seg(0.3, 0.4, A), seg(0.4, 6, Su)], holds: [], marks: [], selected: true },
+      { name: 'order-6', segs: [seg(0.3, 0.4, A), seg(0.4, 6, Su)], holds: [], marks: [] }
+    ].map((r) => ({ ...r, pressed: r.selected ? 'true' : 'false', border: r.selected ? '2px solid #548af7' : '1px solid transparent' }));
+    return {
+      tabs, rows,
+      ticks: [0, 1, 2, 3, 4, 5, 6, 7, 8].map((s) => ({ left: 'calc(128px + (100% - 128px) * ' + (s / span) + ')', label: s + ' s' })),
+      counts: [ { label: 'active', n: 3, dot: S.act }, { label: 'suspended', n: 3, dot: S.sus }, { label: 'waiting for children', n: 1, dot: S.wfc }, { label: 'completed', n: 1, dot: S.done } ]
+    };
+  }
+}
+</script>
+</body>
+</html>
