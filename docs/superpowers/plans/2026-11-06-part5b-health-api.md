@@ -179,6 +179,32 @@ Where a task below and this list disagree, this list wins.
 
 ---
 
+## Plan review round 3: open (process stopped here)
+
+Round 3 (`codex-part5b-plan-r3.md`) still raised one P1, so per the run's rule the plan loop stopped and the work was
+reported instead of reviewed a fourth time. Tasks 0–7 are built (commits up to `648d4c97`); round 3's #5 is fixed. Open:
+
+- **P1 #1 — a cut's identity after a database trim (5b-2).** Health A, then a trim, then health B at the same seq,
+  watermark and transport revision: B's cut replaces A's (same binding), so A's follow-ups get B's retained transitions
+  and retention facts. Summaries are unaffected (a checkpoint keeps them identical); only the possibly blocked evidence
+  and `retention` can differ. Proposed fix: an opaque cut id — the live health answers with header `X-Viz-Cut: <id>`
+  (and the share payload with `healthCut`), follow-ups may pass `asOfCut=<id>`, which selects that cut exactly; an
+  equal-binding cut only replaces a kept one when its retention and transitions are equal too (then it keeps the id).
+  Not reachable in 5b-1 (no database trim keeps a session's health available there; memory trims never change a cut's
+  binding and leave the summaries complete), so 5b-1 is unaffected.
+- **P2 #2** — Task 15's `retainedOnly` must test "database session rebuilt from retained events" (backing store is the
+  Exposed one and the store was trimmed), not `!summariesSeeEveryEvent`, which a checkpoint makes true.
+- **P2 #3** — `OriginAggregate.throughputPerSec` and `OriginSlice.throughputPerSec` must be `Double?` (null after a
+  rebuild), in the OpenAPI too, with a JSON-null assertion.
+- **P2 #4** — find (`q`) skips matching coroutines that have no round (an orphan whose ancestry is untracked): add an
+  `ungroupedMatches: Capped<String>` to `RoundsPage` (only with `q`), test a healthy and a failed orphan; or list it as a
+  deviation from S-12.
+- **P2 #5** — fixed: `Routing.kt` drops a deleted session's cuts (`HealthCuts.forget`), with a test.
+- **P3 #6** — E-17's progress guarantee also depends on the global cap (256 cuts across sessions): state it, or reserve
+  a per-session minimum.
+
+---
+
 # PR 5b-1 — bound reads
 
 ### Task 0: Commit the plan

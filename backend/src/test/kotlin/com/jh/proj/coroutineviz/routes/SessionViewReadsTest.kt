@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.testing.testApplication
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The read skeleton of every follow-up read: current, replay and bound views (plan E-1..E-3, E-17). */
@@ -146,5 +148,17 @@ class SessionViewReadsTest {
             val health = appJson.decodeFromString(SessionHealth.serializer(), client.get("/api/sessions/$id/health").bodyAsText())
             val cut = assertNotNull(HealthCuts.find(id, health.asOfSeq, health.asOfWatermark?.appNanos, health.transport.revision))
             assertEquals(health.transport, cut.ingest.transport)
+        }
+
+    @Test
+    fun `a deleted session's kept cuts go with it`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("app-cut-delete")
+            SessionManager.getSession(id)!!.send(HealthEvents.created(id, "a", sec(1)))
+            val health = appJson.decodeFromString(SessionHealth.serializer(), client.get("/api/sessions/$id/health").bodyAsText())
+            assertNotNull(HealthCuts.find(id, health.asOfSeq, null, null))
+            client.delete("/api/sessions/$id")
+            assertNull(HealthCuts.find(id, health.asOfSeq, null, null))
         }
 }
