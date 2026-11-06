@@ -76,6 +76,12 @@ class SemaphoreDemoPacingTest {
             return most
         }
 
+        /** Who got a permit of [semaphore], in order. */
+        fun permitOrder(semaphore: String): List<String?> {
+            val id = events.filterIsInstance<SemaphoreCreated>().single { it.semaphoreLabel == semaphore }.semaphoreId
+            return events.filterIsInstance<SemaphorePermitAcquired>().filter { it.semaphoreId == id }.map { it.acquirerLabel }
+        }
+
         fun allCompleted() = labels.all { completed(it) } && events.none { it is CoroutineCancelled || it is CoroutineFailed }
     }
 
@@ -233,6 +239,21 @@ class SemaphoreDemoPacingTest {
     @Test
     fun `at most two files are on the disk at a time`() {
         assertTrue(run("sync/semaphore/file-processor").mostHeldAtOnce("disk") <= 2)
+    }
+
+    /**
+     * Every call and every file starts at the same moment. The two demos run their coroutines one at a time, so on
+     * real time too the permits go out in the order they were started, as the guides tell it; run in parallel, any
+     * two could go first (a live run once gave the weather service's first permits to Oslo and Split).
+     */
+    @Test
+    fun `the calls and the files that start together get their permits in the order they were started`() {
+        val cities = listOf("rome", "paris", "vienna", "prague", "lisbon", "oslo", "split", "krakow")
+        assertEquals(cities.map { "weather-$it" }, run("sync/semaphore/rate-limiter").permitOrder("weather-api"))
+        assertEquals(
+            storyLabels.getValue("sync/semaphore/file-processor").drop(1),
+            run("sync/semaphore/file-processor").permitOrder("disk"),
+        )
     }
 
     @Test

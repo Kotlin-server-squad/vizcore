@@ -355,10 +355,14 @@ object SyncScenarios {
      * permit, suspended, and call as soon as one is free: Vienna at 2.5 s, Prague at 3 s, Lisbon at 4.5 s, Oslo at
      * 6 s, Split at 7 s, Krakow at 8 s. The last forecast is in at 10.5 s and the page is drawn at 12 s; [onPlanned]
      * gets the forecasts in city order.
+     *
+     * By default the demo's coroutines run one at a time ([context] is a dispatcher with parallelism 1), as in
+     * [runDeadlock]: all eight calls start at the same moment, and run in parallel any two of them could reach the
+     * semaphore first. One at a time, they ask in the order they were started. A test passes its own test dispatcher.
      */
     suspend fun runRateLimiter(
         session: VizSession,
-        context: CoroutineContext = EmptyCoroutineContext,
+        context: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
         onPlanned: (forecasts: List<String>) -> Unit = {},
     ): Job =
         coroutineScope {
@@ -406,10 +410,14 @@ object SyncScenarios {
      * bank statements hold one permit from 0 to 7.5 s; meanwhile the other permit goes from file to file the moment
      * one is done: payslips, receipts (1.5 s), insurance (4 s), donations (5 s). Seven files wait for the disk,
      * suspended. The last file is uploaded at 13 s.
+     *
+     * By default the demo's coroutines run one at a time ([context] is a dispatcher with parallelism 1): all nine files
+     * start at the same moment, and run in parallel any two of them could reach the disk first. One at a time, they
+     * ask in folder order. A test passes its own test dispatcher.
      */
     suspend fun runFileProcessor(
         session: VizSession,
-        context: CoroutineContext = EmptyCoroutineContext,
+        context: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
     ): Job =
         coroutineScope {
             logger.info("Starting parallel file processor scenario in session: ${session.sessionId}")
