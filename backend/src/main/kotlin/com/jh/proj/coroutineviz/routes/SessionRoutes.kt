@@ -482,10 +482,12 @@ fun Route.registerSessionRoutes() {
 internal fun snapshotResponseOf(
     session: VizSession,
     events: List<VizEvent> = session.store.all(),
+    cut: ReadCut? = null,
+    ingestCut: IngestSnapshot? = null,
 ): SessionSnapshotResponse {
-    // One point-in-time copy so the count and the list agree while events keep arriving.
-    val nodes = session.snapshot.nodes()
-    val facts = readSessionFacts(session, events)
+    // One point-in-time copy so the count and the list agree while events keep arriving (or the share's one cut).
+    val nodes = cut?.nodes ?: session.snapshot.nodes()
+    val facts = readSessionFacts(session, events, cut, ingestCut)
     return SessionSnapshotResponse(
         sessionId = session.sessionId,
         coroutineCount = nodes.size,

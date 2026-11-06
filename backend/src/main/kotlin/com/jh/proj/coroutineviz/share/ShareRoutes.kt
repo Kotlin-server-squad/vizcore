@@ -5,7 +5,29 @@ import com.jh.proj.coroutineviz.auth.TenantContext
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.currentPrincipal
+import com.jh.proj.coroutineviz.health.SummariesUnavailableException
+import com.jh.proj.coroutineviz.routes.AS_OF_SEQ_HEADER
+import com.jh.proj.coroutineviz.routes.CUT_HEADER
+import com.jh.proj.coroutineviz.routes.ChecksResults
+import com.jh.proj.coroutineviz.routes.ChecksRun
+import com.jh.proj.coroutineviz.routes.ErrorResponse
+import com.jh.proj.coroutineviz.routes.HistoryTrimmedException
+import com.jh.proj.coroutineviz.routes.IngestSnapshot
+import com.jh.proj.coroutineviz.routes.IngestStates
+import com.jh.proj.coroutineviz.routes.ReadCut
+import com.jh.proj.coroutineviz.routes.SessionView
+import com.jh.proj.coroutineviz.routes.ViewBinding
+import com.jh.proj.coroutineviz.routes.badParameter
+import com.jh.proj.coroutineviz.routes.hierarchyOf
+import com.jh.proj.coroutineviz.routes.leakThresholdMs
+import com.jh.proj.coroutineviz.routes.listRounds
+import com.jh.proj.coroutineviz.routes.parseViewBinding
+import com.jh.proj.coroutineviz.routes.readSessionHealth
+import com.jh.proj.coroutineviz.routes.readView
+import com.jh.proj.coroutineviz.routes.respondHealthItems
+import com.jh.proj.coroutineviz.routes.respondReadErrors
 import com.jh.proj.coroutineviz.routes.snapshotResponseOf
+import com.jh.proj.coroutineviz.routes.timelineAt
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.HttpStatusCode
@@ -166,49 +188,132 @@ fun Route.registerShareOwnerRoutes(
 }
 
 /**
- * Public read route. Registered OUTSIDE `authenticatedApi { }` (the token IS the
+ * Public read routes. Registered OUTSIDE `authenticatedApi { }` (the token IS the
  * credential) and wrapped in `rateLimit(RateLimitName("shared"))` by Routing.kt.
  *
- * Valid → 200 `{session, events}`; Expired → 410; unknown/revoked → 404.
+ * `GET /api/shared/{token}`: valid → 200 `{session, events, health, checks}` under one cut (spec C-6); expired → 410;
+ * unknown/revoked → 404. The shared view's follow-up reads (`…/health`, `…/health/items`, `…/rounds`, `…/hierarchy`,
+ * `…/coroutines/{coroutineId}/timeline`) take the session routes' parameters and answers and do not count as accesses.
  */
 fun Route.registerSharedPublicRoute(service: ShareService) {
     get("/api/shared/{token}") {
-        val token =
-            call.parameters["token"] ?: run {
-                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Share link not found"))
-                return@get
+        call.withSharedSession(service, countAccess = true) { session, ingest, checks ->
+            call.respond(HttpStatusCode.OK, sharedResponse(session, ingest, checks, call.leakThresholdMs()))
+        }
+    }
+    get("/api/shared/{token}/health") {
+        call.withSharedSession(service) { session, ingest, _ ->
+            call.respondReadErrors {
+                val binding = parseViewBinding(call.request.queryParameters)
+                val atSeq = (binding as? ViewBinding.Replay)?.atSeq
+                if (binding is ViewBinding.Bound) badParameter("the health takes atSeq, not asOfSeq")
+                val read = readSessionHealth(session, ingest, atSeq, call.leakThresholdMs())
+                read.cutId?.let { call.response.headers.append(CUT_HEADER, it) }
+                call.respond(HttpStatusCode.OK, read.health)
             }
-
-        when (val resolution = service.resolve(token)) {
-            is ShareResolution.Valid -> {
-                val session = SessionManager.getSession(resolution.share.sessionId)
-                if (session == null) {
-                    // The share row outlived its session (should not happen — FK
-                    // cascade + retention guard — but treat defensively as 404).
-                    logger.warn("Share {} resolved but session {} missing", token, resolution.share.sessionId)
-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Share link not found"))
-                    return@get
-                }
-                call.respond(HttpStatusCode.OK, sharedResponse(session))
+        }
+    }
+    get("/api/shared/{token}/health/items") { call.withSharedView(service) { view -> call.respondHealthItems(view) } }
+    get("/api/shared/{token}/rounds") {
+        call.withSharedView(service) { view -> call.respond(HttpStatusCode.OK, listRounds(view, call.request.queryParameters)) }
+    }
+    get("/api/shared/{token}/hierarchy") {
+        call.withSharedView(service) { view ->
+            call.response.headers.append(AS_OF_SEQ_HEADER, view.seq.toString())
+            call.respond(
+                HttpStatusCode.OK,
+                hierarchyOf(view, call.request.queryParameters["scopeId"], call.request.queryParameters["roundId"]),
+            )
+        }
+    }
+    get("/api/shared/{token}/coroutines/{coroutineId}/timeline") {
+        call.withSharedView(service) { view ->
+            val body = call.parameters["coroutineId"]?.let { timelineAt(view, it) }
+            if (body ==
+                null
+            ) {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Coroutine not found"))
+            } else {
+                call.respond(HttpStatusCode.OK, body)
             }
-
-            ShareResolution.Expired ->
-                call.respond(HttpStatusCode.Gone, mapOf("error" to "Share link has expired"))
-
-            ShareResolution.NotFound ->
-                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Share link not found"))
         }
     }
 }
 
 /**
- * Build the `{session, events}` body for a shared session — the same snapshot
- * shape `GET /api/sessions/{id}` returns (with its session facts) plus the full
- * event history (reusing the [VizSession] store, which the SSE/events paths also read).
+ * Resolves the share token (410 expired, 404 unknown or session gone), reads the ingest snapshot and the stored checks run
+ * BEFORE resolving the session (so neither is newer than what the session then shows: 5a D-9c, spec C-6), then runs
+ * [block].
  */
-private fun sharedResponse(session: VizSession): SharedSessionResponse {
-    val events = session.store.all()
-    return SharedSessionResponse(session = snapshotResponseOf(session, events), events = events)
+private suspend fun ApplicationCall.withSharedSession(
+    service: ShareService,
+    countAccess: Boolean = false,
+    block: suspend (VizSession, IngestSnapshot, ChecksRun?) -> Unit,
+) {
+    val token = parameters["token"] ?: return respond(HttpStatusCode.NotFound, mapOf("error" to "Share link not found"))
+    when (val resolution = service.resolve(token, countAccess)) {
+        is ShareResolution.Valid -> {
+            val sessionId = resolution.share.sessionId
+            val ingest = IngestStates.snapshot(sessionId)
+            val checks = ChecksResults.load(sessionId)
+            val session = SessionManager.getSession(sessionId)
+            afterSessionResolvedForTest?.invoke(sessionId)
+            if (session == null) {
+                // The share row outlived its session (should not happen — FK cascade + retention guard).
+                logger.warn("Share {} resolved but session {} missing", token, sessionId)
+                respond(HttpStatusCode.NotFound, mapOf("error" to "Share link not found"))
+            } else {
+                block(session, ingest, checks)
+            }
+        }
+        ShareResolution.Expired -> respond(HttpStatusCode.Gone, mapOf("error" to "Share link has expired"))
+        ShareResolution.NotFound -> respond(HttpStatusCode.NotFound, mapOf("error" to "Share link not found"))
+    }
+}
+
+/** Test seam: runs right after a shared session is resolved (its ingest state and checks were read before). */
+@Volatile
+internal var afterSessionResolvedForTest: ((String) -> Unit)? = null
+
+/** A shared follow-up read: the session's view with the request's binding, its read errors answered. */
+private suspend fun ApplicationCall.withSharedView(
+    service: ShareService,
+    block: suspend (SessionView) -> Unit,
+) = withSharedSession(service) { session, ingest, _ ->
+    respondReadErrors { block(readView(session, ingest, parseViewBinding(request.queryParameters), leakThresholdMs())) }
+}
+
+/**
+ * The share payload (spec C-6): the session snapshot, its events, the health at load and the last checks run, all from one
+ * cut taken under the session's send lock. The health's cut is kept, so the shared view's follow-ups answer from it.
+ */
+private fun sharedResponse(
+    session: VizSession,
+    ingest: IngestSnapshot,
+    checks: ChecksRun?,
+    leakThresholdMs: Long,
+): SharedSessionResponse {
+    val cut = ReadCut.of(session)
+    val events = cut.events.filter { it.seq <= cut.seq }
+    var unavailable: String? = null
+    val read =
+        try {
+            readSessionHealth(session, ingest, atSeq = null, leakThresholdMs = leakThresholdMs, cut = cut)
+        } catch (_: SummariesUnavailableException) {
+            unavailable = "summaries-unavailable"
+            null
+        } catch (_: HistoryTrimmedException) {
+            unavailable = "history-trimmed"
+            null
+        }
+    return SharedSessionResponse(
+        session = snapshotResponseOf(session, events, cut, ingest),
+        events = events,
+        health = read?.health,
+        healthUnavailable = unavailable,
+        healthCut = read?.cutId,
+        checks = ChecksResults.status(session.sessionId, checks, cut.seq),
+    )
 }
 
 /**

@@ -88,10 +88,11 @@ internal fun readSessionHealth(
     watermarkCut: IngestSnapshot,
     atSeq: Long?,
     leakThresholdMs: Long,
-): SessionHealth {
+    cut: ReadCut? = null,
+): HealthRead {
     val binding = atSeq?.let { ViewBinding.Replay(it) } ?: ViewBinding.Current
-    val view = readView(session, watermarkCut, binding, leakThresholdMs)
-    if (binding != ViewBinding.Current) return SessionHealthDerivation.derive(view.input)
+    val view = readView(session, watermarkCut, binding, leakThresholdMs, cut)
+    if (binding != ViewBinding.Current) return HealthRead(SessionHealthDerivation.derive(view.input), cutId = null)
     // Record the retained transitions the derivation reads, so the cut's follow-ups show the same evidence after a trim.
     val read = HashMap<String, List<Transition>>()
     val health =
@@ -100,9 +101,14 @@ internal fun readSessionHealth(
                 view.input.transitionsFor(id).also { read[id] = it }
             }),
         )
-    HealthCuts.remember(view.cut(read))
-    return health
+    return HealthRead(health, HealthCuts.remember(view.cut(read)))
 }
+
+/** A health and, for a live one, the id of its kept cut (the follow-ups' `asOfCut`, plan E-17). */
+internal data class HealthRead(
+    val health: SessionHealth,
+    val cutId: String?,
+)
 
 /** Retained lifecycle transitions per coroutine up to [upToSeq], indexed on first use (`HealthInput.transitionsFor`). */
 internal class RetainedTransitions(
@@ -138,15 +144,21 @@ internal data class SessionFacts(
 internal fun readSessionFacts(
     session: VizSession,
     events: List<VizEvent>,
+    cut: ReadCut? = null,
+    ingestCut: IngestSnapshot? = null,
 ): SessionFacts {
     val kind = sessionKindOf(session.sessionId)
-    val ingest = IngestStates.snapshot(session.sessionId)
+    val ingest = ingestCut ?: IngestStates.snapshot(session.sessionId)
     // Abandoned summaries leave origin and capture start unknown (H-3); the rest of the session still answers.
     val durable =
-        try {
-            session.readSummaries { it.snapshot() }
-        } catch (_: SummariesUnavailableException) {
-            null
+        if (cut != null) {
+            cut.summaries
+        } else {
+            try {
+                session.readSummaries { it.snapshot() }
+            } catch (_: SummariesUnavailableException) {
+                null
+            }
         }
     val everyEvent = summariesSeeEveryEvent(session)
     val retention = retentionOf(events, firstSeqEver = durable?.firstSeqEver(everyEvent) ?: 1L)
