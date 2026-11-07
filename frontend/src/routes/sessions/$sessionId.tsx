@@ -3,6 +3,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Layout } from '@/components/Layout'
 import { SessionWorkspace } from '@/components/SessionWorkspace'
 import { LookProvider } from '@/looks/look-context'
+import { LookExperimentLayer } from '@/looks/experiment/LookExperimentLayer'
+import { useLookExperimentEntry } from '@/looks/experiment/use-experiment-entry'
 
 interface SessionSearchParams {
   scenarioId?: string
@@ -38,28 +40,36 @@ function SessionDetailPage() {
     () => void navigate({ search: prev => ({ ...prev, look: undefined }), replace: true }),
     [navigate]
   )
+  // The look experiment (off unless the server runs it): this page only, never the shared view.
+  const experiment = useLookExperimentEntry(search.look, sessionId)
 
   return (
-    <LookProvider link={search.look} onLinkRead={dropLookFromAddress}>
-      <Layout>
-        {/* Full width, full height under the navbar (64 px and its 1 px border,
+    <LookProvider
+      link={search.look}
+      onLinkRead={dropLookFromAddress}
+      assigned={experiment.assigned}
+    >
+      <LookExperimentLayer config={experiment.config} sessionId={sessionId}>
+        <Layout>
+          {/* Full width, full height under the navbar (64 px and its 1 px border,
           S-1): the main view and the dock share the window instead of
           scrolling a long page. */}
-        <div
-          data-look-part="page"
-          className="flex h-[calc(100dvh-65px)] flex-col px-4 py-3 sm:px-6"
-        >
-          <SessionWorkspace
-            // A new session is a new page: no selection, dock tab or stream state
-            // carries over from the one before (Reset navigates between them).
-            key={sessionId}
-            sessionId={sessionId}
-            scenarioId={search.scenarioId}
-            scenarioName={search.scenarioName}
-            startLive={search.live}
-          />
-        </div>
-      </Layout>
+          <div
+            data-look-part="page"
+            className="flex h-[calc(100dvh-65px)] flex-col px-4 py-3 sm:px-6"
+          >
+            <SessionWorkspace
+              // A new session is a new page: no selection, dock tab or stream state
+              // carries over from the one before (Reset navigates between them).
+              key={sessionId}
+              sessionId={sessionId}
+              scenarioId={search.scenarioId}
+              scenarioName={search.scenarioName}
+              startLive={search.live}
+            />
+          </div>
+        </Layout>
+      </LookExperimentLayer>
     </LookProvider>
   )
 }

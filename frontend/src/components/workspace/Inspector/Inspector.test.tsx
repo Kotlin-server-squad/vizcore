@@ -15,6 +15,7 @@ import { ApiError, RateLimitedError } from '@/lib/api-errors'
 
 const getCoroutineTimeline = vi.fn()
 const getTimelineAt = vi.fn()
+const getHierarchyAt = vi.fn()
 
 vi.mock('@/lib/api-client', async () => {
   const errors = await vi.importActual<typeof import('@/lib/api-errors')>('@/lib/api-errors')
@@ -23,6 +24,7 @@ vi.mock('@/lib/api-client', async () => {
     apiClient: {
       getCoroutineTimeline: (...args: unknown[]) => getCoroutineTimeline(...args),
       getTimelineAt: (...args: unknown[]) => getTimelineAt(...args),
+      getHierarchyAt: (...args: unknown[]) => getHierarchyAt(...args),
     },
   }
 })
@@ -429,6 +431,41 @@ describe('Inspector at a moment (Part 8, S-11)', () => {
     expect(getTimelineAt).toHaveBeenCalledWith(shared.read, 'c-1')
   })
 
+  it('shows what the durable summary keeps for a coroutine whose early events were trimmed, and no made-up duration', async () => {
+    getTimelineAt.mockResolvedValue(
+      timeline({ eventsTrimmed: true, totalDuration: null, activeDuration: null, suspendedDuration: null, events: [store[1]] as CoroutineTimeline['events'] }),
+    )
+    getHierarchyAt.mockResolvedValue([
+      {
+        id: 'c-1',
+        parentId: null,
+        name: 'UserService.register',
+        scopeId: null,
+        jobId: null,
+        state: 'SUSPENDED',
+        createdAtNanos: 1e9,
+        creationPoint: { function: 'com.acme.UserService.register', fileName: 'UserService.kt', lineNumber: 42 },
+        exceptionType: null,
+        summary: { lastThread: { threadName: 'worker-7' } },
+      },
+    ])
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, { wrapper: createWrapper() })
+    const card = await screen.findByTestId('summary-card')
+    expect(await within(card).findByText(/UserService\.kt:42/)).toBeInTheDocument()
+    expect(within(card).getByText('worker-7')).toBeInTheDocument()
+    expect(within(card).getByText(/from the durable summary/i)).toBeInTheDocument()
+    const timing = screen.getByTestId('timing-card')
+    expect(timing).toHaveTextContent(/unavailable: early events were trimmed/i)
+    expect(timing).not.toHaveTextContent(/so far/)
+    expect(screen.getByTestId('events-card')).toHaveTextContent(/earlier events were trimmed/i)
+  })
+
+  it('says when its state at the cursor is unknown', async () => {
+    getTimelineAt.mockResolvedValue(timeline({ partial: true }))
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, { wrapper: createWrapper() })
+    expect(await screen.findByText(/state at this moment is unknown/i)).toBeInTheDocument()
+  })
+
   it('says it is catching up rather than showing another moment', async () => {
     getTimelineAt.mockReturnValue(new Promise(() => {}))
     render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, { wrapper: createWrapper() })
@@ -453,6 +490,30 @@ describe('Inspector at a moment (Part 8, S-11)', () => {
     getTimelineAt.mockRejectedValue(new ApiError(503, 'x', 'history-trimmed'))
     render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, { wrapper: createWrapper() })
     expect(await screen.findByText(/details unavailable: this session's early events were trimmed/i)).toBeInTheDocument()
+  })
+
+  it('does not guess a binding in a shared link without a health', () => {
+    render(
+      <Inspector sessionId="s-1" coroutine={coroutine()} readOnly unavailableReason="history-trimmed" />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByText(/details unavailable: this link's health could not be read \(history-trimmed\)/i)).toBeInTheDocument()
+    expect(getTimelineAt).not.toHaveBeenCalled()
+  })
+
+  it('says a selection from the summaries is updating, not missing, while their read catches up', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={null}
+        readOnly={false}
+        moment={replay()}
+        pendingSelectionLabel="sneaker-drop"
+        pendingSelectionNote="updating to this moment…"
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('inspector-pending')).toHaveTextContent('sneaker-drop · updating to this moment…')
   })
 
   it('keeps a selection that does not exist yet at the cursor, and says so', () => {
