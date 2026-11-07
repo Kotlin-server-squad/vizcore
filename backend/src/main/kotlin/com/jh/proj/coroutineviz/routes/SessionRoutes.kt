@@ -4,9 +4,14 @@ import com.jh.proj.coroutineviz.SESSION_CREATE_RATE_LIMIT_NAME
 import com.jh.proj.coroutineviz.appJson
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
+import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.CoroutineSummary
+import com.jh.proj.coroutineviz.health.RoundAnchoring
+import com.jh.proj.coroutineviz.health.SessionHealthDerivation
 import com.jh.proj.coroutineviz.health.SessionKind
 import com.jh.proj.coroutineviz.health.WatermarkObservation
+import com.jh.proj.coroutineviz.health.snapshot
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import com.jh.proj.coroutineviz.sseClientsGauge
@@ -425,15 +430,24 @@ internal fun snapshotResponseOf(
     cut: ReadCut? = null,
     ingestCut: IngestSnapshot? = null,
 ): SessionSnapshotResponse {
-    // One point-in-time copy so the count and the list agree while events keep arriving (or the share's one cut).
-    val nodes = cut?.nodes ?: session.snapshot.nodes()
-    val facts = readSessionFacts(session, events, cut, ingestCut)
+    // One point-in-time copy of the nodes and the summaries, so a node's state and its round are of one moment (dock
+    // S-12): the share's cut, else both read under the session's send lock.
+    val read = cut ?: session.readCut { table -> ReadCut(table?.snapshot(), events, session.snapshot.nodes(), session.lastSeq) }
+    val nodes = read.nodes
+    val facts = readSessionFacts(session, events, read, ingestCut)
+    // The server's round and effective origin per node (dock S-12): the page filters and groups by them, D-8.
+    val summaries = facts.summaries
+    val anchoring = summaries?.let(RoundAnchoring::of)
+    val demo = facts.kind == SessionKind.DEMO
+    val originOf = { s: CoroutineSummary -> SessionHealthDerivation.effectiveOrigin(s, demo, facts.origin) }
+    val nodeIds = nodes.mapTo(HashSet()) { it.id }
     return SessionSnapshotResponse(
         sessionId = session.sessionId,
         coroutineCount = nodes.size,
         eventCount = events.size,
         coroutines =
             nodes.map { node ->
+                val summary = summaries?.get(node.id)
                 CoroutineNodeDto(
                     id = node.id,
                     jobId = node.jobId,
@@ -441,8 +455,12 @@ internal fun snapshotResponseOf(
                     scopeId = node.scopeId,
                     label = node.label,
                     state = node.state.toString(),
+                    roundId = summary?.let { anchoring?.roundIdOf(it.id) },
+                    origin = summary?.let(originOf),
                 )
             },
+        summaryOnlyCount =
+            summaries?.all?.count { it.id !in nodeIds && originOf(it) != CoroutineOrigin.VIZCORE } ?: 0,
         kind = facts.kind,
         startedAtEpochMs = session.createdAtMs,
         captureStartAppNanos = facts.captureStartAppNanos,

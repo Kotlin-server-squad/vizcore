@@ -47,6 +47,8 @@ class VizcoreDemoRunner(
 	@param:Value("\${vizcore.embedded-client:true}") private val embeddedClient: Boolean,
 	// > 0: one coroutine holds a Default thread this long without suspending (the session's "possibly blocked").
 	@param:Value("\${vizcore.busy-ms:0}") private val busyMs: Long,
+	// > 0: every request also launches this many `fetch-1 … fetch-N` children (a big app: hundreds of siblings per round).
+	@param:Value("\${vizcore.fan-out:0}") private val fanOut: Int,
 ) : CommandLineRunner {
 	private val logger = LoggerFactory.getLogger(VizcoreDemoRunner::class.java)
 
@@ -115,6 +117,11 @@ class VizcoreDemoRunner(
 							(1..1000).sum()
 						}
 
+					// Siblings whose names differ only in a trailing number: the session page groups them by name.
+					repeat(fanOut) { k ->
+						launch(CoroutineName("fetch-${k + 1}")) { delay(FETCH_BASE_MS + (k % FETCH_SPREAD) * FETCH_STEP_MS) }
+					}
+
 					launch(CoroutineName("pipeline-$round")) {
 						flow {
 							repeat(4) { delay(120); emit(it) }
@@ -133,5 +140,8 @@ class VizcoreDemoRunner(
 		const val ROUNDS = 6
 		const val ROUND_PAUSE_MS = 4000L
 		const val CONTINUOUS_PAUSE_MS = 800L
+		const val FETCH_BASE_MS = 300L
+		const val FETCH_SPREAD = 10
+		const val FETCH_STEP_MS = 150L
 	}
 }

@@ -39,6 +39,8 @@ data class RoundsPage(
     val unknownAtSeq: Int,
     /** With `q`: matching coroutines that belong to no round (their ancestry reaches an untracked parent), else null. */
     val ungroupedMatches: Capped<String>? = null,
+    /** App-clock time of the observation this page's problem marks are about (health `asOf`, spec H-2); null before any. */
+    val asOfAppNanos: Long? = null,
 )
 
 internal const val MAX_QUERY_LENGTH = 200
@@ -53,9 +55,7 @@ internal fun listRounds(
     params: Parameters,
 ): RoundsPage {
     view.requireNoUnknown()
-    val needle = params["q"]?.trim()?.takeIf { it.isNotEmpty() }
-    if (needle != null && needle.length > MAX_QUERY_LENGTH) badParameter("q is longer than $MAX_QUERY_LENGTH characters")
-    val query = needle?.lowercase()
+    val query = findQuery(params)
     val problemsOnly = params["problemsOnly"] == "true"
     val includeVizcore = params["includeVizcore"] == "true"
     val limit = pageLimit(params)
@@ -63,6 +63,8 @@ internal fun listRounds(
     val kindsByAnchor = derived.problemRounds.associate { it.anchorId to it.kinds }
     val summaries = view.input.summaries
     val membersByAnchor = summaries.all.groupBy { derived.anchoring.anchorOf(it.id) }
+    // Find leaves vizcore's own coroutines out unless asked, before it counts and caps the matches (spec "Origin").
+    val findable = { m: CoroutineSummary -> includeVizcore || derived.originOf(m) != CoroutineOrigin.VIZCORE }
     val entries =
         derived.anchoring
             .rounds()
@@ -71,8 +73,7 @@ internal fun listRounds(
                 val anchor = summaries.get(r.anchorId)
                 val vizcoreAnchor = anchor != null && derived.originOf(anchor) == CoroutineOrigin.VIZCORE
                 val members = membersByAnchor[r.anchorId].orEmpty()
-                val matches =
-                    query?.let { q -> members.filter { it.matches(q) }.sortedWith(NEWEST_FIRST_OBSERVED) }
+                val matches = query?.let { q -> matching(members, q, findable) }
                 when {
                     problemsOnly && kinds.isEmpty() -> null
                     !includeVizcore && vizcoreAnchor && kinds.isEmpty() -> null
@@ -96,7 +97,7 @@ internal fun listRounds(
                 }
             }.sortedWith(compareBy(::roundKey))
     val page = Keyset.page(entries, ::roundKey, params["cursor"], limit)
-    val ungrouped = query?.let { q -> membersByAnchor[null].orEmpty().filter { it.matches(q) }.sortedWith(NEWEST_FIRST_OBSERVED) }
+    val ungrouped = query?.let { q -> matching(membersByAnchor[null].orEmpty(), q, findable) }
     return RoundsPage(
         view.seq,
         entries.size,
@@ -106,8 +107,24 @@ internal fun listRounds(
         ungrouped?.let { m ->
             Capped.of(m.map { it.id })
         },
+        // The derivation's own observation time (H-2), the one its problem marks are about.
+        derived.health.asOf?.appNanos,
     )
 }
+
+/** `q`, trimmed and lower-cased; null when absent or blank, 400 when too long. */
+private fun findQuery(params: Parameters): String? {
+    val needle = params["q"]?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (needle.length > MAX_QUERY_LENGTH) badParameter("q is longer than $MAX_QUERY_LENGTH characters")
+    return needle.lowercase()
+}
+
+/** The [members] find returns for [needle], newest first, leaving out what [findable] rejects. */
+private fun matching(
+    members: List<CoroutineSummary>,
+    needle: String,
+    findable: (CoroutineSummary) -> Boolean,
+): List<CoroutineSummary> = members.filter { it.matches(needle) && findable(it) }.sortedWith(NEWEST_FIRST_OBSERVED)
 
 /** The page key of a round: problem rounds first, newest anchor first, then anchor id (plan E-8, E-9). */
 internal fun roundKey(r: RoundEntry) = Keyset.Key(if (r.problem) 0 else 1, r.anchorCreatedNanos, r.anchorCreatedSeq, r.anchorId)

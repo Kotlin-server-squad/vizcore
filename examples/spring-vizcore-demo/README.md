@@ -23,7 +23,12 @@ backend ingest → existing EventStore → SSE → frontend.
    then open the `spring-demo-named-*` session.
 
 Config (env or `application.properties`): `VIZCORE_BACKEND_URL`, `VIZCORE_TOKEN` (any value when
-backend auth is off), `VIZCORE_APP_NAME`.
+backend auth is off), `VIZCORE_APP_NAME`, `VIZCORE_CONTINUOUS` (`true`: run rounds until stopped) and
+`VIZCORE_FAN_OUT` (each request also launches that many `fetch-1 … fetch-N` children, default 0).
+
+**A big app:** `VIZCORE_CONTINUOUS=true VIZCORE_FAN_OUT=300` gives a new round every second or so, each with
+over 300 coroutines — past the session page's 200-node cap, with siblings that "Group by name" folds into one
+`fetch-*` group.
 
 ## What it streams
 
