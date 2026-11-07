@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { VizEvent } from '@/types/api'
 import { momentFacts, resolveAnchor, runEnded, storyHeld, type HeldEvents } from './story'
-import { LIVE_EVENTS_MAX } from './live-events-max'
+import { LIVE_EVENTS_MAX } from './live-events'
 import type { StoryAnchor } from '@/content/gallery/story-anchors'
 
 let seq = 0

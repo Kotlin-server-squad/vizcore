@@ -32,7 +32,8 @@ export interface LiveTiming {
   total: number
   active: number | null
   suspended: number | null
-  openPhase: 'ACTIVE' | 'SUSPENDED'
+  /** WAITING_FOR_CHILDREN: its lifetime goes on, its Active and Suspended time do not. */
+  openPhase: 'ACTIVE' | 'SUSPENDED' | 'WAITING_FOR_CHILDREN'
   /** How long the open phase has lasted so far. */
   openFor: number
 }

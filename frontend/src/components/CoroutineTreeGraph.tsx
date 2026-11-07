@@ -29,6 +29,13 @@ interface CoroutineTreeGraphProps {
   selectedNodeId?: string | null
   /** Each coroutine's second line: what it waits for or holds (S-6). */
   activity?: ReadonlyMap<string, ActivityLine>
+  /**
+   * Bring this card into view (Find, S-12): centred at the current zoom, or zoomed in to a readable size. Done once
+   * per `key`; a pan or zoom afterwards is the user's.
+   */
+  reveal?: { id: string; key: number }
+  /** Children per parent in the whole view, before the cap: a parent whose children were capped says "2 of 262". */
+  childTotals?: ReadonlyMap<string, number>
 }
 
 interface TreeNode extends CoroutineNode {
@@ -72,7 +79,14 @@ const MAX_SCALE = 2
 /** Row width used before the canvas has been measured (and in tests). */
 const DEFAULT_ROW_WIDTH = 1200
 
-export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activity }: CoroutineTreeGraphProps) {
+export function CoroutineTreeGraph({
+  coroutines,
+  onSelect,
+  selectedNodeId,
+  activity,
+  reveal,
+  childTotals,
+}: CoroutineTreeGraphProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines) as TreeNode[], [coroutines])
   // The badge counts what the state bar calls Active (CREATED or ACTIVE); a parent
   // waiting for its children is not running its body (spec S-6).
@@ -202,6 +216,25 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
     if (followFit) fit()
   }, [followFit, fit, layout.height])
 
+  // Find's reveal (S-12): centre the card once per key, at the look's readable zoom at least, and again while the
+  // canvas settles (restoring the dock resizes it) until the user pans or zooms.
+  const revealedKey = useRef<number | null>(null)
+  const revealHeld = useRef(false)
+  useEffect(() => {
+    const api = transformRef.current
+    if (!reveal || !api || canvasWidth === 0) return
+    if (revealedKey.current === reveal.key && !revealHeld.current) return
+    const pos = layout.nodes.get(reveal.id)
+    if (!pos) return
+    revealedKey.current = reveal.key
+    revealHeld.current = true
+    setFollowFit(false)
+    const scale = Math.min(MAX_SCALE, Math.max(api.state.scale, fitMinZoom ?? MIN_READABLE_SCALE))
+    const cx = PADDING + pos.x + cardWidth / 2
+    const cy = PADDING + pos.y + cardHeight / 2
+    api.setTransform(canvasWidth / 2 - cx * scale, canvasSize.height / 2 - cy * scale, scale, 0)
+  }, [reveal, layout, canvasWidth, canvasSize.height, fitMinZoom, cardWidth, cardHeight])
+
   // Entering or leaving full screen changes the canvas size: fit again either way.
   const setFullscreen = useCallback((on: boolean) => {
     setIsFullscreen(on)
@@ -219,6 +252,7 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
 
   const toggleFullscreen = () => setFullscreen(!isFullscreen)
   const fitToView = () => {
+    revealHeld.current = false
     setFollowFit(true)
     // The fit that follows this render shows the whole tree (the effect below re-fits on the change).
     setFitWhole(true)
@@ -249,6 +283,7 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
   const zoomAt = (factor: number, cx: number, cy: number) => {
     const api = transformRef.current
     if (!api) return
+    revealHeld.current = false
     const { positionX, positionY, scale } = api.state
     const next = Math.min(MAX_SCALE, Math.max(minScale, scale * factor))
     if (Math.abs(next - scale) <= scale * 1e-6) return
@@ -267,6 +302,7 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
   const panStart = useRef<{ x: number; y: number } | null>(null)
   const dragged = useRef(false)
   const onPanningStart = (ref: ReactZoomPanPinchRef) => {
+    revealHeld.current = false
     panStart.current = { x: ref.state.positionX, y: ref.state.positionY }
     dragged.current = false
   }
@@ -410,7 +446,7 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
                           className="absolute left-1/2 z-10 ml-3 whitespace-nowrap rounded-lg border border-default-200 bg-default-100/80 px-2 py-0.5 text-xs font-medium text-default-700 backdrop-blur-sm"
                           style={{ top: cardHeight + 6 }}
                         >
-                          {node.children.length === 1 ? '1 child' : `${node.children.length} children`}
+                          {childrenLabel(node.children.length, childTotals?.get(node.id))}
                         </div>
                       )}
                     </div>
@@ -423,6 +459,12 @@ export function CoroutineTreeGraph({ coroutines, onSelect, selectedNodeId, activ
       </TransformWrapper>
     </div>
   )
+}
+
+/** "2 children", or "2 of 262 children" when the cap left some out. */
+function childrenLabel(drawn: number, total: number | undefined): string {
+  if (total !== undefined && total > drawn) return `${drawn.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} children`
+  return drawn === 1 ? '1 child' : `${drawn} children`
 }
 
 /** Every parent→child line, drawn from the same positions as the cards so a line always meets its card. */

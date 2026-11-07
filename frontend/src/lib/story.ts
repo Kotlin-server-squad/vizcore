@@ -1,5 +1,5 @@
 import type { CoroutineNode, VizEvent } from '@/types/api'
-import { LIVE_EVENTS_MAX } from './live-events-max'
+import { LIVE_EVENTS_MAX } from './live-events'
 import type { AnchorEvent, StoryAnchor } from '@/content/gallery/story-anchors'
 import { projectCoroutines } from './projections/project-coroutines'
 import { replayClock } from './replay-seek'

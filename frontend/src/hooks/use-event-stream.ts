@@ -1,9 +1,9 @@
+import { LIVE_EVENTS_MAX } from '@/lib/live-events'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { normalizeEvent } from '@/lib/utils'
 import type { VizEvent, VizEventKind } from '@/types/api'
-import { LIVE_EVENTS_MAX } from '@/lib/live-events-max'
 import {
   COROUTINE_EVENT_KINDS,
   DISPATCHER_EVENT_KINDS,
@@ -70,13 +70,8 @@ const REFRESH_COALESCE_MS = 400
  */
 export const LIVE_REFRESH_MIN_INTERVAL_MS = 5000
 
-/**
- * Upper bound on buffered live events (#137). Matches the backend's bounded
- * EventStore ring (10k): the backend replays at most this many on connect, so
- * older events would be gone after a reload anyway. Without a bound a long
- * stream grows browser memory without limit.
- */
-export { LIVE_EVENTS_MAX }
+// Upper bound on buffered live events (#137); in its own module so the page can name it without this hook.
+export { LIVE_EVENTS_MAX } from '@/lib/live-events'
 
 /**
  * Accepted events are added to the list at most once per this many ms (#268). Opening a session

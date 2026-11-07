@@ -254,6 +254,24 @@ class HierarchyReadsTest {
         }
 
     @Test
+    fun `a timeline at a seq lists the terminal event only once the cursor has reached it`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("app-timeline-terminal")
+            rounds(id)
+
+            suspend fun kinds(atSeq: Int) =
+                appJson
+                    .parseToJsonElement(client.get("/api/sessions/$id/coroutines/r2-c/timeline?atSeq=$atSeq").bodyAsText())
+                    .jsonObject["events"]!!
+                    .jsonArray
+                    .map { it.jsonObject["kind"]!!.jsonPrimitive.content }
+
+            assertEquals(listOf("coroutine.created", "coroutine.started"), kinds(5))
+            assertEquals(listOf("coroutine.created", "coroutine.started", "coroutine.failed"), kinds(6))
+        }
+
+    @Test
     fun `a trimmed creation's timeline keeps its retained events, with unknown durations, and is partial or stale`() =
         testApplication {
             application { module() }
