@@ -139,6 +139,8 @@ internal data class SessionFacts(
     val lastIngestEpochMs: Long?,
     val lastWatermark: WatermarkObservation?,
     val retention: RetentionInfo,
+    /** The summary copy the facts were read from (the cut's, for a share); null when the session keeps none usable. */
+    val summaries: SummaryView? = null,
 )
 
 internal fun readSessionFacts(
@@ -171,5 +173,6 @@ internal fun readSessionFacts(
         lastIngestEpochMs = ingest.lastIngestEpochMs,
         lastWatermark = ingest.watermark,
         retention = retention,
+        summaries = durable,
     )
 }
