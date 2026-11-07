@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { CoroutineState, type CoroutineNode } from '@/types/api'
 import { deriveStateCounts, matchesFilter, selectCoroutines } from './state-counts'
+import { UNKNOWN_STATE } from './cursor-coroutines'
 
 const node = (state: CoroutineState, id = Math.random().toString()): CoroutineNode =>
   ({ id, jobId: id, parentId: null, scopeId: 's', label: null, state }) as CoroutineNode
@@ -17,7 +18,15 @@ describe('deriveStateCounts', () => {
       failed: 0,
       total: 0,
       leaks: 0,
+      unknown: 0,
     })
+  })
+
+  it('counts a state unknown at the replay cursor on its own, never as active (H-3)', () => {
+    const c = deriveStateCounts([node(UNKNOWN_STATE), node(CoroutineState.ACTIVE)])
+    expect(c.unknown).toBe(1)
+    expect(c.active).toBe(1)
+    expect(c.total).toBe(2)
   })
 
   it('gives WAITING_FOR_CHILDREN its own bucket — the body is done, the scope is not', () => {
@@ -77,6 +86,14 @@ describe('matchesFilter', () => {
   it('keeps cancelled out of the failed filter', () => {
     expect(matchesFilter(CoroutineState.CANCELLED, 'failed')).toBe(false)
     expect(matchesFilter(CoroutineState.CANCELLED, 'cancelled')).toBe(true)
+  })
+})
+
+describe('the unknown filter', () => {
+  it('selects only the coroutines whose state is unknown', () => {
+    const unknown = node(UNKNOWN_STATE, 'u')
+    expect(selectCoroutines([unknown, node(CoroutineState.ACTIVE, 'a')], 'unknown')).toEqual([unknown])
+    expect(matchesFilter(UNKNOWN_STATE, 'active')).toBe(false)
   })
 })
 

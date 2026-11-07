@@ -119,6 +119,10 @@ describe('the canvas agrees with the state bar', () => {
 })
 
 describe('stateLabel', () => {
+  it('names a state unknown at the replay cursor as unknown (Part 8, H-3)', () => {
+    expect(stateLabel('UNKNOWN')).toBe('State unknown')
+  })
+
   it('names every state in plain words, never "Running"', () => {
     expect(stateLabel(CoroutineState.CREATED)).toBe('Created')
     expect(stateLabel(CoroutineState.ACTIVE)).toBe('Active')

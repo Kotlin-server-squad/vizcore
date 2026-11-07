@@ -25,10 +25,16 @@ export interface ShareSummary {
   lastAccessedAt: string | null
 }
 
-/** `GET /api/shared/{token}` 200 body: read-only snapshot + full event history. */
+/** `GET /api/shared/{token}` 200 body: read-only snapshot + full event history, all under one cut (spec C-6). */
 export interface SharedSessionResponse {
   session: SessionSnapshot
   events: VizEvent[]
+  /** The health at load; only `asOfSeq` is read here (the shared view's reads bind to it, Part 8 M-11). */
+  health?: { asOfSeq: number } | null
+  /** Why there is no health (`summaries-unavailable`, `history-trimmed`). */
+  healthUnavailable?: string | null
+  /** The health's cut id: the shared view's follow-up reads pass it as `asOfCut`. */
+  healthCut?: string | null
 }
 
 /**

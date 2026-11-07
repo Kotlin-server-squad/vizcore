@@ -5,11 +5,12 @@ import {
   LOOK_STORAGE_KEY,
   LookProvider,
   forgetVisitLook,
+  storedLookChoice,
   useLook,
   useLookSlot,
 } from './look-context'
 import { classicSessionBody } from './classic/SessionBody'
-import { LOOKS } from './registry'
+import { LOOKS, type LookId } from './registry'
 import type { LookDefinition } from './types'
 
 // Registry-driven, so deleting a trial look needs no change here.
@@ -239,5 +240,64 @@ describe("Classic's SessionBody", () => {
     expect(column.className).toBe('flex min-h-0 flex-1 flex-col gap-3')
     expect([...column.children].map(c => c.textContent)).toEqual(['main', 'dock'])
     expect(ref.current).toBe(column)
+  })
+})
+
+describe('the look experiment’s assignment (assigned)', () => {
+  function withAssigned(assigned: LookId | null, link?: string) {
+    return ({ children }: { children: ReactNode }) => (
+      <LookProvider assigned={assigned} link={link}>
+        {children}
+      </LookProvider>
+    )
+  }
+
+  it('shows the assigned look when the person has chosen none, without remembering it as a choice', () => {
+    const { result } = renderHook(() => useLook(), { wrapper: withAssigned(ONE) })
+    expect(result.current.look).toBe(ONE)
+    expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBeNull()
+  })
+
+  it('follows an assignment that arrives later, and goes back to Classic when it is withdrawn', () => {
+    let assigned: LookId | null = null
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <LookProvider assigned={assigned}>{children}</LookProvider>
+    )
+    const { result, rerender } = renderHook(() => useLook(), { wrapper })
+    expect(result.current.look).toBe('classic')
+    assigned = ONE
+    rerender()
+    expect(result.current.look).toBe(ONE)
+    assigned = null
+    rerender()
+    expect(result.current.look).toBe('classic')
+  })
+
+  it('never overrides a stored choice, not even a choice of Classic', () => {
+    localStorage.setItem(LOOK_STORAGE_KEY, 'classic')
+    const { result } = renderHook(() => useLook(), { wrapper: withAssigned(ONE) })
+    expect(result.current.look).toBe('classic')
+  })
+
+  it('loses to a link', () => {
+    const { result } = renderHook(() => useLook(), { wrapper: withAssigned(ONE, TWO) })
+    expect(result.current.look).toBe(TWO)
+  })
+
+  it('gives way once the person picks a look', () => {
+    const { result } = renderHook(() => useLook(), { wrapper: withAssigned(ONE) })
+    act(() => result.current.setLook?.(TWO))
+    expect(result.current.look).toBe(TWO)
+    expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe(TWO)
+  })
+})
+
+describe('storedLookChoice', () => {
+  it('is null until the person has picked a look, then their pick', () => {
+    expect(storedLookChoice()).toBeNull()
+    localStorage.setItem(LOOK_STORAGE_KEY, 'zzz')
+    expect(storedLookChoice()).toBeNull()
+    localStorage.setItem(LOOK_STORAGE_KEY, ONE)
+    expect(storedLookChoice()).toBe(ONE)
   })
 })

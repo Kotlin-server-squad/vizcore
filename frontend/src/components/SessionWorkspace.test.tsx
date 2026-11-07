@@ -49,6 +49,7 @@ vi.mock('@/lib/api-client', () => ({
     getThreadActivity: vi.fn(() => Promise.resolve({})),
     getCoroutineTimeline: vi.fn(() => new Promise(() => {})),
     getTimelineAt: vi.fn(() => new Promise(() => {})),
+    getHierarchyAt: vi.fn(() => Promise.resolve([])),
   },
 }))
 
@@ -203,6 +204,8 @@ const mockedUseSession = vi.mocked(useSession)
 const mockedUseEventStream = vi.mocked(useEventStream)
 const mockedUseDeleteSession = vi.mocked(useDeleteSession)
 const mockedApiClient = vi.mocked(apiClient)
+
+const share = { token: 'tok', asOfSeq: 30, cut: 'cut-1', unavailable: null }
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -1243,6 +1246,23 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
     expect(screen.getByTestId('learn-legend')).toBeVisible()
   })
 
+  it('keeps a selection created before a trimmed replay while the summaries are read (Part 8, M-5, M-9)', async () => {
+    mockedUseSession.mockReturnValue({ data: makeSession(), isLoading: false, refetch: vi.fn() } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({
+      data: [
+        { kind: 'coroutine.created', sessionId: 'session-1', seq: 21, tsNanos: 1000, coroutineId: 'c1', jobId: 'j1', parentCoroutineId: 'c-root', scopeId: 's1', label: 'child' },
+      ],
+    } as unknown as ReturnType<typeof useSessionEvents>)
+    vi.mocked(mockedApiClient.getHierarchyAt).mockReturnValue(new Promise(() => {}))
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByTestId('select-c-root'))
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    const pending = await screen.findByTestId('inspector-pending')
+    expect(pending).toHaveTextContent('root · updating to this moment…')
+    expect(within(pending).getByText('root', { selector: 'span' })).toBeInTheDocument()
+  })
+
   it('qualifies a shared link’s peak and throughput when its early events were trimmed (Part 8, M-1)', async () => {
     const { useSessionEvents } = await import('@/hooks/use-sessions')
     vi.mocked(useSessionEvents).mockReturnValue({
@@ -1255,11 +1275,11 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
   })
 
   it('offers the summary of the moment in replay and in a shared link, instead of a paused Inspector (Part 8)', async () => {
-    const { unmount } = render(<SessionWorkspace sessionId="session-1" readOnly />, {
+    const { unmount } = render(<SessionWorkspace sessionId="session-1" readOnly share={share} />, {
       wrapper: createWrapper(),
     })
     expect(screen.getByTestId('moment-summary')).toBeInTheDocument()
-    expect(within(screen.getByTestId('moment-summary')).getByTestId('moment-note')).toHaveTextContent(/^As loaded · event \d+$/)
+    expect(within(screen.getByTestId('moment-summary')).getByTestId('moment-note')).toHaveTextContent('As loaded · event 30')
     expect(screen.queryByText(/not included in a shared link/i)).toBeNull()
     unmount()
 
@@ -1267,6 +1287,28 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
     expect(screen.queryByText(/paused during replay/i)).toBeNull()
     expect(screen.getByTestId('moment-summary')).toBeInTheDocument()
+  })
+
+  it('reads a shared link’s coroutine through its token, bound to the loaded cut (Part 8, M-11)', async () => {
+    render(<SessionWorkspace sessionId="session-1" readOnly share={share} />, { wrapper: createWrapper() })
+    const [first] = screen.getAllByRole('button', { name: /^select / })
+    await userEvent.click(first!)
+    await waitFor(() =>
+      expect(mockedApiClient.getTimelineAt).toHaveBeenCalledWith(
+        { source: { kind: 'shared', sessionId: 'session-1', token: 'tok' }, binding: { kind: 'bound', asOfSeq: 30, asOfCut: 'cut-1' } },
+        expect.any(String),
+      ),
+    )
+  })
+
+  it('says a shared link without a health has no details, rather than reading newer data (Part 8, M-11)', async () => {
+    render(<SessionWorkspace sessionId="session-1" readOnly share={{ ...share, asOfSeq: null, cut: null, unavailable: 'history-trimmed' }} />, {
+      wrapper: createWrapper(),
+    })
+    const [first] = screen.getAllByRole('button', { name: /^select / })
+    await userEvent.click(first!)
+    expect(await screen.findByText(/details unavailable: this link's health could not be read \(history-trimmed\)/i)).toBeInTheDocument()
+    expect(mockedApiClient.getTimelineAt).not.toHaveBeenCalled()
   })
 
   it('reaches the dispatchers in replay through Evidence', async () => {
