@@ -175,3 +175,7 @@
   font-size: 13px;
   line-height: 18px;
 }
+/* With a badge, the badge takes the row: the lifetime and creation site are in the Inspector. */
+[data-card-look='b'] [data-look-part='node-facts']:has([data-look-part='node-badges']) [data-look-part='node-meta'] {
+  display: none;
+}

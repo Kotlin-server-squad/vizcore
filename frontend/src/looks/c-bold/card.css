@@ -162,3 +162,7 @@
 [data-card-look='c'] [data-look-part='node-badge-more'] {
   display: none;
 }
+/* With a badge, the badge takes the row: the lifetime and creation site are in the Inspector. */
+[data-card-look='c'] [data-look-part='node-facts']:has([data-look-part='node-badges']) [data-look-part='node-meta'] {
+  display: none;
+}
