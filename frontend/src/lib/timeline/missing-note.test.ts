@@ -18,4 +18,16 @@ describe('missingNote', () => {
       'Some intervals may be missing: 1 coroutine was created before the events.',
     )
   })
+
+  it('reads a later first seq as complete when the session’s own first event has it (ids take seqs too)', () => {
+    expect(missingNote({ droppedCount: 0, firstSeq: 3, sessionFirstSeq: 3, createdBefore: 0 })).toBeNull()
+    expect(missingNote({ droppedCount: 0, firstSeq: 41, sessionFirstSeq: 3, createdBefore: 0 })).toBe(
+      'Some intervals may be missing: the events start at event 41.',
+    )
+    // Unknown (the server trimmed the session, or does not say): only seq 1 is known to be first.
+    expect(missingNote({ droppedCount: 0, firstSeq: 3, createdBefore: 0 })).toBe(
+      'Some intervals may be missing: the events start at event 3.',
+    )
+  })
 })
+
