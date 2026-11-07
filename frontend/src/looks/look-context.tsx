@@ -40,16 +40,18 @@ export function forgetVisitLook() {
 }
 
 /**
- * The look chosen earlier in this visit, else the stored one. The visit's
- * choice comes first, so it also survives storage that reads but will not
- * write (full, or a policy).
+ * The look the person picked earlier in this visit, else the stored one, or
+ * null when they never picked one (then the look experiment may assign one).
+ * The visit's choice comes first, so it also survives storage that reads but
+ * will not write (full, or a policy).
  */
-function storedLook(): LookId {
+export function storedLookChoice(): LookId | null {
   if (visitLook !== null) return visitLook
   try {
-    return parseLook(localStorage.getItem(LOOK_STORAGE_KEY))
+    const stored = localStorage.getItem(LOOK_STORAGE_KEY)
+    return stored !== null && parseLook(stored) === stored ? parseLook(stored) : null
   } catch {
-    return 'classic'
+    return null
   }
 }
 
@@ -94,6 +96,12 @@ interface LookProviderProps {
   link?: string
   /** Called once a link has been read, so the page can take `?look=` out of its address. */
   onLinkRead?: () => void
+  /**
+   * The look experiment's assignment (its own storage, not a choice): shown only
+   * while there is no link and the person has picked no look. Null or absent:
+   * Classic, as without the experiment.
+   */
+  assigned?: LookId | null
   children: ReactNode
 }
 
@@ -103,10 +111,29 @@ interface LookProviderProps {
  * the page, the body behind it and HeroUI's popovers, which render in a portal.
  * Leaving the page takes the attribute off, so every other page is Classic.
  */
-export function LookProvider({ link, onLinkRead, children }: LookProviderProps) {
+export function LookProvider({ link, onLinkRead, assigned = null, children }: LookProviderProps) {
   const [look, setLookState] = useState<LookId>(() =>
-    link !== undefined ? parseLook(link) : storedLook()
+    link !== undefined ? parseLook(link) : (storedLookChoice() ?? assigned ?? 'classic')
   )
+
+  // A new link (a client-side navigation to ?look=…) shows at once, during
+  // render, so nothing below commits the look it replaces; the effect below
+  // remembers it and reports it read.
+  const [linkShown, setLinkShown] = useState(link)
+  if (linkShown !== link) {
+    setLinkShown(link)
+    if (link !== undefined) setLookState(parseLook(link))
+  }
+
+  // The experiment's assignment, arriving or withdrawn later, applies only
+  // while nothing the person did (a link, a pick) says otherwise. Adjusted
+  // during render, not in an effect, so the page never commits (and the
+  // experiment never counts) the look it is about to leave.
+  const [assignedSeen, setAssignedSeen] = useState(assigned)
+  if (assignedSeen !== assigned) {
+    setAssignedSeen(assigned)
+    if (link === undefined && storedLookChoice() === null) setLookState(assigned ?? 'classic')
+  }
 
   const onLinkReadRef = useRef(onLinkRead)
   useEffect(() => {

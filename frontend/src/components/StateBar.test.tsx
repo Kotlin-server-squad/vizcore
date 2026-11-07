@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { StateCounts } from '@/lib/state-counts'
 import { StateBar } from './StateBar'
@@ -107,6 +107,17 @@ describe('StateBar', () => {
       },
     })
     expect(screen.getByRole('button', { name: /active 0/i })).toBeInTheDocument()
+  })
+
+  it('shows coroutines whose state is unknown at the replay cursor as their own chip, only when there are some', async () => {
+    const counts: StateCounts = { active: 1, waiting: 0, suspended: 0, completed: 0, cancelled: 0, failed: 0, total: 3, leaks: 0, unknown: 2 }
+    const onFilterChange = vi.fn()
+    render(<StateBar counts={counts} filter="all" onFilterChange={onFilterChange} />)
+    await userEvent.click(screen.getByRole('button', { name: /state unknown 2/i }))
+    expect(onFilterChange).toHaveBeenCalledWith('unknown')
+    cleanup()
+    render(<StateBar counts={{ ...counts, unknown: 0 }} filter="all" onFilterChange={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /state unknown/i })).toBeNull()
   })
 
   it('selects a state when its chip is clicked', async () => {

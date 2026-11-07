@@ -1,7 +1,7 @@
 import type { VizEvent } from '@/types/api'
 
 /**
- * What a replay's frozen events say about which reads can change between two seqs (Part 8, M-4). A read made at
+ * What a replay's frozen events say about which reads can change between two seqs (Part 8, M-4, M-9). A read made at
  * one seq is still true at another only when the replay holds every seq in between (the live stream may have shed
  * events the server kept) and none of them concerns what was read.
  */
@@ -10,11 +10,15 @@ export interface ReplayIndex {
   seqs: number[]
   /** Each coroutine's event seqs, ascending. */
   byCoroutine: Map<string, number[]>
+  /** The seqs of creations, and of events of coroutines the replay never saw created, ascending. */
+  hierarchySeqs: number[]
 }
 
 export function indexReplay(events: readonly VizEvent[]): ReplayIndex {
   const seqs: number[] = []
   const byCoroutine = new Map<string, number[]>()
+  const created = new Set<string>()
+  const hierarchySeqs: number[] = []
   for (const e of events) {
     seqs.push(e.seq)
     const id = (e as { coroutineId?: string }).coroutineId
@@ -22,8 +26,14 @@ export function indexReplay(events: readonly VizEvent[]): ReplayIndex {
     const list = byCoroutine.get(id)
     if (list) list.push(e.seq)
     else byCoroutine.set(id, [e.seq])
+    if (e.kind === 'coroutine.created') {
+      created.add(id)
+      hierarchySeqs.push(e.seq)
+    } else if (!created.has(id)) {
+      hierarchySeqs.push(e.seq)
+    }
   }
-  return { seqs, byCoroutine }
+  return { seqs, byCoroutine, hierarchySeqs }
 }
 
 /** The index of the first element greater than [value] (ascending [sorted]). */
@@ -57,4 +67,15 @@ export function coroutineChangesBetween(index: ReplayIndex, id: string, a: numbe
   const hi = Math.max(a, b)
   if (lo === hi) return false
   return gapIn(index, lo, hi) || anyIn(index.byCoroutine.get(id), lo, hi)
+}
+
+/**
+ * Whether the coroutines the server adds to the tree (those the replay never saw created, M-9) could differ between
+ * seqs [a] and [b]: a creation, an event of such a coroutine, or a gap lies in between.
+ */
+export function hierarchyChangesBetween(index: ReplayIndex, a: number, b: number): boolean {
+  const lo = Math.min(a, b)
+  const hi = Math.max(a, b)
+  if (lo === hi) return false
+  return gapIn(index, lo, hi) || anyIn(index.hierarchySeqs, lo, hi)
 }

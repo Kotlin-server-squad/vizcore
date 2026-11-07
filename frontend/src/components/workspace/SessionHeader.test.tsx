@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
@@ -9,6 +9,11 @@ import type { SessionSnapshot } from '@/types/api'
 
 vi.mock('@/hooks/use-capabilities', () => ({ useCapabilities: () => ({ data: { sharingEnabled: true } }) }))
 vi.mock('../export/ExportMenu', () => ({ ExportMenu: () => <div data-testid="export-menu" /> }))
+// The look experiment's actions, as the session page's layer provides them (null: off).
+const experiment: { current: null | { openVote: () => void; switched: (from: string, to: string) => void } } = {
+  current: null,
+}
+vi.mock('@/looks/experiment/LookExperimentLayer', () => ({ useLookExperiment: () => experiment.current }))
 
 const session = { sessionId: 's-1', coroutineCount: 5, eventCount: 42, coroutines: [] } as unknown as SessionSnapshot
 
@@ -230,6 +235,36 @@ describe('SessionHeader', () => {
       await userEvent.click(within(menu).getByRole('menuitem', { name: chosen.label }))
       expect(document.documentElement.dataset.look).toBe(chosen.id)
       expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBe(chosen.id)
+    })
+
+    describe('with the look experiment', () => {
+      beforeEach(() => {
+        experiment.current = { openVote: vi.fn(), switched: vi.fn() }
+      })
+      afterEach(() => {
+        experiment.current = null
+      })
+
+      it('offers "Rate this look", which opens the vote card', async () => {
+        renderHeader({}, { withLook: true })
+        const menu = await openMenu()
+        await userEvent.click(within(menu).getByRole('menuitem', { name: 'Rate this look' }))
+        expect(experiment.current!.openVote).toHaveBeenCalled()
+      })
+
+      it('records a change of look made here as a switch, and not a pick of the same look', async () => {
+        renderHeader({}, { withLook: true })
+        await userEvent.click(within(await openMenu()).getByRole('menuitem', { name: chosen.label }))
+        expect(experiment.current!.switched).toHaveBeenCalledWith('classic', chosen.id)
+        await userEvent.click(within(await openMenu()).getByRole('menuitem', { name: chosen.label }))
+        expect(experiment.current!.switched).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('offers no "Rate this look" while the experiment is off', async () => {
+      renderHeader({}, { withLook: true })
+      const menu = await openMenu()
+      expect(within(menu).queryByRole('menuitem', { name: 'Rate this look' })).toBeNull()
     })
 
     it('is not offered where the page has no look switch (the shared view)', async () => {

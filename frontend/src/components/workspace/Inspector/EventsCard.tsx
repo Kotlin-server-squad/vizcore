@@ -23,7 +23,12 @@ export function EventsCard({ timeline }: { timeline: CoroutineTimeline | undefin
   return (
     <InspectorCard title="Events" testId="events-card">
       <p className="mb-2 text-sm text-default-500">
-        {events.length === 1 ? '1 event' : `${events.length} events`}
+        {timeline?.eventsTrimmed
+          ? // Part 8, M-10: the rest is gone, so no total is claimed.
+            `Earlier events were trimmed; ${events.length === 1 ? '1 event is' : `${events.length} events are`} kept`
+          : events.length === 1
+            ? '1 event'
+            : `${events.length} events`}
       </p>
       {recent.length > 0 && (
         <ul className="space-y-1">

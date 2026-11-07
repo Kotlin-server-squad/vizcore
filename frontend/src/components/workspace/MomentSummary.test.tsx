@@ -11,7 +11,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 }
 
-const metrics = { active: 3, peak: 5, throughputPerSec: 2.5, dispatcherUtilization: { 'Dispatchers.IO': 3 } }
+const metrics = { active: 3, unknown: 0, peak: 5, throughputPerSec: 2.5, dispatcherUtilization: { 'Dispatchers.IO': 3 } }
 
 describe('MomentSummary', () => {
   it('shows the metrics of the moment, named as such, and fetches nothing', () => {
@@ -29,8 +29,12 @@ describe('MomentSummary', () => {
     expect(getMetrics).not.toHaveBeenCalled()
   })
 
-  it('says peak and throughput cover the replayed events only when the replay is incomplete', () => {
-    render(<MomentSummary metrics={metrics} moment={{ kind: 'loaded', seq: 40 }} coroutineCount={7} incomplete />, { wrapper })
+  it('says peak and throughput cover the replayed events only when the history is incomplete, and counts unknown states', () => {
+    render(
+      <MomentSummary metrics={{ ...metrics, unknown: 2 }} moment={{ kind: 'loaded', seq: 40 }} coroutineCount={7} incomplete />,
+      { wrapper },
+    )
     expect(screen.getByText(/in the kept events only/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 with their state unknown/i)).toBeInTheDocument()
   })
 })

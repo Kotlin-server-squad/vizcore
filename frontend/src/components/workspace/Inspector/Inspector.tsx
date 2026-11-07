@@ -7,6 +7,7 @@ import { SuspendedAtCard } from './SuspendedAtCard'
 import { RunsOnCard } from './RunsOnCard'
 import { IdentityCard } from './IdentityCard'
 import { EventsCard } from './EventsCard'
+import { SummaryCard } from './SummaryCard'
 import { MomentNote } from '../MomentNote'
 import { MomentContext, type MomentView } from '@/hooks/use-moment'
 import { momentErrorText } from '@/lib/moment-errors'
@@ -48,6 +49,11 @@ interface InspectorProps {
    * cut. Its reads are bound to it, the read-only shared view included (it reads through the share token).
    */
   moment?: MomentView | null
+  /**
+   * A shared link without a health has no cut to bind its reads to (M-11): the reason, and the Inspector shows identity
+   * only rather than guess a binding.
+   */
+  unavailableReason?: string | null
   /** In replay, the selection's name when the cursor's coroutines do not hold it (M-5). */
   pendingSelectionLabel?: string | null
   /** Why they do not: by default it does not exist yet at the cursor. */
@@ -85,11 +91,12 @@ function InspectorBody({
   onClearSelection,
   activity = null,
   moment = null,
+  unavailableReason = null,
   pendingSelectionLabel = null,
   pendingSelectionNote = 'not created yet at this moment',
 }: InspectorProps) {
   // The shared view has no credential: only a read bound to its cut (through the token) may fetch (M-11).
-  const showTimeline = !!coroutine && (!readOnly || !!moment)
+  const showTimeline = !!coroutine && (!readOnly || !!moment) && !unavailableReason
   const {
     data: timeline,
     dataUpdatedAt,
@@ -188,6 +195,11 @@ function InspectorBody({
           </p>
         )}
         {/* At a moment (Part 8): what the read could not give, said once, above the cards. */}
+        {unavailableReason && (
+          <p data-look-part="trimmed-note" className="text-sm text-default-500">
+            Details unavailable: this link&apos;s health could not be read ({unavailableReason}).
+          </p>
+        )}
         {momentStatus?.status === 'updating' && (
           <p className="text-sm text-default-400">Updating to this moment…</p>
         )}
@@ -205,6 +217,11 @@ function InspectorBody({
             )}
           </p>
         )}
+        {timeline?.partial && (
+          <p data-look-part="trimmed-note" className="text-sm text-warning">
+            Its state at this moment is unknown: its events before it were trimmed.
+          </p>
+        )}
         {/* Two columns on a wide dock, one below 1,024 px (S-14). D-7's order
             reads down the first column, then the events. */}
         <div className="grid gap-3 lg:grid-cols-2">
@@ -212,6 +229,7 @@ function InspectorBody({
             {showTimeline && (
               <>
                 <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
+                {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
                 <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
                 <RunsOnCard runsOn={runsOn} title={moment ? 'Last observed on' : undefined} />
               </>

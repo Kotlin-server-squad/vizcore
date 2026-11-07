@@ -11,7 +11,7 @@
  * drives playback, so the playback controls are disabled in that mode.
  */
 
-import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { Button, Slider, ButtonGroup, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@heroui/react'
 import { motion } from 'framer-motion'
 import { FiPlay, FiPause, FiSkipBack, FiSkipForward, FiRotateCcw, FiSquare, FiFastForward } from 'react-icons/fi'
@@ -28,6 +28,8 @@ interface ReplayControllerProps {
   elapsedMs?: number
   /** Stop-and-discard the in-progress recording. */
   onStopRecording?: () => void
+  /** Where the replay starts, when that is not the session's beginning (Part 8, M-8). */
+  startNote?: ReactNode
 }
 
 const SPEED_OPTIONS = [
@@ -78,6 +80,7 @@ export function ReplayController({
   isRecording = false,
   elapsedMs = 0,
   onStopRecording,
+  startNote,
 }: ReplayControllerProps) {
   const {
     isPlaying,
@@ -232,7 +235,11 @@ export function ReplayController({
             : `Event ${isEmpty ? 0 : currentIndex + 1} / ${totalEvents}`}
         </span>
       </div>
-
+      {startNote && (
+        <p data-testid="replay-start-note" data-look-part="trimmed-note" className="text-xs text-warning">
+          {startNote}
+        </p>
+      )}
 
       {/* Controls row */}
       <div className="flex items-center justify-between">

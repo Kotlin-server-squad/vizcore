@@ -7,7 +7,7 @@ const looksDir = dirname(fileURLToPath(import.meta.url))
 const folders = readdirSync(looksDir).filter(name => existsSync(join(looksDir, name, 'palette.json')))
 
 /** The parts Part 8 (one moment everywhere) adds to the session page: one markup, styled by each look. */
-const PARTS = ['replay-bar', 'replay-time', 'moment']
+const PARTS = ['replay-bar', 'replay-time', 'moment', 'trimmed-note']
 
 describe('Part 8’s new parts in every trial look', () => {
   it.each(folders)('%s styles each of them', folder => {
