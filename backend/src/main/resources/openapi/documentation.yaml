@@ -284,6 +284,14 @@ paths:
           description: Human-readable name for the session
           schema:
             type: string
+        - name: demoId
+          in: query
+          required: false
+          description: >
+            The demo (an id from `GET /api/scenarios`) this session is created for. Returned as
+            `demoId` by `GET /api/sessions/{id}`. An unknown id is refused with 400 and creates nothing.
+          schema:
+            type: string
       responses:
         "201":
           description: Session created successfully
@@ -299,6 +307,12 @@ paths:
                   message:
                     type: string
                     description: Confirmation message
+        "400":
+          description: Unknown demo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -2821,6 +2835,12 @@ components:
         trimmed:
           type: boolean
           description: Whether older events were dropped
+        demoId:
+          type: string
+          nullable: true
+          description: >
+            The demo the session was created for (`POST /api/sessions?demoId=`), or null. Run again and
+            story mode use it.
         summaryOnlyCount:
           type: integer
           description: >
@@ -3077,7 +3097,8 @@ components:
           enum:
           - ACTIVE
           - SUSPENDED
-          description: For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished.
+          - WAITING_FOR_CHILDREN
+          description: For an unfinished coroutine, the phase it has been in since its last recorded transition (WAITING_FOR_CHILDREN once its body has ended; that time counts as neither active nor suspended). Null once finished.
         openPhaseSinceNanos:
           type: integer
           format: int64

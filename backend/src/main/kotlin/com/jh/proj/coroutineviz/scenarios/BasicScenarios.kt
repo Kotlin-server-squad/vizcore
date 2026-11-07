@@ -7,6 +7,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import org.slf4j.LoggerFactory
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * The Basics demos: one coroutine idea each, told as an everyday app. Their steps are paced with
@@ -26,11 +28,14 @@ object BasicScenarios {
      * its coroutine completes only with the last request below it, at about 16 s: a parent waits
      * for its children (structured concurrency).
      */
-    suspend fun runNestedCoroutines(session: VizSession): Job =
+    suspend fun runNestedCoroutines(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+    ): Job =
         coroutineScope {
             logger.info("Starting nested coroutines scenario in session: ${session.sessionId}")
 
-            val viz = session.demoScope()
+            val viz = session.demoScope(context)
 
             viz.vizLaunch("load-product-page") {
                 // The sections need the product, so it comes first.
@@ -77,11 +82,14 @@ object BasicScenarios {
      * one, 1.5 to 11 s in; the dashboard renders once the slowest is in. 31 s of requests take
      * about 14 s.
      */
-    suspend fun runParallelExecution(session: VizSession): Job =
+    suspend fun runParallelExecution(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+    ): Job =
         coroutineScope {
             logger.info("Starting parallel execution scenario in session: ${session.sessionId}")
 
-            val viz = session.demoScope()
+            val viz = session.demoScope(context)
 
             viz.vizLaunch("load-dashboard") {
                 listOf(
@@ -156,11 +164,14 @@ object BasicScenarios {
      * the user closes the screen, which cancels it and every request still running under it; the
      * avatar is already loaded, and settings sync carries on to the end (about 12 s).
      */
-    suspend fun runCancellationScenario(session: VizSession): Job =
+    suspend fun runCancellationScenario(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+    ): Job =
         coroutineScope {
             logger.info("Starting cancellation scenario in session: ${session.sessionId}")
 
-            val viz = session.demoScope()
+            val viz = session.demoScope(context)
 
             viz.vizLaunch("app-session") {
                 val screen =
@@ -208,11 +219,12 @@ object BasicScenarios {
     suspend fun runDeepNesting(
         session: VizSession,
         depth: Int = 5,
+        context: CoroutineContext = EmptyCoroutineContext,
     ): Job =
         coroutineScope {
             logger.info("Starting deep nesting scenario (depth=$depth) in session: ${session.sessionId}")
 
-            val viz = session.demoScope()
+            val viz = session.demoScope(context)
 
             suspend fun VizScope.indexFolder(level: Int): Job =
                 vizLaunch(INDEXED_FOLDERS.getOrElse(level) { "index-folder-$level" }) {
@@ -242,11 +254,14 @@ object BasicScenarios {
      * the stock, charge the card and calculate shipping at once; then create the order, then send
      * the receipt (about 14 s).
      */
-    suspend fun runMixedScenario(session: VizSession): Job =
+    suspend fun runMixedScenario(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+    ): Job =
         coroutineScope {
             logger.info("Starting mixed scenario in session: ${session.sessionId}")
 
-            val viz = session.demoScope()
+            val viz = session.demoScope(context)
 
             viz.vizLaunch("checkout") {
                 vizLaunch("validate-cart") {
@@ -282,11 +297,14 @@ object BasicScenarios {
      * answers HTTP 500. The failure cancels the orders and invoices still loading and fails the
      * page; what already arrived stays done.
      */
-    suspend fun runExceptionScenario(session: VizSession): Job =
+    suspend fun runExceptionScenario(
+        session: VizSession,
+        context: CoroutineContext = EmptyCoroutineContext,
+    ): Job =
         coroutineScope {
             logger.info("Starting exception scenario in session: ${session.sessionId}")
 
-            val viz = session.demoScope()
+            val viz = session.demoScope(context)
 
             viz.vizLaunch("load-account-page") {
                 vizLaunch("fetch-delivery-status") {
