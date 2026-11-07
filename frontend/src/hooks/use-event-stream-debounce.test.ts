@@ -161,6 +161,29 @@ describe('useEventStream - throttled, exact-keyed refresh (#124/#137)', () => {
     expect(invalidationCount(queryClient, 'session-metrics')).toBe(0)
   })
 
+  it('leaving replay refreshes the health once, cancelling a refresh already scheduled (Part 7)', () => {
+    const { rerender } = renderHook(({ replay }) => useEventStream('session-1', true, replay), {
+      wrapper: createWrapper(queryClient),
+      initialProps: { replay: false },
+    })
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
+      vi.advanceTimersByTime(600)
+    })
+    expect(invalidationCount(queryClient, 'session-health')).toBe(1)
+    // Another event schedules the next health refresh for 10 s after the first.
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
+      vi.advanceTimersByTime(1000)
+    })
+    rerender({ replay: true })
+    act(() => vi.advanceTimersByTime(1000))
+    rerender({ replay: false })
+    expect(invalidationCount(queryClient, 'session-health')).toBe(2)
+    act(() => vi.advanceTimersByTime(9000))
+    expect(invalidationCount(queryClient, 'session-health')).toBe(2)
+  })
+
   it('events refresh the health on its own, slower interval', () => {
     renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),

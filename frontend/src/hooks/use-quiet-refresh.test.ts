@@ -32,6 +32,13 @@ describe('useQuietRefresh (Part 7, P-1)', () => {
     expect(snapshot.refetch).not.toHaveBeenCalled()
   })
 
+  it('retries a read that never succeeded, counting from its last failure', () => {
+    const health = { updatedAt: 0, failedAt: Date.now(), refetch: vi.fn() }
+    renderHook(() => useQuietRefresh({ enabled: true, reads: [health] }))
+    act(() => vi.advanceTimersByTime(QUIET_REFRESH_MS))
+    expect(health.refetch).toHaveBeenCalledTimes(1)
+  })
+
   it('does nothing while paused', () => {
     const snapshot = read(0)
     renderHook(() => useQuietRefresh({ enabled: false, reads: [snapshot] }))

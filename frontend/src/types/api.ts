@@ -183,7 +183,12 @@ export interface CoroutineNode {
    * Replay only: rebuilt from the server's durable summary at the cursor, because the replayed events do not include
    * its creation (Part 8, M-9).
    */
-  fromSummary?: boolean
+  fromSummary?: boolean  /** Its lifetime on the app clock, from its summary (triage "Lifetimes", Part 7); absent without one. */
+  lifetimeNanos?: number | null
+  /** How the lifetime was measured: finished, so far (to the app's latest poll) or at least (no poll). */
+  lifetimeKind?: 'FINISHED' | 'SO_FAR' | 'AT_LEAST' | null
+  /** Where it was created, from its summary. */
+  creationLocation?: SuspensionPoint | null
 }
 
 /** Who launched a coroutine (triage "Origin"): the app, vizcore's own connection, or not reported. */

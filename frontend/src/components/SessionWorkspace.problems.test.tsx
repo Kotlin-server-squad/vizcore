@@ -134,6 +134,19 @@ describe('SessionWorkspace — Problems (Part 7, S-8, S-5)', () => {
     expect(screen.getByText(/Possibly blocked: not evaluated \(demo session/)).toBeInTheDocument()
   })
 
+  it("a card carries the health's badge (Part 7, P-9)", async () => {
+    const blocked: Incident = {
+      type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-1', name: 'task-1', roundId: null, anchorId: null, lastThread: null,
+      dispatcher: null, lastSuspension: null, lastSuspensionProvenance: null, lastRunStart: { kind: 'STARTED', appNanos: 0, seq: 1 },
+      runningForNanos: 11e9, transitions: [], transitionsGap: false, firstObservedRunning: true, eventLoopClue: null, sortSeq: 1,
+    }
+    setup(snapshot(ATTACHED, ['ACTIVE' as CoroutineState], { kind: 'ATTACHED', appConnected: true }), health({ state: 'PROBLEMS', problemCount: 1, possiblyBlockedCount: 1, incidents: { items: [blocked], total: 1 } }))
+    render(<SessionWorkspace sessionId={ATTACHED} />, { wrapper })
+    await screen.findByRole('tab', { name: 'Problems, 1 problem' })
+    await userEvent.click(screen.getByRole('button', { name: 'List' }))
+    expect(await screen.findByText('Possibly blocked', { selector: '[data-look-part="node-badge"]' })).toBeInTheDocument()
+  })
+
   it('Show on a problem the tree does not draw opens it from the incident', async () => {
     setup(snapshot(DEMO, ['COMPLETED' as CoroutineState, 'FAILED' as CoroutineState]), problems(failed, trimmed))
     render(<SessionWorkspace sessionId={DEMO} scenarioId="x" scenarioName="X" />, { wrapper })

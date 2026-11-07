@@ -85,6 +85,28 @@ describe('useSessionHealth (P-1)', () => {
     expect((result.current.error as ApiError).code).toBe('history-trimmed')
   })
 
+  it('keeps a result whose refresh failed, and says the refresh failed (never a silent green)', async () => {
+    getHealthAt.mockResolvedValueOnce(H(7))
+    const { client, wrapper } = setup()
+    const { result } = renderHook(() => useSessionHealth({ sessionId: 's', mode: { kind: 'live' } }), { wrapper })
+    await waitFor(() => expect(result.current.health?.asOfSeq).toBe(7))
+    getHealthAt.mockRejectedValueOnce(new ApiError(503, 'x', 'summaries-unavailable'))
+    await client.refetchQueries({ queryKey: sessionHealthKey('s') })
+    await waitFor(() => expect(result.current.refreshError).toBeInstanceOf(ApiError))
+    expect(result.current.health?.asOfSeq).toBe(7)
+  })
+
+  it('reads the health again on every visit to the page', async () => {
+    getHealthAt.mockResolvedValue(H(7))
+    const { wrapper } = setup()
+    const first = renderHook(() => useSessionHealth({ sessionId: 's', mode: { kind: 'live' } }), { wrapper })
+    await waitFor(() => expect(first.result.current.health?.asOfSeq).toBe(7))
+    first.unmount()
+    getHealthAt.mockResolvedValue(H(9))
+    const second = renderHook(() => useSessionHealth({ sessionId: 's', mode: { kind: 'live' } }), { wrapper })
+    await waitFor(() => expect(second.result.current.health?.asOfSeq).toBe(9))
+  })
+
   it('reports a failed read as an error', async () => {
     getHealthAt.mockRejectedValue(new ApiError(503, 'x', 'summaries-unavailable'))
     const { wrapper } = setup()

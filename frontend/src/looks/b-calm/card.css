@@ -153,3 +153,20 @@
   border-radius: 9999px;
   font-size: 13px;
 }
+
+/* Part 7 (P-9): the lifetime, creation site and the health's badges as soft pills, on one row (the meta text gives
+   way first); the card grows by that row (card.ts). */
+[data-card-look='b'] [data-look-part='node-facts'] {
+  max-width: 100%;
+  margin: 0;
+  gap: 6px;
+}
+[data-card-look='b'] [data-look-part='node-meta'] {
+  font-size: 13px;
+  line-height: 17px;
+}
+[data-card-look='b'] [data-look-part='node-badge'] {
+  padding: 0 8px;
+  font-size: 13px;
+  line-height: 18px;
+}

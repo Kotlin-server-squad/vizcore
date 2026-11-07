@@ -80,6 +80,11 @@ describe('ProblemsPanel (S-8)', () => {
     expect(screen.getByText('Nothing possibly blocked')).toBeInTheDocument()
   })
 
+  it('says when a refresh failed, so an older result never passes for the current one', () => {
+    render(<ProblemsPanel {...props({ result: { health: health(), status: 'ready', error: null, retry: vi.fn(), refreshError: new ApiError(503, 'x', 'summaries-unavailable') } })} />)
+    expect(screen.getByTestId('problems-refresh-failed')).toHaveTextContent('Could not refresh (the session keeps no usable summaries): this is the last health read.')
+  })
+
   it('a demo, captured in-process rather than sampled, gets no sampling note', () => {
     render(<ProblemsPanel {...props()} />)
     expect(screen.queryByText(/samples an attached app's coroutines/)).toBeNull()

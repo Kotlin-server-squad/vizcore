@@ -125,9 +125,11 @@ describe('B’s graph card', () => {
   })
 
   it('is short enough for the root and its first row of children above the default dock at 1440 × 900', () => {
-    // The graph canvas there is 287 px tall in B (measured); the fit starts 40 px down (the zoom buttons), and the
-    // layout puts 32 px of padding above the root and 64 px between the rows (CoroutineTreeGraph).
-    const canvas = 287
+    // The graph canvas there is 330 px tall in B with its 35 % dock (measured, Part 7; 287 px at 40 %); the fit starts
+    // 40 px down (the zoom buttons), and the layout puts 32 px of padding above the root and 64 px between the rows
+    // (CoroutineTreeGraph).
+    expect(calmCard.dockShare).toBe(0.35)
+    const canvas = 330
     const bottomOfChildren = 40 + (32 + calmCard.height + 64 + calmCard.height) * calmCard.fitMinZoom!
     expect(bottomOfChildren).toBeLessThanOrEqual(canvas)
     // Six children (the E-commerce demo) side by side fit the canvas's 1,374 px width at the floor.

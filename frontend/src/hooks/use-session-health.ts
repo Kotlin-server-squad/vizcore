@@ -28,6 +28,10 @@ export interface SessionHealthResult {
   retry: () => void
   /** When the live copy was last read (epoch ms), 0 otherwise. */
   updatedAt: number
+  /** When the live read last failed (epoch ms), 0 otherwise: a quiet refresh retries from it. */
+  failedAt: number
+  /** The last refresh failed while an older result is still shown: say so rather than show it as current. */
+  refreshError: unknown
 }
 
 /**
@@ -41,6 +45,8 @@ export function useSessionHealth({ sessionId, mode }: { sessionId: string; mode:
     queryFn: () => apiClient.getHealthAt({ source: { kind: 'session', sessionId }, binding: { kind: 'current' } }),
     enabled: mode.kind === 'live',
     staleTime: Infinity,
+    // Every visit reads it again: a cached health from an earlier visit is not this visit's.
+    refetchOnMount: 'always',
     refetchInterval: mode.kind === 'live' ? (mode.pollMs ?? false) : false,
   })
 
@@ -61,13 +67,15 @@ export function useSessionHealth({ sessionId, mode }: { sessionId: string; mode:
 
   if (mode.kind === 'loaded') {
     return mode.health
-      ? { health: mode.health, status: 'ready', error: null, retry: noop, updatedAt: 0 }
+      ? { health: mode.health, status: 'ready', error: null, retry: noop, updatedAt: 0, failedAt: 0, refreshError: null }
       : {
           health: undefined,
           status: 'error',
           error: new ApiError(503, 'Health unavailable', mode.unavailable ?? undefined),
           retry: noop,
           updatedAt: 0,
+          failedAt: 0,
+          refreshError: null,
         }
   }
   if (mode.kind === 'moment') {
@@ -77,6 +85,8 @@ export function useSessionHealth({ sessionId, mode }: { sessionId: string; mode:
       error: atMoment.error,
       retry: atMoment.retry,
       updatedAt: 0,
+      failedAt: 0,
+      refreshError: null,
     }
   }
   return {
@@ -85,6 +95,8 @@ export function useSessionHealth({ sessionId, mode }: { sessionId: string; mode:
     error: live.error,
     retry: () => void live.refetch(),
     updatedAt: live.dataUpdatedAt,
+    failedAt: live.errorUpdatedAt,
+    refreshError: live.isError && live.data ? live.error : null,
   }
 }
 

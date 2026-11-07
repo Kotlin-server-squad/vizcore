@@ -636,6 +636,10 @@ export function useEventStream(
       }
       lastRefreshAtRef.current = Date.now()
       refreshLiveQueries(queryClient, sessionId)
+      if (healthTimerRef.current !== null) {
+        clearTimeout(healthTimerRef.current)
+        healthTimerRef.current = null
+      }
       lastHealthRefreshAtRef.current = Date.now()
       void queryClient.invalidateQueries({ queryKey: ['session-health', sessionId], exact: true })
     }

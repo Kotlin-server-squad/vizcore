@@ -20,7 +20,7 @@ export type ChecksLine =
   | { kind: 'unavailable' }
 
 export interface ProblemsPanelProps {
-  result: Pick<SessionHealthResult, 'health' | 'status' | 'error' | 'retry'>
+  result: Pick<SessionHealthResult, 'health' | 'status' | 'error' | 'retry'> & { refreshError?: unknown }
   /** App-clock time of the session's first event: "as of" falls back to time into the capture (H-2). */
   captureStartAppNanos: number | null | undefined
   clock?: ClockOptions
@@ -75,6 +75,12 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
     <div data-look-part="problems" className="space-y-3">
       <HeadlineView headline={head} />
       {result.status === 'updating' && <p className="text-xs text-default-400">Updating to this moment…</p>}
+      {!!result.refreshError && (
+        <p data-testid="problems-refresh-failed" className="text-xs text-warning-600 dark:text-warning">
+          Could not refresh ({healthErrorText(result.refreshError)}): this is the last health read.{' '}
+          <RetryButton onPress={result.retry} />
+        </p>
+      )}
       <ul className="space-y-0.5 text-sm text-default-500">
         {lines.map(line => (
           <li key={line} data-look-part="problems-line">

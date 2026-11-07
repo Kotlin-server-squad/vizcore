@@ -63,8 +63,9 @@ describe("C's card and starting dock", () => {
 
   it('starts the dock at 17 % of the window, so the root and its children fit the first view', () => {
     expect(boldCard.dockShare).toBe(0.17)
-    // Two rows of cards need 344 px of canvas; measured at 1440×900 the canvas has more (see the plan).
-    expect(40 + 32 + boldCard.height + 64 + boldCard.height).toBe(344)
+    // Two rows of cards need 392 px of canvas with Part 7's facts row (344 before); measured at 1440×900 the canvas is
+    // 467 px with the "Right now" box open (Part 7 plan, P-12).
+    expect(40 + 32 + boldCard.height + 64 + boldCard.height).toBe(392)
   })
 })
 

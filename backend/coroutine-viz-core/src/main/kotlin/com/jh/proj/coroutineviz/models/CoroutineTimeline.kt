@@ -62,12 +62,12 @@ data class TimelineEventSummary(
         seq: Long,
         tsNanos: Long,
         kind: String,
-        threadName: String?,
-        dispatcherName: String?,
-        reason: String?,
-        suspensionPoint: SuspensionPoint?,
-        waitKind: WaitKind?,
-        resourceId: String?,
+        threadName: String? = null,
+        dispatcherName: String? = null,
+        reason: String? = null,
+        suspensionPoint: SuspensionPoint? = null,
+        waitKind: WaitKind? = null,
+        resourceId: String? = null,
     ) : this(seq, tsNanos, kind, threadName, dispatcherName, reason, suspensionPoint, waitKind, resourceId, null)
 
     /** The 0.3.x JVM constructor (no [waitKind] / [resourceId]), kept for binary compatibility. `copy` is source-compatible only. */

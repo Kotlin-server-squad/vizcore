@@ -1,6 +1,7 @@
 import { formatDuration } from '@/lib/format-duration'
 import { InspectorCard, InspectorRow, NotReported } from './InspectorCard'
 import type { CoroutineTimeline } from '@/types/api'
+import { lifetimeText } from '@/lib/card-facts'
 import type { PossiblyBlockedIncident, TransitionKind } from '@/types/health'
 
 /**
@@ -36,13 +37,17 @@ export function TimingCard({
   timeline,
   blocked,
   captureStartAppNanos,
+  lifetime,
 }: {
   timeline: CoroutineTimeline | undefined
   /** A possibly blocked coroutine's incident: its transitions are listed. */
   blocked?: PossiblyBlockedIncident
   /** App-clock time of the session's first event, the origin of "at 2.0 s". */
   captureStartAppNanos?: number | null
+  /** The server's lifetime for it (triage "Lifetimes", Part 7), as its card shows it; preferred when given. */
+  lifetime?: { lifetimeNanos?: number | null; lifetimeKind?: 'FINISHED' | 'SO_FAR' | 'AT_LEAST' | null }
 }) {
+  const serverLifetime = lifetime ? lifetimeText(lifetime) : null
   // A timeline at a moment built on a durable summary (Part 8, M-10): what is left is not the whole life, so no
   // duration from it.
   const trimmed = !!timeline?.eventsTrimmed
@@ -63,7 +68,9 @@ export function TimingCard({
       <InspectorRow
         label="Total"
         value={
-          soFar !== null ? (
+          serverLifetime ? (
+            <span title="From its first observation, on the app's clock (the server's summary)">{serverLifetime}</span>
+          ) : soFar !== null ? (
             <span title="Still running: from its first to its latest recorded event; it may have run longer since">
               at least ~{formatDuration(soFar)}
             </span>
@@ -94,9 +101,9 @@ const TRANSITION_WORD: Record<TransitionKind, string> = {
 }
 
 /** The observed transitions of a possibly blocked coroutine (T-3), newest last, as times into the capture. */
-function Transitions({ incident, captureStartAppNanos }: { incident: PossiblyBlockedIncident; captureStartAppNanos: number | null }) {
-  const at = (appNanos: number) =>
-    captureStartAppNanos != null ? `at ${formatDuration(appNanos - captureStartAppNanos)}` : `at event ${incident.lastRunStart.seq}`
+export function Transitions({ incident, captureStartAppNanos }: { incident: PossiblyBlockedIncident; captureStartAppNanos: number | null }) {
+  const at = (t: { appNanos: number; seq: number }) =>
+    captureStartAppNanos != null ? `at ${formatDuration(t.appNanos - captureStartAppNanos)}` : `at event ${t.seq}`
   return (
     <div data-testid="transitions" className="mt-2 space-y-1 border-t border-default-200 pt-2 text-sm">
       <p>Running for {formatDuration(incident.runningForNanos)} with no suspension observed</p>
@@ -105,7 +112,7 @@ function Transitions({ incident, captureStartAppNanos }: { incident: PossiblyBlo
       <ol className="space-y-0.5 text-xs text-default-600">
         {incident.transitions.map(t => (
           <li key={t.seq}>
-            {TRANSITION_WORD[t.kind]} {at(t.appNanos)}
+            {TRANSITION_WORD[t.kind]} {at(t)}
           </li>
         ))}
       </ol>

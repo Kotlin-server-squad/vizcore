@@ -402,6 +402,59 @@ describe('Inspector', () => {
     expect(getCoroutineTimeline).not.toHaveBeenCalled()
   })
 
+  it('hides the session summary under an incident-only selection, and keeps a blocked one\'s transitions', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={null}
+        readOnly={false}
+        emptyState={<p>the session summary</p>}
+        problemOnly={{
+          id: 'c-9',
+          label: 'poll-9',
+          problem: {
+            kind: 'POSSIBLY_BLOCKED',
+            incident: {
+              type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-9', name: 'poll-9', roundId: null, anchorId: null,
+              lastThread: null, dispatcher: null, lastSuspension: null, lastSuspensionProvenance: null,
+              lastRunStart: { kind: 'STARTED', appNanos: 0, seq: 2 }, runningForNanos: 11e9,
+              transitions: [{ kind: 'STARTED', appNanos: 0, seq: 2 }], transitionsGap: true, firstObservedRunning: true,
+              eventLoopClue: null, sortSeq: 2,
+            },
+          },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByText('the session summary')).not.toBeVisible()
+    expect(screen.getByTestId('transitions')).toHaveTextContent('Running for 11.0 s with no suspension observed')
+    expect(getCoroutineTimeline).not.toHaveBeenCalled()
+  })
+
+  it('names each transition by its own event when the capture start is unknown', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.ACTIVE })}
+        readOnly={false}
+        problem={{
+          kind: 'POSSIBLY_BLOCKED',
+          incident: {
+            type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-1', name: 'poll', roundId: null, anchorId: null,
+            lastThread: null, dispatcher: null, lastSuspension: null, lastSuspensionProvenance: null,
+            lastRunStart: { kind: 'RESUMED', appNanos: 9, seq: 6 }, runningForNanos: 11e9,
+            transitions: [{ kind: 'CREATED', appNanos: 0, seq: 1 }, { kind: 'RESUMED', appNanos: 9, seq: 6 }],
+            transitionsGap: false, firstObservedRunning: false, eventLoopClue: null, sortSeq: 6,
+          },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const list = screen.getByTestId('transitions')
+    expect(list).toHaveTextContent('Created at event 1')
+    expect(list).toHaveTextContent('Resumed at event 6')
+  })
+
   it('has no clue card without a clue', () => {
     render(
       <Inspector
@@ -437,6 +490,40 @@ describe('Inspector', () => {
       expect(getCoroutineTimeline).toHaveBeenCalledTimes(1)
       await vi.advanceTimersByTimeAsync(5_500)
       await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows the server's lifetime in Timing, as the card does, and the card's facts under the heading (Part 7, P-9)", async () => {
+    getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.ACTIVE, lifetimeNanos: 12.3e9, lifetimeKind: 'SO_FAR' })}
+        readOnly={false}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const timing = await screen.findByTestId('timing-card')
+    expect(within(timing).getByText('12.3 s so far')).toBeInTheDocument()
+    expect(screen.getByTestId('node-meta')).toHaveTextContent('12.3 s so far')
+  })
+
+  it('a state change while streaming waits for the same 10 s throttle: one path, not two (Part 7, P-1)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+      const wrapper = createWrapper()
+      const { rerender } = render(<Inspector sessionId="s-1" coroutine={coroutine({ state: CoroutineState.ACTIVE })} readOnly={false} liveSeq={1} />, { wrapper })
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(1))
+      rerender(<Inspector sessionId="s-1" coroutine={coroutine({ state: CoroutineState.SUSPENDED })} readOnly={false} liveSeq={2} />)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(getCoroutineTimeline).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(9_000)
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(getCoroutineTimeline).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
     }

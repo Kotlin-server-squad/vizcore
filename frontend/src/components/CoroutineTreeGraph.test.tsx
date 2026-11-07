@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { CardFactsContext } from '@/lib/card-facts'
 import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { CoroutineTreeGraph } from './CoroutineTreeGraph'
@@ -570,5 +571,29 @@ describe('CoroutineTreeGraph', () => {
 
       expect(lastScale()).toBeGreaterThanOrEqual(0.5)
     })
+  })
+
+  it("carries the server's lifetime and creation site, the health's badges and its round context (Part 7, P-9)", () => {
+    const facts = new Map([
+      ['c-2', { badges: [{ kind: 'long-lived' as const, text: 'Long-lived · 2 m 3 s' }], context: 'after the failure' }],
+    ])
+    render(
+      <CardFactsContext.Provider value={facts}>
+        <CoroutineTreeGraph
+          coroutines={[
+            { id: 'c-1', jobId: 'j1', parentId: null, scopeId: 's', label: 'root', state: CoroutineState.ACTIVE },
+            {
+              id: 'c-2', jobId: 'j2', parentId: 'c-1', scopeId: 's', label: 'child', state: CoroutineState.CANCELLED,
+              lifetimeNanos: 2.5e9, lifetimeKind: 'FINISHED',
+              creationLocation: { function: 'f', fileName: 'Shop.kt', lineNumber: 7, reason: 'launch' },
+            },
+          ]}
+        />
+      </CardFactsContext.Provider>,
+    )
+    const card = screen.getByTestId('graph-node-c-2')
+    expect(within(card).getByTestId('node-meta')).toHaveTextContent('2.5 s · Shop.kt:7')
+    expect(within(card).getByText('Long-lived · 2 m 3 s')).toBeInTheDocument()
+    expect(card.querySelector('[data-look-part="node-state"]')).toHaveTextContent('Cancelled · after the failure')
   })
 })

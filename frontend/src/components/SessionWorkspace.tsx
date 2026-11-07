@@ -86,6 +86,7 @@ import { useSessionHealth, type HealthMode } from '@/hooks/use-session-health'
 import { useChecksStatus } from '@/hooks/use-checks-status'
 import { useQuietRefresh } from '@/hooks/use-quiet-refresh'
 import { asOfText, problemOf } from '@/lib/health-text'
+import { CardFactsContext, cardFacts } from '@/lib/card-facts'
 
 const EMPTY_COROUTINES: CoroutineNode[] = []
 
@@ -298,7 +299,7 @@ export function SessionWorkspace({
     enabled: streamEnabled && isConnected && !replayActive && !readOnly,
     reads: [
       { updatedAt: dataUpdatedAt, refetch: () => void refetch() },
-      { updatedAt: sessionHealth.updatedAt, refetch: sessionHealth.retry },
+      { updatedAt: sessionHealth.updatedAt, failedAt: sessionHealth.failedAt, refetch: sessionHealth.retry },
     ],
   })
   // --- Big apps (S-12, T-4): one round at a time, find in all rounds, the vizcore toggle. Live and paused view
@@ -817,6 +818,7 @@ export function SessionWorkspace({
     !!health &&
     (health.incidents.total > health.incidents.items.length ||
       health.incidents.items.some(i => i.type === 'FAILED_ROUND' && i.failures.total > i.failures.items.length))
+  const facts = useMemo(() => cardFacts(health), [health])
   // The newest live event of the selected coroutine: its timeline is re-read after it (P-1).
   const selectedLiveSeq = useMemo(() => {
     if (!liveStream || !selectedCoroutineId) return undefined
@@ -975,6 +977,8 @@ export function SessionWorkspace({
 
       {/* The main view and the dock share the rest of the page (S-1), laid
           out by the look (Classic: a column, the main view above the dock). */}
+      {/* The cards' badges and round context come from the health at the page's moment (Part 7, P-9). */}
+      <CardFactsContext.Provider value={facts}>
       {sessionBody({
         sharedRef: dock.sharedRef,
         overview: { counts: stateCounts, coroutines: viewCoroutines, activity },
@@ -1202,6 +1206,7 @@ export function SessionWorkspace({
           </SessionDock>
         ),
       })}
+      </CardFactsContext.Provider>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { CardFactsContext } from '@/lib/card-facts'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
@@ -213,5 +214,16 @@ describe('CoroutineTree — a group of siblings (S-12)', () => {
     expect(onSelect).not.toHaveBeenCalled()
     await userEvent.click(row)
     expect(onSelect).toHaveBeenCalledWith('group:p')
+  })
+
+  it("lists a row's lifetime, creation site, badges and round context like the graph's cards (Part 7, P-9)", () => {
+    render(
+      <CardFactsContext.Provider value={new Map([['c-9', { badges: [{ kind: 'possibly-blocked' as const, text: 'Possibly blocked' }], context: 'after the failure' }]])}>
+        <CoroutineTree coroutines={[makeCoroutine({ id: 'c-9', lifetimeNanos: 4e9, lifetimeKind: 'AT_LEAST' })]} />
+      </CardFactsContext.Provider>,
+    )
+    expect(screen.getByTestId('node-meta')).toHaveTextContent('at least 4.0 s')
+    expect(screen.getByText('Possibly blocked')).toBeInTheDocument()
+    expect(screen.getByText('· after the failure')).toBeInTheDocument()
   })
 })

@@ -91,14 +91,14 @@ beforeEach(() => {
 })
 
 describe('graph cards per look', () => {
-  it('gives every look a card size, and Classic today’s 280 × 240', () => {
+  it('gives every look a card size, and Classic 280 × 260 (Part 7 added its facts row)', () => {
     for (const { id } of LOOKS) expect(CARDS[id], id).toBeDefined()
-    expect(CARDS.classic).toEqual({ width: 280, height: 240 })
+    expect(CARDS.classic).toEqual({ width: 280, height: 260 })
   })
 
-  it('draws Classic’s cards at today’s size outside the session page (no look)', () => {
+  it('draws Classic’s cards at its size outside the session page (no look)', () => {
     const { container } = renderIn(null)
-    expect(box(container, 'o1')).toMatchObject({ width: 280, height: 240 })
+    expect(box(container, 'o1')).toMatchObject({ width: 280, height: 260 })
   })
 
   it.each(LOOKS.map(l => l.id))(

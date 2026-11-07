@@ -270,7 +270,14 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
           {hasSuspensionFrames && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">Suspended at — last observed</h3>
-              {suspensionPoints.map((point) => (
+              {suspensionPoints.map((point) =>
+                point.provenance === 'CREATION_FALLBACK' || point.provenance === 'STALE' ? (
+                  // Not a frame the SDK read (triage provenance): never offered as a place it suspended.
+                  <p key={point.eventSeq} data-testid="frame-unavailable" className="text-xs italic text-default-400">
+                    location unavailable (
+                    {point.provenance === 'STALE' ? 'an older location was kept' : 'only the creation site was reported'})
+                  </p>
+                ) : (
                 <Card key={point.eventSeq} shadow="none">
                   <CardBody className="p-0">
                     <SourceFrameRow
@@ -283,7 +290,8 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
                     />
                   </CardBody>
                 </Card>
-              ))}
+                ),
+              )}
             </div>
           )}
         </div>

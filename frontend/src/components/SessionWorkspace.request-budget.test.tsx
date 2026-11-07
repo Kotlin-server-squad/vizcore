@@ -108,6 +108,8 @@ function respond(url: string) {
       vizcoreConnection: { captured: 0, failed: 0, failures: capped }, transport: {}, roundCount: 1, problemRoundCount: 0,
       problemRounds: capped,
     }
+  } else if (path.endsWith('/timeline')) {
+    body = { coroutineId: 'c-1', name: 'worker', state: 'ACTIVE', totalDuration: null, childrenIds: [], events: [] }
   } else if (path === `/validate/session/${SESSION}`) {
     body = { sessionId: SESSION, lastRun: null, newEventsSince: null }
   }
@@ -275,6 +277,29 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     expect(eventsRefetches).toHaveLength(1) // the initial stored-events load only
     // One long-lived stream, not a reconnect storm.
     expect(FakeEventSource.instances).toHaveLength(1)
+  })
+
+  it('stream ON with a selected coroutine that keeps getting events: its timeline adds at most 6 a minute (Part 7)', async () => {
+    renderWorkspace()
+    await advance(1000)
+    fireEvent.click(screen.getByRole('button', { name: 'Resume view' }))
+    await advance(1000)
+    const es = FakeEventSource.instances[0]!
+    act(() => es.open())
+    fireEvent.click(screen.getByRole('button', { name: 'List' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open source for worker' }))
+    await advance(15_000)
+    const fetchesBefore = fetchMock.mock.calls.length
+    const start = requestCount()
+    let seq = 1
+    await advance(5 * MINUTE, 1000, () => {
+      es.emit('CoroutineSuspended', { kind: 'CoroutineSuspended', sessionId: SESSION, seq: seq++, tsNanos: seq, coroutineId: 'c-1' })
+    })
+    const timelineReads = fetchMock.mock.calls.slice(fetchesBefore).filter(([u]) => String(u).includes('/coroutines/c-1/timeline'))
+    expect(timelineReads.length / 5).toBeLessThanOrEqual(6)
+    expect(timelineReads.length).toBeGreaterThan(0)
+    // 46 for the page (see above) + 6 for the selected coroutine's timeline.
+    expect((requestCount() - start) / 5).toBeLessThanOrEqual(52)
   })
 
   it('stream ON but SSE down: falls back to a slow poll, still well under the limit', async () => {

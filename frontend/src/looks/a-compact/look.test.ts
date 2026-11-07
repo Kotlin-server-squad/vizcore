@@ -30,6 +30,18 @@ vi.mock('@/lib/api-client', () => ({
     getSessionEvents: vi.fn(() => Promise.resolve([])),
     getCapabilities: vi.fn(() => new Promise(() => {})),
     getRounds: vi.fn(),
+    // Part 7: a health that lists one long-lived coroutine, so the cards carry a badge.
+    getHealthAt: vi.fn(() =>
+      Promise.resolve({
+        state: 'NO_PROBLEMS', asOf: null, asOfSeq: 4, sessionOrigin: 'REPORTED', problemCount: 0, failedRoundCount: 0,
+        ungroupedFailureCount: 0, possiblyBlockedCount: 0, incidents: { items: [], total: 0 }, possiblyBlocked: { status: 'EVALUATED' },
+        observations: { longLived: { items: [{ coroutineId: 'c-1', name: 'order-1', ageNanos: 40e9 }], total: 1 }, longSuspended: { items: [], total: 0 } },
+        counts: { app: 2, vizcore: 0, unknown: 0, untracked: 0 }, failuresAtLeast: false,
+        vizcoreConnection: { captured: 0, failed: 0, failures: { items: [], total: 0 } }, transport: {}, roundCount: 1,
+        problemRoundCount: 0, problemRounds: { items: [], total: 0 },
+      }),
+    ),
+    getChecksStatus: vi.fn(() => new Promise(() => {})),
   },
 }))
 vi.mock('@/components/DispatcherOverview', () => ({ DispatcherOverview: () => null }))
@@ -104,7 +116,7 @@ describe('A · Compact', () => {
 
   it('leaves the graph’s cards to card.css, whose size card.ts gives the layout', () => {
     expect(layoutCss).not.toMatch(/data-look-part='node/)
-    expect(compactCard).toEqual({ width: 188, height: 66, fitMinZoom: 1 })
+    expect(compactCard).toEqual({ width: 188, height: 84, fitMinZoom: 1 })
   })
 
   it('fits a root and six children side by side at full size on a 1440 px window', () => {
@@ -162,7 +174,10 @@ const session: SessionSnapshot = {
   coroutineCount: 2,
   eventCount: 4,
   coroutines: [
-    { id: 'c-1', jobId: 'j-c-1', parentId: null, scopeId: 's', label: 'order-1', state: 'ACTIVE' as CoroutineState },
+    {
+      id: 'c-1', jobId: 'j-c-1', parentId: null, scopeId: 's', label: 'order-1', state: 'ACTIVE' as CoroutineState,
+      lifetimeNanos: 4e9, lifetimeKind: 'SO_FAR', creationLocation: { function: 'f', fileName: 'Orders.kt', lineNumber: 7, reason: 'launch' },
+    },
     { id: 'c-2', jobId: 'j-c-2', parentId: null, scopeId: 's', label: 'order-2', state: 'SUSPENDED' as CoroutineState },
   ],
 }

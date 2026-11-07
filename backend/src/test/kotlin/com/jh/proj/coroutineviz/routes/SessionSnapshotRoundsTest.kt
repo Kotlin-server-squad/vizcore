@@ -5,6 +5,8 @@ import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.routes.HealthEvents.completed
 import com.jh.proj.coroutineviz.routes.HealthEvents.created
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
+import com.jh.proj.coroutineviz.routes.HealthEvents.suspended
+import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -48,6 +50,28 @@ class SessionSnapshotRoundsTest {
         }
 
     private fun JsonObject.text(field: String): String? = this[field]?.takeUnless { it == JsonNull }?.jsonPrimitive?.content
+
+    @Test
+    fun `every node carries its lifetime and creation site from the durable summary (Part 7, triage Cards)`() =
+        testApplication {
+            application { module() }
+            val id = client.createSessionNamed("app-snapshot-lifetimes")
+            val s = SessionManager.getSession(id)!!
+            val site = SuspensionPoint(function = "com.shop.Orders.place", fileName = "Orders.kt", lineNumber = 42, reason = "launch")
+            s.send(created(id, "done", sec(1), creationPoint = site))
+            s.send(completed(id, "done", sec(4)))
+            s.send(created(id, "running", sec(2)))
+            s.send(suspended(id, "running", sec(5)))
+
+            val nodes = nodesOf(client.getJson("/api/sessions/$id"))
+
+            assertEquals((sec(3)).toString(), nodes["done"]!!.text("lifetimeNanos"))
+            assertEquals("FINISHED", nodes["done"]!!.text("lifetimeKind"))
+            assertEquals("Orders.kt", nodes["done"]!!["creationLocation"]!!.jsonObject.text("fileName"))
+            // No watermark from this producer: up to its own last event, at least.
+            assertEquals((sec(3)).toString(), nodes["running"]!!.text("lifetimeNanos"))
+            assertEquals("AT_LEAST", nodes["running"]!!.text("lifetimeKind"))
+        }
 
     @Test
     fun `every node carries the round its anchor names`() =

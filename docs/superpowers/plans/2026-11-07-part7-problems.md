@@ -43,11 +43,17 @@ chip) are gone.
 | P-11 | **The dock (S-4, S-5).** `problems` is the first tab. Its label carries a count badge (`data-look-part="dock-tab-badge"`) only when `problemCount > 0`. Opening tab: remembered tab, else a Gallery demo still running → Learn, else **an attached app → Problems**, else a session whose health shows problems → Problems, else Inspector. The decision waits for the first health answer (success or failure) except for the Learn case; it is still made once. |
 | P-12 | **Four looks.** Same markup everywhere with hooks: `problems`, `problems-headline`, `problems-line`, `problem`, `problem-show`, `observations`, `checks-status`, `connection`, `dock-tab-badge`, `exception-card`, `clue-card`, `node-meta`, `node-badges`, `node-badge`. Classic gets Tailwind classes in the page's existing idiom. A, B and C style them in their `tokens.css` (and `card.css` for the card parts), keyed `[data-look='x']` / `[data-card-look='x']` like the existing rules. Card sizes: every look's `card.ts` is re-measured in the browser with the worst case (two badges, a two-line activity line, a long name) and raised as needed so no child is cut off. No Classic pixel changes elsewhere. |
 
-## Delivery: two stacked PRs
+## Delivery: one PR
 
-- **7a** (base `feat/part6-groups`): P-1 to P-8, P-10, P-11, P-12 for the parts it adds. Frontend only.
-- **7b** (base 7a): P-9 — backend node fields + core lifetime, card meta line, badges, state-line context, card sizes
-  per look.
+Planned as two stacked PRs (7a: health, tab, header, Inspector; 7b: card facts). Built, the two share the same wiring
+(`SessionWorkspace`, `Inspector`, `TimingCard`): the cards' lifetime is also the Inspector's Timing total, and the badges
+come from the same health read. Splitting them would have meant two reviews of the same hunks, so it ships as **one
+PR** (about 1,750 lines of production code, most of it in new small files; the rest is tests).
+
+**Card sizes, measured (P-12).** Each look's card grew by one row (lifetime, creation site and badges on one line; the
+meta text gives way first): Classic 240 → 260, A 66 → 84, B 82 → 104, C 104 → 128 (worst case: a two-line name, a
+two-line second line, two badges; nothing cut off, measured in Chrome). B's first view no longer held the root and its
+first row with a 40 % dock, so B's dock starts at **35 %** (`dockShare`); A and C still fit (C's canvas is 467 px).
 
 ## Files
 
@@ -105,6 +111,7 @@ Screenshots in all four looks, dark and light, 1440 and 1024 px.
 
 ## Codex plan review
 
+- Built after the review: the budget test also covers a selected coroutine that keeps getting events (≤ 52 a minute).
 - **Round 3** (2 P2), both fixed: the newest suspension decides "Last suspended at" (P-6b); the live summary shows the
   app's metrics from `byOrigin.app` (P-7). Three rounds done; no further plan round.
 - **Round 2** (5 findings, 2 P1, 3 P2), all fixed: provenance applies to every "last suspension point", with the

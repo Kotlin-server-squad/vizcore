@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineSuspended
+import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.models.TimelineEventSummary
 import com.jh.proj.coroutineviz.session.EventContext
 import com.jh.proj.coroutineviz.session.VizSession
@@ -191,5 +192,17 @@ class BinaryCompatibilityTest {
         assertEquals("delay", row.reason)
         assertNull(row.waitKind)
         assertNull(row.resourceId)
+    }
+
+    @Test
+    fun `TimelineEventSummary keeps its 0_4_x constructors, the defaults one included`() {
+        val long = Long::class.javaPrimitiveType
+        val str = String::class.java
+        val v04 = arrayOf<Class<*>?>(long, long, str, str, str, str, SuspensionPoint::class.java, WaitKind::class.java, str)
+        val ctor = TimelineEventSummary::class.java.getDeclaredConstructor(*v04)
+        TimelineEventSummary::class.java.getDeclaredConstructor(*v04, Int::class.javaPrimitiveType, marker)
+        val row = ctor.newInstance(1L, 2L, "coroutine.suspended", null, null, "delay", null, WaitKind.MUTEX, "m-1")
+        assertEquals(WaitKind.MUTEX, row.waitKind)
+        assertNull(row.provenance)
     }
 }

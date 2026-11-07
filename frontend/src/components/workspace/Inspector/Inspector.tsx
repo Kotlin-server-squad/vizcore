@@ -3,7 +3,8 @@ import type { CoroutineProblem } from '@/lib/health-text'
 import { useCoroutineTimeline } from '@/hooks/use-timeline'
 import { resolveRunsOn } from '@/lib/runs-on'
 import { stateLabel } from '@/lib/coroutine-state-colors'
-import { TimingCard } from './TimingCard'
+import { TimingCard, Transitions } from './TimingCard'
+import { InspectorCard } from './InspectorCard'
 import { SuspendedAtCard } from './SuspendedAtCard'
 import { RunsOnCard } from './RunsOnCard'
 import { IdentityCard } from './IdentityCard'
@@ -12,6 +13,7 @@ import { SummaryCard } from './SummaryCard'
 import { ExceptionCard } from './ExceptionCard'
 import { ClueCard } from './ClueCard'
 import { ObservedCard } from './ObservedCard'
+import { CardFacts } from '../../CardFacts'
 import { MomentNote } from '../MomentNote'
 import { MomentContext, type MomentView } from '@/hooks/use-moment'
 import { momentErrorText } from '@/lib/moment-errors'
@@ -158,10 +160,12 @@ function InspectorBody({
     }
     const last = lastSeenRef.current
     lastSeenRef.current = { id: coroutineId, state: coroutineState }
+    // While the stream brings its events, the throttled re-read below covers a state change too: one path, not two.
+    if (liveSeq !== undefined) return
     if (last && last.id === coroutineId && last.state !== coroutineState) {
       void refetchTimeline()
     }
-  }, [moment, showTimeline, coroutineId, coroutineState, refetchTimeline])
+  }, [moment, showTimeline, coroutineId, coroutineState, refetchTimeline, liveSeq])
 
   // Re-read after the coroutine's own new events, throttled (P-1). Never at a moment: that read is bound.
   const lastLiveReadRef = useRef<{ id: string; seq: number; at: number } | null>(null)
@@ -189,7 +193,7 @@ function InspectorBody({
 
   const empty =
     emptyState !== undefined ? (
-      <div hidden={!!coroutine || !!pendingSelectionLabel}>{emptyState}</div>
+      <div hidden={!!coroutine || !!pendingSelectionLabel || !!problemOnly}>{emptyState}</div>
     ) : !coroutine && !pendingSelectionLabel ? (
       <div className="text-sm text-default-400">
         {placeholder}
@@ -219,6 +223,12 @@ function InspectorBody({
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="min-w-0 space-y-3">
               <ProblemCards problem={problemOnly.problem} asOf={problemAsOf} />
+              {problemOnly.problem.kind === 'POSSIBLY_BLOCKED' && (
+                // Its running time and transitions are the health's too: no timeline read is needed for them.
+                <InspectorCard title="Timing" testId="timing-card">
+                  <Transitions incident={problemOnly.problem.incident} captureStartAppNanos={captureStartAppNanos} />
+                </InspectorCard>
+              )}
             </div>
           </div>
         </div>
@@ -273,6 +283,8 @@ function InspectorBody({
             </button>
           )}
         </div>
+        {/* Its lifetime, creation site and the health's observation badges, as on its card (Part 7, P-9). */}
+        <CardFacts node={coroutine} />
         {/* What it waits for or holds (S-6): a wait in the Suspended colour, a hold neutral. */}
         {activity && (
           <p
@@ -326,7 +338,7 @@ function InspectorBody({
                 {showTimeline && (
                   <>
                     <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
-                    <TimingCard timeline={timeline} />
+                    <TimingCard timeline={timeline} lifetime={coroutine} />
                     {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
                     <RunsOnCard runsOn={runsOn} title={moment ? 'Last observed on' : undefined} />
                   </>
@@ -338,7 +350,7 @@ function InspectorBody({
                 <ProblemCards problem={problem} asOf={problemAsOf} />
                 {showTimeline && (
                   <>
-                    <TimingCard timeline={timeline} blocked={problem.incident} captureStartAppNanos={captureStartAppNanos} />
+                    <TimingCard timeline={timeline} blocked={problem.incident} captureStartAppNanos={captureStartAppNanos} lifetime={coroutine} />
                     {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
                   </>
                 )}
@@ -346,7 +358,7 @@ function InspectorBody({
             ) : (
               showTimeline && (
                 <>
-                  <TimingCard timeline={timeline} />
+                  <TimingCard timeline={timeline} lifetime={coroutine} />
                   {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
                   <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
                   <RunsOnCard runsOn={runsOn} title={moment ? 'Last observed on' : undefined} />

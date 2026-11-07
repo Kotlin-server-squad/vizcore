@@ -7,6 +7,8 @@ const CHECK_MS = 5_000
 export interface QuietRead {
   /** When it was last read (epoch ms, React Query's `dataUpdatedAt`); 0 when never. */
   updatedAt: number
+  /** When its read last failed (epoch ms, `errorUpdatedAt`); 0 when never. A read that never succeeded retries from it. */
+  failedAt?: number
   refetch: () => void
 }
 
@@ -26,8 +28,8 @@ export function useQuietRefresh({ enabled, reads }: { enabled: boolean; reads: r
     const timer = setInterval(() => {
       const now = Date.now()
       latest.current.forEach((read, i) => {
-        const since = Math.max(read.updatedAt, tried.get(i) ?? 0)
-        if (read.updatedAt > 0 && now - since >= QUIET_REFRESH_MS) {
+        const since = Math.max(read.updatedAt, read.failedAt ?? 0, tried.get(i) ?? 0)
+        if (since > 0 && now - since >= QUIET_REFRESH_MS) {
           tried.set(i, now)
           read.refetch()
         }

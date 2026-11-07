@@ -16,6 +16,7 @@ import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state
 import { chooseRowWidth, layoutTree, type TreeLayout } from '@/lib/tree-layout'
 import { useLook, useLookCard } from '@/looks/look-context'
 import { groupMix, type NameGroup } from '@/lib/name-groups'
+import { CardFacts, CardStateContext } from './CardFacts'
 import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize2, FiMinimize2, FiCrosshair } from 'react-icons/fi'
 
 interface CoroutineTreeGraphProps {
@@ -638,6 +639,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
             </div>
             <div data-look-part="node-state" className="text-xs text-default-500">
               {stateLabel(node.state)}
+              <CardStateContext id={node.id} />
               {node.state === 'ACTIVE' && <span className="ml-2 inline-block">●</span>}
             </div>
             {/* What it waits for or holds (S-6): a wait in the Suspended colour, a hold neutral. */}
@@ -651,6 +653,8 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
                 {activity.text}
               </div>
             )}
+            {/* Its lifetime, creation site and the health's observation badges (Part 7, triage "Cards"). */}
+            <CardFacts node={node} />
           </div>
         </div>
 

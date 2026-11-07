@@ -5,7 +5,8 @@ import './card.css'
 export const boldCard: LookCard = {
   // Six children (E-commerce) fit across a 1440 px window at full size: 6 × 180 + 5 × 40 + 64 ≤ 1,358.
   width: 180,
-  height: 104,
+  // 128 with Part 7's row of lifetime, creation site and badges (6 px gap, 20 px pills; measured with two badges).
+  height: 128,
   fitMinZoom: 1,
   // The dock starts at 17 % (153 px at 900 px tall), so the root and its first row of children
   // fit the first view at 1440×900 with the "Right now" box open, even when the box wraps to a

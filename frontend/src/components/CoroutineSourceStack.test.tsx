@@ -309,4 +309,17 @@ describe('CoroutineSourceStack', () => {
     expect(screen.getByTestId('suspension-unavailable')).toHaveTextContent('suspension location unavailable')
     expect(screen.queryByText('Other.kt:5')).toBeNull()
   })
+
+  it('never offers a fallback or stale frame as a suspension location in the full stack either', () => {
+    useCoroutineTimeline.mockReturnValue(suspendedAt(timelineWithCreation(), 3))
+    useSuspensionPoints.mockReturnValue([
+      { ...userSuspension, eventSeq: 2, provenance: 'REAL_FRAME' },
+      { ...userSuspension, fileName: 'Other.kt', lineNumber: 5, eventSeq: 3, provenance: 'CREATION_FALLBACK' },
+    ])
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show full stack' }))
+    expect(screen.queryByText('Other.kt:5')).toBeNull()
+    expect(screen.getByTestId('frame-unavailable')).toHaveTextContent('location unavailable (only the creation site was reported)')
+    expect(screen.getByText('Service.kt:99')).toBeInTheDocument()
+  })
 })
