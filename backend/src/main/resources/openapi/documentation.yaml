@@ -25,6 +25,8 @@ tags:
     description: Application health and readiness checks
   - name: Sessions
     description: Create, list, inspect, and delete visualization sessions
+  - name: Experiments
+    description: The look experiment on the session page (docs/guides/look-experiment.md)
   - name: Events
     description: Retrieve recorded events and stream live events via SSE
   - name: Projections
@@ -209,6 +211,64 @@ paths:
   # ==========================================================================
   # SESSIONS
   # ==========================================================================
+  /api/experiments/looks/config:
+    get:
+      tags: [Experiments]
+      summary: Whether the look experiment runs, its weights and survey link
+      description: >-
+        `{"enabled": false}` while off (LOOK_EXPERIMENT_ENABLED); else also `weights` (look id to weight)
+        and `surveyUrl` (or null).
+      responses:
+        '200':
+          description: The experiment's settings
+  /api/experiments/looks/events:
+    post:
+      tags: [Experiments]
+      summary: Record a batch of anonymous look measurements
+      description: >-
+        Body (JSON, any content type, at most 16 KiB): `{"anonId": "<uuid>", "events": [...]}` with at most 50
+        events, each `{"type": "entry", "look", "kind": "assigned"|"chose"}`, `{"type": "seen", "look"}`,
+        `{"type": "time", "look", "ms"}` or `{"type": "switch", "from", "to"}`. Looks are classic, a, b, c.
+      responses:
+        '204':
+          description: Recorded
+        '400':
+          description: Not a valid batch (nothing is recorded)
+        '404':
+          description: The experiment is off (nothing is recorded)
+        '413':
+          description: Body too large
+        '429':
+          description: Too many batches from this anonymous id (Retry-After)
+  /api/experiments/looks/votes:
+    post:
+      tags: [Experiments]
+      summary: Rate a look; replaces this anonymous id's earlier rating of it
+      description: >-
+        Body (JSON, at most 4 KiB): `{"anonId": "<uuid>", "look": "b", "rating": 1-5, "comment": "optional, at
+        most 500 characters"}`.
+      responses:
+        '204':
+          description: Stored
+        '400':
+          description: Not a valid vote
+        '404':
+          description: The experiment is off
+        '413':
+          description: Body too large
+        '429':
+          description: Too many votes from this anonymous id (Retry-After)
+  /api/experiments/looks/results:
+    get:
+      tags: [Experiments]
+      summary: The look experiment's results and the decision rule's status
+      description: >-
+        One row per look (assigned, chose, sessions seen, median time, switch-away rate and destinations,
+        votes, average rating, comments newest first), the rule's constants and its decision in plain English.
+        Never contains an anonymous id.
+      responses:
+        '200':
+          description: The results
   /api/sessions:
     post:
       tags: [Sessions]
