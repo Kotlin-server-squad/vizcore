@@ -367,21 +367,27 @@ export function SessionWorkspace({
   // In replay a coroutine the cursor has not reached yet keeps its selection (Part 8, M-5): it is cleared only when it
   // is not in the replay at all.
   const keptIds = replayActive ? oneMoment.replayCoroutineIds : coroutineIds
+  // While an incomplete replay's summaries are read, a coroutine created before it may still come back from them.
+  const summaryPending = replayActive && oneMoment.summaryPending
   useEffect(() => {
     if (selection === null) return
     const gone =
       selection.kind === 'coroutine'
-        ? !coroutineIds.has(selection.id) && !keptIds.has(selection.id)
+        ? !coroutineIds.has(selection.id) && !keptIds.has(selection.id) && !summaryPending
         : !resources.has(selection.id) && !replayActive
     if (gone) setSelection(null)
-  }, [selection, coroutineIds, keptIds, resources, replayActive])
+  }, [selection, coroutineIds, keptIds, resources, replayActive, summaryPending])
   const pendingSelectionLabel =
     replayActive && selection?.kind === 'coroutine' && !selectedCoroutine
-      ? (oneMoment.replayLabels.get(selection.id) ?? selection.id)
+      ? (oneMoment.replayLabels.get(selection.id) ??
+        session?.coroutines.find(c => c.id === selection.id)?.label ??
+        selection.id)
       : null
   // A coroutine the summaries gave the tree is not missing at the cursor: their read is updating (M-9).
   const pendingSelectionNote =
-    selection?.kind === 'coroutine' && oneMoment.summaryNodes.has(selection.id) ? 'updating to this moment…' : undefined
+    selection?.kind === 'coroutine' && (oneMoment.summaryNodes.has(selection.id) || summaryPending)
+      ? 'updating to this moment…'
+      : undefined
   // The session metrics at the moment, from the coroutines the tree shows and the events up to it (M-1).
   const momentMetrics = useMemo(
     () => (oneMoment.moment ? metricsAt(panelEvents, panelCoroutines) : null),

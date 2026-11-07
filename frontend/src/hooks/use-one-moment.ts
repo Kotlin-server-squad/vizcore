@@ -146,5 +146,7 @@ export function useOneMoment({ sessionId, share, readOnly, replayActive, replay,
     replayCoroutineIds,
     replayLabels,
     summaryNodes,
+    /** The summaries of an incomplete replay are being read: a selection they may hold must wait for them (M-5). */
+    summaryPending: cursor.status === 'updating',
   }
 }

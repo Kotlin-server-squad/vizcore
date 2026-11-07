@@ -1246,6 +1246,23 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
     expect(screen.getByTestId('learn-legend')).toBeVisible()
   })
 
+  it('keeps a selection created before a trimmed replay while the summaries are read (Part 8, M-5, M-9)', async () => {
+    mockedUseSession.mockReturnValue({ data: makeSession(), isLoading: false, refetch: vi.fn() } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({
+      data: [
+        { kind: 'coroutine.created', sessionId: 'session-1', seq: 21, tsNanos: 1000, coroutineId: 'c1', jobId: 'j1', parentCoroutineId: 'c-root', scopeId: 's1', label: 'child' },
+      ],
+    } as unknown as ReturnType<typeof useSessionEvents>)
+    vi.mocked(mockedApiClient.getHierarchyAt).mockReturnValue(new Promise(() => {}))
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByTestId('select-c-root'))
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    const pending = await screen.findByTestId('inspector-pending')
+    expect(pending).toHaveTextContent('root · updating to this moment…')
+    expect(within(pending).getByText('root', { selector: 'span' })).toBeInTheDocument()
+  })
+
   it('qualifies a shared link’s peak and throughput when its early events were trimmed (Part 8, M-1)', async () => {
     const { useSessionEvents } = await import('@/hooks/use-sessions')
     vi.mocked(useSessionEvents).mockReturnValue({
