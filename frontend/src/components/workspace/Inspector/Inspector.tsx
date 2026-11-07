@@ -48,8 +48,10 @@ interface InspectorProps {
    * cut. Its reads are bound to it, the read-only shared view included (it reads through the share token).
    */
   moment?: MomentView | null
-  /** In replay, the selection's name when it does not exist yet at the cursor (M-5). */
+  /** In replay, the selection's name when the cursor's coroutines do not hold it (M-5). */
   pendingSelectionLabel?: string | null
+  /** Why they do not: by default it does not exist yet at the cursor. */
+  pendingSelectionNote?: string
 }
 
 /**
@@ -84,6 +86,7 @@ function InspectorBody({
   activity = null,
   moment = null,
   pendingSelectionLabel = null,
+  pendingSelectionNote = 'not created yet at this moment',
 }: InspectorProps) {
   // The shared view has no credential: only a read bound to its cut (through the token) may fetch (M-11).
   const showTimeline = !!coroutine && (!readOnly || !!moment)
@@ -141,7 +144,7 @@ function InspectorBody({
         <div data-testid="inspector-pending" className="space-y-2">
           <MomentNote moment={moment?.moment ?? null} />
           <p className="text-sm text-default-500">
-            <span className="font-mono">{pendingSelectionLabel}</span> · not created yet at this moment
+            <span className="font-mono">{pendingSelectionLabel}</span> · {pendingSelectionNote}
           </p>
           {onClearSelection && (
             <button type="button" onClick={onClearSelection} className="text-xs text-primary hover:underline">

@@ -54,15 +54,17 @@ export function useMomentQuery<T>({
   hold = false,
 }: MomentQueryArgs<T>): MomentQueryResult<T> {
   const [target, setTarget] = useState({ identity, seq: cursorSeq })
-  // A new identity is read at the cursor at once: nothing of the old one may stand for it.
-  if (target.identity !== identity) setTarget({ identity, seq: cursorSeq })
+  // A new identity is read at the cursor at once: nothing of the old one may stand for it. While disabled the target
+  // follows the cursor, so a read enabled later starts at the cursor, never at an old seq.
+  if (target.identity !== identity || (!enabled && target.seq !== cursorSeq)) setTarget({ identity, seq: cursorSeq })
 
   // What the read is, independent of its seq: a kept-previous read of another coroutine never counts as this one.
   const family = JSON.stringify(keyAt(-1))
   const query = useQuery({
     queryKey: keyAt(target.seq),
     queryFn: async (): Promise<Stamped<T>> => ({ family, seq: target.seq, value: await fetchAt(target.seq) }),
-    enabled: enabled && target.identity === identity,
+    // Held (a shared replay that plays): no request at all, not even a first one.
+    enabled: enabled && !hold && target.identity === identity,
     // A read at a seq describes that moment, which does not change.
     staleTime: Infinity,
     placeholderData: keepPreviousData,

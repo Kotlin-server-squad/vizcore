@@ -32,8 +32,9 @@ export function useOneMoment({ sessionId, readOnly, replayActive, replay, projec
   const index = useMemo(() => indexReplay(events), [events])
   const source: MomentSource = useMemo(() => ({ kind: 'session', sessionId }), [sessionId])
   const cursorSeq = currentEvent?.seq ?? 0
-  const firstSeq = events[0]?.seq ?? 1
-  const incomplete = replayActive && events.length > 0 && firstSeq > 1
+  // The events behind the moment do not start at the session's first (seq 1): the replay's, or a shared link's.
+  const momentFirstSeq = replayActive ? events[0]?.seq : readOnly ? allEvents[0]?.seq : undefined
+  const incomplete = momentFirstSeq !== undefined && momentFirstSeq > 1
   const replayRead: MomentRead | null = useMemo(
     () => (replayActive && currentEvent ? { source, binding: { kind: 'replay', atSeq: cursorSeq } } : null),
     [replayActive, currentEvent, source, cursorSeq],

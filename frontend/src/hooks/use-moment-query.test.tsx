@@ -112,6 +112,31 @@ describe('useMomentQuery', () => {
     expect(result.current.error).toBe(error)
   })
 
+  it('reads nothing while held from the start, then reads the cursor once released', async () => {
+    const fetchAt = vi.fn(async (seq: number) => `x@${seq}`)
+    const { result, rerender } = renderHook(({ hold }) => useMomentQuery(args({ fetchAt, cursorSeq: 4, hold })), {
+      wrapper: wrapper(),
+      initialProps: { hold: true },
+    })
+    await act(() => new Promise(r => setTimeout(r, 50)))
+    expect(fetchAt).not.toHaveBeenCalled()
+    rerender({ hold: false })
+    await waitFor(() => expect(result.current.data).toBe('x@4'))
+    expect(fetchAt).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the cursor, not an old seq, when it is enabled later', async () => {
+    const fetchAt = vi.fn(async (seq: number) => `x@${seq}`)
+    const { result, rerender } = renderHook(
+      ({ enabled, cursorSeq }) => useMomentQuery(args({ fetchAt, enabled, cursorSeq })),
+      { wrapper: wrapper(), initialProps: { enabled: false, cursorSeq: 0 } },
+    )
+    rerender({ enabled: false, cursorSeq: 41 })
+    rerender({ enabled: true, cursorSeq: 41 })
+    await waitFor(() => expect(result.current.data).toBe('x@41'))
+    expect(fetchAt.mock.calls.map(c => c[0])).toEqual([41])
+  })
+
   it('reads nothing while disabled', () => {
     const a = args({ enabled: false })
     const { result } = renderHook(() => useMomentQuery(a), { wrapper: wrapper() })

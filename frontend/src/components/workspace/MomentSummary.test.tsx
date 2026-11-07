@@ -31,6 +31,6 @@ describe('MomentSummary', () => {
 
   it('says peak and throughput cover the replayed events only when the replay is incomplete', () => {
     render(<MomentSummary metrics={metrics} moment={{ kind: 'loaded', seq: 40 }} coroutineCount={7} incomplete />, { wrapper })
-    expect(screen.getByText(/in the replayed events only/i)).toBeInTheDocument()
+    expect(screen.getByText(/in the kept events only/i)).toBeInTheDocument()
   })
 })

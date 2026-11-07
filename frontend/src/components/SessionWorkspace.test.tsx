@@ -1243,6 +1243,17 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
     expect(screen.getByTestId('learn-legend')).toBeVisible()
   })
 
+  it('qualifies a shared link’s peak and throughput when its early events were trimmed (Part 8, M-1)', async () => {
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({
+      data: [
+        { kind: 'coroutine.created', sessionId: 'session-1', seq: 21, tsNanos: 1000, coroutineId: 'c1', jobId: 'j1', parentCoroutineId: null, scopeId: 's1', label: 'root' },
+      ],
+    } as unknown as ReturnType<typeof useSessionEvents>)
+    render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
+    expect(within(screen.getByTestId('moment-summary')).getByText(/in the kept events only/i)).toBeInTheDocument()
+  })
+
   it('offers the summary of the moment in replay and in a shared link, instead of a paused Inspector (Part 8)', async () => {
     const { unmount } = render(<SessionWorkspace sessionId="session-1" readOnly />, {
       wrapper: createWrapper(),

@@ -17,7 +17,7 @@ export function MomentSummary({
   moment: Moment
   /** The coroutines the tree holds at this moment. */
   coroutineCount: number
-  /** The replay does not start at the session's beginning (M-8). */
+  /** The events the page holds do not start at the session's beginning (trimmed, capped or cleared). */
   incomplete: boolean
 }) {
   return (
@@ -35,7 +35,8 @@ export function MomentSummary({
       />
       <ul className="space-y-1 text-xs text-default-500">
         <li>
-          Peak and throughput are counted {incomplete ? 'in the replayed events only' : 'over the events up to this moment'},
+          Peak and throughput are counted{' '}
+          {incomplete ? 'in the kept events only: earlier events were trimmed' : 'over the events up to this moment'},
           throughput on the app&apos;s clock (events in the 10 s before it).
         </li>
         <li>Long-lived coroutines are not evaluated at a moment.</li>
