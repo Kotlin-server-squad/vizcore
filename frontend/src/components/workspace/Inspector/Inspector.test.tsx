@@ -544,6 +544,27 @@ describe('Inspector', () => {
     }
   })
 
+  it('re-reads a selection the page comes back to, though its cached read may predate the events since', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+      const wrapper = createWrapper()
+      const a = coroutine({ id: 'c-1' })
+      const b = coroutine({ id: 'c-2' })
+      const { rerender } = render(<Inspector sessionId="s-1" coroutine={a} readOnly={false} liveSeq={3} />, { wrapper })
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(1))
+      rerender(<Inspector sessionId="s-1" coroutine={b} readOnly={false} liveSeq={4} />)
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+      // Back to A within its read's freshness: the cached read is shown, then read again once the throttle allows.
+      rerender(<Inspector sessionId="s-1" coroutine={a} readOnly={false} liveSeq={9} />)
+      const before = getCoroutineTimeline.mock.calls.filter(c => c[1] === 'c-1').length
+      await vi.advanceTimersByTimeAsync(10_500)
+      await vi.waitFor(() => expect(getCoroutineTimeline.mock.calls.filter(c => c[1] === 'c-1').length).toBeGreaterThan(before))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('moves focus to its heading on request (Show, T-3)', () => {
     render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} focusKey={1} />, { wrapper: createWrapper() })
     expect(screen.getByRole('heading', { level: 2 })).toHaveFocus()

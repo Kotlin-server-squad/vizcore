@@ -170,3 +170,8 @@
   font-size: 13px;
   line-height: 18px;
 }
+[data-card-look='b'] [data-look-part='node-badge-more'] {
+  padding: 0 6px;
+  font-size: 13px;
+  line-height: 18px;
+}

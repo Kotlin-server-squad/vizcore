@@ -35,6 +35,29 @@ describe('CardFacts (Part 7, P-9)', () => {
     expect(badge).toHaveAttribute('data-stale', 'true')
   })
 
+  it('on a card, shows the first badge and how many more, every badge named in its title; the Inspector shows all', () => {
+    const facts = new Map([['c', { badges: [
+      { kind: 'possibly-blocked' as const, text: 'Possibly blocked' },
+      { kind: 'long-lived' as const, text: 'Long-lived · 40.0 s' },
+    ] }]])
+    const { unmount } = render(
+      <CardFactsContext.Provider value={facts}>
+        <CardFacts node={node()} compact />
+      </CardFactsContext.Provider>,
+    )
+    expect(screen.getByText('Possibly blocked')).toHaveAttribute('title', 'Possibly blocked · Long-lived · 40.0 s')
+    expect(screen.queryByText('Long-lived · 40.0 s')).toBeNull()
+    expect(screen.getByText('+1')).toHaveAttribute('data-look-part', 'node-badge-more')
+    unmount()
+    render(
+      <CardFactsContext.Provider value={facts}>
+        <CardFacts node={node()} />
+      </CardFactsContext.Provider>,
+    )
+    expect(screen.getByText('Long-lived · 40.0 s')).toBeInTheDocument()
+    expect(screen.queryByText('+1')).toBeNull()
+  })
+
   it('shows nothing for a node with no facts (a replay projection)', () => {
     const { container } = render(<CardFacts node={node()} />)
     expect(container).toBeEmptyDOMElement()

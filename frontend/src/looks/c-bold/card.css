@@ -158,3 +158,7 @@
   font-weight: 700;
   line-height: 16px;
 }
+/* C's 180 px card holds one bold pill: the others are named in its tooltip and listed in the Inspector. */
+[data-card-look='c'] [data-look-part='node-badge-more'] {
+  display: none;
+}

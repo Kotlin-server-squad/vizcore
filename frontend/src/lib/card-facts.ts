@@ -33,11 +33,12 @@ export function cardFacts(health: SessionHealth | undefined | null): ReadonlyMap
     if (incident.type === 'POSSIBLY_BLOCKED') fact(incident.coroutineId).badges.push({ kind: 'possibly-blocked', text: 'Possibly blocked' })
     else if (incident.type === 'FAILED_ROUND') for (const id of incident.cancelledAfter.items) fact(id).context = 'after the failure'
   }
-  for (const o of health.observations.longLived.items) {
-    fact(o.coroutineId).badges.push({ kind: 'long-lived', text: `Long-lived · ${formatDuration(o.ageNanos)}` })
-  }
+  // In order of weight: the problem first, then long suspended, then long-lived (a card shows the first).
   for (const o of health.observations.longSuspended.items) {
     fact(o.coroutineId).badges.push({ kind: 'long-suspended', text: `Long suspended · ${formatDuration(o.ageNanos)}` })
+  }
+  for (const o of health.observations.longLived.items) {
+    fact(o.coroutineId).badges.push({ kind: 'long-lived', text: `Long-lived · ${formatDuration(o.ageNanos)}` })
   }
   return facts
 }

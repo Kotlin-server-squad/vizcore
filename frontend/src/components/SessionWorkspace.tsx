@@ -1084,6 +1084,8 @@ export function SessionWorkspace({
                 onLongLived={() => {
                   // The filter's coroutines are /metrics' list: read it now, so it agrees with the count just shown.
                   if (!replayActive && !readOnly) void refetchMetrics()
+                  // The count is the whole session's: show every round, so no long-lived coroutine is out of view.
+                  if (roundsMode) pickView(ALL_ROUNDS)
                   setStateFilter('leaks')
                   forget()
                   if (dock.maximised) dock.toggleMaximise()

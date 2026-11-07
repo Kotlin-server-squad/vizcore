@@ -173,12 +173,13 @@ function InspectorBody({
     if (moment || !showTimeline || !coroutineId) return
     const last = lastLiveReadRef.current
     if (!last || last.id !== coroutineId) {
-      // The selection's first read happens anyway; count from it (and from no event yet, when none has come).
-      lastLiveReadRef.current = { id: coroutineId, seq: liveSeq ?? -1, at: Date.now() }
-      return
+      // The selection's first read happens anyway, or comes from the cache, which may predate the events received since:
+      // count from now, but from no event, so the next one the throttle allows re-reads it.
+      lastLiveReadRef.current = { id: coroutineId, seq: -1, at: Date.now() }
     }
-    if (liveSeq === undefined || liveSeq <= last.seq) return
-    const wait = Math.max(0, last.at + LIVE_TIMELINE_MIN_INTERVAL_MS - Date.now())
+    const current = lastLiveReadRef.current!
+    if (liveSeq === undefined || liveSeq <= current.seq) return
+    const wait = Math.max(0, current.at + LIVE_TIMELINE_MIN_INTERVAL_MS - Date.now())
     const timer = setTimeout(() => {
       lastLiveReadRef.current = { id: coroutineId, seq: liveSeq, at: Date.now() }
       void refetchTimeline()

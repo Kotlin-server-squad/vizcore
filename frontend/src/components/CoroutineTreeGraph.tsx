@@ -654,7 +654,7 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
               </div>
             )}
             {/* Its lifetime, creation site and the health's observation badges (Part 7, triage "Cards"). */}
-            <CardFacts node={node} />
+            <CardFacts node={node} compact />
           </div>
         </div>
 

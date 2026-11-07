@@ -7,7 +7,7 @@ import type { CoroutineNode } from '@/types/api'
  * the observation badges the session health lists for it. Nothing when the node carries none (a replay projection).
  * Same markup in every look: `node-meta`, `node-badges`, `node-badge` (with `data-badge`).
  */
-export function CardFacts({ node }: { node: CoroutineNode }) {
+export function CardFacts({ node, compact = false }: { node: CoroutineNode; compact?: boolean }) {
   const facts = useContext(CardFactsContext)
   const fact = facts.get(node.id)
   const source = facts.asOf ? ` — from the session health, ${facts.asOf}${facts.stale ? '; its last refresh failed' : ''}` : ''
@@ -16,7 +16,10 @@ export function CardFacts({ node }: { node: CoroutineNode }) {
     ? `${node.creationLocation.fileName}${node.creationLocation.lineNumber != null ? `:${node.creationLocation.lineNumber}` : ''}`
     : null
   const meta = [lifetime, site].filter(Boolean).join(' · ')
-  const badges = fact?.badges ?? []
+  const all = fact?.badges ?? []
+  // A card has room for one badge: the weightiest, and how many more (all named in its title); the Inspector lists all.
+  const badges = compact ? all.slice(0, 1) : all
+  const more = all.length - badges.length
   if (!meta && badges.length === 0) return null
   // One row (`node-facts`): the meta text gives way first, so the badges keep their words.
   return (
@@ -38,7 +41,7 @@ export function CardFacts({ node }: { node: CoroutineNode }) {
               key={b.kind}
               data-look-part="node-badge"
               data-badge={b.kind}
-              title={`${b.text}${source}`}
+              title={`${compact ? all.map(x => x.text).join(' · ') : b.text}${source}`}
               data-stale={facts.stale ? 'true' : undefined}
               className={
                 b.kind === 'possibly-blocked'
@@ -49,6 +52,11 @@ export function CardFacts({ node }: { node: CoroutineNode }) {
               {b.text}
             </span>
           ))}
+          {more > 0 && (
+            <span data-look-part="node-badge-more" className="shrink-0 rounded-full bg-default-200 px-1.5 text-xs text-default-700" title={all.map(x => x.text).join(' · ')}>
+              +{more}
+            </span>
+          )}
         </span>
       )}
     </div>

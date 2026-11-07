@@ -223,7 +223,7 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, a
                     </div>
                   )}
                   {/* Lifetime, creation site and the health's badges, as on the graph's cards (Part 7). */}
-                  <CardFacts node={node} />
+                  <CardFacts node={node} compact />
                 </div>
               </div>
               <div className="flex items-center gap-2">

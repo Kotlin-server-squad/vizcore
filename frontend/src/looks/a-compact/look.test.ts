@@ -35,7 +35,7 @@ vi.mock('@/lib/api-client', () => ({
       Promise.resolve({
         state: 'NO_PROBLEMS', asOf: null, asOfSeq: 4, sessionOrigin: 'REPORTED', problemCount: 0, failedRoundCount: 0,
         ungroupedFailureCount: 0, possiblyBlockedCount: 0, incidents: { items: [], total: 0 }, possiblyBlocked: { status: 'EVALUATED' },
-        observations: { longLived: { items: [{ coroutineId: 'c-1', name: 'order-1', ageNanos: 40e9 }], total: 1 }, longSuspended: { items: [], total: 0 } },
+        observations: { longLived: { items: [{ coroutineId: 'c-1', name: 'order-1', ageNanos: 40e9 }], total: 1 }, longSuspended: { items: [{ coroutineId: 'c-1', name: 'order-1', ageNanos: 35e9 }], total: 1 } },
         counts: { app: 2, vizcore: 0, unknown: 0, untracked: 0 }, failuresAtLeast: false,
         vizcoreConnection: { captured: 0, failed: 0, failures: { items: [], total: 0 } }, transport: {}, roundCount: 1,
         problemRoundCount: 0, problemRounds: { items: [], total: 0 },

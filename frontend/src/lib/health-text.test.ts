@@ -82,6 +82,10 @@ describe('qualifierLines', () => {
   it('says nothing possibly blocked when it was evaluated', () => {
     expect(qualifierLines(health(), 0)).toEqual(['Nothing possibly blocked'])
   })
+  it('adds no possibly blocked line when the headline already counts them', () => {
+    expect(qualifierLines(health({ state: 'PROBLEMS', possiblyBlockedCount: 2 }), 0)).toEqual([])
+  })
+
   it('gives the reason when possibly blocked was not evaluated', () => {
     expect(qualifierLines(health({ possiblyBlocked: { status: 'NOT_EVALUATED', reason: 'REPLAY' } }), 0)).toEqual([
       'Possibly blocked: not evaluated (replay)',

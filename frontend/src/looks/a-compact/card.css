@@ -188,3 +188,9 @@
   font-size: 12px;
   line-height: 16px;
 }
+[data-card-look='a'] [data-look-part='node-badge-more'] {
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 16px;
+}

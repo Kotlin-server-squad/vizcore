@@ -108,13 +108,13 @@ export function notEvaluatedText(reason: NotEvaluatedReason | null | undefined):
 
 /** The quiet lines under the headline: possibly blocked, and every reason the result may be incomplete. */
 export function qualifierLines(health: SessionHealth, captureStartAppNanos: number | null | undefined): string[] {
-  const lines: string[] = []
+  const lines: Array<string | null> = []
   if (health.state !== 'AWAITING_FIRST_DATA') {
     lines.push(
       health.possiblyBlocked.status === 'EVALUATED'
         ? health.possiblyBlockedCount === 0
           ? 'Nothing possibly blocked'
-          : `Possibly blocked: ${count(health.possiblyBlockedCount)}`
+          : null
         : `Possibly blocked: not evaluated (${notEvaluatedText(health.possiblyBlocked.reason)})`,
     )
   }
@@ -136,7 +136,8 @@ export function qualifierLines(health: SessionHealth, captureStartAppNanos: numb
         : `event ${count(retention.oldestRetainedSeq ?? 0)}`
     lines.push(`replay starts at ${at}; earlier events were dropped, so this may be incomplete`)
   }
-  return lines
+  // An evaluated count above zero is already in the headline.
+  return lines.filter((l): l is string => l !== null)
 }
 
 /** A coroutine's problem in the health, for the Inspector's order (T-3). */

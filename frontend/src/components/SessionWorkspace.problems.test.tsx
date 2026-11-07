@@ -18,14 +18,15 @@ vi.mock('@/hooks/use-event-stream', () => ({ useEventStream: vi.fn() }))
 vi.mock('@/hooks/use-scenarios', () => ({ useRunScenario: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })) }))
 const getHealthAt = vi.fn()
 const getChecksStatus = vi.fn()
-const getMetrics = vi.fn(() => Promise.resolve({ active: 1, peak: 1, throughputPerSec: 0, dispatcherUtilization: {}, leaks: [], leakThresholdMs: 30000 }))
+const getRounds = vi.fn((..._args: unknown[]) => new Promise(() => {}) as Promise<unknown>)
+const getMetrics = vi.fn((..._args: unknown[]) => Promise.resolve({ active: 1, peak: 1, throughputPerSec: 0, dispatcherUtilization: {}, leaks: [], leakThresholdMs: 30000 }))
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
     getThreadActivity: vi.fn(() => Promise.resolve({})),
     getCoroutineTimeline: vi.fn(() => new Promise(() => {})),
     getMetrics: (...a: unknown[]) => getMetrics(...a),
     getSessionEvents: vi.fn(() => Promise.resolve([])),
-    getRounds: vi.fn(() => new Promise(() => {})),
+    getRounds: (...a: unknown[]) => getRounds(...a),
     getHealthAt: (...a: unknown[]) => getHealthAt(...a),
     getChecksStatus: (...a: unknown[]) => getChecksStatus(...a),
   },
@@ -169,5 +170,24 @@ describe('SessionWorkspace — Problems (Part 7, S-8, S-5)', () => {
     expect(screen.getByRole('button', { name: /^Long-lived \d+$/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('button', { name: /^Checks \d/ })).toBeNull()
     expect(screen.getByTestId('checks-status')).toHaveTextContent('Instrumentation checks: not run')
+  })
+
+  it('Long-lived (n) counts the whole session, so it opens All rounds with the filter', async () => {
+    const round = (id: string, anchor: string, at: number) => ({
+      roundId: id, anchorId: anchor, anchorName: anchor, anchorOrigin: 'APP', anchorCreatedNanos: at, anchorCreatedSeq: at,
+      inProgress: true, countsByState: {}, memberCount: 1, problem: false, problemKinds: [],
+    })
+    getRounds.mockResolvedValue({ asOfSeq: 9, total: 2, items: [round('r2', 'c-2', 2), round('r1', 'c-1', 1)], nextCursor: null, unknownAtSeq: 0, asOfAppNanos: 9 })
+    const snap = snapshot(ATTACHED, ['ACTIVE' as CoroutineState, 'ACTIVE' as CoroutineState], { kind: 'ATTACHED', appConnected: true })
+    snap.coroutines = [
+      { id: 'c-1', jobId: 'j1', parentId: null, scopeId: 's', label: 'old-request', state: 'ACTIVE' as CoroutineState, roundId: 'r1', origin: 'APP' },
+      { id: 'c-2', jobId: 'j2', parentId: null, scopeId: 's', label: 'new-request', state: 'ACTIVE' as CoroutineState, roundId: 'r2', origin: 'APP' },
+    ]
+    setup(snap, problems(failed))
+    render(<SessionWorkspace sessionId={ATTACHED} />, { wrapper })
+    const picker = await screen.findByRole('combobox', { name: 'Round' })
+    await waitFor(() => expect((picker as HTMLSelectElement).value).toBe('r|r2'))
+    await userEvent.click(await screen.findByRole('button', { name: 'Long-lived (1)' }))
+    expect((picker as HTMLSelectElement).value).toBe('all')
   })
 })

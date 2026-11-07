@@ -28,6 +28,7 @@ describe('cardFacts (Part 7, P-9)', () => {
         },
       }),
     )
+    // The problem first, then long suspended, then long-lived: a card shows the first.
     expect(facts.get('p')?.badges).toEqual([
       { kind: 'possibly-blocked', text: 'Possibly blocked' },
       { kind: 'long-lived', text: 'Long-lived · 2 m 3 s' },
@@ -35,6 +36,18 @@ describe('cardFacts (Part 7, P-9)', () => {
     expect(facts.get('s')?.badges).toEqual([{ kind: 'long-suspended', text: 'Long suspended · 45.0 s' }])
     expect(facts.get('x')?.context).toBe('after the failure')
     expect(facts.get('f')).toBeUndefined()
+  })
+
+  it('puts long suspended before long-lived', () => {
+    const facts = cardFacts(
+      health({
+        observations: {
+          longLived: { items: [{ coroutineId: 's', name: 's', ageNanos: 90e9 }], total: 1 },
+          longSuspended: { items: [{ coroutineId: 's', name: 's', ageNanos: 45e9 }], total: 1 },
+        },
+      }),
+    )
+    expect(facts.get('s')?.badges.map(b => b.kind)).toEqual(['long-suspended', 'long-lived'])
   })
 
   it('is empty without a health', () => {
