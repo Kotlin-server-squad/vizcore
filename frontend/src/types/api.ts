@@ -247,6 +247,8 @@ export interface SessionSnapshot {
   coroutineCount: number
   eventCount: number
   coroutines: CoroutineNode[]
+  /** The demo the session was created for (S-13); absent from older servers, null when none. */
+  demoId?: string | null
   /** ATTACHED for a connected app, DEMO for vizcore's own runs (triage C-3); absent from older servers. */
   kind?: 'ATTACHED' | 'DEMO'
   /** REPORTED when the producer reports origins (or a demo), else UNKNOWN. */

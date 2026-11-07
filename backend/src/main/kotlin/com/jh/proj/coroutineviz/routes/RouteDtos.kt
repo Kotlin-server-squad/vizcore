@@ -75,6 +75,8 @@ data class SessionSnapshotResponse(
     val oldestRetainedSeq: Long?,
     /** Whether older events were dropped (bounded store or retention). */
     val trimmed: Boolean,
+    /** The demo the session was created for (`POST /api/sessions?demoId=`, spec S-13), null when none. */
+    val demoId: String? = null,
     /**
      * Coroutines the summaries know that [coroutines] does not hold, vizcore's own left out: a database session reloaded
      * after its events were trimmed rebuilds its nodes from the retained events (dock S-12, "the page says so").

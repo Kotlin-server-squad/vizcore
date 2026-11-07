@@ -297,7 +297,7 @@ describe('A · Compact on the real page', () => {
     const names = [...document.querySelectorAll(selector)].map(
       b => b.getAttribute('aria-label') ?? b.textContent?.trim()
     )
-    expect(names).toEqual(['Scenario Running', 'Replay', 'Pause view', 'Export', 'More actions'])
+    expect(names).toEqual(['Run again', 'Replay', 'Pause view', 'Export', 'More actions'])
   })
 
   it('turns only the state filter chips into legend items, not the view switch or Maximise', async () => {

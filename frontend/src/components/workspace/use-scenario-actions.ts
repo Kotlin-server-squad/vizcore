@@ -3,9 +3,11 @@ import { useNavigate } from '@tanstack/react-router'
 import { useRunScenario } from '@/hooks/use-scenarios'
 import { useCreateSession, useDeleteSession } from '@/hooks/use-sessions'
 import { describeApiError } from '@/lib/api-errors'
+import { sessionDisplayName } from '@/lib/session-kind'
 
 interface ScenarioActionArgs {
   sessionId: string
+  /** The demo's catalog id: the address's `scenarioId`, else the session's `demoId` (S-13). */
   scenarioId: string
   /** Display name of the scenario; names the fresh session Reset creates. */
   scenarioName?: string
@@ -16,16 +18,19 @@ interface ScenarioActionArgs {
 
 export interface ScenarioActions {
   run: () => Promise<void>
+  /** A new session for the same demo, opened so that it starts the run there (S-13). */
+  runAgain: () => Promise<void>
   reset: () => Promise<void>
   clear: () => void
   isRunPending: boolean
+  isRunAgainPending: boolean
   isResetPending: boolean
   /** Why the last action failed, in a sentence (#139); null when it did not. */
   errorText: string | null
 }
 
 /**
- * Run / Reset / Clear for a scenario-backed session (they were the
+ * Run / Run again / Reset / Clear for a scenario-backed session (they were the
  * `ScenarioControls` card; the header now offers them, S-3).
  *
  * Mutation hooks only: nothing is requested until an action is invoked, and
@@ -43,6 +48,9 @@ export function useScenarioActions({
   const createSession = useCreateSession()
   const navigate = useNavigate()
   const [actionError, setActionError] = useState<{ action: string; error: unknown } | null>(null)
+  const [runAgainPending, setRunAgainPending] = useState(false)
+  // The name new sessions get: the address's, else the one the session id was minted from.
+  const name = scenarioName ?? sessionDisplayName(sessionId)
 
   const run = async () => {
     setActionError(null)
@@ -52,6 +60,26 @@ export function useScenarioActions({
       setTimeout(() => onRefetch(), 500)
     } catch (error) {
       setActionError({ action: 'Run the scenario', error })
+    }
+  }
+
+  // Run again (S-13): a NEW session for the same demo; this one is not touched (no delete, no
+  // request). The new page starts the run itself (`run: true`, use-auto-run): some demo routes
+  // answer only once the demo has finished, so starting it from here would open a finished run.
+  const runAgain = async () => {
+    setActionError(null)
+    setRunAgainPending(true)
+    try {
+      const fresh = await createSession.mutateAsync({ name: `scenario-${name}`, demoId: scenarioId })
+      void navigate({
+        to: '/sessions/$sessionId',
+        params: { sessionId: fresh.sessionId },
+        search: { scenarioId, scenarioName: name, run: true },
+      })
+    } catch (error) {
+      setActionError({ action: 'Run it again', error })
+    } finally {
+      setRunAgainPending(false)
     }
   }
 
@@ -76,9 +104,8 @@ export function useScenarioActions({
       setActionError({ action: 'Delete this session', error })
       return
     }
-    const name = scenarioName ?? scenarioId
     try {
-      const fresh = await createSession.mutateAsync(`scenario-${name}`)
+      const fresh = await createSession.mutateAsync({ name: `scenario-${name}`, demoId: scenarioId })
       void navigate({
         to: '/sessions/$sessionId',
         params: { sessionId: fresh.sessionId },
@@ -93,9 +120,11 @@ export function useScenarioActions({
 
   return {
     run,
+    runAgain,
     reset,
     clear,
     isRunPending: runScenario.isPending,
+    isRunAgainPending: runAgainPending,
     isResetPending: deleteSession.isPending || createSession.isPending,
     errorText: actionError
       ? `Could not ${actionError.action.toLowerCase()}: ${describeApiError(actionError.error, 'This session').message}`

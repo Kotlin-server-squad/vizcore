@@ -473,3 +473,12 @@ html.light[data-look='c'] {
   color: var(--text);
   font-weight: 600;
 }
+
+/* --- Part 9 · Run again --- */
+
+/* Run again: pill buttons, bold. */
+[data-look='c'] [data-look-part='run-again'] {
+  border-radius: 9999px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
