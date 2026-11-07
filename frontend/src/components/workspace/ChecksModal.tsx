@@ -2,6 +2,7 @@ import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from
 import { ValidationPanel } from '../validation/ValidationPanel'
 import type { useValidation } from '@/hooks/use-validation'
 import type { ValidationResponse } from '@/types/api'
+import type { ChecksRun } from '@/types/health'
 
 type Validation = ReturnType<typeof useValidation>
 
@@ -30,11 +31,14 @@ export function ChecksModal({
   isOpen,
   onOpenChange,
   validation,
+  lastRun = null,
 }: {
   sessionId: string
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   validation: Validation
+  /** The session's persisted last run (triage C-5), shown until this visit runs the checks itself. */
+  lastRun?: ChecksRun | null
 }) {
   return (
     <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="3xl" scrollBehavior="inside">
@@ -46,6 +50,18 @@ export function ChecksModal({
           </span>
         </ModalHeader>
         <ModalBody>
+          {lastRun && !validation.data && (
+            <div data-testid="checks-last-run" className="rounded-medium border border-default-200 p-3 text-sm">
+              <p className="font-semibold">Last run at event {lastRun.checkedSeq.toLocaleString('en-US')}</p>
+              <ul className="mt-1 space-y-0.5">
+                {lastRun.rules.map(rule => (
+                  <li key={rule.name} className={rule.passed ? 'text-default-600' : 'text-danger'}>
+                    {rule.name}: {rule.passed ? 'passed' : `failed (${rule.failures.toLocaleString('en-US')})`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <ValidationPanel sessionId={sessionId} validation={validation} showHeading={false} />
         </ModalBody>
         <ModalFooter>

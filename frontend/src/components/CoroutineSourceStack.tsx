@@ -177,11 +177,24 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
   // finished, it is where it last waited (#218).
   // "Suspended at" only when it is known to be waiting there now: suspended (an old backend sends
   // no open phase) and the chip's frame is from its newest suspension, not an earlier one.
-  const latestSuspension = [...suspensionPoints].reverse().find((point) => !!point.fileName)
+  // The newest suspension decides (triage "Suspension-point provenance", Part 7): when it has no file, or its frame is
+  // only the creation fallback or a stale one, the location is unavailable; an older frame is never named instead.
   const newestSuspensionSeq = Math.max(
     -Infinity,
     ...(timeline?.events ?? []).filter((e) => e.kind === 'coroutine.suspended').map((e) => e.seq),
   )
+  // The points come in event order; the last one is the newest suspension's only if no later suspension lacks a point.
+  const lastPoint = suspensionPoints[suspensionPoints.length - 1]
+  const newestPoint =
+    lastPoint &&
+    (!Number.isFinite(newestSuspensionSeq) || !Number.isFinite(lastPoint.eventSeq) || lastPoint.eventSeq >= newestSuspensionSeq)
+      ? lastPoint
+      : undefined
+  const latestSuspension =
+    newestPoint?.fileName && newestPoint.provenance !== 'CREATION_FALLBACK' && newestPoint.provenance !== 'STALE'
+      ? newestPoint
+      : undefined
+  const suspensionUnavailable = hasSuspensionFrames && !latestSuspension
   // At a moment (Part 8) there is no open phase: the timeline's state is the state at that moment.
   const suspendedThen = timeline?.openPhase === 'SUSPENDED' || (!!moment && timeline?.state === 'SUSPENDED' && !timeline.partial)
   const suspendedNow = suspendedThen && latestSuspension?.eventSeq === newestSuspensionSeq
@@ -205,6 +218,14 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
           </div>
         )}
 
+        {suspensionUnavailable && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-default-400">{suspensionLabel}</span>
+            <span data-testid="suspension-unavailable" className="text-xs italic text-default-400">
+              suspension location unavailable
+            </span>
+          </div>
+        )}
         {latestSuspension?.fileName && (
           <div className="flex items-center gap-2">
             <span className="text-xs uppercase tracking-wide text-default-400">{suspensionLabel}</span>

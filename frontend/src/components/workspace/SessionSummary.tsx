@@ -1,30 +1,37 @@
-import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { SessionMetrics } from '../SessionMetrics'
-import { LeakList } from '../LeakList'
 
 /**
- * What the Inspector shows with nothing selected (triage T-3): the session's
- * metric tiles and its long-lived coroutines. Live view only — in replay the
- * numbers would describe now over a frozen view, and the shared view has no
- * Bearer for /metrics (M-4). The leak list renders once, from the same query
- * the tiles use (React Query dedupes the key; PD-02). The app/vizcore split,
- * and "in retained events since" once history is trimmed, join it with the
- * health payload in Part 7.
+ * What the Inspector shows with nothing selected (triage T-3): what was
+ * captured, split by origin from the session health, and the session's metric
+ * tiles. Live view only — in replay the numbers would describe now over a
+ * frozen view, and the shared view has no Bearer for /metrics (M-4). Long-lived
+ * coroutines are an observation in the Problems tab (Part 7, T-5).
  */
 export function SessionSummary({
   sessionId,
   enabled,
   coroutineCount,
   eventCount,
+  counts,
+  captureStartAppNanos = null,
 }: {
   sessionId: string
   enabled: boolean
   /** From the session snapshot: everything captured, vizcore's own connection included. */
   coroutineCount: number
   eventCount: number
+  /** The health's counts by effective origin; absent until it is read. */
+  counts?: { app: number; vizcore: number; unknown: number; untracked: number }
+  captureStartAppNanos?: number | null
 }) {
-  // A pure observer: the workspace owns the refresh cadence (#124).
-  const { data: metrics } = useSessionMetrics(sessionId, false, enabled)
+  const n = (v: number) => v.toLocaleString('en-US')
+  const split = counts
+    ? [
+        `${n(counts.app)} your app's`,
+        ...(counts.vizcore > 0 ? [`${n(counts.vizcore)} vizcore's own connection`] : []),
+        ...(counts.unknown > 0 ? [`${n(counts.unknown)} origin unknown`] : []),
+      ].join(' · ')
+    : null
   return (
     <div data-testid="session-summary" className="space-y-4">
       <p className="text-sm text-default-400">Select a coroutine to inspect it</p>
@@ -39,17 +46,10 @@ export function SessionSummary({
       ) : (
         <p data-testid="session-captured" className="text-sm">
           {coroutineCount} coroutines and {eventCount} events captured
-          <span className="text-default-500">
-            {' '}
-            — what vizcore captured; which are your app's and which its own connection's arrives with the
-            health API (Part 7).
-          </span>
+          {split && <span className="text-default-500">: {split}</span>}
         </p>
       )}
-      <SessionMetrics sessionId={sessionId} enabled={enabled} showLeaks={false} />
-      {metrics && metrics.leaks.length > 0 && (
-        <LeakList leaks={metrics.leaks} leakThresholdMs={metrics.leakThresholdMs} />
-      )}
+      <SessionMetrics sessionId={sessionId} enabled={enabled} captureStartAppNanos={captureStartAppNanos} />
     </div>
   )
 }

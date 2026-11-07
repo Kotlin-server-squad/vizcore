@@ -283,7 +283,7 @@ describe('CoroutineSourceStack', () => {
     expect(screen.getByText('Last suspended at')).toBeInTheDocument()
   })
 
-  it('skips a newest suspension point without a file for the chip, and does not call it current', () => {
+  it('never names an older frame as the last suspension point: a newest one without a file reads unavailable (Part 7)', () => {
     useCoroutineTimeline.mockReturnValue(suspendedAt(timelineWithCreation(), 3))
     useSuspensionPoints.mockReturnValue([
       { ...userSuspension, eventSeq: 2 },
@@ -293,6 +293,20 @@ describe('CoroutineSourceStack', () => {
     render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
 
     expect(screen.getByText('Last suspended at')).toBeInTheDocument()
-    expect(screen.getByText('Service.kt:99')).toBeInTheDocument()
+    expect(screen.getByTestId('suspension-unavailable')).toHaveTextContent('suspension location unavailable')
+  })
+
+  it('reads unavailable when the newest frame is only the creation fallback or stale (triage provenance)', () => {
+    useCoroutineTimeline.mockReturnValue(suspendedAt(timelineWithCreation(), 3))
+    useSuspensionPoints.mockReturnValue([
+      { ...userSuspension, eventSeq: 2, provenance: 'REAL_FRAME' },
+      { ...userSuspension, fileName: 'Other.kt', lineNumber: 5, eventSeq: 3, provenance: 'CREATION_FALLBACK' },
+    ])
+
+    render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
+
+    expect(screen.getByText('Last suspended at')).toBeInTheDocument()
+    expect(screen.getByTestId('suspension-unavailable')).toHaveTextContent('suspension location unavailable')
+    expect(screen.queryByText('Other.kt:5')).toBeNull()
   })
 })

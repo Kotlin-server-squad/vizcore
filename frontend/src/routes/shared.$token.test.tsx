@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { SessionHealth } from '@/types/health'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -210,7 +211,7 @@ describe('/shared/$token route', () => {
   it('passes the share token and the loaded cut to the workspace (Part 8, M-11)', async () => {
     getSharedSession.mockResolvedValue({
       status: 'ok',
-      data: { session: makeSession(), events: [], health: { asOfSeq: 12 }, healthCut: 'k' },
+      data: { session: makeSession(), events: [], health: { asOfSeq: 12 } as unknown as SessionHealth, healthCut: 'k' },
     })
     renderSharedAt('tok-9')
     expect(await screen.findByTestId('session-details')).toHaveAttribute('data-share', 'tok-9|12|k|')

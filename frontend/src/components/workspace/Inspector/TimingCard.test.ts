@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { liveTiming } from './TimingCard'
+import * as timing from './TimingCard'
 import type { CoroutineTimeline } from '@/types/api'
 
 const SECOND = 1_000_000_000
@@ -27,37 +27,13 @@ function blocked(overrides: Partial<CoroutineTimeline> = {}): CoroutineTimeline 
   }
 }
 
-describe('liveTiming', () => {
-  it('counts an open ACTIVE phase up to now, through the backend clock and then the browser clock', () => {
-    // Backend saw it 60 s after creation; the browser has held the response for 5 s since.
-    const live = liveTiming(blocked(), 1_000, 6_000)!
-    expect(live.total).toBeCloseTo(65 * SECOND)
-    // Now is 66 s on the app clock; the open phase began at 3 s.
-    expect(live.openFor).toBeCloseTo(63 * SECOND)
-    expect(live.active).toBeCloseTo(0.1 * SECOND + 63 * SECOND)
-    expect(live.suspended).toBeCloseTo(1.9 * SECOND)
+describe('TimingCard (Part 7, #232 removed)', () => {
+  it('keeps no estimate of the app clock and no blocked threshold of its own', () => {
+    expect('liveTiming' in timing).toBe(false)
+    expect('POSSIBLY_BLOCKED_AFTER_NANOS' in timing).toBe(false)
   })
 
-  it('adds an open SUSPENDED phase to the suspended time instead', () => {
-    const live = liveTiming(blocked({ openPhase: 'SUSPENDED' }), 1_000, 1_000)!
-    expect(live.suspended).toBeCloseTo(1.9 * SECOND + 58 * SECOND)
-    expect(live.active).toBeCloseTo(0.1 * SECOND)
-  })
-
-  it('never estimates "now" before the latest recorded event', () => {
-    // A skewed clock that would put "now" before the open phase began.
-    const live = liveTiming(blocked({ observedAtEpochMs: 9_000 }), 1_000, 1_000)!
-    expect(live.openFor).toBe(0)
-    expect(live.total).toBeCloseTo(2 * SECOND)
-  })
-
-  it('is null for a finished coroutine and for a backend without the open-phase fields', () => {
-    expect(liveTiming(blocked({ totalDuration: 5 * SECOND, openPhase: null }), 0, 0)).toBeNull()
-    expect(liveTiming(blocked({ openPhase: undefined, openPhaseSinceNanos: undefined }), 0, 0)).toBeNull()
-    expect(liveTiming(blocked({ observedAtEpochMs: undefined }), 0, 0)).toBeNull()
-  })
-
-  it('is null when the creation wall time was never set (zero), rather than counting from 1970', () => {
-    expect(liveTiming(blocked({ createdAtEpochMs: 0 }), 0, 0)).toBeNull()
+  it('counts an unfinished coroutine by its recorded events, the most the client can say', () => {
+    expect(timing.lifetimeSoFar(blocked())).toBe(2 * SECOND)
   })
 })

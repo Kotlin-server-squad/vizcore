@@ -175,6 +175,8 @@ export function SharedSessionPage() {
           asOfSeq: result.data.health?.asOfSeq ?? null,
           cut: result.data.healthCut ?? null,
           unavailable: result.data.healthUnavailable ?? null,
+          health: result.data.health ?? null,
+          checks: result.data.checks ?? null,
         }}
       />
     </div>

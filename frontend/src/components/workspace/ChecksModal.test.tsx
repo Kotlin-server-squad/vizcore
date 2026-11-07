@@ -118,6 +118,43 @@ describe('ChecksModal', () => {
     expect(screen.getByTestId('validation-panel')).toHaveAttribute('data-show-heading', 'false')
   })
 
+  it('lists the persisted last run when this visit has not run the checks (Part 7, T-8)', () => {
+    render(
+      <ChecksModal
+        sessionId="s-1"
+        isOpen
+        onOpenChange={vi.fn()}
+        validation={validation()}
+        lastRun={{
+          checkedSeq: 30,
+          ranAtEpochMs: 1,
+          failedRuleCount: 1,
+          rules: [
+            { name: 'StartedHasTerminal', passed: false, failures: 3 },
+            { name: 'NoDuplicateSequenceNumbers', passed: true, failures: 0 },
+          ],
+        }}
+      />,
+    )
+    const last = screen.getByTestId('checks-last-run')
+    expect(last).toHaveTextContent('Last run at event 30')
+    expect(last).toHaveTextContent('StartedHasTerminal: failed (3)')
+    expect(last).toHaveTextContent('NoDuplicateSequenceNumbers: passed')
+  })
+
+  it('shows the fresh run instead once this visit has one', () => {
+    render(
+      <ChecksModal
+        sessionId="s-1"
+        isOpen
+        onOpenChange={vi.fn()}
+        validation={validation(response(1))}
+        lastRun={{ checkedSeq: 30, ranAtEpochMs: 1, failedRuleCount: 0, rules: [] }}
+      />,
+    )
+    expect(screen.queryByTestId('checks-last-run')).toBeNull()
+  })
+
   it('closes on the close button', async () => {
     const onOpenChange = vi.fn()
     render(

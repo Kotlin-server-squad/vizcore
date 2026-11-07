@@ -57,6 +57,16 @@ describe('DockTabs — the WAI-ARIA tabs pattern (S-14)', () => {
     expect(screen.getByRole('tab', { name: 'Inspector' })).toHaveFocus()
   })
 
+  it('carries a count badge only when given one above zero (Part 7, S-8)', () => {
+    const { rerender } = render(
+      <DockTabs tabs={[{ id: 'problems', label: 'Problems', badge: 2 }, ...TABS]} selected="problems" onSelect={() => {}} />,
+    )
+    const tab = screen.getByRole('tab', { name: 'Problems, 2 problems' })
+    expect(tab.querySelector('[data-look-part="dock-tab-badge"]')).toHaveTextContent('2')
+    rerender(<DockTabs tabs={[{ id: 'problems', label: 'Problems', badge: 0 }, ...TABS]} selected="problems" onSelect={() => {}} />)
+    expect(screen.getByRole('tab', { name: 'Problems' }).querySelector('[data-look-part="dock-tab-badge"]')).toBeNull()
+  })
+
   it('selects on click and hides the other panels', async () => {
     render(<Harness />)
     await userEvent.click(screen.getByRole('tab', { name: 'Learn' }))

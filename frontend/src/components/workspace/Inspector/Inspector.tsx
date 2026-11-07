@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import type { CoroutineProblem } from '@/lib/health-text'
 import { useCoroutineTimeline } from '@/hooks/use-timeline'
 import { resolveRunsOn } from '@/lib/runs-on'
 import { stateLabel } from '@/lib/coroutine-state-colors'
@@ -8,6 +9,9 @@ import { RunsOnCard } from './RunsOnCard'
 import { IdentityCard } from './IdentityCard'
 import { EventsCard } from './EventsCard'
 import { SummaryCard } from './SummaryCard'
+import { ExceptionCard } from './ExceptionCard'
+import { ClueCard } from './ClueCard'
+import { ObservedCard } from './ObservedCard'
 import { MomentNote } from '../MomentNote'
 import { MomentContext, type MomentView } from '@/hooks/use-moment'
 import { momentErrorText } from '@/lib/moment-errors'
@@ -58,7 +62,27 @@ interface InspectorProps {
   pendingSelectionLabel?: string | null
   /** Why they do not: by default it does not exist yet at the cursor. */
   pendingSelectionNote?: string
+  /** The selected coroutine's problem in the session health, which sets the cards' order (triage T-3, Part 7). */
+  problem?: CoroutineProblem | null
+  /** The health's "as of" its problem cards come from (H-2). */
+  problemAsOf?: string
+  /** The health lists only part of its problems: a coroutine it does not list may still have one. */
+  problemsCut?: boolean
+  /** A problem whose coroutine the page does not draw (trimmed, or not created at the cursor): opened from the incident alone. */
+  problemOnly?: { id: string; label: string; problem: CoroutineProblem } | null
+  /** App-clock time of the session's first event, for times into the capture. */
+  captureStartAppNanos?: number | null
+  /** Changed by "Show": focus moves to the heading (T-3). */
+  focusKey?: number
+  /**
+   * Live view: the newest seq of an event the page received for the selected coroutine. Its timeline is re-read after
+   * it, at most every 10 s (a suspend and resume between two snapshots leaves its state unchanged).
+   */
+  liveSeq?: number
 }
+
+/** A live coroutine's timeline is re-read after its own events at most this often (Part 7, P-1). */
+const LIVE_TIMELINE_MIN_INTERVAL_MS = 10_000
 
 /**
  * The Inspector's reads at a moment, provided to every card below (Part 8, M-3). Outside it, nothing is provided and
@@ -94,19 +118,29 @@ function InspectorBody({
   unavailableReason = null,
   pendingSelectionLabel = null,
   pendingSelectionNote = 'not created yet at this moment',
+  problem = null,
+  problemAsOf,
+  problemsCut = false,
+  problemOnly = null,
+  captureStartAppNanos = null,
+  focusKey,
+  liveSeq,
 }: InspectorProps) {
+  const headingRef = useRef<HTMLHeadingElement | null>(null)
+  // "Show" moves focus to the heading (T-3), once per request, after the selection has rendered.
+  useEffect(() => {
+    if (focusKey !== undefined) headingRef.current?.focus()
+  }, [focusKey])
   // The shared view has no credential: only a read bound to its cut (through the token) may fetch (M-11).
   const showTimeline = !!coroutine && (!readOnly || !!moment) && !unavailableReason
   const {
     data: timeline,
-    dataUpdatedAt,
     refetch: refetchTimeline,
     moment: momentStatus,
     error: timelineError,
   } = useCoroutineTimeline(
     showTimeline ? sessionId : undefined,
     showTimeline ? coroutine.id : undefined,
-    { followOpenPhase: true },
   )
 
   // Keep the selected coroutine's timeline current while it runs. The live
@@ -129,6 +163,25 @@ function InspectorBody({
     }
   }, [moment, showTimeline, coroutineId, coroutineState, refetchTimeline])
 
+  // Re-read after the coroutine's own new events, throttled (P-1). Never at a moment: that read is bound.
+  const lastLiveReadRef = useRef<{ id: string; seq: number; at: number } | null>(null)
+  useEffect(() => {
+    if (moment || !showTimeline || !coroutineId || liveSeq === undefined) return
+    const last = lastLiveReadRef.current
+    if (!last || last.id !== coroutineId) {
+      // The selection's first read happens anyway; count from it.
+      lastLiveReadRef.current = { id: coroutineId, seq: liveSeq, at: Date.now() }
+      return
+    }
+    if (liveSeq <= last.seq) return
+    const wait = Math.max(0, last.at + LIVE_TIMELINE_MIN_INTERVAL_MS - Date.now())
+    const timer = setTimeout(() => {
+      lastLiveReadRef.current = { id: coroutineId, seq: liveSeq, at: Date.now() }
+      void refetchTimeline()
+    }, wait)
+    return () => clearTimeout(timer)
+  }, [moment, showTimeline, coroutineId, liveSeq, refetchTimeline])
+
   const runsOn = useMemo(
     () => (coroutine ? resolveRunsOn(threadActivity, coroutine.id) : null),
     [threadActivity, coroutine],
@@ -142,6 +195,36 @@ function InspectorBody({
         {placeholder}
       </div>
     ) : null
+
+  if (!coroutine && problemOnly) {
+    // From the incident alone (T-3): no canvas node, no timeline read.
+    return (
+      <>
+        {empty}
+        <div data-testid="inspector" className="space-y-3">
+          <MomentNote moment={moment?.moment ?? null} />
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <h2 id="inspector-heading" ref={headingRef} tabIndex={-1} className="text-base font-semibold outline-none">
+              <span className="font-mono [overflow-wrap:anywhere]">{problemOnly.label}</span>
+            </h2>
+            {onClearSelection && (
+              <button type="button" onClick={onClearSelection} className="ml-auto text-xs text-primary hover:underline">
+                Session summary
+              </button>
+            )}
+          </div>
+          <p data-testid="problem-only-note" className="text-sm text-default-500">
+            Not drawn in the tree at this moment: shown from the health; its events may have been trimmed.
+          </p>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="min-w-0 space-y-3">
+              <ProblemCards problem={problemOnly.problem} asOf={problemAsOf} />
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
 
   if (!coroutine) {
     if (!pendingSelectionLabel) return empty
@@ -171,7 +254,12 @@ function InspectorBody({
       <div data-testid="inspector" className="space-y-3">
         <MomentNote moment={moment?.moment ?? null} />
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
+          <h2
+            id="inspector-heading"
+            ref={headingRef}
+            tabIndex={-1}
+            className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold outline-none"
+          >
             <span className="font-mono [overflow-wrap:anywhere]">{coroutine.label ?? coroutine.id}</span>
             <span className="text-sm font-normal text-default-500">{stateLabel(coroutine.state)}</span>
           </h2>
@@ -224,15 +312,46 @@ function InspectorBody({
         )}
         {/* Two columns on a wide dock, one below 1,024 px (S-14). D-7's order
             reads down the first column, then the events. */}
+        {!problem && problemsCut && (
+          <p data-testid="problem-not-listed" className="text-sm text-default-500">
+            Problem details: not among the problems the health lists (it lists the first 50).
+          </p>
+        )}
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="min-w-0 space-y-3">
-            {showTimeline && (
+            {problem?.kind === 'FAILED' ? (
+              // A failure (T-3): the exception first, then where, how long, on what, which one.
               <>
-                <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
-                {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
-                <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
-                <RunsOnCard runsOn={runsOn} title={moment ? 'Last observed on' : undefined} />
+                <ProblemCards problem={problem} asOf={problemAsOf} />
+                {showTimeline && (
+                  <>
+                    <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
+                    <TimingCard timeline={timeline} />
+                    {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
+                    <RunsOnCard runsOn={runsOn} title={moment ? 'Last observed on' : undefined} />
+                  </>
+                )}
               </>
+            ) : problem?.kind === 'POSSIBLY_BLOCKED' ? (
+              // Possibly blocked (T-3): where it was observed and the clue, from the health; then its transitions.
+              <>
+                <ProblemCards problem={problem} asOf={problemAsOf} />
+                {showTimeline && (
+                  <>
+                    <TimingCard timeline={timeline} blocked={problem.incident} captureStartAppNanos={captureStartAppNanos} />
+                    {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
+                  </>
+                )}
+              </>
+            ) : (
+              showTimeline && (
+                <>
+                  <TimingCard timeline={timeline} />
+                  {timeline?.eventsTrimmed && <SummaryCard coroutineId={coroutine.id} />}
+                  <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
+                  <RunsOnCard runsOn={runsOn} title={moment ? 'Last observed on' : undefined} />
+                </>
+              )
             )}
             <IdentityCard coroutine={coroutine} />
           </div>
@@ -243,6 +362,17 @@ function InspectorBody({
           )}
         </div>
       </div>
+    </>
+  )
+}
+
+/** The cards a problem leads with (T-3): the exception of a failure; where a possibly blocked coroutine was observed and its clue. */
+function ProblemCards({ problem, asOf }: { problem: CoroutineProblem; asOf?: string }) {
+  if (problem.kind === 'FAILED') return <ExceptionCard failure={problem.failure} round={problem.round} asOf={asOf} />
+  return (
+    <>
+      <ObservedCard incident={problem.incident} asOf={asOf} />
+      {problem.incident.eventLoopClue && <ClueCard clue={problem.incident.eventLoopClue} />}
     </>
   )
 }

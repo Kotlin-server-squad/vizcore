@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import {
   Button,
   Chip,
@@ -64,13 +64,15 @@ interface SessionHeaderProps {
   panelEvents: VizEvent[]
   viewMode: 'graph' | 'list'
   onRecord?: () => void
+  /** The app connection, last data and start time of an attached app (S-3, T-2; Part 7), beside the view pill. */
+  connection?: ReactNode
 }
 
 /**
  * The session's header (spec S-3, which revises triage T-7). It keeps three
  * facts apart: the run outcome of a demo (Running, Finished, Failed — a run
- * with any failed coroutine is Failed, in red), the app connection (a pill
- * that arrives with the health API in Part 7, so none is shown yet) and the
+ * with any failed coroutine is Failed, in red), the app connection of an
+ * attached app (`connection`: the pill, last data, start time) and the
  * view (updating, paused, replay, loaded). Then the actions: Run (demos, until
  * Run again in Part 9), Replay, Pause view, Export and "⋯".
  *
@@ -105,6 +107,7 @@ export function SessionHeader({
   panelEvents,
   viewMode,
   onRecord,
+  connection,
 }: SessionHeaderProps) {
   // Sharing is DB-backed (ADR-019); in memory mode the share routes are absent.
   // Gate the Share item on the server capability so we never offer an action
@@ -182,6 +185,7 @@ export function SessionHeader({
           streamError={streamError}
           loadedAtMs={loadedAtMs}
         />
+        {connection}
         {!readOnly && streamEnabled && !isConnected && streamError && onReconnect && (
           <Button size="sm" variant="light" onPress={onReconnect}>
             Reconnect

@@ -97,6 +97,19 @@ function respond(url: string) {
     }
   } else if (path === '/health') {
     body = { sharingEnabled: false }
+  } else if (path === `/sessions/${SESSION}/health`) {
+    // The session health (Part 7): read once, then on the stream's own 10 s throttle.
+    const capped = { items: [], total: 0 }
+    body = {
+      state: 'NO_PROBLEMS', asOf: { kind: 'LAST_EVENT', appNanos: 1, seq: 1 }, asOfSeq: 1, sessionOrigin: 'REPORTED',
+      problemCount: 0, failedRoundCount: 0, ungroupedFailureCount: 0, possiblyBlockedCount: 0, incidents: capped,
+      possiblyBlocked: { status: 'EVALUATED' }, observations: { longLived: capped, longSuspended: capped },
+      counts: { app: 1, vizcore: 0, unknown: 0, untracked: 0 }, failuresAtLeast: false,
+      vizcoreConnection: { captured: 0, failed: 0, failures: capped }, transport: {}, roundCount: 1, problemRoundCount: 0,
+      problemRounds: capped,
+    }
+  } else if (path === `/validate/session/${SESSION}`) {
+    body = { sessionId: SESSION, lastRun: null, newEventsSince: null }
   }
   return {
     ok: true,
@@ -247,9 +260,11 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     })
 
     const perMinute = (requestCount() - start) / 5
-    // Three reads (snapshot, threads, metrics) per 5 s refresh window at most, plus the round list at most every
-    // 15 s (Part 6) — one request even with 200 rounds listed.
-    expect(perMinute).toBeLessThanOrEqual(40)
+    // Three reads (snapshot, threads, metrics) per 5 s refresh window at most (36), plus the round list at most every
+    // 15 s (Part 6, 4) — one request even with 200 rounds listed — and the session health at most every 10 s (Part 7, 6).
+    expect(perMinute).toBeLessThanOrEqual(46)
+    const healthReads = fetchMock.mock.calls.slice(fetchesBefore).filter(([u]) => String(u).endsWith(`/sessions/${SESSION}/health`))
+    expect(healthReads.length / 5).toBeLessThanOrEqual(6)
     const roundReads = fetchMock.mock.calls.slice(fetchesBefore).filter(([u]) => String(u).includes('/rounds'))
     expect(roundReads.length).toBeGreaterThan(0)
     expect(roundReads.every(([u]) => String(u).includes('limit=200'))).toBe(true)
@@ -278,8 +293,9 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     })
 
     const perMinute = (requestCount() - start) / 5
-    // snapshot + metrics + threads every 10 s = 18/min, plus the round list every 20 s (Part 6) = 21.
-    expect(perMinute).toBeLessThanOrEqual(21)
+    // snapshot + metrics + threads every 10 s = 18/min, plus the round list every 20 s (Part 6) = 21, plus the session
+    // health every 20 s (Part 7) = 24.
+    expect(perMinute).toBeLessThanOrEqual(24)
     expect(perMinute).toBeGreaterThan(0)
     expect(screen.getByTestId('view-status')).toHaveTextContent(/connection lost/i)
   })

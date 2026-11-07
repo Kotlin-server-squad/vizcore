@@ -21,6 +21,16 @@ function metrics(overrides: Partial<MetricsResponse> = {}): MetricsResponse {
   }
 }
 
+const slice = (over: Partial<NonNullable<MetricsResponse['byOrigin']>['app']> = {}) => ({
+  captured: 0,
+  active: 0,
+  peak: 0,
+  throughputPerSec: 0,
+  dispatcherUtilization: {},
+  longLived: 0,
+  ...over,
+})
+
 describe('SessionMetrics', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -73,7 +83,6 @@ describe('SessionMetrics', () => {
     render(<SessionMetrics sessionId="s-1" />)
 
     expect(screen.getByText('Dispatcher utilization')).toBeInTheDocument()
-    expect(screen.getByText('Potential leaks')).toBeInTheDocument()
   })
 
   it('renders a loading state while the query is loading', () => {
@@ -131,48 +140,62 @@ describe('SessionMetrics', () => {
     expect(screen.getByText('—')).toHaveClass('font-semibold')
   })
 
-  it('surfaces leaks through the LeakList badge', () => {
+  it('has no leak card: long-lived coroutines are reached through the Problems tab and the filter (Part 7, T-5)', () => {
     useSessionMetricsMock.mockReturnValue({
-      data: metrics({
-        leaks: [{ coroutineId: 'dp-1', label: 'fetchUser', aliveMs: 42_000 }],
-      }),
+      data: metrics({ leaks: [{ coroutineId: 'dp-1', label: 'fetchUser', aliveMs: 42_000 }] }),
       isLoading: false,
     })
-
     render(<SessionMetrics sessionId="s-1" />)
-
-    expect(screen.getByText('1 potential leak')).toBeInTheDocument()
-  })
-
-  it('keeps the internal leak Card by default (showLeaks omitted = back-compat)', () => {
-    useSessionMetricsMock.mockReturnValue({
-      data: metrics({
-        leaks: [{ coroutineId: 'dp-1', label: 'fetchUser', aliveMs: 42_000 }],
-      }),
-      isLoading: false,
-    })
-
-    render(<SessionMetrics sessionId="s-1" />)
-
-    // The "Potential leaks" Card header renders for every existing call site.
-    expect(screen.getByText('Potential leaks')).toBeInTheDocument()
-    expect(screen.getByText('1 potential leak')).toBeInTheDocument()
-  })
-
-  it('hides the internal leak Card when showLeaks={false} (tiles-only strip)', () => {
-    useSessionMetricsMock.mockReturnValue({
-      data: metrics({
-        leaks: [{ coroutineId: 'dp-1', label: 'fetchUser', aliveMs: 42_000 }],
-      }),
-      isLoading: false,
-    })
-
-    render(<SessionMetrics sessionId="s-1" showLeaks={false} />)
-
-    // Strip is tiles-only — no leak Card, no leak badge (the dock owns the leak mount).
     expect(screen.queryByText('Potential leaks')).toBeNull()
-    expect(screen.queryByText('1 potential leak')).toBeNull()
-    // Tiles still render.
-    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.queryByText(/potential leak/)).toBeNull()
+  })
+
+  it("shows the app's own figures, vizcore's connection left out (T-3)", () => {
+    useSessionMetricsMock.mockReturnValue({
+      data: metrics({
+        active: 9,
+        peak: 20,
+        byOrigin: {
+          app: slice({ captured: 5, active: 4, peak: 6, throughputPerSec: 3, dispatcherUtilization: { IO: 4 } }),
+          vizcore: slice({ captured: 3, active: 3, peak: 3 }),
+          unknown: slice(),
+          untracked: 0,
+        },
+      }),
+      isLoading: false,
+    })
+    render(<SessionMetrics sessionId="s-1" />)
+    expect(screen.getByTestId('metrics-scope')).toHaveTextContent("Your app's coroutines; vizcore's own connection is left out.")
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.getByText('6')).toBeInTheDocument()
+    expect(screen.getByText('IO: 4')).toBeInTheDocument()
+  })
+
+  it('shows every captured coroutine, and says so, when origins are not reported', () => {
+    useSessionMetricsMock.mockReturnValue({
+      data: metrics({
+        byOrigin: { app: slice(), vizcore: slice(), unknown: slice({ captured: 8, active: 3 }), untracked: 0 },
+      }),
+      isLoading: false,
+    })
+    render(<SessionMetrics sessionId="s-1" />)
+    expect(screen.getByTestId('metrics-scope')).toHaveTextContent(
+      "All captured coroutines (origin not available: vizcore's own connection may be included).",
+    )
+    expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it('qualifies figures rebuilt from retained events only (T-3)', () => {
+    useSessionMetricsMock.mockReturnValue({
+      data: metrics({ retainedOnly: true, oldestRetainedAppNanos: 4_000_000_000 }),
+      isLoading: false,
+    })
+    render(<SessionMetrics sessionId="s-1" captureStartAppNanos={1_000_000_000} />)
+    expect(screen.getByTestId('metrics-retained')).toHaveTextContent('Peak and throughput: in retained events since 3.0 s into the capture.')
+  })
+
+  it('adds no caption to metrics it is given (a replay moment, Part 8)', () => {
+    render(<SessionMetrics sessionId="s-1" data={metrics()} />)
+    expect(screen.queryByTestId('metrics-scope')).toBeNull()
   })
 })

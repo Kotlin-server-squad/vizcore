@@ -160,7 +160,9 @@ export function useSuspensionPoints(sessionId: string | undefined, coroutineId: 
       .map(e => ({
         ...e.suspensionPoint!,
         eventSeq: e.seq,
-        tsNanos: e.tsNanos
+        tsNanos: e.tsNanos,
+        // Whether the SDK read this frame or fell back (triage provenance); absent from producers that read it themselves.
+        provenance: e.provenance ?? null,
       }))
   }, [timeline])
 

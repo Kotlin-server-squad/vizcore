@@ -33,7 +33,6 @@ export function MomentSummary({
       <SessionMetrics
         sessionId=""
         enabled={false}
-        showLeaks={false}
         data={{ ...metrics, leaks: [], leakThresholdMs: 0 }}
       />
       <ul className="space-y-1 text-xs text-default-500">
