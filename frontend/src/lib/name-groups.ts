@@ -7,6 +7,7 @@
  * members with everything below them are left out; expanded, its members hang under it with their subtrees.
  */
 import { CoroutineState, type CoroutineNode } from '@/types/api'
+import { stateLabel } from './coroutine-state-colors'
 
 /** The id prefix of a group's synthetic node. */
 export const GROUP_PREFIX = 'group:'
@@ -56,6 +57,13 @@ const ATTENTION: CoroutineState[] = [
   CoroutineState.CANCELLED,
   CoroutineState.COMPLETED,
 ]
+
+/** A group's states in words, the ones that most need attention first: "1 Failed · 2 Completed". */
+export function groupMix(counts: Partial<Record<CoroutineState, number>>): string {
+  return ATTENTION.filter(s => counts[s])
+    .map(s => `${counts[s]!.toLocaleString('en-US')} ${stateLabel(s)}`)
+    .join(' · ')
+}
 
 export function groupSiblings(
   coroutines: readonly CoroutineNode[],

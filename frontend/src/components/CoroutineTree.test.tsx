@@ -189,3 +189,29 @@ describe('CoroutineTree', () => {
     ).toBeNull()
   })
 })
+
+describe('CoroutineTree — a group of siblings (S-12)', () => {
+  const parent = { id: 'p', jobId: 'j', parentId: null, scopeId: 's', label: 'request-1', state: 'COMPLETED' } as CoroutineNode
+  const groupNode = { id: 'group:p', jobId: '', parentId: 'p', scopeId: 's', label: 'fetch-*', state: 'FAILED' } as CoroutineNode
+  const group = {
+    id: 'group:p', label: 'fetch-*', parentId: 'p', roundId: 'round:p', memberIds: ['a', 'b', 'c'],
+    counts: { COMPLETED: 2, FAILED: 1 }, below: 0, expanded: false,
+  }
+
+  it('draws a group row with its size and states in words; the row selects, its button expands', async () => {
+    const onSelect = vi.fn()
+    const onToggleGroup = vi.fn()
+    render(
+      <CoroutineTree coroutines={[parent, groupNode]} groups={new Map([['group:p', group]])} onSelect={onSelect} onToggleGroup={onToggleGroup} />,
+    )
+    const row = screen.getByRole('button', { name: 'Group fetch-*: 3 coroutines' })
+    expect(row.closest('[data-look-part="group-row"]')).not.toBeNull()
+    expect(row).toHaveTextContent('group of 3')
+    expect(row).toHaveTextContent('1 Failed · 2 Completed')
+    await userEvent.click(screen.getByRole('button', { name: 'Expand fetch-*' }))
+    expect(onToggleGroup).toHaveBeenCalledWith('group:p')
+    expect(onSelect).not.toHaveBeenCalled()
+    await userEvent.click(row)
+    expect(onSelect).toHaveBeenCalledWith('group:p')
+  })
+})

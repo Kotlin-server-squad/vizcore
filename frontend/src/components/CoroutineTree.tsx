@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { createContext, useContext, useMemo } from 'react'
+import { groupMix, type NameGroup } from '@/lib/name-groups'
 import { Card, CardBody, Chip } from '@heroui/react'
 import { motion, LayoutGroup } from 'framer-motion'
 import type { CoroutineNode, CoroutineState } from '@/types/api'
@@ -32,10 +33,26 @@ interface CoroutineTreeProps {
   pendingChildCounts?: ReadonlyMap<string, number>
   /** Each coroutine's second line: what it waits for or holds (S-6). */
   activity?: ReadonlyMap<string, ActivityLine>
+  /** Siblings grouped by name (S-12), by their group node's id: those nodes draw as group rows. */
+  groups?: ReadonlyMap<string, NameGroup>
+  /** Expand or collapse a group (its row's button). */
+  onToggleGroup?: (id: string) => void
 }
 
-export function CoroutineTree({ coroutines, onSelect, selectedNodeId, pendingChildCounts, activity }: CoroutineTreeProps) {
+/** The groups and their toggle, for every row of the tree (rows recurse, so a context rather than props). */
+const GroupsContext = createContext<{ groups?: ReadonlyMap<string, NameGroup>; onToggle?: (id: string) => void }>({})
+
+export function CoroutineTree({
+  coroutines,
+  onSelect,
+  selectedNodeId,
+  pendingChildCounts,
+  activity,
+  groups,
+  onToggleGroup,
+}: CoroutineTreeProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines), [coroutines])
+  const groupsValue = useMemo(() => ({ groups, onToggle: onToggleGroup }), [groups, onToggleGroup])
 
   if (coroutines.length === 0) {
     return (
@@ -46,6 +63,7 @@ export function CoroutineTree({ coroutines, onSelect, selectedNodeId, pendingChi
   }
 
   return (
+    <GroupsContext.Provider value={groupsValue}>
     <LayoutGroup>
       <div className="space-y-4">
         {tree.map(node => (
@@ -61,6 +79,7 @@ export function CoroutineTree({ coroutines, onSelect, selectedNodeId, pendingChi
         ))}
       </div>
     </LayoutGroup>
+    </GroupsContext.Provider>
   )
 }
 
@@ -87,6 +106,27 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, a
 
   const OuterComponent = shouldAnimate ? motion.div : 'div'
   const PulseComponent = shouldAnimate ? motion.div : 'div'
+  const { groups, onToggle } = useContext(GroupsContext)
+  const group = groups?.get(node.id)
+  const children = node.children.map(child => (
+    <TreeNode
+      key={child.id}
+      node={child}
+      depth={depth + 1}
+      onSelect={onSelect}
+      selectedNodeId={selectedNodeId}
+      pendingChildCounts={pendingChildCounts}
+      activity={activity}
+    />
+  ))
+  if (group) {
+    return (
+      <div data-node-id={node.id} style={{ marginLeft: `${depth * 24}px` }}>
+        <GroupRow group={group} selected={isSelected} onSelect={onSelect} onToggle={onToggle} />
+        {children}
+      </div>
+    )
+  }
 
   return (
     <OuterComponent
@@ -314,18 +354,72 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, a
         </Card>
       </PulseComponent>
 
-      {node.children.map(child => (
-        <TreeNode
-          key={child.id}
-          node={child}
-          depth={depth + 1}
-          onSelect={onSelect}
-          selectedNodeId={selectedNodeId}
-          pendingChildCounts={pendingChildCounts}
-          activity={activity}
-        />
-      ))}
+      {children}
     </OuterComponent>
+  )
+}
+
+/** Siblings grouped by name (S-12) as one row: its size, its states in words, and Expand / Collapse. */
+function GroupRow({
+  group,
+  selected,
+  onSelect,
+  onToggle,
+}: {
+  group: NameGroup
+  selected: boolean
+  onSelect?: (id: string) => void
+  onToggle?: (id: string) => void
+}) {
+  const size = group.memberIds.length
+  return (
+    <div
+      data-look-part="group-row"
+      className={
+        'mb-2 flex items-center justify-between gap-3 rounded-large border-2 border-dashed border-default-300 bg-content1 px-3 py-2 ' +
+        (selected ? 'ring-2 ring-primary bg-primary/5' : onSelect ? 'cursor-pointer hover:bg-default-100' : '')
+      }
+      {...(onSelect
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            'aria-label': `Group ${group.label}: ${size} coroutines`,
+            onClick: () => onSelect(group.id),
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.target !== e.currentTarget) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect(group.id)
+              }
+            },
+          }
+        : {})}
+    >
+      <div className="min-w-0">
+        <div data-look-part="group-name" className="font-mono font-semibold">{group.label}</div>
+        <div className="text-xs text-default-500">
+          <span data-look-part="group-count">{`group of ${size.toLocaleString('en-US')}`}</span>
+          {' · '}
+          <span data-look-part="group-mix">{groupMix(group.counts)}</span>
+          {group.below > 0 && <span data-look-part="group-below">{` · +${group.below.toLocaleString('en-US')} below them`}</span>}
+        </div>
+      </div>
+      {onToggle && (
+        <button
+          type="button"
+          data-look-part="group-expand"
+          aria-label={`${group.expanded ? 'Collapse' : 'Expand'} ${group.label}`}
+          aria-expanded={group.expanded}
+          onClick={e => {
+            e.stopPropagation()
+            onToggle(group.id)
+          }}
+          className="shrink-0 rounded-medium border border-default-300 px-2 py-0.5 text-xs text-default-700 hover:bg-default-100"
+        >
+          {group.expanded ? 'Collapse' : 'Expand'}
+        </button>
+      )}
+    </div>
   )
 }
 
