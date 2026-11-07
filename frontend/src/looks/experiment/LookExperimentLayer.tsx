@@ -140,6 +140,12 @@ export function LookExperimentLayer({ config, sessionId, children }: LookExperim
 
   // The vote card: for which look it is open (null: closed).
   const [voteFor, setVoteFor] = useState<LookId | null>(null)
+  // Bumped by the menu, so a card that shows its thanks opens ready for a new rating.
+  const [voteOpening, setVoteOpening] = useState(0)
+  // A card belongs to its look: a change of look closes it, so it never holds back the next look's.
+  useEffect(() => {
+    setVoteFor(null)
+  }, [look])
   useEffect(() => {
     if (!enabled) return
     const timer = window.setInterval(() => {
@@ -171,7 +177,10 @@ export function LookExperimentLayer({ config, sessionId, children }: LookExperim
     () =>
       enabled
         ? {
-            openVote: () => setVoteFor(lookRef.current),
+            openVote: () => {
+              setVoteFor(lookRef.current)
+              setVoteOpening(n => n + 1)
+            },
             switched: (from, to) => {
               if (from === to) return
               enqueueEvent(readExperimentState().anonId, { type: 'switch', from, to })
@@ -208,7 +217,7 @@ export function LookExperimentLayer({ config, sessionId, children }: LookExperim
           {showHint && <LookHint label={labelOf(look)} count={LOOKS.length} onClose={closeHint} />}
           {showVote && (
             <LookVoteCard
-              key={look}
+              key={`${look}-${voteOpening}`}
               look={look}
               label={labelOf(look)}
               previous={readExperimentState().voted[look]}

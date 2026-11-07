@@ -203,6 +203,28 @@ describe('the vote card', () => {
     expect(screen.getByRole('region', { name: /rate this look/i })).toBeInTheDocument()
   })
 
+  it('the menu reopens a saved card ready for a new rating', async () => {
+    renderPage({ config: ON, assigned: 'b' })
+    fireEvent.click(screen.getByText('rate'))
+    fireEvent.click(screen.getByRole('radio', { name: '2 of 5' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    })
+    fireEvent.click(screen.getByText('rate'))
+    expect(screen.getByRole('radio', { name: '2 of 5' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
+  })
+
+  it('a card left open in one look does not hold back the next look’s', () => {
+    renderPage({ config: ON, assigned: 'b' })
+    act(() => vi.advanceTimersByTime(VOTE_AFTER_MS + 5_000))
+    expect(screen.getByRole('region', { name: /rate this look/i })).toHaveTextContent('B · Calm')
+    fireEvent.click(screen.getByText('switch to c'))
+    expect(screen.queryByRole('region', { name: /rate this look/i })).toBeNull()
+    act(() => vi.advanceTimersByTime(VOTE_AFTER_MS + 5_000))
+    expect(screen.getByRole('region', { name: /rate this look/i })).toHaveTextContent('C · Bold')
+  })
+
   it('never offers itself for a look already rated', () => {
     updateExperimentState(s => ({ ...s, voted: { b: 4 } }))
     renderPage({ config: ON, assigned: 'b' })

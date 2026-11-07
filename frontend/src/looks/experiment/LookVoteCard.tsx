@@ -97,19 +97,24 @@ export function LookVoteCard({
             <span>not for me</span>
             <span>love it</span>
           </div>
-          <label className="mt-2 block text-tiny text-default-500">
-            A comment, if you like
-            <textarea
-              value={comment}
-              maxLength={MAX_COMMENT_LENGTH}
-              rows={2}
-              onChange={e => setComment(e.target.value)}
-              className="mt-1 block w-full resize-none rounded-medium border border-default-300 bg-transparent p-1.5 text-sm text-foreground"
-            />
-          </label>
-          <div className="mt-0.5 text-right text-tiny text-default-400">
-            {comment.length} / {MAX_COMMENT_LENGTH}
-          </div>
+          {/* The comment box opens once a rating is picked, so the card starts small. */}
+          {rating !== null && (
+            <>
+            <label className="mt-2 block text-tiny text-default-500">
+              A comment, if you like
+              <textarea
+                value={comment}
+                maxLength={MAX_COMMENT_LENGTH}
+                rows={2}
+                onChange={e => setComment(e.target.value)}
+                className="mt-1 block w-full resize-none rounded-medium border border-default-300 bg-transparent p-1.5 text-sm text-foreground"
+              />
+            </label>
+            <div className="mt-0.5 text-right text-tiny text-default-400">
+              {comment.length} / {MAX_COMMENT_LENGTH}
+            </div>
+            </>
+          )}
           {state === 'failed' && (
             <p role="alert" className="mt-1 text-tiny text-danger">
               Your rating could not be saved. Try again.

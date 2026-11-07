@@ -41,7 +41,7 @@ function SessionDetailPage() {
     [navigate]
   )
   // The look experiment (off unless the server runs it): this page only, never the shared view.
-  const experiment = useLookExperimentEntry(search.look)
+  const experiment = useLookExperimentEntry(search.look, sessionId)
 
   return (
     <LookProvider

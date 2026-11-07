@@ -123,6 +123,16 @@ describe('the look experiment on the session page', () => {
     await waitFor(() => expect(configCalls()).toHaveLength(2))
   })
 
+  it('asks again when going straight to another session page after a failed answer', async () => {
+    const router = renderAt('/sessions/s-1')
+    await screen.findByTestId('workspace')
+    await act(async () => answerConfig({ error: 'Bad gateway' }, 502))
+    await act(async () => {
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 's-2' } })
+    })
+    await waitFor(() => expect(configCalls()).toHaveLength(2))
+  })
+
   it('other pages and the shared view ask nothing', async () => {
     const router = renderAt('/login')
     await act(async () => {

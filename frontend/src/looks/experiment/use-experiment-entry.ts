@@ -16,7 +16,11 @@ import { readExperimentState, updateExperimentState } from './storage'
  * browser with a stored assignment shows Classic, exactly as without the
  * experiment, while it is off.
  */
-export function useLookExperimentEntry(link: string | undefined): {
+export function useLookExperimentEntry(
+  link: string | undefined,
+  /** Each session page asks again (answered from the cache once the server has answered). */
+  sessionId: string
+): {
   config: ExperimentConfig | null
   assigned: LookId | null
 } {
@@ -52,7 +56,7 @@ export function useLookExperimentEntry(link: string | undefined): {
     return () => {
       alive = false
     }
-  }, [linkAtOpen])
+  }, [linkAtOpen, sessionId])
 
   return { config, assigned }
 }
