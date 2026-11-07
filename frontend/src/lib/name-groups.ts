@@ -75,6 +75,7 @@ export function groupSiblings(
   expanded: ReadonlySet<string>,
   shown?: ReadonlySet<string>,
 ): { nodes: CoroutineNode[]; groups: Map<string, NameGroup> } {
+  // Every pass below is linear: big apps have tens of thousands of siblings, and groups nest under groups.
   const byGroup = new Map<string, CoroutineNode[]>()
   for (const c of coroutines) {
     const id = groupIdOf(c)
@@ -84,59 +85,91 @@ export function groupSiblings(
     else byGroup.set(id, [c])
   }
   const groupOf = new Map<string, string>()
-  const groups = new Map<string, NameGroup>()
+  for (const [id, members] of byGroup) if (members.length >= 2) for (const m of members) groupOf.set(m.id, id)
+
+  const byId = new Map(coroutines.map(c => [c.id, c]))
+  const known = new Set(byId.keys())
   const childrenOf = new Map<string, string[]>()
+  const roots: string[] = []
   for (const c of coroutines) {
-    if (!c.parentId) continue
+    if (!c.parentId || !known.has(c.parentId)) {
+      roots.push(c.id)
+      continue
+    }
     const list = childrenOf.get(c.parentId)
     if (list) list.push(c.id)
     else childrenOf.set(c.parentId, [c.id])
   }
-  const below = (ids: string[]): Set<string> => {
-    const seen = new Set<string>()
-    const stack = ids.flatMap(id => childrenOf.get(id) ?? [])
-    while (stack.length > 0) {
-      const id = stack.pop()!
-      if (seen.has(id)) continue
-      seen.add(id)
-      stack.push(...(childrenOf.get(id) ?? []))
-    }
-    return seen
+  // Top-down order (each node after its parent), once; a node reached twice (a cycle) is visited once.
+  const order: string[] = []
+  const seen = new Set<string>()
+  const stack = [...roots].reverse()
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    order.push(id)
+    const kids = childrenOf.get(id)
+    if (kids) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
   }
-  // Left out while collapsed: a group's own members (its card stands for them), and everything below them (cards of
-  // groups down there included).
-  const hidden = new Set<string>()
-  const hiddenBelow = new Set<string>()
-  // Decided once per group: a card is drawn while a member, or anything below the members, is shown.
+  // Bottom-up: subtree sizes, and whether a node or anything below it is shown.
+  const size = new Map<string, number>()
+  const shownBelow = new Set<string>()
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i]!
+    let n = 1
+    let anyShown = !shown || shown.has(id)
+    for (const k of childrenOf.get(id) ?? []) {
+      n += size.get(k) ?? 1
+      if (shownBelow.has(k)) anyShown = true
+    }
+    size.set(id, n)
+    if (anyShown) shownBelow.add(id)
+  }
+
+  const groups = new Map<string, NameGroup>()
   const visible = new Set<string>()
   for (const [id, members] of byGroup) {
     if (members.length < 2) continue
     const first = members[0]!
     const counts: Partial<Record<CoroutineState, number>> = {}
-    for (const m of members) counts[m.state] = (counts[m.state] ?? 0) + 1
-    const memberIds = members.map(m => m.id)
-    const descendants = below(memberIds)
-    const isExpanded = expanded.has(id)
+    let below = 0
+    for (const m of members) {
+      counts[m.state] = (counts[m.state] ?? 0) + 1
+      below += (size.get(m.id) ?? 1) - 1
+    }
     groups.set(id, {
       id,
       label: `${nameStem(first.label)}*`,
       parentId: first.parentId,
       roundId: first.roundId,
-      memberIds,
+      memberIds: members.map(m => m.id),
       counts,
-      below: descendants.size,
-      expanded: isExpanded,
+      below,
+      expanded: expanded.has(id),
     })
-    for (const m of memberIds) groupOf.set(m, id)
-    if (!shown || memberIds.some(m => shown.has(m)) || [...descendants].some(d => shown.has(d))) visible.add(id)
-    if (!isExpanded) {
-      for (const m of memberIds) hidden.add(m)
-      for (const d of descendants) {
-        hidden.add(d)
-        hiddenBelow.add(d)
-      }
-    }
+    // A card is drawn while a member, or anything below the members, is shown.
+    if (members.some(m => shownBelow.has(m.id))) visible.add(id)
   }
+
+  // Top-down: what a collapsed group leaves out — its members (its card stands for them) and everything below them.
+  const hidden = new Set<string>()
+  const hiddenBelow = new Set<string>()
+  const parentOf = (id: string): string | undefined => {
+    const p = byId.get(id)?.parentId
+    return p && known.has(p) ? p : undefined
+  }
+  for (const id of order) {
+    const parent = parentOf(id)
+    if (parent !== undefined && hidden.has(parent)) {
+      hidden.add(id)
+      hiddenBelow.add(id)
+      continue
+    }
+    const gid = groupOf.get(id)
+    if (gid && !expanded.has(gid)) hidden.add(id)
+  }
+
   const nodes: CoroutineNode[] = []
   const placed = new Set<string>()
   for (const c of coroutines) {
@@ -150,12 +183,12 @@ export function groupSiblings(
         parentId: g.parentId,
         scopeId: c.scopeId,
         label: g.label,
-        state: ATTENTION.find(s => g.counts[s]) ?? c.state,
+        state: ATTENTION.find(st => g.counts[st]) ?? c.state,
         roundId: g.roundId,
         origin: c.origin,
       })
     }
-    // A member of a collapsed group, or anything below one, is left out.
+    // A member of a collapsed group, or anything below one, is left out; so is what the chip does not show.
     if (hidden.has(c.id) || (shown && !shown.has(c.id))) continue
     nodes.push(gid ? { ...c, parentId: gid } : c)
   }

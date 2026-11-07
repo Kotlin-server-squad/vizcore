@@ -103,6 +103,21 @@ describe('groupSiblings (S-12: siblings only, ancestry never hidden)', () => {
     expect(performance.now() - started).toBeLessThan(500)
   })
 
+  it('stays linear with groups nested under groups', () => {
+    // 4,000 levels, each a pair of siblings under the first sibling of the level above.
+    const cs = [node('root')]
+    let parent = 'root'
+    for (let level = 0; level < 4_000; level++) {
+      cs.push(node(`a${level}`, { parentId: parent, label: `a-${level}-1` }), node(`b${level}`, { parentId: parent, label: `a-${level}-2` }))
+      parent = `a${level}`
+    }
+    const started = performance.now()
+    const { nodes, groups } = groupSiblings(cs, NONE, new Set(cs.map(c => c.id)))
+    expect(performance.now() - started).toBeLessThan(500)
+    expect(nodes).toHaveLength(2)
+    expect(groups.get(groupIdOf(cs[1]!)!)!.below).toBe(cs.length - 3)
+  })
+
   it('keeps two parents’ order-* children apart', () => {
     const cs = [
       node('a'),

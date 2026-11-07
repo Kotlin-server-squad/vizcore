@@ -482,11 +482,13 @@ export function SessionWorkspace({
     setForcedIds(plan.forcedIds)
     // Every collapsed group on the way to it opens: its own, and those its ancestors are members of (S-12).
     const byId = new Map(panelCoroutines.map(c => [c.id, c]))
+    // The whole path, however deep; a coroutine met twice (a cycle in the reported parents) ends the walk.
     const toOpen: string[] = []
-    for (let c = byId.get(id); c; c = c.parentId ? byId.get(c.parentId) : undefined) {
+    const walked = new Set<string>()
+    for (let c = byId.get(id); c && !walked.has(c.id); c = c.parentId ? byId.get(c.parentId) : undefined) {
+      walked.add(c.id)
       const gid = groupIdOf(c)
       if (gid) toOpen.push(gid)
-      if (toOpen.length > 64) break
     }
     if (toOpen.length > 0) setExpandedGroups(prev => new Set([...prev, ...toOpen]))
     setSelection({ kind: 'coroutine', id })

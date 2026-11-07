@@ -170,6 +170,23 @@ describe('SessionWorkspace — group by name (S-12)', () => {
     expect(screen.getByTestId('graph')).toHaveAttribute('data-reveal', 'deep')
   })
 
+  it('Find opens a collapsed group however deep below it the found coroutine is', async () => {
+    // A chain of 70 numbered coroutines (no siblings, so no groups of their own) under the group's first member.
+    const chain = Array.from({ length: 70 }, (_, i) =>
+      node(`s${i + 1}`, { parentId: i === 0 ? 'f001' : `s${i}`, roundId: 'round:req', label: `step-${i + 1}` }),
+    )
+    getRounds.mockImplementation((_id, q) =>
+      Promise.resolve(q?.q ? page([entry('req', { matches: { items: ['s70'], total: 1 } })]) : page([entry('req'), entry('other')])),
+    )
+    serve(appWith(chain))
+    render(<SessionWorkspace sessionId="app-1" startLive />, { wrapper })
+    await waitFor(() => expect(graphIds()).toEqual(['req', groupId()]))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Find in all rounds' }), 'step-70{Enter}')
+    const results = await screen.findByRole('region', { name: 'Find results' })
+    await userEvent.click(await within(results).findByRole('button', { name: /^step-70/ }))
+    expect(graphIds()).toEqual(expect.arrayContaining([groupId(), 'f001', 's1', 's70']))
+  })
+
   it('the cap counts cards: a group of 300 is one card', async () => {
     getRounds.mockResolvedValue(page([entry('req')]))
     serve(snapshot([node('req'), ...fetches(300)]))
