@@ -116,6 +116,16 @@ export function LookProvider({ link, onLinkRead, assigned = null, children }: Lo
     link !== undefined ? parseLook(link) : (storedLookChoice() ?? assigned ?? 'classic')
   )
 
+  // The experiment's assignment, arriving or withdrawn later, applies only
+  // while nothing the person did (a link, a pick) says otherwise. Adjusted
+  // during render, not in an effect, so the page never commits (and the
+  // experiment never counts) the look it is about to leave.
+  const [assignedSeen, setAssignedSeen] = useState(assigned)
+  if (assignedSeen !== assigned) {
+    setAssignedSeen(assigned)
+    if (link === undefined && storedLookChoice() === null) setLookState(assigned ?? 'classic')
+  }
+
   const onLinkReadRef = useRef(onLinkRead)
   useEffect(() => {
     onLinkReadRef.current = onLinkRead
@@ -137,15 +147,6 @@ export function LookProvider({ link, onLinkRead, assigned = null, children }: Lo
     remember(id)
     onLinkReadRef.current?.()
   }, [link])
-
-  // The experiment's assignment, arriving or withdrawn later, applies only
-  // while nothing the person did (a link, a pick) says otherwise.
-  const assignedSeen = useRef(assigned)
-  useEffect(() => {
-    if (assignedSeen.current === assigned) return
-    assignedSeen.current = assigned
-    if (link === undefined && storedLookChoice() === null) setLookState(assigned ?? 'classic')
-  }, [assigned, link])
 
   // Joining <html>'s owners on mount and leaving on unmount only, so a change of
   // look keeps this page's place behind a newer one.

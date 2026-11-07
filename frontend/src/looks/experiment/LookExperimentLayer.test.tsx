@@ -154,6 +154,13 @@ describe('measuring', () => {
     )
   })
 
+  it('when the config and the assignment arrive together, counts the page only in the assigned look', () => {
+    const { rerender, unmount } = renderPage({ config: null, assigned: null })
+    rerender(<Page config={ON} assigned="b" />)
+    unmount()
+    expect(sent().filter(e => e.type === 'seen' || e.type === 'time').map(e => e.look)).toEqual(['b'])
+  })
+
   it('a look given by the experiment is not a switch', () => {
     const { rerender, unmount } = renderPage({ config: ON, assigned: null })
     rerender(<Page config={ON} assigned="b" />)
