@@ -424,12 +424,12 @@ html.light[data-look='c'] {
   font-weight: 700;
 }
 
-/* A note that something is missing: the look's amber callout. */
+/* A note that something is missing: a bold amber callout, like "Right now". */
 [data-look='c'] [data-look-part='trimmed-note'] {
   padding: 8px 12px;
-  border: 2px solid var(--c-callout-border);
+  border: 2px solid var(--warning);
   border-radius: 12px;
-  background: var(--c-callout-bg);
+  background: var(--warning-soft);
   color: var(--text);
   font-weight: 600;
 }
