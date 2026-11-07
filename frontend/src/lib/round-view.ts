@@ -259,14 +259,44 @@ export function roundOptionLabel(
   return parts.join(' · ')
 }
 
+/**
+ * How many of a found coroutine's ancestors Find draws past the cap (S-12). A path thousands of levels deep cannot be
+ * drawn whole (the graph lays out and walks its tree recursively); the page says when it is cut (`pathDepth`).
+ */
+export const FIND_PATH_ANCESTORS = 50
+
+/**
+ * The found coroutine's path as drawn (S-12): how many ancestors it has in the view and how many of them are not drawn.
+ * Null when every ancestor is drawn, or when the coroutine itself is not drawn (its group was collapsed again).
+ */
+export function cutPath(
+  id: string,
+  view: readonly CoroutineNode[],
+  drawnIds: ReadonlySet<string>,
+): { depth: number; missing: number } | null {
+  if (!drawnIds.has(id)) return null
+  const byId = new Map(view.map(c => [c.id, c]))
+  const walked = new Set<string>([id])
+  let depth = 0
+  let missing = 0
+  for (let p = byId.get(byId.get(id)?.parentId ?? ''); p && !walked.has(p.id); p = p.parentId ? byId.get(p.parentId) : undefined) {
+    walked.add(p.id)
+    depth++
+    if (!drawnIds.has(p.id)) missing++
+  }
+  return missing > 0 ? { depth, missing } : null
+}
+
 /** What showing a found coroutine takes (S-12): its view, the filters that would hide it cleared, it and its ancestors. */
 export interface RevealPlan {
   choice: RoundChoice
   stateFilter: StateFilter
   showCompleted: boolean
   includeVizcore: boolean
-  /** Rendered even past the cap: the match and its ancestors in the same view. */
+  /** Rendered even past the cap: the match and its nearest ancestors in the same view (at most FIND_PATH_ANCESTORS). */
   forcedIds: ReadonlySet<string>
+  /** Its ancestors in the same view, all of them: more than FIND_PATH_ANCESTORS means the drawn path is cut. */
+  pathDepth: number
 }
 
 export function revealPlan(
@@ -288,8 +318,12 @@ export function revealPlan(
     : { kind: 'ungrouped' }
   const sameView = (c: CoroutineNode) => (match.roundId ? c.roundId === match.roundId : isUngrouped(c))
   const forced = new Set<string>([match.id])
-  for (let parent = match.parentId ? byId.get(match.parentId) : undefined; parent && sameView(parent) && !forced.has(parent.id); ) {
-    forced.add(parent.id)
+  const walked = new Set<string>([match.id])
+  let pathDepth = 0
+  for (let parent = match.parentId ? byId.get(match.parentId) : undefined; parent && sameView(parent) && !walked.has(parent.id); ) {
+    walked.add(parent.id)
+    pathDepth++
+    if (pathDepth <= FIND_PATH_ANCESTORS) forced.add(parent.id)
     parent = parent.parentId ? byId.get(parent.parentId) : undefined
   }
   const shownByChip = selectCoroutines([match], context.stateFilter, context.leakIds).length > 0
@@ -299,6 +333,7 @@ export function revealPlan(
     showCompleted: TERMINAL.has(match.state),
     includeVizcore: context.includeVizcore || isVizcore(match),
     forcedIds: forced,
+    pathDepth,
   }
 }
 

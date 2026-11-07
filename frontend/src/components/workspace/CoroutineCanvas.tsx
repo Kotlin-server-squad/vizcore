@@ -241,7 +241,7 @@ export function CoroutineCanvas({
 
 /** A line under the canvas about what the page holds; `key` names its look hook (`history-note`, `summary-only-note`). */
 export interface CanvasNote {
-  key: 'history' | 'summary-only'
+  key: 'history' | 'summary-only' | 'path'
   text: string
 }
 

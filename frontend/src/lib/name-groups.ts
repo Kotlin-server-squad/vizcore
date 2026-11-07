@@ -103,14 +103,33 @@ export function groupSiblings(
   // Top-down order (each node after its parent), once; a node reached twice (a cycle) is visited once.
   const order: string[] = []
   const seen = new Set<string>()
-  const stack = [...roots].reverse()
-  while (stack.length > 0) {
-    const id = stack.pop()!
-    if (seen.has(id)) continue
-    seen.add(id)
-    order.push(id)
-    const kids = childrenOf.get(id)
-    if (kids) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
+  const walk = (start: string) => {
+    const stack = [start]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      order.push(id)
+      const kids = childrenOf.get(id)
+      if (kids) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
+    }
+  }
+  for (const r of roots) walk(r)
+  // A cycle in the reported parents has no root. Each such component is walked from its cycle's entry, whose parent
+  // edge every pass below then ignores, so parents come before children whatever order the snapshot lists them in.
+  const brokenEdge = new Set<string>()
+  for (const c of coroutines) {
+    if (seen.has(c.id)) continue
+    const climbed = new Set<string>()
+    let entry = c.id
+    while (!climbed.has(entry)) {
+      climbed.add(entry)
+      const p = byId.get(entry)?.parentId
+      if (!p || !known.has(p) || seen.has(p)) break
+      entry = p
+    }
+    brokenEdge.add(entry)
+    walk(entry)
   }
   // Bottom-up: subtree sizes, and whether a node or anything below it is shown.
   const size = new Map<string, number>()
@@ -120,6 +139,7 @@ export function groupSiblings(
     let n = 1
     let anyShown = !shown || shown.has(id)
     for (const k of childrenOf.get(id) ?? []) {
+      if (brokenEdge.has(k)) continue
       n += size.get(k) ?? 1
       if (shownBelow.has(k)) anyShown = true
     }
@@ -156,6 +176,7 @@ export function groupSiblings(
   const hidden = new Set<string>()
   const hiddenBelow = new Set<string>()
   const parentOf = (id: string): string | undefined => {
+    if (brokenEdge.has(id)) return undefined
     const p = byId.get(id)?.parentId
     return p && known.has(p) ? p : undefined
   }

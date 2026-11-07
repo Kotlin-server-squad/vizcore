@@ -118,6 +118,38 @@ describe('groupSiblings (S-12: siblings only, ancestry never hidden)', () => {
     expect(groups.get(groupIdOf(cs[1]!)!)!.below).toBe(cs.length - 3)
   })
 
+  it('still groups siblings whose ancestry loops (a cycle in the reported parents)', () => {
+    const cs = [
+      node('p', { parentId: 'q' }),
+      node('q', { parentId: 'p' }),
+      node('w1', { parentId: 'q', label: 'worker-1' }),
+      node('w2', { parentId: 'q', label: 'worker-2' }),
+      node('x', { parentId: 'w1', label: 'parse' }),
+    ]
+    const id = groupIdOf(cs[2]!)!
+    const { nodes, groups } = groupSiblings(cs, NONE, new Set(cs.map(c => c.id)))
+    expect(groups.get(id)).toMatchObject({ memberIds: ['w1', 'w2'], below: 1 })
+    expect(ids(nodes)).toEqual(['p', 'q', id])
+  })
+
+  it('handles a loop the same whatever order the snapshot lists it in', () => {
+    const base = [
+      node('p', { parentId: 'q' }),
+      node('q', { parentId: 'p' }),
+      node('w1', { parentId: 'q', label: 'worker-1' }),
+      node('w2', { parentId: 'q', label: 'worker-2' }),
+      node('x', { parentId: 'w1', label: 'parse' }),
+    ]
+    const id = groupIdOf(base[2]!)!
+    for (const order of [[4, 3, 2, 1, 0], [2, 4, 0, 3, 1], [1, 0, 4, 2, 3]]) {
+      const cs = order.map(i => base[i]!)
+      const { nodes, groups } = groupSiblings(cs, NONE, new Set(cs.map(c => c.id)))
+      expect(groups.get(id)!.below).toBe(1)
+      expect(nodes.map(c => c.id)).not.toContain('x')
+      expect(nodes.map(c => c.id)).toContain(id)
+    }
+  })
+
   it('keeps two parents’ order-* children apart', () => {
     const cs = [
       node('a'),

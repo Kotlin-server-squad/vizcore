@@ -67,6 +67,7 @@ import {
   poolFor,
   resolveChoice,
   revealPlan,
+  cutPath,
   roundOptionLabel,
   withForced,
   ungroupedCount,
@@ -317,6 +318,7 @@ export function SessionWorkspace({
   // Shown past the cap: a found coroutine and its ancestors (S-12). Cleared when the user picks another view.
   const [forcedIds, setForcedIds] = useState<ReadonlySet<string>>(NO_IDS)
   const [reveal, setReveal] = useState<{ id: string; key: number } | undefined>(undefined)
+  const forget = useCallback(() => setForcedIds(NO_IDS), [])
   const vizRule = useMemo(() => ({ includeVizcore }), [includeVizcore])
   const choice = useMemo<RoundChoice>(() => {
     if (!roundsMode) return ALL_ROUNDS
@@ -507,7 +509,7 @@ export function SessionWorkspace({
   }
   const pickView = (next: RoundChoice) => {
     setPickedChoice(next)
-    setForcedIds(NO_IDS)
+    forget()
   }
   // Re-read the list after a snapshot refresh while live, at most every 15 s; never while paused (it would run ahead
   // of the frozen tree).
@@ -634,9 +636,25 @@ export function SessionWorkspace({
         : choice.kind === 'unknown'
           ? 'unknown'
           : 'all'
+  // A found coroutine deeper than Find draws (S-12): from what is actually drawn, and only while it is.
+  const foundPathCut = useMemo(
+    () =>
+      reveal && forcedIds.size > 0
+        ? cutPath(reveal.id, viewCoroutines, new Set(renderedCoroutines.map(c => c.id)))
+        : null,
+    [reveal, forcedIds, viewCoroutines, renderedCoroutines],
+  )
   const canvasNotes: CanvasNote[] = [
     ...(liveStream && liveEvents.length >= LIVE_EVENTS_MAX
       ? [{ key: 'history' as const, text: `The Events tab, the second lines and the Locks, Channels, Flows and Jobs sections read the newest ${LIVE_EVENTS_MAX.toLocaleString('en-US')} events this page received.` }]
+      : []),
+    ...(foundPathCut
+      ? [
+          {
+            key: 'path' as const,
+            text: `The coroutine you found is ${foundPathCut.depth.toLocaleString('en-US')} levels below its round’s root: ${foundPathCut.missing.toLocaleString('en-US')} of its ancestors are not drawn.`,
+          },
+        ]
       : []),
     ...(isLiveView && (session?.summaryOnlyCount ?? 0) > 0
       ? [{ key: 'summary-only' as const, text: `${session!.summaryOnlyCount!.toLocaleString('en-US')} coroutines are known only from their summaries (their events were trimmed) and are not drawn.` }]
@@ -971,7 +989,7 @@ export function SessionWorkspace({
             onToggleCompleted={() => {
               setShowCompleted(prev => !prev)
               // A filter the user picks after a find is theirs: the found path is no longer forced (S-12).
-              setForcedIds(NO_IDS)
+              forget()
             }}
             capNote={capNote({
               total: cap.total,
@@ -999,7 +1017,7 @@ export function SessionWorkspace({
                 filter={stateFilter}
                 onFilterChange={next => {
                   setStateFilter(next)
-                  setForcedIds(NO_IDS)
+                  forget()
                 }}
               />
             }
@@ -1056,7 +1074,7 @@ export function SessionWorkspace({
                 onShow={showProblem}
                 onLongLived={() => {
                   setStateFilter('leaks')
-                  setForcedIds(NO_IDS)
+                  forget()
                   if (dock.maximised) dock.toggleMaximise()
                 }}
                 longLivedNote={
