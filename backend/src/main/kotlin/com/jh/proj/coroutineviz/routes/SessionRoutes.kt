@@ -90,6 +90,13 @@ fun Route.registerSessionRoutes() {
     rateLimit(RateLimitName(SESSION_CREATE_RATE_LIMIT_NAME)) {
         post("/api/sessions") {
             val name = call.request.queryParameters["name"]
+            // The demo this session is for (S-13): only a demo the server can run, so the page never
+            // offers Run again or a story for an id it cannot start. Checked before anything is created.
+            val demoId = call.request.queryParameters["demoId"]?.takeIf { it.isNotEmpty() }
+            if (demoId != null && !SessionDemos.isKnown(demoId)) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Unknown demo"))
+                return@post
+            }
             val store = tenantScopedStore()
             val session =
                 if (store != null) {
@@ -98,6 +105,7 @@ fun Route.registerSessionRoutes() {
                     SessionManager.createSession(name)
                 }
 
+            if (demoId != null) SessionDemos.record(session.sessionId, demoId)
             logger.info("Created new session via API: ${session.sessionId}")
 
             // CORR-01 (D-11): record an optional client-minted correlation token against the
@@ -470,6 +478,7 @@ internal fun snapshotResponseOf(
         lastWatermark = facts.lastWatermark,
         oldestRetainedSeq = facts.retention.oldestRetainedSeq,
         trimmed = facts.retention.trimmed,
+        demoId = SessionDemos.of(session.sessionId),
     )
 }
 

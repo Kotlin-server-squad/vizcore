@@ -529,3 +529,11 @@ html.light[data-look='a'] {
   font-size: 0.75rem;
   color: var(--text);
 }
+
+/* --- Part 9 · Run again --- */
+
+/* Run again: the small square buttons of the header. */
+[data-look='a'] [data-look-part='run-again'] {
+  height: 1.75rem;
+  border-radius: var(--radius);
+}

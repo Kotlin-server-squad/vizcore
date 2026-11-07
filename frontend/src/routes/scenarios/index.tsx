@@ -37,7 +37,7 @@ function ScenariosPage() {
     setPreparingScenario(scenarioId)
     try {
       // Create a new session for the scenario
-      const result = await createSession.mutateAsync(`scenario-${scenarioName}`)
+      const result = await createSession.mutateAsync({ name: `scenario-${scenarioName}`, demoId: scenarioId })
       // Navigate to the session with scenario info
       navigate({
         to: '/sessions/$sessionId',

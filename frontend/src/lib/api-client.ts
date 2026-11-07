@@ -219,9 +219,13 @@ class ApiClient {
   }
 
   // Session Management
-  async createSession(name?: string): Promise<CreateSessionResponse> {
-    const url = name ? `/sessions?name=${encodeURIComponent(name)}` : '/sessions'
-    return this.fetchJson<CreateSessionResponse>(url, { method: 'POST' })
+  /** [demoId]: the catalog id of the demo this session is for; the session API returns it (S-13). */
+  async createSession(name?: string, demoId?: string): Promise<CreateSessionResponse> {
+    const query = new URLSearchParams()
+    if (name) query.set('name', name)
+    if (demoId) query.set('demoId', demoId)
+    const search = query.toString().replace(/\+/g, '%20')
+    return this.fetchJson<CreateSessionResponse>(search ? `/sessions?${search}` : '/sessions', { method: 'POST' })
   }
 
   // The look experiment's results (GET /api/experiments/looks/results): same access as the sessions list.

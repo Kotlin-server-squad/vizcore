@@ -171,7 +171,8 @@ describe('first-run CTAs go somewhere useful (#139)', () => {
     )
     const calls = fetchMock.mock.calls.map(([u, init]) => `${init?.method ?? 'GET'} ${u}`)
     expect(calls).toContain('DELETE /api/sessions/scenario-old')
-    expect(calls).toContain('POST /api/sessions?name=scenario-Nested%20Coroutines')
+    // The fresh session records its demo too (S-13).
+    expect(calls).toContain('POST /api/sessions?name=scenario-Nested%20Coroutines&demoId=nested')
   })
 
   it('a failed Reset delete is shown and keeps the user on the session', async () => {

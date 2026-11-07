@@ -64,11 +64,51 @@ describe('useScenarioActions', () => {
     const { result } = renderHook(() => useScenarioActions(args()))
     await act(() => result.current.reset())
     expect(deleteSession).toHaveBeenCalledWith('s-1')
+    expect(createSession).toHaveBeenCalledWith({ name: 'scenario-Deadlock', demoId: 'sync/mutex/deadlock-demo' })
     expect(navigate).toHaveBeenCalledWith({
       to: '/sessions/$sessionId',
       params: { sessionId: 's-2' },
       search: { scenarioId: 'sync/mutex/deadlock-demo', scenarioName: 'Deadlock' },
     })
+  })
+
+  it('runs it again in a new session for the same demo, which starts the run (S-13)', async () => {
+    createSession.mockResolvedValue({ sessionId: 's-2' })
+    const { result } = renderHook(() => useScenarioActions(args()))
+    await act(() => result.current.runAgain())
+    expect(createSession).toHaveBeenCalledWith({ name: 'scenario-Deadlock', demoId: 'sync/mutex/deadlock-demo' })
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/sessions/$sessionId',
+      params: { sessionId: 's-2' },
+      search: { scenarioId: 'sync/mutex/deadlock-demo', scenarioName: 'Deadlock', run: true },
+    })
+  })
+
+  it('leaves the old session untouched when it runs again', async () => {
+    createSession.mockResolvedValue({ sessionId: 's-2' })
+    const a = args()
+    const { result } = renderHook(() => useScenarioActions(a))
+    await act(() => result.current.runAgain())
+    expect(deleteSession).not.toHaveBeenCalled()
+    expect(runScenario).not.toHaveBeenCalled()
+    expect(a.onClearEvents).not.toHaveBeenCalled()
+  })
+
+  it('names the new session from the session id when the address has no name', async () => {
+    createSession.mockResolvedValue({ sessionId: 's-2' })
+    const { result } = renderHook(() =>
+      useScenarioActions(args({ sessionId: 'scenario-Nested-Product-Page-1793993830683', scenarioName: undefined, scenarioId: 'nested' })),
+    )
+    await act(() => result.current.runAgain())
+    expect(createSession).toHaveBeenCalledWith({ name: 'scenario-Nested Product Page', demoId: 'nested' })
+  })
+
+  it('says why it could not run again, and stays', async () => {
+    createSession.mockRejectedValue(new ApiError(429, 'Too many sessions created, wait a minute'))
+    const { result } = renderHook(() => useScenarioActions(args()))
+    await act(() => result.current.runAgain())
+    expect(navigate).not.toHaveBeenCalled()
+    expect(result.current.errorText).toBe('Could not run it again: Too many sessions created, wait a minute')
   })
 
   it('does nothing on reset when the user cancels the confirmation', async () => {
@@ -79,23 +119,34 @@ describe('useScenarioActions', () => {
   })
 })
 
-describe('RunScenarioButton — today\'s Run button, kept until Run again (Part 9)', () => {
+describe('RunScenarioButton — Run Scenario, then Run again (S-13)', () => {
   it.each([
-    ['notStarted', 'Run Scenario', false],
-    ['running', 'Scenario Running', true],
-    ['finished', 'Scenario Finished', true],
-    ['failed', 'Scenario Failed', true],
-  ] as const)('%s reads %s', (outcome, label, disabled) => {
-    render(<RunScenarioButton outcome={outcome} isPending={false} onRun={vi.fn()} />)
-    const button = screen.getByRole('button', { name: label })
-    if (disabled) expect(button).toBeDisabled()
-    else expect(button).toBeEnabled()
+    ['notStarted', 'Run Scenario'],
+    ['running', 'Run again'],
+    ['finished', 'Run again'],
+    ['failed', 'Run again'],
+  ] as const)('%s reads %s, enabled', (outcome, label) => {
+    render(<RunScenarioButton outcome={outcome} isPending={false} onRun={vi.fn()} onRunAgain={vi.fn()} />)
+    expect(screen.getByRole('button', { name: label })).toBeEnabled()
   })
 
-  it('runs on press', async () => {
+  it('runs on press before the run', async () => {
     const onRun = vi.fn()
-    render(<RunScenarioButton outcome="notStarted" isPending={false} onRun={onRun} />)
+    const onRunAgain = vi.fn()
+    render(<RunScenarioButton outcome="notStarted" isPending={false} onRun={onRun} onRunAgain={onRunAgain} />)
     await userEvent.click(screen.getByRole('button', { name: 'Run Scenario' }))
     expect(onRun).toHaveBeenCalledTimes(1)
+    expect(onRunAgain).not.toHaveBeenCalled()
+  })
+
+  it('runs again on press once the run has started', async () => {
+    const onRun = vi.fn()
+    const onRunAgain = vi.fn()
+    render(<RunScenarioButton outcome="finished" isPending={false} onRun={onRun} onRunAgain={onRunAgain} />)
+    const button = screen.getByRole('button', { name: 'Run again' })
+    expect(button).toHaveAttribute('data-look-part', 'run-again')
+    await userEvent.click(button)
+    expect(onRunAgain).toHaveBeenCalledTimes(1)
+    expect(onRun).not.toHaveBeenCalled()
   })
 })
