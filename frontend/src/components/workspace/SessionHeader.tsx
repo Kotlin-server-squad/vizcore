@@ -12,6 +12,7 @@ import {
 import { FiCheck, FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
 import { useLook, useLookSlot } from '@/looks/look-context'
+import { useLookExperiment } from '@/looks/experiment/LookExperimentLayer'
 import { parseLook } from '@/looks/registry'
 import { RUNG_LABEL, type Rung } from '@/lib/fidelity-rung'
 import { formatDuration } from '@/lib/format-duration'
@@ -112,6 +113,8 @@ export function SessionHeader({
   const sharingDisabled = capabilities?.sharingEnabled === false
   // The Look switch (PR L0): offered only where the page has one (not the shared view).
   const { look, setLook, looks } = useLook()
+  // The look experiment, while it runs (null otherwise: the menu is as without it).
+  const experiment = useLookExperiment()
   // A line under the title, if the look has one (Classic: none).
   const headerSummary = useLookSlot('HeaderSummary')
   // The page's own actions in "⋯".
@@ -258,8 +261,11 @@ export function SessionHeader({
                 else if (key === 'refresh') onRefetch()
                 else if (key === 'reset') void scenario?.reset()
                 else if (key === 'clear') scenario?.clear()
+                else if (key === RATE_LOOK_KEY) experiment?.openVote()
                 else if (typeof key === 'string' && key.startsWith(LOOK_KEY)) {
-                  setLook?.(parseLook(key.slice(LOOK_KEY.length)))
+                  const next = parseLook(key.slice(LOOK_KEY.length))
+                  if (next !== look) experiment?.switched(look, next)
+                  setLook?.(next)
                 }
               }}
             >
@@ -269,7 +275,7 @@ export function SessionHeader({
                       {actionItems}
                     </DropdownSection>,
                     // Trial looks for this page (PR L0); the losing ones are deleted after the trial.
-                    <DropdownSection key="look" title="Look · trial">
+                    <DropdownSection key="look" title="Look · trial" showDivider={experiment !== null}>
                       {looks.map(l => (
                         <DropdownItem
                           key={`${LOOK_KEY}${l.id}`}
@@ -281,6 +287,14 @@ export function SessionHeader({
                         </DropdownItem>
                       ))}
                     </DropdownSection>,
+                    // The look experiment's vote, always reachable while it runs.
+                    ...(experiment
+                      ? [
+                          <DropdownSection key="rate" aria-label="Rate this look">
+                            <DropdownItem key={RATE_LOOK_KEY}>Rate this look</DropdownItem>
+                          </DropdownSection>,
+                        ]
+                      : []),
                   ]
                 : actionItems}
             </DropdownMenu>
@@ -298,6 +312,9 @@ export function SessionHeader({
 
 /** Menu keys of the Look items: `look:a`. */
 const LOOK_KEY = 'look:'
+
+/** Menu key of "Rate this look" (the look experiment). */
+const RATE_LOOK_KEY = 'rate-look'
 
 function OutcomePill({
   facts: { outcome, failedCount, ended },
