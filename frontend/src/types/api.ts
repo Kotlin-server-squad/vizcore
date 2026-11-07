@@ -191,6 +191,10 @@ export interface SessionSnapshot {
   coroutines: CoroutineNode[]
   /** The demo the session was created for (S-13); absent from older servers, null when none. */
   demoId?: string | null
+  /** Whether the server dropped older events (bounded store or retention). */
+  trimmed?: boolean
+  /** Seq of the oldest event the server still holds, null when none. */
+  oldestRetainedSeq?: number | null
 }
 
 export interface ScenarioCompletion {

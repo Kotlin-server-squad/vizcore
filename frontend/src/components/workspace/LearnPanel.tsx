@@ -4,14 +4,16 @@ import { FiAlertTriangle, FiCheckCircle, FiClock, FiInfo } from 'react-icons/fi'
 /**
  * The Learn tab (spec S-9, triage T-6): how to read the page. The legend and
  * the structured-concurrency explanation that used to sit on the page, the
- * sampling note (H-4), and a demo's own pipeline view when it has one. Story
- * mode joins it in Part 9.
+ * sampling note (H-4), a demo's own pipeline view when it has one, and story
+ * mode (Part 9) for a demo whose guide has anchors.
  *
  * Everything here explains rather than records, and says so (S-6).
  */
-export function LearnPanel({ children }: { children?: ReactNode }) {
+export function LearnPanel({ children, story }: { children?: ReactNode; story?: ReactNode }) {
   return (
     <div className="space-y-4 text-sm">
+      {/* Story mode (Part 9) first: it marks its own explanation and recorded lines apart. */}
+      {story}
       <p className="flex items-center gap-2 text-xs text-default-500">
         <FiInfo className="h-4 w-4 text-primary" aria-hidden />
         <span>Explanation, not recorded data</span>

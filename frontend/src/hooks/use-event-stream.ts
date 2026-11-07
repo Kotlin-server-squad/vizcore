@@ -3,6 +3,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { normalizeEvent } from '@/lib/utils'
 import type { VizEvent, VizEventKind } from '@/types/api'
+import { LIVE_EVENTS_MAX } from '@/lib/live-events-max'
 import {
   COROUTINE_EVENT_KINDS,
   DISPATCHER_EVENT_KINDS,
@@ -75,7 +76,7 @@ export const LIVE_REFRESH_MIN_INTERVAL_MS = 5000
  * older events would be gone after a reload anyway. Without a bound a long
  * stream grows browser memory without limit.
  */
-export const LIVE_EVENTS_MAX = 10_000
+export { LIVE_EVENTS_MAX }
 
 /**
  * Accepted events are added to the list at most once per this many ms (#268). Opening a session

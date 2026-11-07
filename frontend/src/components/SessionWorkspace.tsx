@@ -28,6 +28,9 @@ import { Inspector } from './workspace/Inspector/Inspector'
 import { EventsPanel } from './workspace/EventsPanel'
 import { DockTabs, DockTabPanel, type DockTabId } from './workspace/DockTabs'
 import { LearnPanel } from './workspace/LearnPanel'
+import { StoryPanel } from './workspace/StoryPanel'
+import { storyFor } from '@/content/gallery/story-anchors'
+import { storyHeld } from '@/lib/story'
 import { SessionSummary } from './workspace/SessionSummary'
 import { EvidencePanels } from './workspace/EvidencePanels'
 import { ChecksModal, countFailedChecks } from './workspace/ChecksModal'
@@ -147,6 +150,7 @@ export function SessionWorkspace({
     droppedCount,
     reconnect,
     replayActive,
+    replayShedCount,
     enterReplay,
     exitReplay,
     replay,
@@ -234,6 +238,8 @@ export function SessionWorkspace({
     replay,
     projectedAtCursor,
     allEvents,
+    // A session the server never trimmed starts at its oldest held event, whatever its seq (seqs also number ids).
+    sessionFirstSeq: session && session.trimmed === false ? (session.oldestRetainedSeq ?? undefined) : undefined,
   })
   const panelCoroutines = replayActive ? oneMoment.coroutines : (session?.coroutines ?? EMPTY_COROUTINES)
   // Active-only "What's running now" derivation (D-08). Default the live view to
@@ -302,6 +308,34 @@ export function SessionWorkspace({
     run: scenarioActions.run,
     onConsumed: onAutoRunConsumed ?? noAutoRun,
   })
+
+  // Story mode (S-9): the demo's guide as chapters, read from the newest events the page holds.
+  const story = useMemo(() => (demoId ? storyFor(demoId) : null), [demoId])
+  const held = useMemo(
+    () =>
+      storyHeld({
+        live: { events: allEvents, shedCount: streamEnabled ? droppedCount : 0 },
+        frozen: replayActive ? { events: replay.events, shedCount: replayShedCount } : null,
+        streaming: streamEnabled,
+        serverTrimmed: session?.trimmed === true,
+        coroutines: session?.coroutines ?? EMPTY_COROUTINES,
+      }),
+    [allEvents, streamEnabled, droppedCount, replayActive, replay.events, replayShedCount, session?.trimmed, session?.coroutines],
+  )
+  const recording = recordReplay.isArming || recordReplay.isRecording
+  // Reveal moves the page's one moment to the anchor (S-2, S-11): the replay cursor at that event,
+  // its coroutine selected, the whole tree shown. Never while a recording runs (it would stall it).
+  const revealMoment = (seq: number, coroutineId: string) => {
+    if (recording) return
+    setStateFilter('all')
+    setShowCompleted(true)
+    setSelection({ kind: 'coroutine', id: coroutineId })
+    // Seek in the frozen replay only when it is what the story read its facts from; otherwise
+    // freeze those events, so the tree at the moment is the one the chapter describes.
+    const at = replayActive && held.events === replay.events ? replay.events.findIndex(e => e.seq === seq) : -1
+    if (at >= 0) replay.seekTo(at)
+    else enterReplay(held.events, { atSeq: seq, shedCount: held.shedCount })
+  }
   // The run's length over everything the page has held: the history loaded
   // with it and whatever streamed in since — kept when the view is paused.
   const runSpanNanos = useRecordedSpan(storedEvents ?? [], liveEvents)
@@ -700,7 +734,18 @@ export function SessionWorkspace({
               )}
             </DockTabPanel>
             <DockTabPanel id="learn" selected={dockTab === 'learn'}>
-              <LearnPanel>
+              <LearnPanel
+                story={
+                  story && (
+                    <StoryPanel
+                      chapters={story}
+                      held={held}
+                      onReveal={revealMoment}
+                      revealBlocked={recording ? 'Recording…' : null}
+                    />
+                  )
+                }
+              >
                 {/* Scenario Pipeline View - shown for realistic scenarios */}
                 {scenarioId === 'order-processing' && allEvents.length > 0 && (
                   <OrderProcessingView events={allEvents} />
