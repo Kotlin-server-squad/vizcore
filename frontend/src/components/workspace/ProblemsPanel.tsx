@@ -35,6 +35,8 @@ export interface ProblemsPanelProps {
   /** Said beside Long-lived when its filter cannot hold every coroutine the health counts. */
   longLivedNote?: string
   checks: ChecksLine
+  /** An attached app, whose coroutines vizcore samples on a poll (H-4); a demo is captured in-process. */
+  sampled?: boolean
 }
 
 const SAMPLING =
@@ -80,7 +82,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
           </li>
         ))}
         {/* H-4: where nothing was detected, say how capture works. */}
-        {nothingDetected && (
+        {nothingDetected && props.sampled && (
           <li data-look-part="problems-line" className="text-default-400">
             {SAMPLING}
           </li>

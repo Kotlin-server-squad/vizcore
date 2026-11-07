@@ -193,7 +193,7 @@ describe('Inspector', () => {
     expect(within(timing).queryByText(/~0/)).toBeNull()
   })
 
-  it('shows an approximate total "so far" for a coroutine that is still running (#145)', async () => {
+  it('shows an approximate lower bound for a coroutine that is still running (#145; "at least", Part 7)', async () => {
     // Backend: total is completion-only; active/suspended count closed intervals.
     getCoroutineTimeline.mockResolvedValue(
       timeline({
@@ -214,7 +214,7 @@ describe('Inspector', () => {
     const timing = await screen.findByTestId('timing-card')
     // The event span (3s) is longer than the closed intervals (1.2s) — the
     // larger figure is the honest lower bound.
-    expect(await within(timing).findByText('~3.0 s so far')).toBeInTheDocument()
+    expect(await within(timing).findByText('at least ~3.0 s')).toBeInTheDocument()
   })
 
   it('estimates no "now" from the browser clock and gives no "may be blocked" hint of its own (Part 7, #232 removed)', async () => {
@@ -242,7 +242,7 @@ describe('Inspector', () => {
 
     const timing = await screen.findByTestId('timing-card')
     // The closed intervals (3.0 s) are what the events record; nothing counts on with the browser's clock.
-    expect(await within(timing).findByText('~3.0 s so far')).toBeInTheDocument()
+    expect(await within(timing).findByText('at least ~3.0 s')).toBeInTheDocument()
     expect(within(timing).queryByTestId('possibly-blocked')).toBeNull()
   })
 

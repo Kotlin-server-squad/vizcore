@@ -27,8 +27,8 @@ export function lifetimeSoFar(timeline: CoroutineTimeline): number | null {
  *
  * Every duration is `~`-prefixed: the backend samples on a poll, so these are
  * bounded by the poll interval rather than exact (validated sketch 001-C). A
- * coroutine still running reads "~N so far": the span of its recorded events,
- * the most the events say. Nothing counts on with the browser's clock (#232's
+ * coroutine still running reads "at least ~N": the span of its recorded events,
+ * which cannot reach to the app's latest poll (triage "Lifetimes"). Nothing counts on with the browser's clock (#232's
  * estimate is gone, Part 7). A possibly blocked coroutine shows its observed
  * transitions from the health (triage T-3), a list rather than a colour bar.
  */
@@ -64,8 +64,8 @@ export function TimingCard({
         label="Total"
         value={
           soFar !== null ? (
-            <span title="Still running: time from its first to its latest recorded event">
-              ~{formatDuration(soFar, { soFar: true })}
+            <span title="Still running: from its first to its latest recorded event; it may have run longer since">
+              at least ~{formatDuration(soFar)}
             </span>
           ) : (
             <Approx nanos={timeline?.totalDuration} />

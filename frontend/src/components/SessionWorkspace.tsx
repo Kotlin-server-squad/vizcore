@@ -1085,6 +1085,7 @@ export function SessionWorkspace({
                     : undefined
                 }
                 checks={checksLine}
+                sampled={attached}
               />
             </DockTabPanel>
             <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>

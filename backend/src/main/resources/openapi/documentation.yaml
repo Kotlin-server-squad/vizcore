@@ -3143,6 +3143,11 @@ components:
           type: string
           nullable: true
           description: "On such a suspension: the mutexId, semaphoreId or channelId waited for."
+        provenance:
+          type: string
+          nullable: true
+          enum: [REAL_FRAME, CREATION_FALLBACK, STALE]
+          description: "On a suspension: whether suspensionPoint is a frame the SDK read or a fallback; null when the producer did not say."
 
     SuspensionPoint:
       type: object

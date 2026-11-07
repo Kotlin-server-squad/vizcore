@@ -70,14 +70,19 @@ const withProblems = health({
 })
 
 describe('ProblemsPanel (S-8)', () => {
-  it('nothing detected: the honest sentence, with its "as of" and the sampling note', () => {
-    render(<ProblemsPanel {...props()} />)
+  it('nothing detected: the honest sentence, with its "as of" and, for an attached app, the sampling note', () => {
+    render(<ProblemsPanel {...props({ sampled: true })} />)
     expect(screen.getByTestId('problems-headline')).toHaveTextContent(
       'No problems detected in the captured coroutines · as of 14:02:31',
     )
     expect(screen.getByTestId('problems-headline')).toHaveAttribute('data-tone', 'clean')
     expect(screen.getByText(/samples an attached app's coroutines on a poll/)).toBeInTheDocument()
     expect(screen.getByText('Nothing possibly blocked')).toBeInTheDocument()
+  })
+
+  it('a demo, captured in-process rather than sampled, gets no sampling note', () => {
+    render(<ProblemsPanel {...props()} />)
+    expect(screen.queryByText(/samples an attached app's coroutines/)).toBeNull()
   })
 
   it('not evaluated: says so with the reason, never as healthy', () => {
