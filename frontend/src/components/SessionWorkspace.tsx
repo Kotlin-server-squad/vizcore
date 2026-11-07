@@ -32,6 +32,7 @@ import { SessionSummary } from './workspace/SessionSummary'
 import { EvidencePanels } from './workspace/EvidencePanels'
 import { ChecksModal, countFailedChecks } from './workspace/ChecksModal'
 import { useScenarioActions } from './workspace/use-scenario-actions'
+import { useAutoRun } from '@/hooks/use-auto-run'
 import { StateBar } from './StateBar'
 import { ReplayController } from './replay/ReplayController'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
@@ -91,6 +92,10 @@ interface SessionWorkspaceProps {
   startLive?: boolean
   /** A shared link's token and the cut it loaded (Part 8, M-11): its reads go through the token, bound to that cut. */
   share?: ShareBinding
+  /** Opened by Run again (`?run=true`): start the run once the session has loaded (S-13). */
+  autoRun?: boolean
+  /** Drops `run` from the address, so a reload never starts a second run. */
+  onAutoRunConsumed?: () => void
 }
 
 export function SessionWorkspace({
@@ -100,6 +105,8 @@ export function SessionWorkspace({
   readOnly = false,
   startLive = false,
   share,
+  autoRun = false,
+  onAutoRunConsumed,
 }: SessionWorkspaceProps) {
   const {
     data: storedEvents,
@@ -191,11 +198,15 @@ export function SessionWorkspace({
   const dock = useDockLayout(useLookCard().dockShare)
   // The layout around the main view and the dock is the look's (PR L0); Classic's by default.
   const sessionBody = useLookSlot('SessionBody')
-  // Run / Reset / Clear (S-3). Mutation hooks only — nothing is requested until
+  // Which demo this session runs (S-13): the address's, else the one the session
+  // was created for. What is about how the page was opened (auto-live, the
+  // opening tab) stays on the address below.
+  const demoId = scenarioId ?? session?.demoId ?? undefined
+  // Run / Run again / Reset / Clear (S-3). Mutation hooks only — nothing is requested until
   // an action is used, and none is offered in the shared view.
   const scenarioActions = useScenarioActions({
     sessionId,
-    scenarioId: scenarioId ?? '',
+    scenarioId: demoId ?? '',
     scenarioName,
     onClearEvents: () => {
       clearEvents()
@@ -281,8 +292,16 @@ export function SessionWorkspace({
   )
 
   // A demo's run outcome (S-3); an attached app has none.
-  const isDemo = hasScenario || isDemoSessionId(sessionId)
+  const isDemo = hasScenario || !!demoId || isDemoSessionId(sessionId)
   const outcome = useMemo(() => (isDemo && session ? deriveRunOutcome(session) : null), [isDemo, session])
+  // Run again opened this session: it starts its own run (S-13).
+  const noAutoRun = useCallback(() => {}, [])
+  useAutoRun({
+    requested: autoRun && !!demoId && !readOnly,
+    outcome: outcome?.outcome ?? null,
+    run: scenarioActions.run,
+    onConsumed: onAutoRunConsumed ?? noAutoRun,
+  })
   // The run's length over everything the page has held: the history loaded
   // with it and whatever streamed in since — kept when the view is paused.
   const runSpanNanos = useRecordedSpan(storedEvents ?? [], liveEvents)
@@ -483,7 +502,7 @@ export function SessionWorkspace({
         onOpenShares={() => setSharesOpen(true)}
         onOpenChecks={() => setChecksOpen(true)}
         // Run/Reset/Clear are mutations, gated OFF in the read-only shared view (T-03-22).
-        scenario={scenarioId && !readOnly ? scenarioActions : undefined}
+        scenario={demoId && !readOnly ? scenarioActions : undefined}
         panelRef={panelRef}
         panelEvents={panelEvents}
         viewMode={viewMode}

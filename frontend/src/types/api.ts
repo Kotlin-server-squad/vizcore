@@ -189,6 +189,8 @@ export interface SessionSnapshot {
   coroutineCount: number
   eventCount: number
   coroutines: CoroutineNode[]
+  /** The demo the session was created for (S-13); absent from older servers, null when none. */
+  demoId?: string | null
 }
 
 export interface ScenarioCompletion {

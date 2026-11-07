@@ -411,3 +411,10 @@ html.light[data-look='b'] {
   color: var(--text);
   font-size: 0.8125rem;
 }
+
+/* --- Part 9 · Run again --- */
+
+/* Run again: soft pills. */
+[data-look='b'] [data-look-part='run-again'] {
+  border-radius: 9999px;
+}

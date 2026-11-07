@@ -39,6 +39,7 @@ describe('B’s CSS', () => {
       'page',
       'replay-bar',
       'replay-time',
+      'run-again',
       'trimmed-note',
       'workspace',
     ])
