@@ -38,9 +38,10 @@ import { RecordConfirmModal } from './replay/RecordConfirmModal'
 import { ManageShares } from './share/ManageShares'
 import { OrderProcessingView } from './scenarios/OrderProcessingView'
 import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
-import type { ThreadActivity, VizEvent } from '@/types/api'
+import type { CoroutineNode, ThreadActivity, VizEvent } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
+import { metricsAt } from '@/lib/moment-metrics'
 import { useDockLayout } from '@/hooks/use-dock-layout'
 import { deriveRunOutcome } from '@/lib/run-outcome'
 import { useRecordedSpan } from '@/hooks/use-recorded-span'
@@ -50,6 +51,10 @@ import { projectActivity } from '@/lib/activity'
 import { eventSubject, resourceIds, resourceNames, type Selection } from '@/lib/selection'
 import type { CoroutinePicker } from './sync/CoroutineName'
 import { useLookCard, useLookSlot } from '@/looks/look-context'
+import { useOneMoment } from '@/hooks/use-one-moment'
+import { MomentSummary } from './workspace/MomentSummary'
+
+const EMPTY_COROUTINES: CoroutineNode[] = []
 
 /** Terminal coroutine states — no further transitions expected. */
 const TERMINAL_STATES = new Set<CoroutineState>([
@@ -201,10 +206,20 @@ export function SessionWorkspace({
 
   // Panel data source: replay cursor view-models vs. live snapshot (D-17).
   const panelEvents = replayActive ? replay.visibleEvents : allEvents
-  const panelCoroutines = useMemo(
-    () => (replayActive ? projectCoroutines(replay.visibleEvents) : session?.coroutines ?? []),
-    [replayActive, replay.visibleEvents, session?.coroutines],
+  const projectedAtCursor = useMemo(
+    () => (replayActive ? projectCoroutines(replay.visibleEvents) : []),
+    [replayActive, replay.visibleEvents],
   )
+  // One moment for every part (Part 8, S-11): the replay cursor or a shared link's loaded cut, and how reads bind to it.
+  const oneMoment = useOneMoment({
+    sessionId,
+    readOnly,
+    replayActive,
+    replay,
+    projectedAtCursor,
+    allEvents,
+  })
+  const panelCoroutines = replayActive ? oneMoment.coroutines : (session?.coroutines ?? EMPTY_COROUTINES)
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
@@ -265,11 +280,8 @@ export function SessionWorkspace({
   // The run's length over everything the page has held: the history loaded
   // with it and whatever streamed in since — kept when the view is paused.
   const runSpanNanos = useRecordedSpan(storedEvents ?? [], liveEvents)
-  // Where the replay cursor is, as time since the first event (the view pill).
-  const replayAtNanos = useMemo(() => {
-    const visible = replay.visibleEvents
-    return replayActive && visible.length > 0 ? visible[visible.length - 1]!.tsNanos - visible[0]!.tsNanos : null
-  }, [replayActive, replay.visibleEvents])
+  // Where the replay cursor is, on the replay clock (the view pill, Part 8 M-2).
+  const replayAtNanos = oneMoment.replayAtNanos
 
   // Which dock tab is showing (S-5). The opening tab is decided once, when the
   // session has loaded: a demo that finishes while you watch stays where you
@@ -346,12 +358,26 @@ export function SessionWorkspace({
   // fetching a coroutine that no longer exists.
   // The same for a resource no longer named by the page's events (Clear
   // events, or a history trimmed past it): no Evidence target, no events.
+  // In replay a coroutine the cursor has not reached yet keeps its selection (Part 8, M-5): it is cleared only when it
+  // is not in the replay at all.
+  const keptIds = replayActive ? oneMoment.replayCoroutineIds : coroutineIds
   useEffect(() => {
     if (selection === null) return
     const gone =
-      selection.kind === 'coroutine' ? !coroutineIds.has(selection.id) : !resources.has(selection.id)
+      selection.kind === 'coroutine'
+        ? !coroutineIds.has(selection.id) && !keptIds.has(selection.id)
+        : !resources.has(selection.id) && !replayActive
     if (gone) setSelection(null)
-  }, [selection, coroutineIds, resources])
+  }, [selection, coroutineIds, keptIds, resources, replayActive])
+  const pendingSelectionLabel =
+    replayActive && selection?.kind === 'coroutine' && !selectedCoroutine
+      ? (oneMoment.replayLabels.get(selection.id) ?? selection.id)
+      : null
+  // The session metrics at the moment, from the coroutines the tree shows and the events up to it (M-1).
+  const momentMetrics = useMemo(
+    () => (oneMoment.moment ? metricsAt(panelEvents, panelCoroutines) : null),
+    [oneMoment.moment, panelEvents, panelCoroutines],
+  )
 
   const panelThreadActivity: ThreadActivity | undefined = useMemo(() => {
     if (replayActive) return projectThreadActivity(replay.visibleEvents)
@@ -437,7 +463,8 @@ export function SessionWorkspace({
         onToggleReplay={replayActive ? exitReplay : () => enterReplay()}
         onExitReplay={exitReplay}
         loadedAtMs={dataUpdatedAt}
-        onRefetch={() => refetch()}
+        // A shared view reloads the whole page: the payload, its health and its cut come back together (M-11).
+        onRefetch={readOnly ? () => window.location.reload() : () => refetch()}
         onOpenShares={() => setSharesOpen(true)}
         onOpenChecks={() => setChecksOpen(true)}
         // Run/Reset/Clear are mutations, gated OFF in the read-only shared view (T-03-22).
@@ -526,17 +553,13 @@ export function SessionWorkspace({
             isDemo={isDemo}
             selectedCoroutineId={selectedCoroutineId}
             activity={activity}
-            // Selection is LIVE-ONLY (PD-01): replay and the read-only shared
-            // view stay presentational, with no added interactivity.
-            onSelect={
-              isLiveView
-                ? (id: string) => {
-                    setSelection({ kind: 'coroutine', id })
-                    // A selection is read in the Inspector: show it (S-4).
-                    selectDockTab('inspector')
-                  }
-                : undefined
-            }
+            // One selection in every mode (S-2, S-11): in replay and in a shared
+            // link the Inspector shows it at the page's moment (Part 8, M-5).
+            onSelect={(id: string) => {
+              setSelection({ kind: 'coroutine', id })
+              // A selection is read in the Inspector: show it (S-4).
+              selectDockTab('inspector')
+            }}
             panelRef={panelRef}
             maximised={dock.maximised}
             onToggleMaximise={dock.toggleMaximise}
@@ -572,11 +595,13 @@ export function SessionWorkspace({
             <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>
               <Inspector
                 sessionId={sessionId}
-                coroutine={isLiveView ? selectedCoroutine : null}
+                coroutine={selectedCoroutine}
                 readOnly={readOnly}
-                // T-3's session summary, live view only: in replay the metrics
-                // would report now over a frozen view, and the shared shell has
-                // no Bearer for /metrics (M-4).
+                // Outside the live view its reads are bound to the page's moment (Part 8, M-3).
+                moment={oneMoment.view}
+                pendingSelectionLabel={pendingSelectionLabel}
+                // T-3's session summary: live, from /metrics; at a moment (replay, shared link),
+                // the same tiles computed from what the tree shows at that moment (M-1).
                 emptyState={
                   isLiveView ? (
                     <SessionSummary
@@ -585,20 +610,18 @@ export function SessionWorkspace({
                       coroutineCount={session.coroutineCount}
                       eventCount={session.eventCount}
                     />
+                  ) : oneMoment.moment && momentMetrics ? (
+                    <MomentSummary
+                      metrics={momentMetrics}
+                      moment={oneMoment.moment}
+                      coroutineCount={panelCoroutines.length}
+                      incomplete={oneMoment.incomplete}
+                    />
                   ) : undefined
-                }
-                // Selection is live-only, so outside the live view the inspector
-                // must not invite a click that cannot work (#145).
-                placeholder={
-                  replayActive
-                    ? 'The inspector is paused during replay. Exit replay to inspect a coroutine.'
-                    : readOnly
-                      ? 'Coroutine details are not included in a shared link.'
-                      : undefined
                 }
                 threadActivity={panelThreadActivity}
                 // Back to the session summary (T-3) from a selection.
-                onClearSelection={isLiveView ? () => setSelection(null) : undefined}
+                onClearSelection={() => setSelection(null)}
                 activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}
               />
             </DockTabPanel>
@@ -616,9 +639,10 @@ export function SessionWorkspace({
                 captureStartNanos={captureStartNanos}
                 history={historyFailed ? 'unavailable' : historyPending ? 'loading' : 'ready'}
                 events={panelEvents}
-                selection={isLiveView ? selection : null}
-                picker={isLiveView ? picker : undefined}
-                onSelectResource={isLiveView ? setSelection : undefined}
+                selection={selection}
+                picker={picker}
+                onSelectResource={setSelection}
+                moment={oneMoment.moment}
               />
             </DockTabPanel>
             <DockTabPanel id="events" selected={dockTab === 'events'}>
@@ -629,10 +653,10 @@ export function SessionWorkspace({
               {dockTab === 'events' && (
                 <EventsPanel
                   events={panelEvents}
-                  selection={isLiveView ? selection : null}
+                  selection={selection}
                   selectionLabel={selectionLabel}
-                  subjectOf={isLiveView ? subjectOf : undefined}
-                  onSelect={isLiveView ? selectFromEvent : undefined}
+                  subjectOf={subjectOf}
+                  onSelect={selectFromEvent}
                   onShowAll={() => setSelection(null)}
                   resourceNames={names}
                 />

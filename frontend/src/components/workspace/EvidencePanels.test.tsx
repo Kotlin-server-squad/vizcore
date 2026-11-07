@@ -35,7 +35,11 @@ vi.mock('../jobs/JobPanel', () => ({
   JobPanel: (p: { events?: unknown[] }) => <div data-testid="job-panel" data-events={p.events?.length ?? 'stored'} />,
 }))
 vi.mock('../ThreadTable', () => ({ ThreadTable: () => <div data-testid="thread-table" /> }))
-vi.mock('../DispatcherOverview', () => ({ DispatcherOverview: () => <div data-testid="dispatcher-overview" /> }))
+vi.mock('../DispatcherOverview', () => ({
+  DispatcherOverview: (p: { activity?: unknown }) => (
+    <div data-testid="dispatcher-overview" data-from={p.activity ? 'page' : 'live'} />
+  ),
+}))
 
 const none: EvidenceCounts = { locks: 0, semaphores: 0, channels: 0, flows: 0, jobEvents: 0 }
 const activity: ThreadActivity = {
@@ -142,10 +146,19 @@ describe('EvidencePanels — six sections, always listed (S-4)', () => {
     expect(screen.getByTestId('dispatcher-overview')).toBeVisible()
   })
 
-  it('warns that an opened panel is not following the replay cursor (D-17)', async () => {
-    renderPanels({ replayActive: true })
+  it('follows the moment in replay: Dispatchers reads the page’s activity, with no live-data warning (Part 8, M-7)', async () => {
+    renderPanels({ replayActive: true, moment: { kind: 'replay', atNanos: 1e9, index: 4, total: 9 } })
+    expect(screen.getByTestId('moment-note')).toHaveTextContent('At 1.0 s · event 5 of 9')
     await userEvent.click(screen.getByRole('button', { name: /Dispatchers/ }))
-    expect(within(screen.getByTestId('evidence-section-Dispatchers')).getByTestId('live-data-notice')).toBeVisible()
+    expect(screen.queryByTestId('live-data-notice')).toBeNull()
+    expect(screen.getByTestId('dispatcher-overview')).toHaveAttribute('data-from', 'page')
+  })
+
+  it('keeps Dispatchers on the live session in the live view', async () => {
+    renderPanels()
+    expect(screen.queryByTestId('moment-note')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /Dispatchers/ }))
+    expect(screen.getByTestId('dispatcher-overview')).toHaveAttribute('data-from', 'live')
   })
 
   it('gives Threads no live-data warning in replay: its table follows the cursor', async () => {

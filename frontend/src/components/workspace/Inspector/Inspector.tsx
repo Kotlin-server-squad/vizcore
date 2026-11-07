@@ -7,6 +7,9 @@ import { SuspendedAtCard } from './SuspendedAtCard'
 import { RunsOnCard } from './RunsOnCard'
 import { IdentityCard } from './IdentityCard'
 import { EventsCard } from './EventsCard'
+import { MomentNote } from '../MomentNote'
+import { MomentContext, type MomentView } from '@/hooks/use-moment'
+import { momentErrorText } from '@/lib/moment-errors'
 import type { CoroutineNode, ThreadActivity } from '@/types/api'
 import type { ActivityLine } from '@/lib/activity'
 
@@ -40,6 +43,24 @@ interface InspectorProps {
   onClearSelection?: () => void
   /** What the selected coroutine waits for or holds (S-6), from the page's events. */
   activity?: ActivityLine | null
+  /**
+   * The moment the Inspector shows, outside the live view (Part 8, S-11): a replay cursor or a shared link's loaded
+   * cut. Its reads are bound to it, the read-only shared view included (it reads through the share token).
+   */
+  moment?: MomentView | null
+  /** In replay, the selection's name when the cursor's coroutines do not hold it (M-5). */
+  pendingSelectionLabel?: string | null
+  /** Why they do not: by default it does not exist yet at the cursor. */
+  pendingSelectionNote?: string
+}
+
+/**
+ * The Inspector's reads at a moment, provided to every card below (Part 8, M-3). Outside it, nothing is provided and
+ * every read is the live one.
+ */
+export function Inspector(props: InspectorProps) {
+  const body = <InspectorBody {...props} />
+  return props.moment ? <MomentContext.Provider value={props.moment}>{body}</MomentContext.Provider> : body
 }
 
 /**
@@ -54,7 +75,7 @@ interface InspectorProps {
  * `SuspendedAtCard` calls the same query — React Query dedupes on the key, so
  * this is one network request, not two.
  */
-export function Inspector({
+function InspectorBody({
   sessionId,
   coroutine,
   readOnly,
@@ -63,9 +84,19 @@ export function Inspector({
   emptyState,
   onClearSelection,
   activity = null,
+  moment = null,
+  pendingSelectionLabel = null,
+  pendingSelectionNote = 'not created yet at this moment',
 }: InspectorProps) {
-  const showTimeline = !!coroutine && !readOnly
-  const { data: timeline, dataUpdatedAt, refetch: refetchTimeline } = useCoroutineTimeline(
+  // The shared view has no credential: only a read bound to its cut (through the token) may fetch (M-11).
+  const showTimeline = !!coroutine && (!readOnly || !!moment)
+  const {
+    data: timeline,
+    dataUpdatedAt,
+    refetch: refetchTimeline,
+    moment: momentStatus,
+    error: timelineError,
+  } = useCoroutineTimeline(
     showTimeline ? sessionId : undefined,
     showTimeline ? coroutine.id : undefined,
     { followOpenPhase: true },
@@ -79,7 +110,8 @@ export function Inspector({
   const coroutineId = coroutine?.id
   const coroutineState = coroutine?.state
   useEffect(() => {
-    if (!showTimeline || !coroutineId || !coroutineState) {
+    // At a moment the read is bound to it; nothing live to follow.
+    if (moment || !showTimeline || !coroutineId || !coroutineState) {
       lastSeenRef.current = null
       return
     }
@@ -88,7 +120,7 @@ export function Inspector({
     if (last && last.id === coroutineId && last.state !== coroutineState) {
       void refetchTimeline()
     }
-  }, [showTimeline, coroutineId, coroutineState, refetchTimeline])
+  }, [moment, showTimeline, coroutineId, coroutineState, refetchTimeline])
 
   const runsOn = useMemo(
     () => (coroutine ? resolveRunsOn(threadActivity, coroutine.id) : null),
@@ -97,19 +129,40 @@ export function Inspector({
 
   const empty =
     emptyState !== undefined ? (
-      <div hidden={!!coroutine}>{emptyState}</div>
-    ) : !coroutine ? (
+      <div hidden={!!coroutine || !!pendingSelectionLabel}>{emptyState}</div>
+    ) : !coroutine && !pendingSelectionLabel ? (
       <div className="text-sm text-default-400">
         {placeholder}
       </div>
     ) : null
 
-  if (!coroutine) return empty
+  if (!coroutine) {
+    if (!pendingSelectionLabel) return empty
+    return (
+      <>
+        {empty}
+        <div data-testid="inspector-pending" className="space-y-2">
+          <MomentNote moment={moment?.moment ?? null} />
+          <p className="text-sm text-default-500">
+            <span className="font-mono">{pendingSelectionLabel}</span> · {pendingSelectionNote}
+          </p>
+          {onClearSelection && (
+            <button type="button" onClick={onClearSelection} className="text-xs text-primary hover:underline">
+              Session summary
+            </button>
+          )}
+        </div>
+      </>
+    )
+  }
+
+  const failure = momentStatus?.status === 'error' ? momentErrorText(timelineError) : null
 
   return (
     <>
       {empty}
       <div data-testid="inspector" className="space-y-3">
+        <MomentNote moment={moment?.moment ?? null} />
         <div className="flex flex-wrap items-baseline gap-x-2">
           <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
             <span className="font-mono [overflow-wrap:anywhere]">{coroutine.label ?? coroutine.id}</span>
@@ -134,6 +187,24 @@ export function Inspector({
             {activity.text}
           </p>
         )}
+        {/* At a moment (Part 8): what the read could not give, said once, above the cards. */}
+        {momentStatus?.status === 'updating' && (
+          <p className="text-sm text-default-400">Updating to this moment…</p>
+        )}
+        {failure && (
+          <p data-testid="inspector-read-error" className="text-sm text-default-500">
+            {failure.text}{' '}
+            {failure.action && (
+              <button
+                type="button"
+                onClick={() => (failure.action === 'reload' ? window.location.reload() : refetchTimeline())}
+                className="text-primary hover:underline"
+              >
+                {failure.action === 'reload' ? 'Reload' : 'Try again'}
+              </button>
+            )}
+          </p>
+        )}
         {/* Two columns on a wide dock, one below 1,024 px (S-14). D-7's order
             reads down the first column, then the events. */}
         <div className="grid gap-3 lg:grid-cols-2">
@@ -142,7 +213,7 @@ export function Inspector({
               <>
                 <TimingCard timeline={timeline} receivedAtMs={dataUpdatedAt || undefined} />
                 <SuspendedAtCard sessionId={sessionId} coroutineId={coroutine.id} />
-                <RunsOnCard runsOn={runsOn} />
+                <RunsOnCard runsOn={runsOn} title={moment ? 'Last observed on' : undefined} />
               </>
             )}
             <IdentityCard coroutine={coroutine} />

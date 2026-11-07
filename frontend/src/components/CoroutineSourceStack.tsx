@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Card, CardBody, Chip, Tooltip } from '@heroui/react'
 import { useCoroutineTimeline, useSuspensionPoints } from '@/hooks/use-timeline'
+import { useMomentView } from '@/hooks/use-moment'
 import { isUserFrame } from '@/lib/source-frames'
 import { toastSuccess } from '@/lib/toast'
 import { EmptyState } from './EmptyState'
@@ -120,6 +121,7 @@ interface CoroutineSourceStackProps {
 export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSourceStackProps) {
   // Compact-chips → expand-to-full-stack toggle (PD-08). Default collapsed.
   const [expanded, setExpanded] = useState(false)
+  const moment = useMomentView()
   const { data: timeline, isLoading, isError } = useCoroutineTimeline(
     sessionId,
     coroutineId ?? undefined,
@@ -180,7 +182,9 @@ export function CoroutineSourceStack({ sessionId, coroutineId }: CoroutineSource
     -Infinity,
     ...(timeline?.events ?? []).filter((e) => e.kind === 'coroutine.suspended').map((e) => e.seq),
   )
-  const suspendedNow = timeline?.openPhase === 'SUSPENDED' && latestSuspension?.eventSeq === newestSuspensionSeq
+  // At a moment (Part 8) there is no open phase: the timeline's state is the state at that moment.
+  const suspendedThen = timeline?.openPhase === 'SUSPENDED' || (!!moment && timeline?.state === 'SUSPENDED' && !timeline.partial)
+  const suspendedNow = suspendedThen && latestSuspension?.eventSeq === newestSuspensionSeq
   const suspensionLabel = suspendedNow ? 'Suspended at' : 'Last suspended at'
 
   return (

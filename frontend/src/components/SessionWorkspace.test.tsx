@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -47,6 +47,8 @@ vi.mock('@/hooks/use-scenarios', () => ({
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
     getThreadActivity: vi.fn(() => Promise.resolve({})),
+    getCoroutineTimeline: vi.fn(() => new Promise(() => {})),
+    getTimelineAt: vi.fn(() => new Promise(() => {})),
   },
 }))
 
@@ -73,13 +75,19 @@ vi.mock('./CoroutineTree', () => ({
 }))
 
 vi.mock('./CoroutineTreeGraph', () => ({
-  CoroutineTreeGraph: ({ coroutines }: { coroutines: { id: string }[] }) => (
+  CoroutineTreeGraph: ({ coroutines, onSelect }: { coroutines: { id: string }[]; onSelect?: (id: string) => void }) => (
     <div
       data-testid="coroutine-tree-graph"
       data-count={coroutines.length}
       data-ids={coroutines.map((c) => c.id).join(',')}
     >
       CoroutineTreeGraph
+      {onSelect &&
+        coroutines.map(c => (
+          <button key={c.id} type="button" data-testid={`select-${c.id}`} onClick={() => onSelect(c.id)}>
+            select {c.id}
+          </button>
+        ))}
     </div>
   ),
 }))
@@ -804,7 +812,7 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     expect(graph).toHaveAttribute('data-ids', 'c1,c2')
   })
 
-  it('shows LiveDataNotice on a projection-backed tab while replaying (D-17)', async () => {
+  it('keeps every Evidence section on the replay cursor, with no live-data notice, and names the moment (Part 8)', async () => {
     mockedUseSession.mockReturnValue({
       data: makeSession({ coroutineCount: 2 }),
       isLoading: false,
@@ -818,10 +826,32 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
-    // The evidence panels query the live session rather than the replay cursor,
-    // so each one says so while replaying. They are always present, so no
-    // navigation is needed to reach the notice.
-    expect(screen.getAllByTestId('live-data-notice').length).toBeGreaterThan(0)
+    // Every section reads the cursor's events or activity now (Part 8, M-7): none says it shows live data.
+    expect(screen.queryByTestId('live-data-notice')).toBeNull()
+    expect(screen.getAllByTestId('moment-note').length).toBeGreaterThan(0)
+  })
+
+  it('inspects a coroutine at the replay cursor, reading its timeline at that seq (Part 8, S-11)', async () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 2 }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: replayEvents } as unknown as ReturnType<typeof useSessionEvents>)
+
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    await userEvent.click(screen.getByTestId('select-c1'))
+    expect(await screen.findByTestId('inspector')).toBeInTheDocument()
+    const last = replayEvents[replayEvents.length - 1]!.seq
+    await waitFor(() =>
+      expect(mockedApiClient.getTimelineAt).toHaveBeenCalledWith(
+        { source: { kind: 'session', sessionId: 'session-1' }, binding: { kind: 'replay', atSeq: last } },
+        'c1',
+      ),
+    )
+    expect(mockedApiClient.getCoroutineTimeline).not.toHaveBeenCalled()
   })
 
   it('shows a clickable new-events badge for events buffered during replay; clicking exits (D-02/D-04)', async () => {
@@ -1213,18 +1243,30 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
     expect(screen.getByTestId('learn-legend')).toBeVisible()
   })
 
-  it('never invites a selection that cannot work: replay and shared views say why (#145)', async () => {
+  it('qualifies a shared link’s peak and throughput when its early events were trimmed (Part 8, M-1)', async () => {
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({
+      data: [
+        { kind: 'coroutine.created', sessionId: 'session-1', seq: 21, tsNanos: 1000, coroutineId: 'c1', jobId: 'j1', parentCoroutineId: null, scopeId: 's1', label: 'root' },
+      ],
+    } as unknown as ReturnType<typeof useSessionEvents>)
+    render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
+    expect(within(screen.getByTestId('moment-summary')).getByText(/in the kept events only/i)).toBeInTheDocument()
+  })
+
+  it('offers the summary of the moment in replay and in a shared link, instead of a paused Inspector (Part 8)', async () => {
     const { unmount } = render(<SessionWorkspace sessionId="session-1" readOnly />, {
       wrapper: createWrapper(),
     })
-    expect(screen.queryByText('Select a coroutine to inspect it')).not.toBeInTheDocument()
-    expect(screen.getByText(/not included in a shared link/i)).toBeInTheDocument()
+    expect(screen.getByTestId('moment-summary')).toBeInTheDocument()
+    expect(within(screen.getByTestId('moment-summary')).getByTestId('moment-note')).toHaveTextContent(/^As loaded · event \d+$/)
+    expect(screen.queryByText(/not included in a shared link/i)).toBeNull()
     unmount()
 
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
-    expect(screen.queryByText('Select a coroutine to inspect it')).not.toBeInTheDocument()
-    expect(screen.getByText(/paused during replay/i)).toBeInTheDocument()
+    expect(screen.queryByText(/paused during replay/i)).toBeNull()
+    expect(screen.getByTestId('moment-summary')).toBeInTheDocument()
   })
 
   it('reaches the dispatchers in replay through Evidence', async () => {

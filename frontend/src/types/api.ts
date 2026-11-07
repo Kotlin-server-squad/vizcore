@@ -537,6 +537,13 @@ export interface CoroutineTimeline {
   createdAtEpochMs?: number | null
   /** The backend's wall clock when it built this timeline (epoch ms). */
   observedAtEpochMs?: number | null
+  /**
+   * A timeline at a moment (`atSeq`/`asOfSeq`) of a coroutine whose creation is no longer retained: built on its
+   * durable summary, durations unknown (Part 8, M-10).
+   */
+  eventsTrimmed?: boolean
+  /** Replay only: its state at the cursor is not known. */
+  partial?: boolean
 }
 
 export interface TimelineEvent {

@@ -1,7 +1,9 @@
 import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
 import { useThreadLanesByDispatcher } from '@/hooks/use-thread-activity'
 import { FiCpu, FiLayers, FiZap, FiAlertCircle } from 'react-icons/fi'
-import type { DispatcherInfo } from '@/types/api'
+import { useMemo } from 'react'
+import { buildThreadLanes } from '@/lib/thread-lanes'
+import type { DispatcherInfo, ThreadActivity } from '@/types/api'
 
 interface DispatcherOverviewProps {
   sessionId: string
@@ -10,15 +12,25 @@ interface DispatcherOverviewProps {
    * fetch/poll. The shared shell carries no Bearer, so this query would 404.
    */
   enabled?: boolean
+  /**
+   * The thread activity to read instead of the live session's: the page's, at a replay moment or a shared link's
+   * loaded snapshot (Part 8, M-7). Its counts are what was observed, so the tile reads "Threads observed" (M-13).
+   */
+  activity?: ThreadActivity
 }
 
 export function DispatcherOverview({
   sessionId,
   enabled = true,
+  activity,
 }: DispatcherOverviewProps) {
   // A pure observer of the shared thread-activity query — it never polls; the
   // workspace owns the refresh cadence (#124).
-  const { dispatcherInfo, isLoading } = useThreadLanesByDispatcher(sessionId, enabled)
+  const live = useThreadLanesByDispatcher(sessionId, enabled && !activity)
+  const given = useMemo(() => (activity ? buildThreadLanes(activity).dispatcherInfo : null), [activity])
+  const dispatcherInfo = given ?? live.dispatcherInfo
+  const isLoading = !given && live.isLoading
+  const poolLabel = given ? 'Threads observed' : 'Thread Pool Size'
 
   if (isLoading) {
     return (
@@ -43,7 +55,7 @@ export function DispatcherOverview({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {dispatcherInfo.map(dispatcher => (
-        <DispatcherCard key={dispatcher.id} dispatcher={dispatcher} />
+        <DispatcherCard key={dispatcher.id} dispatcher={dispatcher} poolLabel={poolLabel} />
       ))}
     </div>
   )
@@ -62,7 +74,7 @@ const tileClasses: Record<DispatcherColor, string> = {
   warning: 'bg-warning/10 text-warning',
 }
 
-function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
+function DispatcherCard({ dispatcher, poolLabel }: { dispatcher: DispatcherInfo; poolLabel: string }) {
   const color = getDispatcherColor(dispatcher.name)
   const icon = getDispatcherIcon(dispatcher.name)
   const description = getDispatcherDescription(dispatcher.name)
@@ -91,7 +103,7 @@ function DispatcherCard({ dispatcher }: { dispatcher: DispatcherInfo }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-default-600">
               <FiCpu className="w-4 h-4" />
-              <span>Thread Pool Size</span>
+              <span>{poolLabel}</span>
             </div>
             <span className="font-semibold text-lg">{dispatcher.threadIds.length}</span>
           </div>

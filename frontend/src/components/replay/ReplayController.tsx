@@ -11,13 +11,14 @@
  * drives playback, so the playback controls are disabled in that mode.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Button, Slider, ButtonGroup, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@heroui/react'
 import { motion } from 'framer-motion'
 import { FiPlay, FiPause, FiSkipBack, FiSkipForward, FiRotateCcw, FiSquare, FiFastForward } from 'react-icons/fi'
 import { useReplayMotion } from '@/hooks/use-replay-motion'
 import type { UseReplayReturn } from '@/hooks/use-replay'
 import { replayTimeText } from '@/lib/replay-time'
+import { indexAtTime, replayClock, seconds, sliderScale } from '@/lib/replay-seek'
 
 interface ReplayControllerProps {
   replay: UseReplayReturn
@@ -102,6 +103,24 @@ export function ReplayController({
   // range input, so it is set on the input after each render.
   const sliderBox = useRef<HTMLDivElement | null>(null)
   const timeText = replayTimeText(replay.events, currentIndex)
+  // The slider moves in seconds (Part 8, M-2): its value is the cursor's time on the replay clock, and a dragged time
+  // seeks to the last event at or before it. When no time passes it steps by event.
+  const clock = useMemo(() => replayClock(replay.events), [replay.events])
+  const scale = sliderScale(clock.spanNanos)
+  const atNanos = clock.times[Math.min(currentIndex, clock.times.length - 1)] ?? 0
+  const sliderMax = scale.mode === 'time' ? scale.max : lastIndex
+  const sliderValue = scale.mode === 'time' ? Math.round(atNanos / scale.unitNanos) : currentIndex
+  const seekSlider = (value: number) =>
+    seekTo(scale.mode === 'time' ? indexAtTime(clock, value * scale.unitNanos) : value)
+  // ← → on the slider step one event, like the page's shortcuts: a tenth of a second may hold no event at all.
+  const stepByEvent = (e: ReactKeyboardEvent) => {
+    if (controlsDisabled || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
+    if (!(e.target instanceof HTMLInputElement)) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.key === 'ArrowRight') stepForward()
+    else stepBack()
+  }
   useEffect(() => {
     const input = sliderBox.current?.querySelector('input[type="range"]')
     if (!input) return
@@ -181,31 +200,39 @@ export function ReplayController({
     <motion.div
       className="flex flex-col gap-3 rounded-lg bg-content1 p-4 shadow-sm"
       data-testid="replay-controller"
+      data-look-part="replay-bar"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
       {/* Progress slider */}
-      <div ref={sliderBox} className="flex items-center gap-3">
+      <div ref={sliderBox} className="flex items-center gap-3" onKeyDownCapture={stepByEvent}>
         <Slider
           aria-label="Replay progress"
           size="sm"
           step={1}
           minValue={0}
-          maxValue={lastIndex}
-          value={currentIndex}
+          maxValue={sliderMax}
+          value={sliderValue}
           onChange={value => {
-            const idx = Array.isArray(value) ? value[0] ?? 0 : value
-            seekTo(idx)
+            const v = Array.isArray(value) ? value[0] ?? 0 : value
+            seekSlider(v)
           }}
           isDisabled={controlsDisabled}
           className="flex-1"
           color="primary"
         />
-        <span className="min-w-[100px] text-right font-mono text-xs text-default-500">
-          Event {isEmpty ? 0 : currentIndex + 1} / {totalEvents}
+        <span
+          data-testid="replay-time"
+          data-look-part="replay-time"
+          className="min-w-[100px] text-right font-mono text-xs text-default-500"
+        >
+          {scale.mode === 'time'
+            ? `${seconds(atNanos)} s / ${seconds(clock.spanNanos)} s · event ${currentIndex + 1} of ${totalEvents}`
+            : `Event ${isEmpty ? 0 : currentIndex + 1} / ${totalEvents}`}
         </span>
       </div>
+
 
       {/* Controls row */}
       <div className="flex items-center justify-between">

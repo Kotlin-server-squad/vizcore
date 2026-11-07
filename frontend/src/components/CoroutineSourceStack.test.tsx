@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { CoroutineSourceStack } from './CoroutineSourceStack'
+import { MomentContext, type MomentView } from '@/hooks/use-moment'
 
 // Mock the lazy timeline data path so the body can be driven directly.
 const useCoroutineTimeline = vi.fn()
@@ -236,6 +237,31 @@ describe('CoroutineSourceStack', () => {
     render(<CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />)
 
     expect(screen.getByText('Suspended at')).toBeInTheDocument()
+  })
+
+  it('says "Suspended at" at a replay moment where the coroutine is suspended at that frame (Part 8)', () => {
+    const atMoment = suspendedAt(timelineWithCreation(), 2)
+    useCoroutineTimeline.mockReturnValue({ ...atMoment, data: { ...atMoment.data, openPhase: null, state: 'SUSPENDED' } })
+    useSuspensionPoints.mockReturnValue([{ ...userSuspension, eventSeq: 2 }])
+    const view = { cursorSeq: 2 } as MomentView
+    render(
+      <MomentContext.Provider value={view}>
+        <CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />
+      </MomentContext.Provider>,
+    )
+    expect(screen.getByText('Suspended at')).toBeInTheDocument()
+  })
+
+  it('says "Last suspended at" at a moment where its state is unknown (Part 8, H-3)', () => {
+    const atMoment = suspendedAt(timelineWithCreation(), 2)
+    useCoroutineTimeline.mockReturnValue({ ...atMoment, data: { ...atMoment.data, openPhase: null, state: 'SUSPENDED', partial: true } })
+    useSuspensionPoints.mockReturnValue([{ ...userSuspension, eventSeq: 2 }])
+    render(
+      <MomentContext.Provider value={{ cursorSeq: 2 } as MomentView}>
+        <CoroutineSourceStack sessionId="s-1" coroutineId="c-1" />
+      </MomentContext.Provider>,
+    )
+    expect(screen.getByText('Last suspended at')).toBeInTheDocument()
   })
 
   it('says "Last suspended at" when its newest suspension has no frame', () => {

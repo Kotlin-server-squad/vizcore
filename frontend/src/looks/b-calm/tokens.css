@@ -376,3 +376,29 @@ html.light[data-look='b'] {
   --heroui-danger-foreground: 0 0% 100.00%; /* #ffffff */
 }
 /* --- end of generated block --- */
+
+/* --- Part 8 · one moment everywhere: the replay bar and the moment marker --- */
+
+/* The replay bar as a calm white card with a hairline, like the dock. */
+[data-look='b'] [data-look-part='replay-bar'] {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+[data-look='b'] [data-look-part='replay-time'] {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* "At 4.2 s · event 37 of 120": a soft pill. */
+[data-look='b'] [data-look-part='moment'] {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  color: var(--text);
+  font-size: 0.75rem;
+}

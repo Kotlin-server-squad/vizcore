@@ -25,6 +25,7 @@ import { getToken, clearToken } from './auth-store'
 import { navigateToLogin } from './navigation'
 
 import { ApiError, NetworkError, RateLimitedError, parseRetryAfter } from './api-errors'
+import { timelinePath, type MomentRead } from './moment-read'
 
 export { ApiError, NetworkError, RateLimitedError } from './api-errors'
 
@@ -450,6 +451,26 @@ class ApiClient {
     // 404 (unknown OR revoked) and any other 4xx fall through to not-found —
     // the public view has no credential to retry with.
     return { status: 'not-found' }
+  }
+
+  // Reads bound to the page's moment (Part 8): a replay cursor or a shared link's loaded cut. A session read goes
+  // through the authenticated client; a shared read through its token, with no credential and no login redirect.
+  async getTimelineAt(read: MomentRead, coroutineId: string): Promise<CoroutineTimeline> {
+    return this.momentJson<CoroutineTimeline>(read, timelinePath(read, coroutineId))
+  }
+
+  private async momentJson<T>(read: MomentRead, path: string): Promise<T> {
+    if (read.source.kind === 'session') return this.fetchJson<T>(path)
+    let response: Response
+    try {
+      response = await fetch(`${API_BASE_URL}${path}`, { headers: { 'Content-Type': 'application/json' } })
+    } catch (err) {
+      throw new NetworkError(err)
+    }
+    if (response.ok) return response.json()
+    // The shared bucket is the server's own; it does not cool down the viewer's other reads.
+    if (response.status === 429) throw new RateLimitedError(parseRetryAfter(response.headers?.get?.('Retry-After')))
+    throw await errorOf(response)
   }
 }
 

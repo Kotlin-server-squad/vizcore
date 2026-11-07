@@ -394,3 +394,32 @@ html.light[data-look='c'] {
   --heroui-danger-foreground: 0 0% 100.00%; /* #ffffff */
 }
 /* --- end of generated block --- */
+
+/* --- Part 8 · one moment everywhere: the replay bar and the moment marker --- */
+
+/* The replay bar as a bold rounded panel, its time in the display face. */
+[data-look='c'] [data-look-part='replay-bar'] {
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+[data-look='c'] [data-look-part='replay-time'] {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* "At 4.2 s · event 37 of 120": a solid pill, inverted. */
+[data-look='c'] [data-look-part='moment'] {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 9999px;
+  background: var(--text);
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}

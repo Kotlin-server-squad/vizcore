@@ -266,3 +266,54 @@ describe('ReplayController — the slider says where in time it is (S-14)', () =
     expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '4.2 seconds of 12.0')
   })
 })
+
+describe('ReplayController — the slider moves in seconds (Part 8, M-2)', () => {
+  let seq = 0
+  const at = (tsNanos: number) => ({ seq: ++seq, tsNanos, sessionId: 's', kind: 'coroutine.created' }) as unknown as VizEvent
+  // 0 s, 1 s, 1 s, 4 s, 12 s
+  const events = () => [at(0), at(1e9), at(1e9), at(4e9), at(12e9)]
+
+  it('labels the cursor in seconds and events', () => {
+    render(<ReplayController replay={makeReplay({ events: events(), currentIndex: 3, totalEvents: 5 })} />)
+    expect(screen.getByTestId('replay-time')).toHaveTextContent('4.0 s / 12.0 s · event 4 of 5')
+    expect(screen.getByTestId('replay-time')).toHaveAttribute('data-look-part', 'replay-time')
+    expect(screen.getByTestId('replay-controller')).toHaveAttribute('data-look-part', 'replay-bar')
+  })
+
+  it('sets the slider to the cursor’s time, in tenths of a second', () => {
+    render(<ReplayController replay={makeReplay({ events: events(), currentIndex: 3, totalEvents: 5 })} />)
+    const slider = screen.getByRole('slider')
+    expect(slider).toHaveAttribute('max', '120')
+    expect(slider).toHaveValue('40')
+  })
+
+  it('seeks a dragged time to the last event at or before it', () => {
+    const seekTo = vi.fn()
+    render(<ReplayController replay={makeReplay({ events: events(), currentIndex: 0, totalEvents: 5, seekTo })} />)
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '35' } })
+    expect(seekTo).toHaveBeenLastCalledWith(2)
+  })
+
+  it('steps one event with the arrow keys on the slider', () => {
+    const stepForward = vi.fn()
+    const stepBack = vi.fn()
+    const seekTo = vi.fn()
+    render(
+      <ReplayController
+        replay={makeReplay({ events: events(), currentIndex: 1, totalEvents: 5, stepForward, stepBack, seekTo })}
+      />,
+    )
+    const slider = screen.getByRole('slider')
+    fireEvent.keyDown(slider, { key: 'ArrowRight' })
+    fireEvent.keyDown(slider, { key: 'ArrowLeft' })
+    expect(stepForward).toHaveBeenCalledTimes(1)
+    expect(stepBack).toHaveBeenCalledTimes(1)
+    expect(seekTo).not.toHaveBeenCalled()
+  })
+
+  it('falls back to steps by event when no time passes', () => {
+    render(<ReplayController replay={makeReplay({ events: [at(5), at(5)], currentIndex: 1, totalEvents: 2 })} />)
+    expect(screen.getByTestId('replay-time')).toHaveTextContent('Event 2 / 2')
+    expect(screen.getByRole('slider')).toHaveAttribute('max', '1')
+  })
+})
