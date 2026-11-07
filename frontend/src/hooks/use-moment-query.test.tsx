@@ -137,6 +137,29 @@ describe('useMomentQuery', () => {
     expect(fetchAt.mock.calls.map(c => c[0])).toEqual([41])
   })
 
+  it('reads only the cursor when it is enabled and moved in the same render', async () => {
+    const fetchAt = vi.fn(async (seq: number) => `x@${seq}`)
+    const { result, rerender } = renderHook(
+      ({ enabled, cursorSeq }) => useMomentQuery(args({ fetchAt, enabled, cursorSeq })),
+      { wrapper: wrapper(), initialProps: { enabled: false, cursorSeq: 0 } },
+    )
+    rerender({ enabled: true, cursorSeq: 41 })
+    await waitFor(() => expect(result.current.data).toBe('x@41'))
+    expect(fetchAt.mock.calls.map(c => c[0])).toEqual([41])
+  })
+
+  it('reads only the cursor when released after moving while held', async () => {
+    const fetchAt = vi.fn(async (seq: number) => `x@${seq}`)
+    const { result, rerender } = renderHook(
+      ({ hold, cursorSeq }) => useMomentQuery(args({ fetchAt, hold, cursorSeq })),
+      { wrapper: wrapper(), initialProps: { hold: true, cursorSeq: 1 } },
+    )
+    rerender({ hold: true, cursorSeq: 20 })
+    rerender({ hold: false, cursorSeq: 41 })
+    await waitFor(() => expect(result.current.data).toBe('x@41'))
+    expect(fetchAt.mock.calls.map(c => c[0])).toEqual([41])
+  })
+
   it('reads nothing while disabled', () => {
     const a = args({ enabled: false })
     const { result } = renderHook(() => useMomentQuery(a), { wrapper: wrapper() })

@@ -53,10 +53,16 @@ export function useMomentQuery<T>({
   settleMs,
   hold = false,
 }: MomentQueryArgs<T>): MomentQueryResult<T> {
-  const [target, setTarget] = useState({ identity, seq: cursorSeq })
-  // A new identity is read at the cursor at once: nothing of the old one may stand for it. While disabled the target
-  // follows the cursor, so a read enabled later starts at the cursor, never at an old seq.
-  if (target.identity !== identity || (!enabled && target.seq !== cursorSeq)) setTarget({ identity, seq: cursorSeq })
+  const active = enabled && !hold
+  const [state, setState] = useState({ identity, seq: cursorSeq, active })
+  // The target moves to the cursor at once when: the identity changes (nothing of the old one may stand for it); the
+  // read is inactive (disabled or held: it follows the cursor, so it never starts at an old seq); or it has just
+  // become active. Adjusted while rendering, so this render already reads the right seq.
+  const resync =
+    state.identity !== identity || (!active && state.seq !== cursorSeq) || (active && !state.active)
+  const target = resync ? { identity, seq: cursorSeq, active } : state.active !== active ? { ...state, active } : state
+  if (target !== state) setState(target)
+  const setTarget = (next: { identity: string; seq: number }) => setState({ ...next, active })
 
   // What the read is, independent of its seq: a kept-previous read of another coroutine never counts as this one.
   const family = JSON.stringify(keyAt(-1))
@@ -64,7 +70,7 @@ export function useMomentQuery<T>({
     queryKey: keyAt(target.seq),
     queryFn: async (): Promise<Stamped<T>> => ({ family, seq: target.seq, value: await fetchAt(target.seq) }),
     // Held (a shared replay that plays): no request at all, not even a first one.
-    enabled: enabled && !hold && target.identity === identity,
+    enabled: active && target.identity === identity,
     // A read at a seq describes that moment, which does not change.
     staleTime: Infinity,
     placeholderData: keepPreviousData,
