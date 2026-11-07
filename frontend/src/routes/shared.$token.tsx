@@ -75,7 +75,10 @@ export function SharedSessionPage() {
         // The loaded cut stays put (Part 8, M-11): no later mount refetches the protected session or its events and
         // mixes newer data into a view whose reads are bound to this cut. Reload fetches the whole payload again.
         queryClient.setQueryDefaults(['sessions', sessionId], { staleTime: Infinity })
+        // A session read already in flight (an owner's own view of it) must not land on top of the loaded cut.
         seeded = sessionId
+        await queryClient.cancelQueries({ queryKey: ['sessions', sessionId] })
+        if (cancelled) return
         queryClient.setQueryData(['sessions', sessionId], res.data.session)
         queryClient.setQueryData(['sessions', sessionId, 'events'], res.data.events)
       }

@@ -195,6 +195,18 @@ describe('/shared/$token route', () => {
     expect(client.getQueryData(['sessions', 'shared-session-1'])).toBeUndefined()
   })
 
+  it('never lets a session read already in flight overwrite the loaded cut (Part 8, M-11)', async () => {
+    getSharedSession.mockResolvedValue({ status: 'ok', data: { session: makeSession(), events: [] } })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    let finish: (v: unknown) => void = () => {}
+    void client.fetchQuery({ queryKey: ['sessions', 'shared-session-1'], queryFn: () => new Promise(r => (finish = r)) }).catch(() => {})
+    renderSharedAt('tok-123', client)
+    await screen.findByTestId('session-details')
+    finish({ sessionId: 'shared-session-1', coroutineCount: 99, eventCount: 0, coroutines: [] })
+    await new Promise(r => setTimeout(r, 10))
+    expect(client.getQueryData<SessionSnapshot>(['sessions', 'shared-session-1'])?.coroutineCount).toBe(0)
+  })
+
   it('passes the share token and the loaded cut to the workspace (Part 8, M-11)', async () => {
     getSharedSession.mockResolvedValue({
       status: 'ok',
