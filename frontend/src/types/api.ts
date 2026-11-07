@@ -534,8 +534,11 @@ export interface CoroutineTimeline {
   parentId?: string | null
   childrenIds: string[]
   events: TimelineEvent[]
-  /** Unfinished only: the phase since the last recorded transition, and when it began (tsNanos). */
-  openPhase?: 'ACTIVE' | 'SUSPENDED' | null
+  /**
+   * Unfinished only: the phase since the last recorded transition, and when it began (tsNanos). WAITING_FOR_CHILDREN
+   * once its body has ended: that time is neither active nor suspended.
+   */
+  openPhase?: 'ACTIVE' | 'SUSPENDED' | 'WAITING_FOR_CHILDREN' | null
   openPhaseSinceNanos?: number | null
   /** Creation on the app JVM's monotonic (tsNanos) and wall (epoch ms) clocks. */
   createdAtNanos?: number | null

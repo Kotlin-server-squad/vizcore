@@ -96,17 +96,19 @@ class CoroutineTimelineLifecycleTest {
             send(CoroutineBodyCompleted("s", 3, 5_000, "p", "job-p", null, "io", "p"))
             rows(session, "p", 3)
 
-            // While it waits for its children no phase is open: its Active time stopped at the end of its body.
+            // While it waits for its children its Active time has stopped at the end of its body; the open phase says
+            // it waits, so a client still counts its lifetime on (and not its Active or Suspended time).
             val waiting = session.projectionService.getCoroutineTimeline("p")!!
             assertEquals(3_000L, waiting.activeDuration)
-            assertNull(waiting.openPhase)
-            assertNull(waiting.openPhaseSinceNanos)
+            assertEquals("WAITING_FOR_CHILDREN", waiting.openPhase)
+            assertEquals(5_000L, waiting.openPhaseSinceNanos)
 
             send(CoroutineCompleted("s", 4, 9_000, "p", "job-p", null, "io", "p"))
             rows(session, "p", 4)
             val done = session.projectionService.getCoroutineTimeline("p")!!
             assertEquals(3_000L, done.activeDuration)
             assertNull(done.suspendedDuration)
+            assertNull(done.openPhase)
         }
 
     @Test

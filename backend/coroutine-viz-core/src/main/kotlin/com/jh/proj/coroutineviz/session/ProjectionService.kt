@@ -316,7 +316,8 @@ class ProjectionService(
         )
     }
 
-    private enum class Phase { ACTIVE, SUSPENDED }
+    /** The phase a coroutine is in; WAITING_FOR_CHILDREN counts as neither active nor suspended time. */
+    private enum class Phase { ACTIVE, SUSPENDED, WAITING_FOR_CHILDREN }
 
     private data class DurationBreakdown(
         val active: Long?,
@@ -330,8 +331,9 @@ class ProjectionService(
      * Fold ACTIVE/SUSPENDED durations over the seq/ts-ordered raw [events].
      *
      * CoroutineStarted/CoroutineResumed open an ACTIVE phase; CoroutineSuspended closes ACTIVE
-     * and opens SUSPENDED; CoroutineResumed closes SUSPENDED; the end of the body (BodyCompleted: it now waits for its
-     * children) or a terminal event (Completed/Cancelled/Failed) closes whichever phase is open and stops accumulating.
+     * and opens SUSPENDED; CoroutineResumed closes SUSPENDED; the end of the body (BodyCompleted) closes the open phase
+     * and opens WAITING_FOR_CHILDREN, which counts as neither; a terminal event (Completed/Cancelled/Failed) closes
+     * whichever phase is open and stops accumulating.
      *
      * CRITICAL CLOCK RULE: `tsNanos` originates in the EMITTING process (the agent JVM on the
      * attach path) and has no fixed origin across JVM lifetimes — these values may ONLY be
@@ -359,7 +361,7 @@ class ProjectionService(
                     suspended += endTs - phaseStartTs
                     anySuspended = true
                 }
-                null -> Unit
+                Phase.WAITING_FOR_CHILDREN, null -> Unit
             }
         }
 
@@ -377,8 +379,14 @@ class ProjectionService(
                     phaseStartTs = event.tsNanos
                 }
 
-                // The end of the body: waiting for its children is neither active nor suspended (Part 10).
-                is CoroutineBodyCompleted, is CoroutineCompleted, is CoroutineCancelled, is CoroutineFailed -> {
+                // The end of the body: it now waits for its children, neither active nor suspended (Part 10).
+                is CoroutineBodyCompleted -> {
+                    closeInto(event.tsNanos)
+                    phase = Phase.WAITING_FOR_CHILDREN
+                    phaseStartTs = event.tsNanos
+                }
+
+                is CoroutineCompleted, is CoroutineCancelled, is CoroutineFailed -> {
                     closeInto(event.tsNanos)
                     phase = null
                 }
