@@ -103,15 +103,20 @@ export function groupSiblings(
   // Top-down order (each node after its parent), once; a node reached twice (a cycle) is visited once.
   const order: string[] = []
   const seen = new Set<string>()
-  const stack = [...roots].reverse()
-  while (stack.length > 0) {
-    const id = stack.pop()!
-    if (seen.has(id)) continue
-    seen.add(id)
-    order.push(id)
-    const kids = childrenOf.get(id)
-    if (kids) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
+  const walk = (start: string) => {
+    const stack = [start]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      order.push(id)
+      const kids = childrenOf.get(id)
+      if (kids) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
+    }
   }
+  for (const r of roots) walk(r)
+  // A cycle in the reported parents has no root: its coroutines are walked from where they first appear.
+  for (const c of coroutines) if (!seen.has(c.id)) walk(c.id)
   // Bottom-up: subtree sizes, and whether a node or anything below it is shown.
   const size = new Map<string, number>()
   const shownBelow = new Set<string>()

@@ -64,6 +64,7 @@ import {
   poolFor,
   resolveChoice,
   revealPlan,
+  FIND_PATH_ANCESTORS,
   roundOptionLabel,
   withForced,
   ungroupedCount,
@@ -275,6 +276,12 @@ export function SessionWorkspace({
   // Shown past the cap: a found coroutine and its ancestors (S-12). Cleared when the user picks another view.
   const [forcedIds, setForcedIds] = useState<ReadonlySet<string>>(NO_IDS)
   const [reveal, setReveal] = useState<{ id: string; key: number } | undefined>(undefined)
+  // A found coroutine deeper than Find draws: how deep, for the note that says its path is cut (S-12).
+  const [cutPathDepth, setCutPathDepth] = useState<number | null>(null)
+  const forget = useCallback(() => {
+    setForcedIds(NO_IDS)
+    setCutPathDepth(null)
+  }, [])
   const vizRule = useMemo(() => ({ includeVizcore }), [includeVizcore])
   const choice = useMemo<RoundChoice>(() => {
     if (!roundsMode) return ALL_ROUNDS
@@ -455,7 +462,7 @@ export function SessionWorkspace({
   }
   const pickView = (next: RoundChoice) => {
     setPickedChoice(next)
-    setForcedIds(NO_IDS)
+    forget()
   }
   // Re-read the list after a snapshot refresh while live, at most every 15 s; never while paused (it would run ahead
   // of the frozen tree).
@@ -480,6 +487,7 @@ export function SessionWorkspace({
     if (plan.showCompleted) setShowCompleted(true)
     setIncludeVizcore(plan.includeVizcore)
     setForcedIds(plan.forcedIds)
+    setCutPathDepth(plan.pathDepth > FIND_PATH_ANCESTORS ? plan.pathDepth : null)
     // Every collapsed group on the way to it opens: its own, and those its ancestors are members of (S-12).
     const byId = new Map(panelCoroutines.map(c => [c.id, c]))
     // The whole path, however deep; a coroutine met twice (a cycle in the reported parents) ends the walk.
@@ -573,6 +581,14 @@ export function SessionWorkspace({
   const canvasNotes: CanvasNote[] = [
     ...(liveStream && liveEvents.length >= LIVE_EVENTS_MAX
       ? [{ key: 'history' as const, text: `The Events tab, the second lines and the Locks, Channels, Flows and Jobs sections read the newest ${LIVE_EVENTS_MAX.toLocaleString('en-US')} events this page received.` }]
+      : []),
+    ...(cutPathDepth !== null && forcedIds.size > 0
+      ? [
+          {
+            key: 'path' as const,
+            text: `The coroutine you found is ${cutPathDepth.toLocaleString('en-US')} levels below its round’s root: it is drawn with its nearest ${FIND_PATH_ANCESTORS} ancestors only.`,
+          },
+        ]
       : []),
     ...(isLiveView && (session?.summaryOnlyCount ?? 0) > 0
       ? [{ key: 'summary-only' as const, text: `${session!.summaryOnlyCount!.toLocaleString('en-US')} coroutines are known only from their summaries (their events were trimmed) and are not drawn.` }]
@@ -848,7 +864,7 @@ export function SessionWorkspace({
             onToggleCompleted={() => {
               setShowCompleted(prev => !prev)
               // A filter the user picks after a find is theirs: the found path is no longer forced (S-12).
-              setForcedIds(NO_IDS)
+              forget()
             }}
             capNote={capNote({
               total: cap.total,
@@ -876,7 +892,7 @@ export function SessionWorkspace({
                 filter={stateFilter}
                 onFilterChange={next => {
                   setStateFilter(next)
-                  setForcedIds(NO_IDS)
+                  forget()
                 }}
                 // Shown only once a run has actually failed something (M-3): a chip
                 // reading zero for a session nobody validated is a claim we cannot make.

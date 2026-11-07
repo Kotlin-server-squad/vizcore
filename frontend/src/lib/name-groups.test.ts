@@ -118,6 +118,20 @@ describe('groupSiblings (S-12: siblings only, ancestry never hidden)', () => {
     expect(groups.get(groupIdOf(cs[1]!)!)!.below).toBe(cs.length - 3)
   })
 
+  it('still groups siblings whose ancestry loops (a cycle in the reported parents)', () => {
+    const cs = [
+      node('p', { parentId: 'q' }),
+      node('q', { parentId: 'p' }),
+      node('w1', { parentId: 'q', label: 'worker-1' }),
+      node('w2', { parentId: 'q', label: 'worker-2' }),
+      node('x', { parentId: 'w1', label: 'parse' }),
+    ]
+    const id = groupIdOf(cs[2]!)!
+    const { nodes, groups } = groupSiblings(cs, NONE, new Set(cs.map(c => c.id)))
+    expect(groups.get(id)).toMatchObject({ memberIds: ['w1', 'w2'], below: 1 })
+    expect(ids(nodes)).toEqual(['p', 'q', id])
+  })
+
   it('keeps two parents’ order-* children apart', () => {
     const cs = [
       node('a'),

@@ -440,3 +440,19 @@ describe('capRendered on a deep chain', () => {
     expect(r.rendered.every(c => c.parentId === null || r.rendered.some(p => p.id === c.parentId))).toBe(true)
   })
 })
+
+describe('revealPlan on a deep path', () => {
+  it('forces the match and its nearest 50 ancestors, and says how deep the path really is', () => {
+    const chain = Array.from({ length: 120 }, (_, i) => node(`d${i}`, { parentId: i === 0 ? null : `d${i - 1}`, roundId: 'round:d0' }))
+    const plan = revealPlan('d119', chain, { stateFilter: 'all', includeVizcore: false, leakIds: new Set(), anchorOf: () => 'd0' })!
+    expect(plan.pathDepth).toBe(119)
+    expect(plan.forcedIds.size).toBe(51)
+    expect(plan.forcedIds.has('d69')).toBe(true)
+    expect(plan.forcedIds.has('d68')).toBe(false)
+  })
+
+  it('stops at a cycle in the reported parents', () => {
+    const cyc = [node('p', { parentId: 'q', roundId: 'round:x' }), node('q', { parentId: 'p', roundId: 'round:x' })]
+    expect(revealPlan('p', cyc, { stateFilter: 'all', includeVizcore: false, leakIds: new Set(), anchorOf: () => 'p' })!.pathDepth).toBe(1)
+  })
+})
