@@ -332,8 +332,11 @@ export function SessionWorkspace({
       const capped = capRendered(shown, NODE_CAP, forcedIds)
       return { renderedCoroutines: capped.rendered, cap: capped, groups: undefined, poolSize: shown.length }
     }
-    // Grouped, the cap counts cards; the groups on a found coroutine's path stay drawn with it.
-    const grouped = groupSiblings(shown, expandedGroups)
+    // Grouped over the whole view (every state), drawn from what the chip shows: a member finishing never dissolves
+    // its group. The cap counts cards; the groups on a found coroutine's path stay drawn with it.
+    const shownIds = new Set(shown.map(c => c.id))
+    // (The shown coroutines are always part of the view: the pool and the forced path are both drawn from it.)
+    const grouped = groupSiblings(viewCoroutines, expandedGroups, shownIds)
     const forcedCards = new Set(forcedIds)
     for (const c of shown) {
       const gid = forcedIds.has(c.id) ? groupIdOf(c) : null
@@ -851,7 +854,7 @@ export function SessionWorkspace({
               cap: NODE_CAP,
               scope: capScope,
               canFind: roundsMode && choice.kind !== 'unknown',
-              coroutines: groups ? poolSize : undefined,
+              coroutines: groups && groups.size > 0 ? poolSize : undefined,
             })}
             notes={canvasNotes}
             roundBar={roundBar}
@@ -882,7 +885,8 @@ export function SessionWorkspace({
               />
             }
             isDemo={isDemo}
-            selectedCoroutineId={selectedCoroutineId}
+            // A selected group is ringed like a coroutine (S-12).
+            selectedCoroutineId={selection?.kind === 'group' ? selection.id : selectedCoroutineId}
             activity={activity}
             // One selection in every mode (S-2, S-11): in replay and in a shared
             // link the Inspector shows it at the page's moment (Part 8, M-5).

@@ -75,6 +75,16 @@ describe('groupSiblings (S-12: siblings only, ancestry never hidden)', () => {
     expect(ids(groupSiblings(cs, new Set([outer])).nodes)).toEqual(['r', outer, 'o1', 'o2', inner])
   })
 
+  it('a group stands while any member is shown: members leaving the shown set never dissolve it', () => {
+    const cs = [node('r'), ...[1, 2, 3].map(i => node(`o${i}`, { parentId: 'r', label: `order-${i}`, state: i === 1 ? CoroutineState.ACTIVE : CoroutineState.COMPLETED }))]
+    const id = groupIdOf(cs[1]!)!
+    const { nodes, groups } = groupSiblings(cs, NONE, new Set(['r', 'o1']))
+    expect(ids(nodes)).toEqual(['r', id])
+    expect(groups.get(id)!.counts).toEqual({ ACTIVE: 1, COMPLETED: 2 })
+    expect(ids(groupSiblings(cs, new Set([id]), new Set(['r', 'o1'])).nodes)).toEqual(['r', id, 'o1'])
+    expect(ids(groupSiblings(cs, NONE, new Set(['r'])).nodes)).toEqual(['r'])
+  })
+
   it('keeps two parents’ order-* children apart', () => {
     const cs = [
       node('a'),

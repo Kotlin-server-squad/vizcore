@@ -178,6 +178,19 @@ describe('SessionWorkspace — group by name (S-12)', () => {
     expect(screen.queryByText(/^Showing \d/)).toBeNull()
   })
 
+  it('members finishing never dissolve the selected group: its card and its summary stay', async () => {
+    serve(appWith([]))
+    const { rerender } = render(<SessionWorkspace sessionId="app-1" startLive />, { wrapper })
+    await waitFor(() => expect(graphIds()).toEqual(['req', groupId()]))
+    await userEvent.click(screen.getByRole('button', { name: 'select fetch-*' }))
+    expect(await screen.findByTestId('group-summary')).toHaveTextContent('3 Active')
+    const finished = fetches(3).map((c, i) => (i > 0 ? { ...c, state: CoroutineState.COMPLETED } : c))
+    serve(snapshot([node('req'), ...finished, node('other')]))
+    rerender(<SessionWorkspace sessionId="app-1" startLive />)
+    expect(graphIds()).toEqual(['req', groupId()])
+    expect(screen.getByTestId('group-summary')).toHaveTextContent('1 Active · 2 Completed')
+  })
+
   it('a selected group that is gone (grouping turned off) is no longer selected', async () => {
     serve(appWith([]))
     render(<SessionWorkspace sessionId="app-1" startLive />, { wrapper })

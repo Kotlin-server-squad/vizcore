@@ -405,3 +405,11 @@ describe('capNote with groups (cards, not coroutines)', () => {
     )
   })
 })
+
+describe('capNote unit', () => {
+  it('counts cards whenever groups are drawn, even when the totals happen to be equal', () => {
+    expect(capNote({ total: 205, rendered: 200, found: 0, cap: 200, scope: 'round', canFind: true, coroutines: 205 })).toBe(
+      'Showing 200 of 205 cards (205 coroutines in this round). Find reaches one by its name or creation site.',
+    )
+  })
+})

@@ -232,6 +232,17 @@ describe('CoroutineTreeGraph', () => {
       expect(edge).toHaveAttribute('stroke', 'currentColor')
     })
 
+    it('counts the active coroutines a collapsed group stands for, never the card itself', () => {
+      const activeGroup = { ...group, counts: { ACTIVE: 300 } }
+      render(
+        <CoroutineTreeGraph
+          coroutines={[{ ...parent, state: CoroutineState.ACTIVE }, { ...groupNode, state: CoroutineState.ACTIVE }]}
+          groups={new Map([['group:p', activeGroup]])}
+        />,
+      )
+      expect(screen.getByText('301 active')).toBeInTheDocument()
+    })
+
     it('selects the group from the card, and expands it from its button without selecting', async () => {
       const onSelect = vi.fn()
       const onToggleGroup = vi.fn()

@@ -8,7 +8,8 @@ import { apiClient } from '@/lib/api-client'
 
 export function useRoundHierarchy(sessionId: string, roundId: string | null | undefined, memberIds: readonly string[]) {
   return useQuery({
-    queryKey: ['session-round-hierarchy', sessionId, roundId, memberIds.join(',')],
+    // Sorted: the snapshot's order reshuffles, the members do not.
+    queryKey: ['session-round-hierarchy', sessionId, roundId, [...memberIds].sort().join(',')],
     queryFn: () => apiClient.getRoundHierarchy(sessionId, roundId!),
     enabled: !!roundId,
     staleTime: Infinity,

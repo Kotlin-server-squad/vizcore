@@ -65,19 +65,33 @@ export function groupMix(counts: Partial<Record<CoroutineState, number>>): strin
     .join(' · ')
 }
 
+/**
+ * Groups [coroutines] (the whole view, every state) and lists the nodes to draw. With [shown] (the filtered pool), only
+ * shown coroutines are drawn, and a group's card while any of its members is shown: a member's state change never
+ * dissolves its group, and the group's counts are always over all its members.
+ */
 export function groupSiblings(
   coroutines: readonly CoroutineNode[],
   expanded: ReadonlySet<string>,
+  shown?: ReadonlySet<string>,
 ): { nodes: CoroutineNode[]; groups: Map<string, NameGroup> } {
   const byGroup = new Map<string, CoroutineNode[]>()
   for (const c of coroutines) {
     const id = groupIdOf(c)
-    if (id !== null) byGroup.set(id, [...(byGroup.get(id) ?? []), c])
+    if (id === null) continue
+    const list = byGroup.get(id)
+    if (list) list.push(c)
+    else byGroup.set(id, [c])
   }
   const groupOf = new Map<string, string>()
   const groups = new Map<string, NameGroup>()
   const childrenOf = new Map<string, string[]>()
-  for (const c of coroutines) if (c.parentId) childrenOf.set(c.parentId, [...(childrenOf.get(c.parentId) ?? []), c.id])
+  for (const c of coroutines) {
+    if (!c.parentId) continue
+    const list = childrenOf.get(c.parentId)
+    if (list) list.push(c.id)
+    else childrenOf.set(c.parentId, [c.id])
+  }
   const below = (ids: string[]): Set<string> => {
     const seen = new Set<string>()
     const stack = ids.flatMap(id => childrenOf.get(id) ?? [])
@@ -124,7 +138,7 @@ export function groupSiblings(
   const placed = new Set<string>()
   for (const c of coroutines) {
     const gid = groupOf.get(c.id)
-    if (gid && !placed.has(gid) && !hiddenBelow.has(c.id)) {
+    if (gid && !placed.has(gid) && !hiddenBelow.has(c.id) && (!shown || groups.get(gid)!.memberIds.some(m => shown.has(m)))) {
       placed.add(gid)
       const g = groups.get(gid)!
       nodes.push({
@@ -139,7 +153,7 @@ export function groupSiblings(
       })
     }
     // A member of a collapsed group, or anything below one, is left out.
-    if (hidden.has(c.id)) continue
+    if (hidden.has(c.id) || (shown && !shown.has(c.id))) continue
     nodes.push(gid ? { ...c, parentId: gid } : c)
   }
   return { nodes, groups }

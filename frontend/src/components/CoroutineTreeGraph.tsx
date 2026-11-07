@@ -97,10 +97,16 @@ export function CoroutineTreeGraph({
   const tree = useMemo(() => buildCoroutineTree(coroutines) as TreeNode[], [coroutines])
   // The badge counts what the state bar calls Active (CREATED or ACTIVE); a parent
   // waiting for its children is not running its body (spec S-6).
-  const activeCount = useMemo(
-    () => coroutines.filter(c => c.state === 'ACTIVE' || c.state === 'CREATED').length,
-    [coroutines]
-  )
+  // A group card is no coroutine: a collapsed group counts the active members it stands for (S-12).
+  const activeCount = useMemo(() => {
+    let n = 0
+    for (const c of coroutines) {
+      const g = groups?.get(c.id)
+      if (g) n += g.expanded ? 0 : (g.counts.ACTIVE ?? 0) + (g.counts.CREATED ?? 0)
+      else if (c.state === 'ACTIVE' || c.state === 'CREATED') n++
+    }
+    return n
+  }, [coroutines, groups])
   const nodesById = useMemo(() => {
     const map = new Map<string, TreeNode>()
     const walk = (n: TreeNode) => {

@@ -80,6 +80,15 @@ describe('GroupSummary (S-12)', () => {
     await waitFor(() => expect(getRoundHierarchy).toHaveBeenCalledTimes(2))
   })
 
+  it('does not read again when the same members are only listed in another order', async () => {
+    getRoundHierarchy.mockResolvedValue([])
+    const { rerender } = render(<GroupSummary {...props()} />, { wrapper })
+    await waitFor(() => expect(getRoundHierarchy).toHaveBeenCalledTimes(1))
+    rerender(<GroupSummary {...props({ group: { ...group, memberIds: ['c', 'b', 'a'] } })} />)
+    await new Promise(r => setTimeout(r, 50))
+    expect(getRoundHierarchy).toHaveBeenCalledTimes(1)
+  })
+
   it('reveals a member, expands the group and goes back to the session summary', async () => {
     getRoundHierarchy.mockResolvedValue([])
     const p = props()
