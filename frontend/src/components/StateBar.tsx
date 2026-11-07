@@ -57,6 +57,8 @@ export function StateBar({
     { filter: 'completed', label: 'Completed', count: counts.completed, color: 'var(--success)' },
     { filter: 'cancelled', label: 'Cancelled', count: counts.cancelled, color: 'var(--warning)' },
     { filter: 'failed', label: 'Failed', count: counts.failed, color: 'var(--danger)' },
+    // Replay only (Part 8, M-9): a state the server cannot rebuild at the cursor. Neutral, never Active.
+    { filter: 'unknown', label: 'State unknown', count: counts.unknown ?? 0, color: 'var(--text-muted)' },
   ]
 
   // A potential leak is a heuristic finding, not a lifecycle fact, so it sits

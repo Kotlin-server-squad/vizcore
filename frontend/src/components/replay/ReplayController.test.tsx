@@ -316,4 +316,12 @@ describe('ReplayController — the slider moves in seconds (Part 8, M-2)', () =>
     expect(screen.getByTestId('replay-time')).toHaveTextContent('Event 2 / 2')
     expect(screen.getByRole('slider')).toHaveAttribute('max', '1')
   })
+
+  it('shows a note about where the replay starts only when it is given one', () => {
+    const { rerender } = render(<ReplayController replay={makeReplay({ events: events(), totalEvents: 5 })} />)
+    expect(screen.queryByTestId('replay-start-note')).toBeNull()
+    rerender(<ReplayController replay={makeReplay({ events: events(), totalEvents: 5 })} startNote="starts at event 40" />)
+    expect(screen.getByTestId('replay-start-note')).toHaveTextContent('starts at event 40')
+    expect(screen.getByTestId('replay-start-note')).toHaveAttribute('data-look-part', 'trimmed-note')
+  })
 })

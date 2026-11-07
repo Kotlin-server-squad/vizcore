@@ -571,12 +571,12 @@ describe('ApiClient', () => {
       registerNavigator(onLogin)
       mockFetch.mockResolvedValue({ ok: false, status: 409, json: () => Promise.resolve({ error: 'moved on', code: 'stale' }) })
       const error = await apiClient
-        .getTimelineAt({ source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'replay', atSeq: 2 } }, 'c')
+        .getHierarchyAt({ source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'replay', atSeq: 2 } })
         .catch((e: unknown) => e)
-      expect(mockFetch.mock.calls[0]![0]).toBe('/api/shared/tok/coroutines/c/timeline?atSeq=2')
+      expect(mockFetch.mock.calls[0]![0]).toBe('/api/shared/tok/hierarchy?atSeq=2')
       expect(error).toMatchObject({ status: 409, code: 'stale' })
       mockFetch.mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({}) })
-      await apiClient.getTimelineAt({ source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'replay', atSeq: 2 } }, 'c').catch(() => {})
+      await apiClient.getHierarchyAt({ source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'replay', atSeq: 2 } }).catch(() => {})
       expect(onLogin).not.toHaveBeenCalled()
     })
 

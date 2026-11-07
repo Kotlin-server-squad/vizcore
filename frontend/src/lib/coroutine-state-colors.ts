@@ -201,6 +201,8 @@ const STATE_LABEL: Record<string, string> = {
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
   FAILED: 'Failed',
+  // Replay only (Part 8, M-9): the server cannot rebuild this coroutine's state at the cursor (H-3).
+  UNKNOWN: 'State unknown',
 }
 
 /** The state's on-screen name; an unknown state is shown as recorded. */
