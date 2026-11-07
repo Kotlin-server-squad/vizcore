@@ -116,6 +116,15 @@ export function LookProvider({ link, onLinkRead, assigned = null, children }: Lo
     link !== undefined ? parseLook(link) : (storedLookChoice() ?? assigned ?? 'classic')
   )
 
+  // A new link (a client-side navigation to ?look=…) shows at once, during
+  // render, so nothing below commits the look it replaces; the effect below
+  // remembers it and reports it read.
+  const [linkShown, setLinkShown] = useState(link)
+  if (linkShown !== link) {
+    setLinkShown(link)
+    if (link !== undefined) setLookState(parseLook(link))
+  }
+
   // The experiment's assignment, arriving or withdrawn later, applies only
   // while nothing the person did (a link, a pick) says otherwise. Adjusted
   // during render, not in an effect, so the page never commits (and the

@@ -24,8 +24,12 @@ export function useLookExperimentEntry(
   config: ExperimentConfig | null
   assigned: LookId | null
 } {
-  // The link as the page opened: the page drops ?look= from its address once read.
-  const [linkAtOpen] = useState(link)
+  // The link as each session page opened: the page drops ?look= from its address once read.
+  const [opened, setOpened] = useState({ sessionId, link })
+  if (opened.sessionId !== sessionId || (link !== undefined && link !== opened.link)) {
+    setOpened({ sessionId, link })
+  }
+  const linkAtOpen = opened.sessionId === sessionId ? opened.link : link
   const [config, setConfig] = useState<ExperimentConfig | null>(null)
   const [assigned, setAssigned] = useState<LookId | null>(null)
 

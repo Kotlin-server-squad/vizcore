@@ -24,10 +24,13 @@ export interface ExperimentState {
 }
 
 let cached: ExperimentState | null = null
+/** Storage refused a read or a write: the state then lives in memory for this visit. */
+let inMemoryOnly = false
 
 /** Test hook: read storage again. */
 export function forgetExperimentState() {
   cached = null
+  inMemoryOnly = false
 }
 
 const isLook = (value: unknown): value is LookId => LOOKS.some(l => l.id === value)
@@ -56,7 +59,7 @@ const isRating = (v: unknown): v is number =>
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
 const isTrue = (v: unknown): v is true => v === true
 
-function parse(raw: string | null): ExperimentState {
+function parse(raw: string | null, knownId?: string): ExperimentState {
   let value: Record<string, unknown> = {}
   try {
     const parsed: unknown = raw ? JSON.parse(raw) : {}
@@ -67,7 +70,9 @@ function parse(raw: string | null): ExperimentState {
   const entry = value.entry as Partial<Entry> | undefined
   return {
     anonId:
-      typeof value.anonId === 'string' && UUID.test(value.anonId) ? value.anonId : newAnonId(),
+      typeof value.anonId === 'string' && UUID.test(value.anonId)
+        ? value.anonId
+        : (knownId ?? newAnonId()),
     entry:
       entry && isLook(entry.look) && (entry.kind === 'assigned' || entry.kind === 'chose')
         ? { look: entry.look, kind: entry.kind }
@@ -86,19 +91,26 @@ function write(state: ExperimentState) {
     localStorage.setItem(EXPERIMENT_STORAGE_KEY, JSON.stringify(state))
   } catch {
     // Storage blocked or full: the state still holds for this visit.
+    inMemoryOnly = true
   }
 }
 
-/** The browser's state, made (with a new anonymous id) the first time. */
+/**
+ * The browser's state, made (with a new anonymous id) the first time. Read
+ * afresh from storage each time, so a tab never writes back a stale copy over
+ * what another tab saved (a vote, a closed hint).
+ */
 export function readExperimentState(): ExperimentState {
-  if (cached) return cached
+  if (inMemoryOnly && cached) return cached
   let raw: string | null = null
   try {
     raw = localStorage.getItem(EXPERIMENT_STORAGE_KEY)
   } catch {
     // Storage blocked: keep the state in memory for this visit.
+    inMemoryOnly = true
+    if (cached) return cached
   }
-  cached = parse(raw)
+  cached = parse(raw, cached?.anonId)
   // Keep a newly made id at once, so every request of this browser carries the same one.
   if (raw === null || !raw.includes(cached.anonId)) write(cached)
   return cached

@@ -133,6 +133,31 @@ describe('the look experiment on the session page', () => {
     await waitFor(() => expect(configCalls()).toHaveLength(2))
   })
 
+  it('going to another session by a ?look= link counts that page in the linked look only', async () => {
+    const router = renderAt('/sessions/s-1')
+    await screen.findByTestId('workspace')
+    await act(async () => answerConfig(ON))
+    await waitFor(() => expect(screen.getByTestId('workspace')).toHaveTextContent('b'))
+    await act(async () => {
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 's-2' }, search: { look: 'c' } })
+    })
+    await waitFor(() => expect(screen.getByTestId('workspace')).toHaveTextContent('c'))
+    const seen = pendingEvents().filter(e => e.type === 'seen').map(e => (e.type === 'seen' ? e.look : ''))
+    expect(seen).toEqual(['b', 'c'])
+  })
+
+  it('after a failed answer, joins by the link of the session page that asked again', async () => {
+    const router = renderAt('/sessions/s-1?look=a')
+    await screen.findByTestId('workspace')
+    await act(async () => answerConfig({ error: 'Bad gateway' }, 502))
+    await act(async () => {
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 's-2' }, search: { look: 'c' } })
+    })
+    await waitFor(() => expect(configCalls()).toHaveLength(2))
+    await act(async () => answerConfig(ON))
+    await waitFor(() => expect(readExperimentState().entry).toEqual({ look: 'c', kind: 'chose' }))
+  })
+
   it('other pages and the shared view ask nothing', async () => {
     const router = renderAt('/login')
     await act(async () => {

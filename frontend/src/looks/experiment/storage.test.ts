@@ -50,6 +50,20 @@ describe('the experiment’s browser state', () => {
     expect(readExperimentState().anonId).toMatch(UUID)
   })
 
+  it('builds on what another tab saved meanwhile, never on a stale copy', () => {
+    const id = readExperimentState().anonId
+    // Another tab saves a vote and closes the hint.
+    localStorage.setItem(EXPERIMENT_STORAGE_KEY, JSON.stringify({ anonId: id, voted: { b: 4 }, hintDismissed: true }))
+    updateExperimentState(s => ({ ...s, visibleMs: { b: 1000 } }))
+    expect(JSON.parse(localStorage.getItem(EXPERIMENT_STORAGE_KEY)!)).toMatchObject({
+      anonId: id,
+      voted: { b: 4 },
+      hintDismissed: true,
+      visibleMs: { b: 1000 },
+    })
+    expect(readExperimentState().voted).toEqual({ b: 4 })
+  })
+
   it('keeps working for the visit when storage is blocked', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked')
