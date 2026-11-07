@@ -96,29 +96,40 @@ export interface SyncProjection {
 }
 
 export function projectSync(events: readonly VizEvent[] | undefined): SyncProjection {
+  const fold = syncFold()
+  if (!events || events.length === 0) return fold.result()
+  for (const event of inSeqOrder(events)) fold.apply(event)
+  return fold.result()
+}
+
+/** The lock and permit state as it stands after the events applied so far, updated one event at a time. */
+export interface SyncFold {
+  /** Applies one event (in seq order); false when it is not a lock or permit event. */
+  apply: (event: VizEvent) => boolean
+  /** Each mutex's current state, by id, in creation order. Live: changes as events are applied. */
+  readonly mutexes: ReadonlyMap<string, MutexState>
+  /** Each semaphore's current state, by id, in creation order. Live: changes as events are applied. */
+  readonly semaphores: ReadonlyMap<string, SemaphoreState>
+  result: () => SyncProjection
+}
+
+/**
+ * `projectSync`, one event at a time: the timeline (Part 10) records who holds what after each event, with exactly
+ * the rules the Evidence tab and the tree's second line read.
+ */
+export function syncFold(): SyncFold {
   const syncEvents: SyncEvent[] = []
   const mutexStates = new Map<string, MutexState>()
   const semaphoreStates = new Map<string, SemaphoreState>()
   const deadlocks: DeadlockDetected[] = []
   const warnings: PotentialDeadlockWarning[] = []
 
-  if (!events || events.length === 0) {
-    return {
-      syncEvents: [],
-      mutexes: [],
-      semaphores: [],
-      deadlocks: [],
-      warnings: [],
-      hasDeadlock: false,
-    }
-  }
-
   // Per lock, holders displaced by a later acquisition whose own release is still to be recorded: VizMutex
   // records a release after the lock has passed on. A multiset, as several handovers can come first.
   const pendingReleases = new Map<string, string[]>()
 
-  for (const event of inSeqOrder(events)) {
-    if (!SYNC_EVENT_KINDS.has(event.kind)) continue
+  const apply = (event: VizEvent): boolean => {
+    if (!SYNC_EVENT_KINDS.has(event.kind)) return false
 
     const syncEvent = event as unknown as SyncEvent
     syncEvents.push(syncEvent)
@@ -286,15 +297,25 @@ export function projectSync(events: readonly VizEvent[] | undefined): SyncProjec
         break
       }
     }
+    return true
   }
 
   return {
-    syncEvents,
-    mutexes: Array.from(mutexStates.values()),
-    semaphores: Array.from(semaphoreStates.values()),
-    deadlocks,
-    warnings,
-    hasDeadlock: deadlocks.length > 0,
+    apply,
+    mutexes: mutexStates,
+    semaphores: semaphoreStates,
+    result: () => ({
+      syncEvents: [...syncEvents],
+      mutexes: Array.from(mutexStates.values(), m => ({ ...m, waitQueue: [...m.waitQueue] })),
+      semaphores: Array.from(semaphoreStates.values(), sm => ({
+        ...sm,
+        activeHolders: sm.activeHolders.map(h => ({ ...h })),
+        waitQueue: [...sm.waitQueue],
+      })),
+      deadlocks: [...deadlocks],
+      warnings: [...warnings],
+      hasDeadlock: deadlocks.length > 0,
+    }),
   }
 }
 
