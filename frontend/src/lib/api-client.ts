@@ -13,6 +13,8 @@ import type {
   ValidationResponse,
   SessionComparison,
   MetricsResponse,
+  RoundsPage,
+  RoundsQuery,
 } from '@/types/api'
 import type {
   CreateShareResponse,
@@ -348,6 +350,20 @@ class ApiClient {
       ? `/sessions/${encodeURIComponent(sessionId)}/hierarchy?scopeId=${encodeURIComponent(scopeId)}`
       : `/sessions/${encodeURIComponent(sessionId)}/hierarchy`
     return this.fetchJson<HierarchyNode[]>(url)
+  }
+
+  /**
+   * One page of the session's rounds (triage C-3, T-4): problem rounds first, then newest. `q` is "find in all
+   * rounds" (names and creation locations); `includeVizcore` lists vizcore's own rounds too.
+   */
+  async getRounds(sessionId: string, query: RoundsQuery = {}): Promise<RoundsPage> {
+    const params = new URLSearchParams()
+    if (query.limit !== undefined) params.set('limit', String(query.limit))
+    if (query.q) params.set('q', query.q)
+    if (query.includeVizcore) params.set('includeVizcore', 'true')
+    if (query.cursor) params.set('cursor', query.cursor)
+    const search = params.toString()
+    return this.fetchJson<RoundsPage>(`/sessions/${encodeURIComponent(sessionId)}/rounds${search ? `?${search}` : ''}`)
   }
 
   async getCoroutineTimeline(sessionId: string, coroutineId: string): Promise<CoroutineTimeline> {

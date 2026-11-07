@@ -51,6 +51,29 @@ import { projectActivity } from '@/lib/activity'
 import { eventSubject, resourceIds, resourceNames, type Selection } from '@/lib/selection'
 import type { CoroutinePicker } from './sync/CoroutineName'
 import { useLookCard, useLookSlot } from '@/looks/look-context'
+import { RoundBar, type RoundOption } from './workspace/RoundBar'
+import type { CanvasNote } from './workspace/CoroutineCanvas'
+import { useRounds, useRoundSearch, type SubmittedFind } from '@/hooks/use-rounds'
+import { LIVE_EVENTS_MAX } from '@/lib/live-events'
+import {
+  capNote,
+  capRendered,
+  defaultChoice,
+  findResults,
+  hasRoundFacts,
+  poolFor,
+  resolveChoice,
+  revealPlan,
+  roundOptionLabel,
+  withForced,
+  ungroupedCount,
+  unknownRoundCount,
+  vizcoreCount,
+  asOfLabel,
+  type CapScope,
+  type RoundChoice,
+} from '@/lib/round-view'
+import type { RoundEntry } from '@/types/api'
 import { useOneMoment } from '@/hooks/use-one-moment'
 import { MomentSummary } from './workspace/MomentSummary'
 
@@ -69,6 +92,19 @@ const TERMINAL_STATES = new Set<CoroutineState>([
  * the Phase-7 ~1,800-card flat wall while keeping the active view legible.
  */
 const NODE_CAP = 200
+
+const ALL_ROUNDS: RoundChoice = { kind: 'all' }
+const NO_IDS: ReadonlySet<string> = new Set()
+
+/** How the round picker names a choice. */
+function choiceValue(choice: RoundChoice): string {
+  return choice.kind === 'round' ? `r|${choice.roundId}` : choice.kind
+}
+
+/** Re-read the round list at most this often while live, after a snapshot refresh (Part 6 plan, "Requests"). */
+const ROUNDS_REFRESH_MS = 15_000
+/** ...and when the picker gets focus, if the list is older than this. */
+const ROUNDS_FOCUS_REFRESH_MS = 2_000
 
 interface SessionWorkspaceProps {
   sessionId: string
@@ -220,35 +256,71 @@ export function SessionWorkspace({
     allEvents,
   })
   const panelCoroutines = replayActive ? oneMoment.coroutines : (session?.coroutines ?? EMPTY_COROUTINES)
+  // --- Big apps (S-12, T-4): one round at a time, find in all rounds, the vizcore toggle. Live and paused view
+  // only; replay and the shared view keep today's page (Part 8 binds them to one moment). Rounds and origins are the
+  // server's (snapshot `roundId`/`origin`, `/rounds`); nothing here decides what a round is (D-8).
+  // A page opened for a demo (its scenario, or an id vizcore mints for its runs) is a demo whatever the server's
+  // kind says: the server reads kind from the id, and some demo runs' ids (sync-…) read ATTACHED there.
+  const attached = !hasScenario && !isDemoSessionId(sessionId) && session?.kind !== 'DEMO'
+  const roundFacts = isLiveView && hasRoundFacts(session?.coroutines ?? [])
+  const [includeVizcore, setIncludeVizcore] = useState(false)
+  const rounds = useRounds(sessionId, { includeVizcore, enabled: roundFacts })
+  const roundsMode = roundFacts && rounds.status === 'success'
+  // The opening view is pinned once, when the first list arrives: new rounds never move it.
+  const [pinnedChoice, setPinnedChoice] = useState<RoundChoice | null>(null)
+  if (roundsMode && pinnedChoice === null) setPinnedChoice(defaultChoice({ attached, firstRound: rounds.rounds[0] }))
+  const [pickedChoice, setPickedChoice] = useState<RoundChoice | null>(null)
+  // Shown past the cap: a found coroutine and its ancestors (S-12). Cleared when the user picks another view.
+  const [forcedIds, setForcedIds] = useState<ReadonlySet<string>>(NO_IDS)
+  const [reveal, setReveal] = useState<{ id: string; key: number } | undefined>(undefined)
+  const vizRule = useMemo(() => ({ includeVizcore }), [includeVizcore])
+  const choice = useMemo<RoundChoice>(() => {
+    if (!roundsMode) return ALL_ROUNDS
+    const fallback = resolveChoice(pinnedChoice ?? ALL_ROUNDS, panelCoroutines, ALL_ROUNDS, vizRule)
+    return resolveChoice(pickedChoice ?? fallback, panelCoroutines, fallback, vizRule)
+  }, [roundsMode, pinnedChoice, pickedChoice, panelCoroutines, vizRule])
+  // The coroutines this view shows, before the state filter and the cap.
+  const viewCoroutines = useMemo(
+    () => (roundsMode ? poolFor(panelCoroutines, choice, vizRule) : panelCoroutines),
+    [roundsMode, panelCoroutines, choice, vizRule],
+  )
+  // The leak set as the view sees it: the Long-lived chip counts this view only.
+  const viewLeakIds = useMemo(() => {
+    if (!roundsMode) return leakIds
+    const ids = new Set(viewCoroutines.map(c => c.id))
+    return new Set([...leakIds].filter(id => ids.has(id)))
+  }, [roundsMode, leakIds, viewCoroutines])
+
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
   // When nothing is live any more the run is over, and hiding its coroutines
   // would leave an empty tree: a finished run shows all of them (spec Part 1).
   const { completedCount, activeCoroutines, allFinished } = useMemo(() => {
-    const active = panelCoroutines.filter(c => !TERMINAL_STATES.has(c.state as CoroutineState))
+    const active = viewCoroutines.filter(c => !TERMINAL_STATES.has(c.state as CoroutineState))
     return {
-      completedCount: panelCoroutines.length - active.length,
+      completedCount: viewCoroutines.length - active.length,
       activeCoroutines: active,
-      allFinished: active.length === 0 && panelCoroutines.length > 0,
+      allFinished: active.length === 0 && viewCoroutines.length > 0,
     }
-  }, [panelCoroutines])
+  }, [viewCoroutines])
   // What the tree/graph render, and how many the cap leaves out — both from the
   // same pool, so "N more" always counts what this view would have shown.
-  const { renderedCoroutines, moreCount } = useMemo(() => {
+  const { renderedCoroutines, cap } = useMemo(() => {
     // A named chip selects that state explicitly across the whole snapshot, and
     // bypasses the active-only default — you asked for completed, you get
     // completed. With no chip, the active set; everything when the user expands
     // the completed aggregate or when the run is over.
     const pool =
       stateFilter !== 'all'
-        ? selectCoroutines(panelCoroutines, stateFilter, leakIds)
+        ? selectCoroutines(viewCoroutines, stateFilter, viewLeakIds)
         : showCompleted || allFinished
-          ? panelCoroutines
+          ? viewCoroutines
           : activeCoroutines
-    const shown = pool.slice(0, NODE_CAP)
-    return { renderedCoroutines: shown, moreCount: pool.length - shown.length }
-  }, [stateFilter, showCompleted, allFinished, panelCoroutines, activeCoroutines, leakIds])
+    // A coroutine Find revealed is drawn even past the cap, with its ancestors, whatever the chip shows (S-12).
+    const capped = capRendered(withForced(pool, viewCoroutines, forcedIds), NODE_CAP, forcedIds)
+    return { renderedCoroutines: capped.rendered, cap: capped }
+  }, [stateFilter, showCompleted, allFinished, viewCoroutines, activeCoroutines, viewLeakIds, forcedIds])
 
   // Unfinished children per parent, over the whole snapshot: the "Waiting for N
   // child coroutines" line must not shrink when a chip or the cap hides them.
@@ -262,10 +334,18 @@ export function SessionWorkspace({
     return counts
   }, [panelCoroutines])
 
+  // Children per parent in the view before the cap, so a capped parent says "199 of 262 children" (S-12).
+  const childTotals = useMemo(() => {
+    if (cap.hidden === 0) return undefined
+    const totals = new Map<string, number>()
+    for (const c of viewCoroutines) if (c.parentId) totals.set(c.parentId, (totals.get(c.parentId) ?? 0) + 1)
+    return totals
+  }, [cap.hidden, viewCoroutines])
+
   /** Counts for the state bar — the whole snapshot, never the capped subset. */
   const stateCounts = useMemo(
-    () => deriveStateCounts(panelCoroutines, leakIds),
-    [panelCoroutines, leakIds],
+    () => deriveStateCounts(viewCoroutines, viewLeakIds),
+    [viewCoroutines, viewLeakIds],
   )
 
   /** The selected coroutine itself — what the inspector reads (D-7). */
@@ -301,6 +381,168 @@ export function SessionWorkspace({
     // A tab chosen on a folded dock is a tab you want to read.
     if (dock.folded) dock.toggleFold()
   }
+
+  // --- The round bar (S-12). ---
+  const captureStart = session?.captureStartAppNanos ?? null
+  const liveStream = streamEnabled && !replayActive && !readOnly
+  // Every round entry the page has read (the list, find results), so a chosen round keeps an option and its anchor.
+  const seenEntries = useRef(new Map<string, RoundEntry>())
+  for (const e of rounds.rounds) seenEntries.current.set(e.roundId, e)
+  const [findQuery, setFindQuery] = useState<SubmittedFind | null>(null)
+  const [findOpen, setFindOpen] = useState(false)
+  // Read only while the results are open: a closed search sends nothing, whatever the toggle does.
+  const search = useRoundSearch(sessionId, { q: roundsMode && findOpen ? findQuery : null })
+  for (const e of search.data?.items ?? []) seenEntries.current.set(e.roundId, e)
+  const vizcoreN = useMemo(() => vizcoreCount(panelCoroutines), [panelCoroutines])
+  const ungroupedN = useMemo(() => ungroupedCount(panelCoroutines, vizRule), [panelCoroutines, vizRule])
+  const unknownN = useMemo(() => (roundsMode ? unknownRoundCount(panelCoroutines) : 0), [roundsMode, panelCoroutines])
+  // Members per round as the snapshot holds them (fresh with every refresh, so they agree with the tree).
+  const membersByRound = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const c of panelCoroutines) {
+      if (c.roundId && (includeVizcore || c.origin !== 'VIZCORE')) counts.set(c.roundId, (counts.get(c.roundId) ?? 0) + 1)
+    }
+    return counts
+  }, [panelCoroutines, includeVizcore])
+  const roundOptions = useMemo<RoundOption[]>(() => {
+    const listed = rounds.rounds.map(e => ({
+      value: `r|${e.roundId}`,
+      // The snapshot's count, zero included: the picker never claims members the canvas cannot draw.
+      label: roundOptionLabel(e, membersByRound.get(e.roundId) ?? 0, captureStart),
+      problem: e.problem,
+    }))
+    if (choice.kind !== 'round' || listed.some(o => o.value === `r|${choice.roundId}`)) return listed
+    // The chosen round is not among those listed (found, or pushed past them): it keeps an option, without the
+    // status words of an older read (H-2).
+    const known = seenEntries.current.get(choice.roundId)
+    const anchor = panelCoroutines.find(c => c.id === choice.anchorId)
+    const kept = known
+      ? roundOptionLabel(known, membersByRound.get(choice.roundId) ?? 0, captureStart, { status: false })
+      : `${anchor?.label ?? choice.anchorId} · ${membersByRound.get(choice.roundId) ?? 0} coroutines`
+    return [{ value: `r|${choice.roundId}`, label: kept, problem: false }, ...listed]
+  }, [rounds.rounds, membersByRound, captureStart, choice, panelCoroutines])
+  const toChoice = (value: string): RoundChoice => {
+    if (value === 'all' || value === 'ungrouped' || value === 'unknown') return { kind: value }
+    const roundId = value.slice(2)
+    return { kind: 'round', roundId, anchorId: seenEntries.current.get(roundId)?.anchorId ?? roundId }
+  }
+  const pickView = (next: RoundChoice) => {
+    setPickedChoice(next)
+    setForcedIds(NO_IDS)
+  }
+  // Re-read the list after a snapshot refresh while live, at most every 15 s; never while paused (it would run ahead
+  // of the frozen tree).
+  const roundsRef = useRef(rounds)
+  roundsRef.current = rounds
+  useEffect(() => {
+    const r = roundsRef.current
+    // A failed list is re-read on the same rule, so a transient failure does not leave the page without rounds.
+    if (!roundFacts || !liveStream || r.isFetching) return
+    if (Date.now() - Math.max(r.dataUpdatedAt, r.errorUpdatedAt) >= ROUNDS_REFRESH_MS) void r.refetch()
+  }, [dataUpdatedAt, roundFacts, liveStream])
+  const chooseFound = (id: string) => {
+    const plan = revealPlan(id, panelCoroutines, {
+      stateFilter,
+      includeVizcore,
+      leakIds,
+      anchorOf: roundId => seenEntries.current.get(roundId)?.anchorId,
+    })
+    if (!plan) return
+    setPickedChoice(plan.choice)
+    setStateFilter(plan.stateFilter)
+    if (plan.showCompleted) setShowCompleted(true)
+    setIncludeVizcore(plan.includeVizcore)
+    setForcedIds(plan.forcedIds)
+    setSelection({ kind: 'coroutine', id })
+    selectDockTab('inspector')
+    // The Inspector is where a found coroutine is read: a maximised main view gives the dock back.
+    if (dock.maximised) dock.toggleMaximise()
+    setReveal(prev => ({ id, key: (prev?.key ?? 0) + 1 }))
+    setFindOpen(false)
+  }
+  const findView = (() => {
+    if (!findOpen || !findQuery) return null
+    if (search.status === 'pending') return { status: 'pending' as const, summary: '', groups: [], moreRounds: null, note: null, unsearched: null }
+    if (search.status === 'error' || !search.data)
+      return { status: 'error' as const, summary: '', groups: [], moreRounds: null, note: null, unsearched: null }
+    return {
+      status: 'ready' as const,
+      // Bound to the rule the search was submitted with, as the server's counts and caps are.
+      ...findResults(search.data, panelCoroutines, {
+        captureStartAppNanos: captureStart,
+        includeVizcore: findQuery.includeVizcore,
+        attached,
+        unsearched: unknownN,
+      }),
+    }
+  })()
+  // A capped view gets the bar too, for the Find its cap note points to (a one-round demo then shows Find only).
+  const showRoundBar =
+    roundsMode && (attached || rounds.total >= 2 || ungroupedN > 0 || unknownN > 0 || vizcoreN > 0 || cap.hidden > 0)
+  const pickerChoices = roundOptions.length + 1 + (ungroupedN > 0 ? 1 : 0) + (unknownN > 0 ? 1 : 0)
+  const roundBar = showRoundBar ? (
+    <RoundBar
+      showPicker={attached || pickerChoices > 2}
+      value={choiceValue(choice)}
+      options={roundOptions}
+      allRounds
+      problemLabel={`With a problem · ${asOfLabel({ asOfAppNanos: rounds.asOfAppNanos, asOfSeq: rounds.asOfSeq ?? 0 }, captureStart)}`}
+      ungrouped={ungroupedN}
+      unknownRound={unknownN}
+      canLoadMore={rounds.canLoadMore}
+      olderRounds={rounds.canLoadMore ? 0 : Math.max(0, rounds.total - rounds.rounds.length)}
+      onChange={value => pickView(toChoice(value))}
+      onLoadMore={rounds.loadMore}
+      onPickerFocus={() => {
+        if (liveStream && !rounds.isFetching && Date.now() - rounds.dataUpdatedAt > ROUNDS_FOCUS_REFRESH_MS) void rounds.refetch()
+      }}
+      vizcoreCount={vizcoreN}
+      includeVizcore={includeVizcore}
+      onToggleVizcore={setIncludeVizcore}
+      originUnknown={attached && session?.origin === 'UNKNOWN'}
+      find={{
+        results: findView,
+        onSubmit: text => {
+          // The search keeps the vizcore rule it was submitted with: one request per submit.
+          setFindQuery({ text, at: Date.now(), includeVizcore })
+          setFindOpen(true)
+        },
+        onChoose: id => chooseFound(id),
+        onOpenRound: roundId => {
+          pickView({ kind: 'round', roundId, anchorId: seenEntries.current.get(roundId)?.anchorId ?? roundId })
+          setFindOpen(false)
+        },
+        onClose: () => setFindOpen(false),
+      }}
+    />
+  ) : attached && isLiveView && (session?.coroutines.length ?? 0) > 0 && (!roundFacts || rounds.status === 'error') ? (
+    <div data-look-part="round-bar" className="border-b border-default-200 px-3 py-1.5 text-xs text-default-500">
+      Rounds unavailable for this session
+    </div>
+  ) : null
+  const capScope: CapScope = !roundsMode
+    ? 'view'
+    : choice.kind === 'round'
+      ? 'round'
+      : choice.kind === 'ungrouped'
+        ? 'ungrouped'
+        : choice.kind === 'unknown'
+          ? 'unknown'
+          : 'all'
+  const canvasNotes: CanvasNote[] = [
+    ...(liveStream && liveEvents.length >= LIVE_EVENTS_MAX
+      ? [{ key: 'history' as const, text: `The Events tab, the second lines and the Locks, Channels, Flows and Jobs sections read the newest ${LIVE_EVENTS_MAX.toLocaleString('en-US')} events this page received.` }]
+      : []),
+    ...(isLiveView && (session?.summaryOnlyCount ?? 0) > 0
+      ? [{ key: 'summary-only' as const, text: `${session!.summaryOnlyCount!.toLocaleString('en-US')} coroutines are known only from their summaries (their events were trimmed) and are not drawn.` }]
+      : []),
+  ]
+  const emptyReason =
+    roundsMode && viewCoroutines.length === 0 && !includeVizcore && vizcoreN > 0 && choice.kind !== 'round'
+      ? ('vizcore-hidden' as const)
+      : roundsMode && choice.kind === 'round'
+        ? ('round' as const)
+        : undefined
 
   // What the Evidence tab holds, named on its label (S-4).
   const evidenceCounts = useMemo(() => countEvidence(panelEvents), [panelEvents])
@@ -464,7 +706,14 @@ export function SessionWorkspace({
         onExitReplay={exitReplay}
         loadedAtMs={dataUpdatedAt}
         // A shared view reloads the whole page: the payload, its health and its cut come back together (M-11).
-        onRefetch={readOnly ? () => window.location.reload() : () => refetch()}
+        onRefetch={
+          readOnly
+            ? () => window.location.reload()
+            : () => {
+                void refetch()
+                if (roundFacts) void rounds.refetch()
+              }
+        }
         onOpenShares={() => setSharesOpen(true)}
         onOpenChecks={() => setChecksOpen(true)}
         // Run/Reset/Clear are mutations, gated OFF in the read-only shared view (T-03-22).
@@ -521,7 +770,7 @@ export function SessionWorkspace({
           out by the look (Classic: a column, the main view above the dock). */}
       {sessionBody({
         sharedRef: dock.sharedRef,
-        overview: { counts: stateCounts, coroutines: panelCoroutines, activity },
+        overview: { counts: stateCounts, coroutines: viewCoroutines, activity },
         main: (
           <CoroutineCanvas
             coroutines={renderedCoroutines}
@@ -530,8 +779,26 @@ export function SessionWorkspace({
             completedCount={completedCount}
             allFinished={allFinished}
             showCompleted={showCompleted}
-            onToggleCompleted={() => setShowCompleted(prev => !prev)}
-            moreCount={moreCount}
+            onToggleCompleted={() => {
+              setShowCompleted(prev => !prev)
+              // A filter the user picks after a find is theirs: the found path is no longer forced (S-12).
+              setForcedIds(NO_IDS)
+            }}
+            capNote={capNote({
+              total: cap.total,
+              rendered: cap.rendered.length,
+              found: cap.found,
+              cap: NODE_CAP,
+              scope: capScope,
+              canFind: roundsMode && choice.kind !== 'unknown',
+            })}
+            notes={canvasNotes}
+            roundBar={roundBar}
+            loadingRounds={roundFacts && attached && rounds.status === 'pending'}
+            emptyReason={emptyReason}
+            reveal={reveal}
+            inRound={roundsMode && choice.kind === 'round'}
+            childTotals={childTotals}
             pendingChildCounts={pendingChildCounts}
             stateFilter={stateFilter}
             stateBar={
@@ -540,7 +807,10 @@ export function SessionWorkspace({
                 bare
                 counts={stateCounts}
                 filter={stateFilter}
-                onFilterChange={setStateFilter}
+                onFilterChange={next => {
+                  setStateFilter(next)
+                  setForcedIds(NO_IDS)
+                }}
                 // Shown only once a run has actually failed something (M-3): a chip
                 // reading zero for a session nobody validated is a claim we cannot make.
                 action={

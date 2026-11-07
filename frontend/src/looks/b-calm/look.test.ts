@@ -35,10 +35,16 @@ describe('B’s CSS', () => {
       'header',
       'header-actions',
       'main',
+      'main-body',
       'moment',
       'page',
       'replay-bar',
       'replay-time',
+      'round-bar',
+      'round-find',
+      'round-find-match',
+      'round-find-results',
+      'round-picker',
       'workspace',
     ])
     for (const part of parts) expect(code, part).toContain(`data-look-part="${part}"`)
