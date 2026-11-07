@@ -2821,6 +2821,11 @@ components:
         trimmed:
           type: boolean
           description: Whether older events were dropped
+        summaryOnlyCount:
+          type: integer
+          description: >
+            Coroutines the summaries know that `coroutines` does not hold (vizcore's own left out):
+            a database session reloaded after a trim rebuilds its nodes from the retained events.
 
     CoroutineNodeDto:
       type: object
@@ -2850,6 +2855,20 @@ components:
           type: string
           description: "Current coroutine state"
           enum: [CREATED, ACTIVE, SUSPENDED, WAITING_FOR_CHILDREN, COMPLETED, CANCELLED, FAILED]
+        roundId:
+          type: string
+          nullable: true
+          description: >
+            The round this coroutine belongs to (derived from the session's summaries, as in
+            /rounds). Null when it has no round (its ancestry reaches an untracked parent), has no
+            summary yet, or the session keeps no usable summaries.
+        origin:
+          type: string
+          nullable: true
+          enum: [APP, VIZCORE, UNKNOWN]
+          description: >
+            Its effective origin: APP for every demo coroutine, UNKNOWN throughout a session whose
+            producer reports no origin. Null without a summary.
 
     # -----------------------------------------------------------------------
     # Events
@@ -4320,6 +4339,11 @@ components:
           - $ref: "#/components/schemas/CappedStrings"
           nullable: true
           description: 'With q: matching coroutines that belong to no round'
+        asOfAppNanos:
+          type: integer
+          format: int64
+          nullable: true
+          description: App-clock time of the observation the problem marks are about (the health asOf); null before any
     IncidentsPage:
       type: object
       required:

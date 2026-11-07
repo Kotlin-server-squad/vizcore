@@ -75,6 +75,11 @@ data class SessionSnapshotResponse(
     val oldestRetainedSeq: Long?,
     /** Whether older events were dropped (bounded store or retention). */
     val trimmed: Boolean,
+    /**
+     * Coroutines the summaries know that [coroutines] does not hold, vizcore's own left out: a database session reloaded
+     * after its events were trimmed rebuilds its nodes from the retained events (dock S-12, "the page says so").
+     */
+    val summaryOnlyCount: Int = 0,
 )
 
 @Serializable
@@ -85,6 +90,13 @@ data class CoroutineNodeDto(
     val scopeId: String,
     val label: String?,
     val state: String,
+    /**
+     * The round this coroutine belongs to (spec "Rounds", dock S-12): null when it has no round (its ancestry reaches
+     * an untracked parent) or no summary yet, or the session keeps no usable summaries.
+     */
+    val roundId: String? = null,
+    /** Its effective origin (spec "Origin"); null without a summary. */
+    val origin: CoroutineOrigin? = null,
 )
 
 /**

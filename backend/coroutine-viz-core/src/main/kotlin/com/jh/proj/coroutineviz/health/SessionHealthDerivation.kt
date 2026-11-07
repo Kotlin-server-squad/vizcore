@@ -132,7 +132,11 @@ object SessionHealthDerivation {
         return if (kind == SessionKind.DEMO || reported) SessionOrigin.REPORTED else SessionOrigin.UNKNOWN
     }
 
-    private fun effectiveOrigin(
+    /**
+     * A coroutine's origin as every read counts it (spec "Origin"): a demo's are the app's, a session whose producer
+     * reports no origin is `UNKNOWN` throughout, else the summary's origin (`UNKNOWN` when it has none).
+     */
+    fun effectiveOrigin(
         s: CoroutineSummary,
         demo: Boolean,
         sessionOrigin: SessionOrigin,
