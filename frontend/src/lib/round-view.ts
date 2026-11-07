@@ -321,9 +321,15 @@ export function capRendered(
   const kept = new Set<string>()
   for (const id of pool.map(c => c.id).sort()) {
     if (kept.has(id)) continue
+    // Walk up only as far as the cards left allow: a longer path cannot be kept anyway (bounds the work at n × cap).
+    const room = cap - kept.size
     const path: string[] = []
-    for (let c = byId.get(id); c && !kept.has(c.id); c = c.parentId ? byId.get(c.parentId) : undefined) path.push(c.id)
-    if (kept.size + path.length > cap) continue
+    let c = byId.get(id)
+    while (c && !kept.has(c.id) && path.length <= room) {
+      path.push(c.id)
+      c = c.parentId ? byId.get(c.parentId) : undefined
+    }
+    if (path.length > room) continue
     for (const p of path) kept.add(p)
     if (kept.size === cap) break
   }

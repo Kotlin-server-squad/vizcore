@@ -424,3 +424,19 @@ describe('capRendered keeps ancestry', () => {
     expect(r.rendered).toHaveLength(200)
   })
 })
+
+describe('capRendered on a deep chain', () => {
+  it('stays fast when the deepest coroutines sort first', () => {
+    // c00000 is the deepest: every candidate's path runs up the whole chain.
+    const n = 20_000
+    const chain = Array.from({ length: n }, (_, i) =>
+      node(`c${String(i).padStart(5, '0')}`, { parentId: i === n - 1 ? null : `c${String(i + 1).padStart(5, '0')}` }),
+    )
+    const started = performance.now()
+    const r = capRendered(chain, 200, new Set())
+    expect(performance.now() - started).toBeLessThan(500)
+    expect(r.rendered).toHaveLength(200)
+    // What it keeps is connected: the top 200 of the chain.
+    expect(r.rendered.every(c => c.parentId === null || r.rendered.some(p => p.id === c.parentId))).toBe(true)
+  })
+})
