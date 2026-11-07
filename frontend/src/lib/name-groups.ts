@@ -115,8 +115,22 @@ export function groupSiblings(
     }
   }
   for (const r of roots) walk(r)
-  // A cycle in the reported parents has no root: its coroutines are walked from where they first appear.
-  for (const c of coroutines) if (!seen.has(c.id)) walk(c.id)
+  // A cycle in the reported parents has no root. Each such component is walked from its cycle's entry, whose parent
+  // edge every pass below then ignores, so parents come before children whatever order the snapshot lists them in.
+  const brokenEdge = new Set<string>()
+  for (const c of coroutines) {
+    if (seen.has(c.id)) continue
+    const climbed = new Set<string>()
+    let entry = c.id
+    while (!climbed.has(entry)) {
+      climbed.add(entry)
+      const p = byId.get(entry)?.parentId
+      if (!p || !known.has(p) || seen.has(p)) break
+      entry = p
+    }
+    brokenEdge.add(entry)
+    walk(entry)
+  }
   // Bottom-up: subtree sizes, and whether a node or anything below it is shown.
   const size = new Map<string, number>()
   const shownBelow = new Set<string>()
@@ -125,6 +139,7 @@ export function groupSiblings(
     let n = 1
     let anyShown = !shown || shown.has(id)
     for (const k of childrenOf.get(id) ?? []) {
+      if (brokenEdge.has(k)) continue
       n += size.get(k) ?? 1
       if (shownBelow.has(k)) anyShown = true
     }
@@ -161,6 +176,7 @@ export function groupSiblings(
   const hidden = new Set<string>()
   const hiddenBelow = new Set<string>()
   const parentOf = (id: string): string | undefined => {
+    if (brokenEdge.has(id)) return undefined
     const p = byId.get(id)?.parentId
     return p && known.has(p) ? p : undefined
   }

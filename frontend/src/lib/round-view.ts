@@ -265,6 +265,28 @@ export function roundOptionLabel(
  */
 export const FIND_PATH_ANCESTORS = 50
 
+/**
+ * The found coroutine's path as drawn (S-12): how many ancestors it has in the view and how many of them are not drawn.
+ * Null when every ancestor is drawn, or when the coroutine itself is not drawn (its group was collapsed again).
+ */
+export function cutPath(
+  id: string,
+  view: readonly CoroutineNode[],
+  drawnIds: ReadonlySet<string>,
+): { depth: number; missing: number } | null {
+  if (!drawnIds.has(id)) return null
+  const byId = new Map(view.map(c => [c.id, c]))
+  const walked = new Set<string>([id])
+  let depth = 0
+  let missing = 0
+  for (let p = byId.get(byId.get(id)?.parentId ?? ''); p && !walked.has(p.id); p = p.parentId ? byId.get(p.parentId) : undefined) {
+    walked.add(p.id)
+    depth++
+    if (!drawnIds.has(p.id)) missing++
+  }
+  return missing > 0 ? { depth, missing } : null
+}
+
 /** What showing a found coroutine takes (S-12): its view, the filters that would hide it cleared, it and its ancestors. */
 export interface RevealPlan {
   choice: RoundChoice

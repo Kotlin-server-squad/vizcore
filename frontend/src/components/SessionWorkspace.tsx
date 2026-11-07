@@ -64,7 +64,7 @@ import {
   poolFor,
   resolveChoice,
   revealPlan,
-  FIND_PATH_ANCESTORS,
+  cutPath,
   roundOptionLabel,
   withForced,
   ungroupedCount,
@@ -276,12 +276,7 @@ export function SessionWorkspace({
   // Shown past the cap: a found coroutine and its ancestors (S-12). Cleared when the user picks another view.
   const [forcedIds, setForcedIds] = useState<ReadonlySet<string>>(NO_IDS)
   const [reveal, setReveal] = useState<{ id: string; key: number } | undefined>(undefined)
-  // A found coroutine deeper than Find draws: how deep, for the note that says its path is cut (S-12).
-  const [cutPathDepth, setCutPathDepth] = useState<number | null>(null)
-  const forget = useCallback(() => {
-    setForcedIds(NO_IDS)
-    setCutPathDepth(null)
-  }, [])
+  const forget = useCallback(() => setForcedIds(NO_IDS), [])
   const vizRule = useMemo(() => ({ includeVizcore }), [includeVizcore])
   const choice = useMemo<RoundChoice>(() => {
     if (!roundsMode) return ALL_ROUNDS
@@ -487,7 +482,6 @@ export function SessionWorkspace({
     if (plan.showCompleted) setShowCompleted(true)
     setIncludeVizcore(plan.includeVizcore)
     setForcedIds(plan.forcedIds)
-    setCutPathDepth(plan.pathDepth > FIND_PATH_ANCESTORS ? plan.pathDepth : null)
     // Every collapsed group on the way to it opens: its own, and those its ancestors are members of (S-12).
     const byId = new Map(panelCoroutines.map(c => [c.id, c]))
     // The whole path, however deep; a coroutine met twice (a cycle in the reported parents) ends the walk.
@@ -578,15 +572,23 @@ export function SessionWorkspace({
         : choice.kind === 'unknown'
           ? 'unknown'
           : 'all'
+  // A found coroutine deeper than Find draws (S-12): from what is actually drawn, and only while it is.
+  const foundPathCut = useMemo(
+    () =>
+      reveal && forcedIds.size > 0
+        ? cutPath(reveal.id, viewCoroutines, new Set(renderedCoroutines.map(c => c.id)))
+        : null,
+    [reveal, forcedIds, viewCoroutines, renderedCoroutines],
+  )
   const canvasNotes: CanvasNote[] = [
     ...(liveStream && liveEvents.length >= LIVE_EVENTS_MAX
       ? [{ key: 'history' as const, text: `The Events tab, the second lines and the Locks, Channels, Flows and Jobs sections read the newest ${LIVE_EVENTS_MAX.toLocaleString('en-US')} events this page received.` }]
       : []),
-    ...(cutPathDepth !== null && forcedIds.size > 0
+    ...(foundPathCut
       ? [
           {
             key: 'path' as const,
-            text: `The coroutine you found is ${cutPathDepth.toLocaleString('en-US')} levels below its round’s root: it is drawn with its nearest ${FIND_PATH_ANCESTORS} ancestors only.`,
+            text: `The coroutine you found is ${foundPathCut.depth.toLocaleString('en-US')} levels below its round’s root: ${foundPathCut.missing.toLocaleString('en-US')} of its ancestors are not drawn.`,
           },
         ]
       : []),

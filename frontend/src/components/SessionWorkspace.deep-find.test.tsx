@@ -124,8 +124,8 @@ describe('Find on a path thousands of levels deep (real graph)', () => {
     expect(await screen.findByTestId('graph-node-a3999')).toBeInTheDocument()
     expect(screen.getByTestId('graph-node-a3949')).toBeInTheDocument()
     expect(screen.queryByTestId('graph-node-a3948')).toBeNull()
-    expect(screen.getByRole('region', { name: 'Main view' })).toHaveTextContent(
-      'The coroutine you found is 4,000 levels below its round’s root: it is drawn with its nearest 50 ancestors only.',
+    expect(screen.getByRole('region', { name: 'Main view' }).textContent).toMatch(
+      /The coroutine you found is 4,000 levels below its round’s root: [\d,]+ of its ancestors are not drawn\./,
     )
   }, 30_000)
 })
