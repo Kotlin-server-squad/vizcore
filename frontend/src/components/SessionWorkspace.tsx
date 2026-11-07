@@ -22,7 +22,8 @@ import { deriveRung } from '@/lib/fidelity-rung'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { projectThreadActivity } from '@/lib/projections/project-thread-activity'
 import { SessionHeader } from './workspace/SessionHeader'
-import { CoroutineCanvas } from './workspace/CoroutineCanvas'
+import { CoroutineCanvas, type MainViewMode } from './workspace/CoroutineCanvas'
+import { TimelineView } from './workspace/timeline/TimelineView'
 import { SessionDock } from './workspace/SessionDock'
 import { Inspector } from './workspace/Inspector/Inspector'
 import { EventsPanel } from './workspace/EventsPanel'
@@ -54,6 +55,7 @@ import type { CoroutinePicker } from './sync/CoroutineName'
 import { useLookCard, useLookSlot } from '@/looks/look-context'
 import { useOneMoment, type ShareBinding } from '@/hooks/use-one-moment'
 import { MomentSummary } from './workspace/MomentSummary'
+import { useSessionTimeline } from '@/hooks/use-session-timeline'
 
 const EMPTY_COROUTINES: CoroutineNode[] = []
 
@@ -107,7 +109,7 @@ export function SessionWorkspace({
     isError: historyFailed,
   } = useSessionEvents(sessionId)
   const [streamEnabled, setStreamEnabled] = useState(false)
-  const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph')
+  const [viewMode, setViewMode] = useState<MainViewMode>('graph')
   // The page's one selection (S-2): a coroutine or a resource, read by the
   // tree, the Inspector, Evidence and Events. Set only in the live view, so
   // replay and shared renders stay non-interactive (PD-01).
@@ -279,6 +281,18 @@ export function SessionWorkspace({
     () => panelCoroutines.find(c => c.id === selectedCoroutineId) ?? null,
     [panelCoroutines, selectedCoroutineId],
   )
+
+  // The Timeline (Part 10, S-10): the tree's rows over time, at the page's moment, built only while it is shown.
+  const sessionTimeline = useSessionTimeline({
+    enabled: viewMode === 'timeline',
+    replayActive,
+    replayEvents: replay.events,
+    cursorEvent: replay.currentEvent,
+    events: allEvents,
+    droppedCount,
+    rows: renderedCoroutines,
+    selected: selectedCoroutine,
+  })
 
   // A demo's run outcome (S-3); an attached app has none.
   const isDemo = hasScenario || isDemoSessionId(sessionId)
@@ -543,6 +557,21 @@ export function SessionWorkspace({
             coroutines={renderedCoroutines}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
+            timeline={
+              sessionTimeline.timeline && (
+                <TimelineView
+                  timeline={sessionTimeline.timeline}
+                  rows={renderedCoroutines}
+                  cursor={sessionTimeline.cursor}
+                  note={sessionTimeline.note}
+                  selectedId={selectedCoroutineId}
+                  onSelect={(id: string) => {
+                    setSelection({ kind: 'coroutine', id })
+                    selectDockTab('inspector')
+                  }}
+                />
+              )
+            }
             completedCount={completedCount}
             allFinished={allFinished}
             showCompleted={showCompleted}
@@ -641,6 +670,8 @@ export function SessionWorkspace({
                 // Back to the session summary (T-3) from a selection.
                 onClearSelection={() => setSelection(null)}
                 activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}
+                // While the Timeline is the main view, its one sentence for the selected row (S-10).
+                sentence={sessionTimeline.sentence}
               />
             </DockTabPanel>
             <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>

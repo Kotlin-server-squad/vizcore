@@ -411,3 +411,166 @@ html.light[data-look='b'] {
   color: var(--text);
   font-size: 0.8125rem;
 }
+
+/* --- Part 10 · the Timeline: rows over time, hold bands, end marks, lanes, the replay cursor --- */
+
+[data-look='b'] [data-look-part='timeline-legend'] {
+  gap: 4px 14px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+[data-look='b'] [data-look-part='timeline-axis'] {
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+
+/* The drawing on a white card with soft corners, no hard rules. */
+[data-look='b'] [data-look-part='timeline'] [data-testid='timeline-scroll'] {
+  border-radius: 14px;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+[data-look='b'] [data-look-part='timeline-label'] {
+  border-color: transparent;
+}
+
+[data-look='b'] [data-look-part='timeline-row'] {
+  border-color: transparent;
+  border-radius: 10px;
+}
+
+[data-look='b'] [data-look-part='timeline-row'][data-selected='true'] {
+  background: var(--primary-soft);
+}
+
+/* State bars: soft pills in the state's pale colour. */
+[data-look='b'] [data-look-part='timeline-bar'] {
+  border-radius: 9999px;
+  color: var(--text);
+}
+
+/* The padding is on the text, so a short state keeps its true width. */
+[data-look='b'] [data-look-part='timeline-bar'] > span,
+[data-look='b'] [data-look-part='timeline-lane-band'] > span {
+  padding-inline: 6px;
+}
+
+[data-look='b'] [data-look-part='timeline-bar'][data-state='CREATED'],
+[data-look='b'] [data-look-part='timeline-legend'] [data-state='CREATED'] {
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+
+[data-look='b'] [data-look-part='timeline-bar'][data-state='ACTIVE'],
+[data-look='b'] [data-look-part='timeline-legend'] [data-state='ACTIVE'] {
+  background: var(--primary-soft);
+}
+
+[data-look='b'] [data-look-part='timeline-bar'][data-state='WAITING_FOR_CHILDREN'],
+[data-look='b'] [data-look-part='timeline-legend'] [data-state='WAITING_FOR_CHILDREN'] {
+  background: var(--primary-soft);
+  opacity: 0.7;
+}
+
+[data-look='b'] [data-look-part='timeline-bar'][data-state='SUSPENDED'],
+[data-look='b'] [data-look-part='timeline-legend'] [data-state='SUSPENDED'] {
+  background: var(--warning-soft);
+}
+
+[data-look='b'] [data-look-part='timeline-bar'][data-after-cursor='true'] {
+  background: transparent;
+  border: 1px dashed var(--border-2);
+  color: var(--text-faint);
+  opacity: 1;
+}
+
+[data-look='b'] [data-look-part='timeline-hold'] {
+  border-radius: 9999px;
+  background: var(--text-faint);
+}
+
+[data-look='b'] [data-look-part='timeline-hold'][data-after-cursor='true'] {
+  background: transparent;
+  border-color: var(--text-faint);
+}
+
+[data-look='b'] [data-look-part='timeline-hold'][data-uncertain='true'] {
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 5px);
+  color: var(--text-faint);
+}
+
+[data-look='b'] [data-look-part='timeline-end'] {
+  border-radius: 9999px;
+}
+
+[data-look='b'] [data-look-part='timeline-end'][data-state='COMPLETED'] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+[data-look='b'] [data-look-part='timeline-end'][data-state='FAILED'] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+[data-look='b'] [data-look-part='timeline-end'][data-state='CANCELLED'] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+[data-look='b'] [data-look-part='timeline-end'][data-after-cursor='true'] {
+  background: transparent;
+  border: 1px dashed var(--border-2);
+  color: var(--text-faint);
+}
+
+[data-look='b'] [data-look-part='timeline-lane'] {
+  border-color: transparent;
+}
+
+[data-look='b'] [data-look-part='timeline-lane-band'] {
+  border-radius: 9999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+[data-look='b'] [data-look-part='timeline-lane-band'][data-after-cursor='true'] {
+  background: transparent;
+  border-color: var(--border-2);
+  color: var(--text-faint);
+}
+
+/* "May hold": hatched, over the band it qualifies (after the shorthand fills above). */
+[data-look='b'] [data-look-part='timeline-lane-band'][data-uncertain='true'] {
+  background-color: transparent;
+  background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 5px);
+  border: 0;
+  color: var(--text-faint);
+}
+
+[data-look='b'] [data-look-part='timeline-unknown'] {
+  border-color: var(--warning);
+  background: var(--surface);
+  color: var(--warning);
+}
+
+[data-look='b'] [data-look-part='timeline-cursor'] {
+  background: var(--primary);
+  border-radius: 9999px;
+}
+
+[data-look='b'] [data-look-part='timeline-future'] {
+  border: 0;
+  border-left: 1px dashed var(--border-2);
+  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+}
+
+/* The Inspector's sentence: B's plain-language voice, a little larger. */
+[data-look='b'] [data-look-part='timeline-sentence'] {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text);
+}

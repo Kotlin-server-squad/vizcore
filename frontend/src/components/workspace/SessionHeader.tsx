@@ -62,7 +62,7 @@ interface SessionHeaderProps {
   /** ExportMenu wiring (ADR-018 / EXPT-01/02 / D-22). */
   panelRef: RefObject<HTMLDivElement | null>
   panelEvents: VizEvent[]
-  viewMode: 'graph' | 'list'
+  viewMode: 'graph' | 'list' | 'timeline'
   onRecord?: () => void
 }
 
@@ -240,7 +240,7 @@ export function SessionHeader({
             sessionId={sessionId}
             sessionName={title}
             events={panelEvents}
-            panel={viewMode === 'graph' ? 'graph' : 'tree'}
+            panel={viewMode === 'graph' ? 'graph' : viewMode === 'timeline' ? 'timeline' : 'tree'}
             onRecord={onRecord}
           />
           <Dropdown>

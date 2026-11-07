@@ -8,11 +8,16 @@ import type { StateFilter } from '@/lib/state-counts'
 import type { CoroutineNode } from '@/types/api'
 import type { ActivityLine } from '@/lib/activity'
 
+/** The main view's modes (S-10): the graph, the list, and the Timeline. */
+export type MainViewMode = 'graph' | 'list' | 'timeline'
+
 interface CoroutineCanvasProps {
   /** Already filtered and capped by the caller — the canvas renders what it is given. */
   coroutines: CoroutineNode[]
-  viewMode: 'graph' | 'list'
-  onViewModeChange: (next: 'graph' | 'list') => void
+  viewMode: MainViewMode
+  onViewModeChange: (next: MainViewMode) => void
+  /** The Timeline (Part 10, S-10), drawn in place of the graph in its mode; no Timeline button without it. */
+  timeline?: ReactNode
   /** Terminal coroutines collapsed out of the default active-only view (D-08). */
   completedCount: number
   /** Nothing is live and the canvas shows the whole finished run (spec Part 1). */
@@ -54,6 +59,7 @@ export function CoroutineCanvas({
   coroutines,
   viewMode,
   onViewModeChange,
+  timeline,
   completedCount,
   allFinished = false,
   showCompleted,
@@ -80,6 +86,9 @@ export function CoroutineCanvas({
         <div role="group" aria-label="View" className="flex gap-0.5 rounded-medium bg-default-100 p-0.5">
           <ViewButton label="Graph" pressed={viewMode === 'graph'} onPress={() => onViewModeChange('graph')} />
           <ViewButton label="List" pressed={viewMode === 'list'} onPress={() => onViewModeChange('list')} />
+          {timeline !== undefined && (
+            <ViewButton label="Timeline" pressed={viewMode === 'timeline'} onPress={() => onViewModeChange('timeline')} />
+          )}
         </div>
         <h2 className="text-sm font-semibold">
           {allFinished ? 'Everything has finished' : <>What&apos;s running now</>}
@@ -134,13 +143,20 @@ export function CoroutineCanvas({
           </div>
         ) : (
           <>
-            {/* The list scrolls inside the box; the graph fills it and pans. */}
-            <div ref={panelRef} className={viewMode === 'graph' ? 'min-h-0 flex-1' : 'min-h-0 flex-1 overflow-auto'}>
+            {/* The list scrolls inside the box; the graph fills it and pans; the Timeline scrolls inside its own. */}
+            <div
+              ref={panelRef}
+              className={
+                viewMode === 'graph' ? 'min-h-0 flex-1' : viewMode === 'timeline' ? 'flex min-h-0 min-w-0 flex-1 flex-col' : 'min-h-0 flex-1 overflow-auto'
+              }
+            >
               {/* Source-selection is LIVE-ONLY (PD-01): omit
                   onSelect/selectedNodeId in replay/shared so those
                   renders stay presentational with no added
                   interactivity (Pitfall 1 back-compat). */}
-              {viewMode === 'graph' ? (
+              {viewMode === 'timeline' && timeline !== undefined ? (
+                timeline
+              ) : viewMode === 'graph' || viewMode === 'timeline' ? (
                 <CoroutineTreeGraph
                   coroutines={coroutines}
                   onSelect={onSelect}
