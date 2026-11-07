@@ -412,7 +412,7 @@ html.light[data-look='b'] {
 }
 /* --- end of generated block --- */
 
-/* --- Part 8 · one moment everywhere: the replay bar and the moment marker --- */
+/* --- Part 8 · one moment everywhere: the replay bar, the moment marker, the trimmed notes --- */
 
 /* The replay bar as a calm white card with a hairline, like the dock. */
 [data-look='b'] [data-look-part='replay-bar'] {
@@ -436,4 +436,13 @@ html.light[data-look='b'] {
   background: var(--primary-soft);
   color: var(--text);
   font-size: 0.75rem;
+}
+
+/* A note that something is missing: a soft amber panel, body text. */
+[data-look='b'] [data-look-part='trimmed-note'] {
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: 0.8125rem;
 }

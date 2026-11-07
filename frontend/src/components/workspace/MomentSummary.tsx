@@ -26,6 +26,9 @@ export function MomentSummary({
       <p className="text-sm text-default-400">Select a coroutine to inspect it</p>
       <p className="text-sm">
         {coroutineCount === 1 ? '1 coroutine' : `${coroutineCount} coroutines`} at this moment
+        {metrics.unknown > 0 && (
+          <span className="text-default-500"> · {metrics.unknown} with their state unknown</span>
+        )}
       </p>
       <SessionMetrics
         sessionId=""

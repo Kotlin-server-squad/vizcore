@@ -493,7 +493,7 @@ html.light[data-look='a'] {
 }
 /* --- end of generated block --- */
 
-/* --- Part 8 · one moment everywhere: the replay bar and the moment marker --- */
+/* --- Part 8 · one moment everywhere: the replay bar, the moment marker, the trimmed notes --- */
 
 /* The replay bar as an IDE toolbar: flat, on the surface, a border below, square. */
 [data-look='a'] [data-look-part='replay-bar'] {
@@ -515,4 +515,12 @@ html.light[data-look='a'] {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+/* A note that something is missing: a thin warning rule at its left, body text. */
+[data-look='a'] [data-look-part='trimmed-note'] {
+  padding-left: 6px;
+  border-left: 2px solid var(--warning);
+  font-size: 0.75rem;
+  color: var(--text);
 }

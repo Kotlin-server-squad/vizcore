@@ -1,4 +1,5 @@
 import { CoroutineState, type CoroutineNode } from '@/types/api'
+import { UNKNOWN_STATE } from './cursor-coroutines'
 
 /**
  * What the state bar can filter by. `all` is the resting state — the workspace
@@ -14,6 +15,8 @@ export type StateFilter =
   | 'failed'
   /** Cross-cutting: a still-active coroutine alive past the leak threshold. */
   | 'leaks'
+  /** Replay only: its state at the cursor is not known (Part 8, M-9). */
+  | 'unknown'
 
 export interface StateCounts {
   active: number
@@ -23,7 +26,12 @@ export interface StateCounts {
   completed: number
   cancelled: number
   failed: number
-  /** Every coroutine in the snapshot. The six state buckets always sum to this. */
+  /**
+   * Replay only: coroutines whose state at the cursor is not known (Part 8, M-9; H-3). Never counted as active.
+   * Optional so a look's fixtures can leave it out; `deriveStateCounts` always sets it.
+   */
+  unknown?: number
+  /** Every coroutine in the snapshot. The six state buckets and `unknown` always sum to this. */
   total: number
   /**
    * Potential leaks. NOT one of the six buckets and not part of `total` — a
@@ -71,8 +79,14 @@ export function deriveStateCounts(
     failed: 0,
     total: 0,
     leaks: leakIds?.size ?? 0,
+    unknown: 0,
   }
   for (const c of coroutines) {
+    if (c.state === UNKNOWN_STATE) {
+      counts.unknown! += 1
+      counts.total += 1
+      continue
+    }
     const bucket = STATE_BUCKET[c.state as CoroutineState]
     // An unrecognised state must not vanish from the bar; count it as active
     // so the buckets still sum to the total.
@@ -91,6 +105,7 @@ export function matchesFilter(state: CoroutineState, filter: StateFilter): boole
   // A leak is a property of the coroutine, not of its state — `selectCoroutines`
   // resolves it against the leak id set instead.
   if (filter === 'leaks') return false
+  if (state === UNKNOWN_STATE) return filter === 'unknown'
   return (STATE_BUCKET[state] ?? 'active') === filter
 }
 

@@ -22,12 +22,14 @@ import type {
   ShareSummary,
   SharedSessionResult,
 } from '@/types/share'
+import type { LookResults } from '@/looks/experiment/results'
 import { normalizeEvents } from './utils'
 import { getToken, clearToken } from './auth-store'
 import { navigateToLogin } from './navigation'
 
 import { ApiError, NetworkError, RateLimitedError, parseRetryAfter } from './api-errors'
-import { timelinePath, type MomentRead } from './moment-read'
+import { hierarchyPath, timelinePath, type MomentRead } from './moment-read'
+import type { MomentHierarchyNode } from './cursor-coroutines'
 
 export { ApiError, NetworkError, RateLimitedError } from './api-errors'
 
@@ -220,6 +222,11 @@ class ApiClient {
   async createSession(name?: string): Promise<CreateSessionResponse> {
     const url = name ? `/sessions?name=${encodeURIComponent(name)}` : '/sessions'
     return this.fetchJson<CreateSessionResponse>(url, { method: 'POST' })
+  }
+
+  // The look experiment's results (GET /api/experiments/looks/results): same access as the sessions list.
+  async getLookExperimentResults(): Promise<LookResults> {
+    return this.fetchJson<LookResults>('/experiments/looks/results')
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -473,6 +480,10 @@ class ApiClient {
   // through the authenticated client; a shared read through its token, with no credential and no login redirect.
   async getTimelineAt(read: MomentRead, coroutineId: string): Promise<CoroutineTimeline> {
     return this.momentJson<CoroutineTimeline>(read, timelinePath(read, coroutineId))
+  }
+
+  async getHierarchyAt(read: MomentRead): Promise<MomentHierarchyNode[]> {
+    return this.momentJson<MomentHierarchyNode[]>(read, hierarchyPath(read))
   }
 
   private async momentJson<T>(read: MomentRead, path: string): Promise<T> {

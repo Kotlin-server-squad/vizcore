@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { coroutineChangesBetween, indexReplay } from './replay-index'
+import { coroutineChangesBetween, hierarchyChangesBetween, indexReplay } from './replay-index'
 import type { VizEvent } from '@/types/api'
 
 const ev = (seq: number, kind: string, coroutineId?: string) =>
@@ -32,5 +32,17 @@ describe('coroutineChangesBetween', () => {
 
   it('is true across a gap in the replay, which may hide one of its events', () => {
     expect(coroutineChangesBetween(index, 'old', 15, 17)).toBe(true)
+  })
+})
+
+describe('hierarchyChangesBetween', () => {
+  it('is false across events of coroutines the replay created, which the page projects itself', () => {
+    expect(hierarchyChangesBetween(index, 12, 13)).toBe(false)
+  })
+
+  it('is true across a creation, an event of a coroutine created before the replay, or a gap', () => {
+    expect(hierarchyChangesBetween(index, 10, 11)).toBe(true)
+    expect(hierarchyChangesBetween(index, 13, 14)).toBe(true)
+    expect(hierarchyChangesBetween(index, 15, 17)).toBe(true)
   })
 })

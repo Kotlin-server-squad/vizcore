@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { metricsAt } from './moment-metrics'
+import { UNKNOWN_STATE } from './cursor-coroutines'
 import { CoroutineState, type CoroutineNode, type VizEvent } from '@/types/api'
 
 const node = (id: string, state: CoroutineState, scopeId = 'Dispatchers.Default'): CoroutineNode =>
@@ -24,15 +25,17 @@ describe('metricsAt', () => {
     expect(metricsAt(events, []).peak).toBe(3)
   })
 
-  it('reads active and dispatcher load from the coroutines the tree shows', () => {
+  it('reads active and dispatcher load from the coroutines the tree shows, unknown states counted apart', () => {
     const coroutines = [
       node('a', CoroutineState.ACTIVE),
       node('b', CoroutineState.SUSPENDED, 'Dispatchers.IO'),
       node('c', CoroutineState.COMPLETED),
+      node('d', UNKNOWN_STATE),
       { ...node('e', CoroutineState.CREATED), scopeId: '' },
     ]
     const m = metricsAt([], coroutines)
     expect(m.active).toBe(3)
+    expect(m.unknown).toBe(1)
     expect(m.dispatcherUtilization).toEqual({ 'Dispatchers.Default': 1, 'Dispatchers.IO': 1, unknown: 1 })
   })
 
@@ -48,6 +51,6 @@ describe('metricsAt', () => {
   })
 
   it('is all zeros with nothing replayed', () => {
-    expect(metricsAt([], [])).toEqual({ active: 0, peak: 0, throughputPerSec: 0, dispatcherUtilization: {} })
+    expect(metricsAt([], [])).toEqual({ active: 0, unknown: 0, peak: 0, throughputPerSec: 0, dispatcherUtilization: {} })
   })
 })

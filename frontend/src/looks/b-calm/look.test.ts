@@ -45,6 +45,7 @@ describe('B’s CSS', () => {
       'round-find-match',
       'round-find-results',
       'round-picker',
+      'trimmed-note',
       'workspace',
     ])
     for (const part of parts) expect(code, part).toContain(`data-look-part="${part}"`)
