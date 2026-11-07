@@ -11,10 +11,12 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
+import org.jetbrains.exposed.v1.core.max
 import org.jetbrains.exposed.v1.exceptions.ExposedSQLException
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
@@ -39,6 +41,7 @@ class ExposedEventStore(
     private val sessionId: String,
 ) : EventStoreInterface {
     private val serializer = PolymorphicSerializer(VizEvent::class)
+    private val latestSeq = EventsTable.seq.max()
 
     /**
      * The persistent store is the seq AUTHORITY in DB mode (F6). Every read
@@ -76,14 +79,14 @@ class ExposedEventStore(
     private fun insert(event: VizEvent) {
         lockFor(sessionId).withLock {
             transaction(db) {
+                // An aggregate, read from the (session_id, seq) index. Selecting the newest row instead made H2 scan the
+                // session-id index and read every stored event, payload included, on each append: slower and slower as a
+                // live session grew, until ingest fell behind the app and the server's ping timeout closed the socket.
                 val maxSeq =
                     EventsTable
-                        .selectAll()
+                        .select(latestSeq)
                         .where { EventsTable.sessionId eq this@ExposedEventStore.sessionId }
-                        .orderBy(EventsTable.seq to SortOrder.DESC)
-                        .limit(1)
-                        .firstOrNull()
-                        ?.get(EventsTable.seq) ?: 0L
+                        .single()[latestSeq] ?: 0L
                 event.seq = maxSeq + 1
                 EventsTable.insert {
                     it[sessionId] = this@ExposedEventStore.sessionId
