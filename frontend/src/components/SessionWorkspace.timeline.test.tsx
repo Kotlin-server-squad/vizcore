@@ -140,4 +140,23 @@ describe('SessionWorkspace — the Timeline (Part 10, S-10)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'order-1, Created' }))
     expect(screen.getByTestId('inspector-timeline-sentence')).toHaveTextContent(/^By 0.0 s, order-1 is created, not started yet/)
   })
+
+  it('says nothing is missing when the events start at the session’s first, though that is seq 3 (ids take seqs)', async () => {
+    const events = contended().map(e => ({ ...e, seq: e.seq + 2 }))
+    vi.mocked(useSession).mockReturnValue({ data: { ...session(['ACTIVE' as CoroutineState, 'SUSPENDED' as CoroutineState]), trimmed: false, oldestRetainedSeq: 3 }, isLoading: false, refetch: vi.fn() } as unknown as ReturnType<typeof useSession>)
+    stream(events)
+    render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Timeline' }))
+    expect(screen.queryByText(/Some intervals may be missing/)).toBeNull()
+  })
+
+  it('says some intervals may be missing when the server trimmed the session', async () => {
+    const events = contended().map(e => ({ ...e, seq: e.seq + 40 }))
+    vi.mocked(useSession).mockReturnValue({ data: { ...session(['ACTIVE' as CoroutineState, 'SUSPENDED' as CoroutineState]), trimmed: true, oldestRetainedSeq: 41 }, isLoading: false, refetch: vi.fn() } as unknown as ReturnType<typeof useSession>)
+    stream(events)
+    render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Timeline' }))
+    expect(screen.getByText('Some intervals may be missing: the events start at event 41.')).toBeInTheDocument()
+  })
 })
+

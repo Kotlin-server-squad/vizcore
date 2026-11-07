@@ -17,6 +17,8 @@ interface Args {
   events: readonly VizEvent[]
   /** Events the server shed under load, from the stream (S-10's loss count). */
   droppedCount: number
+  /** The session's first event's seq when the server never trimmed it (`lib/session-first-seq.ts`); unknown: 1. */
+  sessionFirstSeq?: number
   /** The rows: the coroutines the tree shows (T-3). */
   rows: readonly CoroutineNode[]
   /** The selected coroutine, for the Inspector's sentence (T-10). */
@@ -43,6 +45,7 @@ export function useSessionTimeline({
   cursorEvent,
   events,
   droppedCount,
+  sessionFirstSeq,
   rows,
   selected,
 }: Args): SessionTimeline {
@@ -63,8 +66,8 @@ export function useSessionTimeline({
       const row = timeline.rows.get(r.id)
       return !row || row.createdBefore
     }).length
-    return missingNote({ droppedCount, firstSeq: timeline.events[0]?.seq ?? null, createdBefore })
-  }, [timeline, rows, droppedCount])
+    return missingNote({ droppedCount, firstSeq: timeline.events[0]?.seq ?? null, sessionFirstSeq, createdBefore })
+  }, [timeline, rows, droppedCount, sessionFirstSeq])
 
   const sentence = useMemo(() => {
     if (!timeline || !selected) return null

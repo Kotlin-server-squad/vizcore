@@ -56,6 +56,7 @@ import { useLookCard, useLookSlot } from '@/looks/look-context'
 import { useOneMoment, type ShareBinding } from '@/hooks/use-one-moment'
 import { MomentSummary } from './workspace/MomentSummary'
 import { useSessionTimeline } from '@/hooks/use-session-timeline'
+import { sessionFirstSeq } from '@/lib/session-first-seq'
 
 const EMPTY_COROUTINES: CoroutineNode[] = []
 
@@ -290,6 +291,8 @@ export function SessionWorkspace({
     cursorEvent: replay.currentEvent,
     events: allEvents,
     droppedCount,
+    // Seqs also number ids: events that start at the session's first event start at the beginning, whatever its seq.
+    sessionFirstSeq: sessionFirstSeq(session),
     rows: renderedCoroutines,
     selected: selectedCoroutine,
   })
