@@ -5,6 +5,8 @@ import com.jh.proj.coroutineviz.events.coroutine.CoroutineCancelled
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCompleted
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineFailed
+import com.jh.proj.coroutineviz.session.EventStore
+import com.jh.proj.coroutineviz.session.EventStoreInterface
 import com.jh.proj.coroutineviz.session.VizSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,15 +25,17 @@ import kotlin.time.Duration.Companion.seconds
  * was sent, and how long the whole run took. An event's own `tsNanos` is real time, which on
  * virtual time says nothing, so the time each event was sent is read from the test's clock.
  *
- * The clock is read when the session reports an event emitted, outside its send lock. An event
- * sent from another thread while the test clock moves could be stamped a little later than it was
- * sent. In the demos run here every step runs on the test dispatcher; only the root's terminal
- * events may come from elsewhere, and they come once the clock has stopped.
+ * The clock is read as the session stores each event, under its send lock, on the sending thread.
+ * Most steps run on the test dispatcher; an event sent from another thread (vizcore's deferred
+ * terminal events run on the session scope) is listed in [VirtualDemoRun.offClock]: the clock may
+ * have moved on while it was on its way, so its time is not a scripted time.
  */
 internal class VirtualDemoRun(
     val events: List<VizEvent>,
     private val millisBySeq: Map<Long, Long>,
     val scriptedMillis: Long,
+    /** Seqs first seen from a thread other than the test's: their [at] is when they were seen, not a scripted time. */
+    val offClock: Set<Long> = emptySet(),
 ) {
     /** The scripted millisecond at which [event] was sent. */
     fun at(event: VizEvent): Long = millisBySeq.getValue(event.seq)
@@ -45,19 +49,41 @@ internal suspend fun TestScope.runOnVirtualTime(
     name: String,
     start: suspend (VizSession, CoroutineContext) -> Job,
 ): VirtualDemoRun {
-    val session = VizSession(name)
+    val sentAt = ConcurrentHashMap<Long, Long>()
+    val offClock = ConcurrentHashMap.newKeySet<Long>()
+    val testThread = Thread.currentThread()
+    // Stamped as the session stores each event, under its send lock and on the sending thread, so
+    // every event gets its own time and its own thread.
+    val session =
+        VizSession(name, eventStoreFactory = {
+            StampingStore(EventStore(MAX_EVENTS)) { event ->
+                sentAt[event.seq] = testScheduler.currentTime
+                if (Thread.currentThread() != testThread) offClock += event.seq
+            }
+        })
     try {
-        val sentAt = ConcurrentHashMap<Long, Long>()
-        session.onEventEmitted = { session.store.all().forEach { sentAt.putIfAbsent(it.seq, testScheduler.currentTime) } }
         val demoRun = assertNotNull(DemoRuns(maxConcurrent = 0).tryStart())
         withContext(demoRun) { start(session, StandardTestDispatcher(testScheduler)) }.join()
         val scriptedMillis = testScheduler.currentTime
         val events = settled(session)
-        return VirtualDemoRun(events, events.associate { it.seq to (sentAt[it.seq] ?: scriptedMillis) }, scriptedMillis)
+        return VirtualDemoRun(events, events.associate { it.seq to (sentAt[it.seq] ?: scriptedMillis) }, scriptedMillis, offClock.toSet())
     } finally {
         session.close()
     }
 }
+
+/** Calls [stamp] with each event the session stores, right after storing it. */
+private class StampingStore(
+    private val inner: EventStoreInterface,
+    private val stamp: (VizEvent) -> Unit,
+) : EventStoreInterface by inner {
+    override fun record(event: VizEvent) {
+        inner.record(event)
+        stamp(event)
+    }
+}
+
+private const val MAX_EVENTS = 100_000
 
 /** The session's events in order, once every coroutine's terminal event is in; those can follow its job's end by a moment. */
 private suspend fun settled(session: VizSession): List<VizEvent> =

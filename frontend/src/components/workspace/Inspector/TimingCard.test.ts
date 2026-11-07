@@ -44,6 +44,14 @@ describe('liveTiming', () => {
     expect(live.active).toBeCloseTo(0.1 * SECOND)
   })
 
+  it('while it waits for its children, counts its lifetime on but not its Active or Suspended time (Part 10)', () => {
+    const at60 = liveTiming(blocked({ openPhase: 'WAITING_FOR_CHILDREN' }), 1_000, 1_000)!
+    const at65 = liveTiming(blocked({ openPhase: 'WAITING_FOR_CHILDREN' }), 1_000, 6_000)!
+    expect(at65.total - at60.total).toBeCloseTo(5 * SECOND)
+    expect(at65.active).toBeCloseTo(0.1 * SECOND)
+    expect(at65.suspended).toBeCloseTo(1.9 * SECOND)
+  })
+
   it('never estimates "now" before the latest recorded event', () => {
     // A skewed clock that would put "now" before the open phase began.
     const live = liveTiming(blocked({ observedAtEpochMs: 9_000 }), 1_000, 1_000)!

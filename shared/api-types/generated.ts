@@ -709,10 +709,10 @@ export interface components {
             /** @default [] */
             events: components["schemas"]["TimelineEventSummary"][];
             /**
-             * @description For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished.
+             * @description For an unfinished coroutine, the phase it has been in since its last recorded transition (WAITING_FOR_CHILDREN once its body has ended; that time counts as neither active nor suspended). Null once finished.
              * @enum {string|null}
              */
-            openPhase?: "ACTIVE" | "SUSPENDED" | null;
+            openPhase?: "ACTIVE" | "SUSPENDED" | "WAITING_FOR_CHILDREN" | null;
             /**
              * Format: int64
              * @description tsNanos of the transition that opened openPhase (the emitting JVM's monotonic clock).

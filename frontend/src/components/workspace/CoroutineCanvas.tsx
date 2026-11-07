@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react'
+import { useEffect, type ReactNode, type RefObject } from 'react'
 import { Button } from '@heroui/react'
 import { FiMaximize2, FiMinimize2 } from 'react-icons/fi'
 import { CoroutineTree } from '../CoroutineTree'
@@ -19,8 +19,25 @@ interface CoroutineCanvasProps {
   allFinished?: boolean
   showCompleted: boolean
   onToggleCompleted: () => void
-  /** Coroutines the current view would show beyond the node cap. */
-  moreCount: number
+  /** What the node cap leaves out, in words (`capNote`); null or absent when everything is drawn. */
+  capNote?: string | null
+  /** Notes on what the page holds (the live history, summary-only coroutines), under the canvas. */
+  notes?: readonly CanvasNote[]
+  /** The big-app controls (S-12): round picker, find, toggles. Under the toolbar. */
+  roundBar?: ReactNode
+  /** An attached app's rounds are still loading: say so rather than draw every coroutine first. */
+  loadingRounds?: boolean
+  /**
+   * Why an empty canvas is empty when the session itself is not: a round view (`round`), or only vizcore's own
+   * coroutines hidden by the toggle (`vizcore-hidden`). Absent: the session-wide empty states.
+   */
+  emptyReason?: 'round' | 'vizcore-hidden'
+  /** Bring this coroutine into view (Find, S-12): the graph centres it, the list scrolls to it. Once per `key`. */
+  reveal?: { id: string; key: number }
+  /** The canvas shows one round: its heading says so. */
+  inRound?: boolean
+  /** Children per parent in the view before the cap (the graph's "2 of 262 children"). */
+  childTotals?: ReadonlyMap<string, number>
   /** Unfinished children per parent over the whole snapshot (see `CoroutineTree`). */
   pendingChildCounts?: ReadonlyMap<string, number>
   /** Each coroutine's second line (S-6); shown in every mode, read from the same events as the tree. */
@@ -58,7 +75,14 @@ export function CoroutineCanvas({
   allFinished = false,
   showCompleted,
   onToggleCompleted,
-  moreCount,
+  capNote,
+  notes = [],
+  roundBar,
+  loadingRounds = false,
+  emptyReason,
+  reveal,
+  inRound = false,
+  childTotals,
   pendingChildCounts,
   activity,
   stateFilter,
@@ -70,6 +94,15 @@ export function CoroutineCanvas({
   maximised,
   onToggleMaximise,
 }: CoroutineCanvasProps) {
+  // The list scrolls inside its box: bring a revealed row into it.
+  const revealKey = reveal?.key
+  const revealId = reveal?.id
+  useEffect(() => {
+    if (revealKey === undefined || !revealId || viewMode !== 'list') return
+    const row = panelRef.current?.querySelector(`[data-node-id="${CSS.escape(revealId)}"]`)
+    row?.scrollIntoView?.({ block: 'center' })
+  }, [revealKey, revealId, viewMode, panelRef])
+
   return (
     <section
       data-look-part="main"
@@ -82,7 +115,13 @@ export function CoroutineCanvas({
           <ViewButton label="List" pressed={viewMode === 'list'} onPress={() => onViewModeChange('list')} />
         </div>
         <h2 className="text-sm font-semibold">
-          {allFinished ? 'Everything has finished' : <>What&apos;s running now</>}
+          {inRound
+            ? allFinished
+              ? 'This round has finished'
+              : <>What&apos;s running in this round</>
+            : allFinished
+              ? 'Everything has finished'
+              : <>What&apos;s running now</>}
         </h2>
         {stateBar}
         {completedCount > 0 && !allFinished && (
@@ -102,14 +141,28 @@ export function CoroutineCanvas({
         </Button>
       </div>
 
+      {roundBar}
+
       {/* Gate on what the canvas will actually render, not on the
           active set — a state filter can select terminal coroutines,
           and gating on activeCoroutines hid them behind the
           "no app connected" empty state. */}
-      <div className="flex min-h-0 flex-1 flex-col p-3">
-        {coroutines.length === 0 ? (
+      <div data-look-part="main-body" className="flex min-h-0 flex-1 flex-col p-3">
+        {loadingRounds ? (
+          <div className="flex flex-1 items-center justify-center text-sm text-default-500">Loading rounds…</div>
+        ) : coroutines.length === 0 ? (
           <div className="flex flex-1 items-center justify-center">
-            {stateFilter === 'all' ? (
+            {emptyReason === 'vizcore-hidden' ? (
+              <EmptyState
+                title="Nothing to show here"
+                description="Only vizcore's own coroutines were captured in this view. Turn on vizcore connection to see them."
+              />
+            ) : emptyReason === 'round' && stateFilter !== 'all' ? (
+              <EmptyState
+                title={`No ${stateFilter} coroutines in this round`}
+                description="Nothing in this round matches the selected state. Pick another state, another round, or clear the filter."
+              />
+            ) : stateFilter === 'all' ? (
               // Say what is actually true: a demo not run yet, or an app that has not
               // sent anything yet. A finished run is never empty — it shows its
               // coroutines.
@@ -142,6 +195,8 @@ export function CoroutineCanvas({
                   interactivity (Pitfall 1 back-compat). */}
               {viewMode === 'graph' ? (
                 <CoroutineTreeGraph
+                  reveal={reveal}
+                  childTotals={childTotals}
                   coroutines={coroutines}
                   onSelect={onSelect}
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
@@ -157,12 +212,27 @@ export function CoroutineCanvas({
                 />
               )}
             </div>
-            {moreCount > 0 && <div className="mt-2 text-xs text-default-500">{moreCount} more coroutines</div>}
+            {capNote && (
+              <div data-look-part="cap-note" className="mt-2 text-xs text-default-500">
+                {capNote}
+              </div>
+            )}
           </>
         )}
+        {notes.map(note => (
+          <div key={note.key} data-look-part={`${note.key}-note`} className="mt-1 text-xs text-default-500">
+            {note.text}
+          </div>
+        ))}
       </div>
     </section>
   )
+}
+
+/** A line under the canvas about what the page holds; `key` names its look hook (`history-note`, `summary-only-note`). */
+export interface CanvasNote {
+  key: 'history' | 'summary-only'
+  text: string
 }
 
 function ViewButton({ label, pressed, onPress }: { label: string; pressed: boolean; onPress: () => void }) {

@@ -90,12 +90,12 @@ describe('useCreateSession', () => {
     })
 
     await act(async () => {
-      result.current.mutate('My Session')
+      result.current.mutate({ name: 'My Session', demoId: 'nested' })
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(mockedApiClient.createSession).toHaveBeenCalledWith('My Session')
+    expect(mockedApiClient.createSession).toHaveBeenCalledWith('My Session', 'nested')
     expect(result.current.data).toEqual(response)
   })
 
@@ -108,12 +108,12 @@ describe('useCreateSession', () => {
     })
 
     await act(async () => {
-      result.current.mutate(undefined)
+      result.current.mutate({})
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(mockedApiClient.createSession).toHaveBeenCalledWith(undefined)
+    expect(mockedApiClient.createSession).toHaveBeenCalledWith(undefined, undefined)
   })
 })
 

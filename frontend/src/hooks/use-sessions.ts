@@ -35,11 +35,17 @@ export function useSessionEvents(sessionId: string | undefined) {
   })
 }
 
+/** A new session: its name, and the demo it is for (S-13), if any. */
+export interface CreateSessionInput {
+  name?: string
+  demoId?: string
+}
+
 export function useCreateSession() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (name?: string) => apiClient.createSession(name),
+    mutationFn: (input: CreateSessionInput = {}) => apiClient.createSession(input.name, input.demoId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
     },

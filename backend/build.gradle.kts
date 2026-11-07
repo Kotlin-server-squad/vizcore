@@ -121,6 +121,11 @@ tasks.named<Test>("test") {
         .files(rootProject.file("../frontend/src/content/gallery/will-see.json"))
         .withPropertyName("galleryWillSee")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // StoryAnchorsTest checks story mode's anchors in the SPA's story-anchors.json against real runs.
+    inputs
+        .files(rootProject.file("../frontend/src/content/gallery/story-anchors.json"))
+        .withPropertyName("galleryStoryAnchors")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     // ComposeDemoSettingsTest reads the Compose files at the repository root.
     inputs
         .files(rootProject.file("../docker-compose.yml"), rootProject.file("../docker-compose.prod.yml"))

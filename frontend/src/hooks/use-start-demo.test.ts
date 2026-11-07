@@ -22,7 +22,8 @@ describe('useStartDemo', () => {
     const { result } = renderHook(() => useStartDemo())
     await act(() => result.current.start(nested))
 
-    expect(mutateAsync).toHaveBeenCalledWith('scenario-Nested: Product Page')
+    // The session records its demo (S-13), so Run again and the story no longer need the address.
+    expect(mutateAsync).toHaveBeenCalledWith({ name: 'scenario-Nested: Product Page', demoId: 'nested' })
     expect(navigate).toHaveBeenCalledWith({
       to: '/sessions/$sessionId',
       params: { sessionId: 'sid-1' },
