@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { CoroutineState, type CoroutineNode } from '@/types/api'
-import { groupIdOf, groupSiblings, nameStem } from './name-groups'
+import { creationSiteText, groupIdOf, groupSiblings, nameStem } from './name-groups'
 
 const node = (id: string, over: Partial<CoroutineNode> = {}): CoroutineNode => ({
   id,
@@ -115,5 +115,24 @@ describe('groupSiblings (S-12: siblings only, ancestry never hidden)', () => {
   it('gives a group the same id whatever is expanded, so expansion survives a refresh', () => {
     expect(groupIdOf(tree[1]!)).toBe(groupIdOf(tree[2]!))
     expect(groupIdOf(tree[5]!)).toBeNull()
+  })
+})
+
+describe('creationSiteText (the shared creation site needs complete knowledge)', () => {
+  const at = (fn: string, file: string, line: number) => ({ function: fn, fileName: file, lineNumber: line, reason: 'launch' })
+  const members = ['a', 'b', 'c']
+
+  it('says "All created at" only when every member is known and all are the same', () => {
+    const sites = new Map([['a', at('fetch', 'App.kt', 42)], ['b', at('fetch', 'App.kt', 42)], ['c', at('fetch', 'App.kt', 42)]])
+    expect(creationSiteText(members, sites)).toBe('All created at App.kt:42 (fetch)')
+  })
+
+  it('lists the known sites with their counts, and the rest as unavailable', () => {
+    const sites = new Map([['a', at('fetch', 'App.kt', 42)], ['b', at('load', 'Db.kt', 7)], ['c', null]])
+    expect(creationSiteText(members, sites)).toBe('At App.kt:42 (fetch) for 1, Db.kt:7 (load) for 1; unavailable for 1')
+  })
+
+  it('says unavailable when no member’s site is known', () => {
+    expect(creationSiteText(members, new Map())).toBe('Creation site unavailable')
   })
 })

@@ -363,6 +363,7 @@ export function capNote({
   cap,
   scope,
   canFind,
+  coroutines,
 }: {
   total: number
   rendered: number
@@ -370,9 +371,14 @@ export function capNote({
   cap: number
   scope: CapScope
   canFind: boolean
+  /** With groups, `total` counts cards; this is the coroutines they stand for. */
+  coroutines?: number
 }): string | null {
   if (rendered >= total) return null
-  const head = `Showing ${count(rendered)} of ${count(total)} coroutines${SCOPE_WORDS[scope]}`
+  const head =
+    coroutines !== undefined && coroutines !== total
+      ? `Showing ${count(rendered)} of ${count(total)} cards (${count(coroutines)} coroutines${SCOPE_WORDS[scope]})`
+      : `Showing ${count(rendered)} of ${count(total)} coroutines${SCOPE_WORDS[scope]}`
   if (found > 0) {
     return `${head}: the first ${count(cap)}, and ${found === 1 ? 'the one you found' : `${count(found)} more to show the one you found`}.`
   }

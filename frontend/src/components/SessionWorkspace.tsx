@@ -74,6 +74,8 @@ import {
   type RoundChoice,
 } from '@/lib/round-view'
 import type { RoundEntry } from '@/types/api'
+import { groupIdOf, groupSiblings, isGroupId, type NameGroup } from '@/lib/name-groups'
+import { GroupSummary } from './workspace/Inspector/GroupSummary'
 import { useOneMoment } from '@/hooks/use-one-moment'
 import { MomentSummary } from './workspace/MomentSummary'
 
@@ -291,6 +293,13 @@ export function SessionWorkspace({
     return new Set([...leakIds].filter(id => ids.has(id)))
   }, [roundsMode, leakIds, viewCoroutines])
 
+  // Group by name (S-12): on by default for an attached app, offered where every shown coroutine shares one round (a
+  // round, or the coroutines in no round); never in All rounds, where two siblings can be in different rounds.
+  const [groupByName, setGroupByName] = useState<boolean | null>(null)
+  const groupingAvailable = roundsMode && (choice.kind === 'round' || choice.kind === 'ungrouped')
+  const grouping = groupingAvailable && (groupByName ?? attached)
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(NO_IDS)
+
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
@@ -306,7 +315,7 @@ export function SessionWorkspace({
   }, [viewCoroutines])
   // What the tree/graph render, and how many the cap leaves out — both from the
   // same pool, so "N more" always counts what this view would have shown.
-  const { renderedCoroutines, cap } = useMemo(() => {
+  const { renderedCoroutines, cap, groups, poolSize } = useMemo(() => {
     // A named chip selects that state explicitly across the whole snapshot, and
     // bypasses the active-only default — you asked for completed, you get
     // completed. With no chip, the active set; everything when the user expands
@@ -318,9 +327,21 @@ export function SessionWorkspace({
           ? viewCoroutines
           : activeCoroutines
     // A coroutine Find revealed is drawn even past the cap, with its ancestors, whatever the chip shows (S-12).
-    const capped = capRendered(withForced(pool, viewCoroutines, forcedIds), NODE_CAP, forcedIds)
-    return { renderedCoroutines: capped.rendered, cap: capped }
-  }, [stateFilter, showCompleted, allFinished, viewCoroutines, activeCoroutines, viewLeakIds, forcedIds])
+    const shown = withForced(pool, viewCoroutines, forcedIds)
+    if (!grouping) {
+      const capped = capRendered(shown, NODE_CAP, forcedIds)
+      return { renderedCoroutines: capped.rendered, cap: capped, groups: undefined, poolSize: shown.length }
+    }
+    // Grouped, the cap counts cards; the groups on a found coroutine's path stay drawn with it.
+    const grouped = groupSiblings(shown, expandedGroups)
+    const forcedCards = new Set(forcedIds)
+    for (const c of shown) {
+      const gid = forcedIds.has(c.id) ? groupIdOf(c) : null
+      if (gid && grouped.groups.has(gid)) forcedCards.add(gid)
+    }
+    const capped = capRendered(grouped.nodes, NODE_CAP, forcedCards)
+    return { renderedCoroutines: capped.rendered, cap: capped, groups: grouped.groups, poolSize: shown.length }
+  }, [stateFilter, showCompleted, allFinished, viewCoroutines, activeCoroutines, viewLeakIds, forcedIds, grouping, expandedGroups])
 
   // Unfinished children per parent, over the whole snapshot: the "Waiting for N
   // child coroutines" line must not shrink when a chip or the cap hides them.
@@ -338,9 +359,11 @@ export function SessionWorkspace({
   const childTotals = useMemo(() => {
     if (cap.hidden === 0) return undefined
     const totals = new Map<string, number>()
-    for (const c of viewCoroutines) if (c.parentId) totals.set(c.parentId, (totals.get(c.parentId) ?? 0) + 1)
+    // Grouped, a parent's children are cards (a group counts once), as drawn.
+    const cards = groups ? groupSiblings(viewCoroutines, expandedGroups).nodes : viewCoroutines
+    for (const c of cards) if (c.parentId) totals.set(c.parentId, (totals.get(c.parentId) ?? 0) + 1)
     return totals
-  }, [cap.hidden, viewCoroutines])
+  }, [cap.hidden, viewCoroutines, groups, expandedGroups])
 
   /** Counts for the state bar — the whole snapshot, never the capped subset. */
   const stateCounts = useMemo(
@@ -453,6 +476,15 @@ export function SessionWorkspace({
     if (plan.showCompleted) setShowCompleted(true)
     setIncludeVizcore(plan.includeVizcore)
     setForcedIds(plan.forcedIds)
+    // Every collapsed group on the way to it opens: its own, and those its ancestors are members of (S-12).
+    const byId = new Map(panelCoroutines.map(c => [c.id, c]))
+    const toOpen: string[] = []
+    for (let c = byId.get(id); c; c = c.parentId ? byId.get(c.parentId) : undefined) {
+      const gid = groupIdOf(c)
+      if (gid) toOpen.push(gid)
+      if (toOpen.length > 64) break
+    }
+    if (toOpen.length > 0) setExpandedGroups(prev => new Set([...prev, ...toOpen]))
     setSelection({ kind: 'coroutine', id })
     selectDockTab('inspector')
     // The Inspector is where a found coroutine is read: a maximised main view gives the dock back.
@@ -499,6 +531,9 @@ export function SessionWorkspace({
       vizcoreCount={vizcoreN}
       includeVizcore={includeVizcore}
       onToggleVizcore={setIncludeVizcore}
+      groupToggle={
+        groupingAvailable ? { checked: grouping, onChange: (next: boolean) => setGroupByName(next) } : undefined
+      }
       originUnknown={attached && session?.origin === 'UNKNOWN'}
       find={{
         results: findView,
@@ -574,12 +609,35 @@ export function SessionWorkspace({
     }),
     [coroutineIds],
   )
+  // The selected group, its members (for the Events tab) and the names of its members (S-12).
+  const selectedGroup: NameGroup | undefined = selection?.kind === 'group' ? groups?.get(selection.id) : undefined
+  const selectedGroupMembers = useMemo(
+    () => (selectedGroup ? new Set(selectedGroup.memberIds) : undefined),
+    [selectedGroup],
+  )
+  const memberLabel = useCallback(
+    (id: string) => panelCoroutines.find(c => c.id === id)?.label ?? id,
+    [panelCoroutines],
+  )
+  const toggleGroup = useCallback((id: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
   const selectionLabel =
     selection === null
       ? null
       : selection.kind === 'coroutine'
         ? (selectedCoroutine?.label ?? selection.id)
-        : (names.get(selection.id) ?? selection.id)
+        : selection.kind === 'group'
+          ? (() => {
+              const g = groups?.get(selection.id)
+              return g ? `${g.label} · ${g.memberIds.length.toLocaleString('en-US')} coroutines` : selection.id
+            })()
+          : (names.get(selection.id) ?? selection.id)
   // A selection made inside a tab keeps you there; a resource opens its
   // Evidence section (S-2), which EvidencePanels unfolds and scrolls to.
   const selectFromEvent = (next: Selection) => {
@@ -608,9 +666,11 @@ export function SessionWorkspace({
     const gone =
       selection.kind === 'coroutine'
         ? !coroutineIds.has(selection.id) && !keptIds.has(selection.id)
-        : !resources.has(selection.id) && !replayActive
+        : selection.kind === 'group'
+          ? !groups?.has(selection.id)
+          : !resources.has(selection.id) && !replayActive
     if (gone) setSelection(null)
-  }, [selection, coroutineIds, keptIds, resources, replayActive])
+  }, [selection, coroutineIds, keptIds, resources, replayActive, groups])
   const pendingSelectionLabel =
     replayActive && selection?.kind === 'coroutine' && !selectedCoroutine
       ? (oneMoment.replayLabels.get(selection.id) ?? selection.id)
@@ -791,6 +851,7 @@ export function SessionWorkspace({
               cap: NODE_CAP,
               scope: capScope,
               canFind: roundsMode && choice.kind !== 'unknown',
+              coroutines: groups ? poolSize : undefined,
             })}
             notes={canvasNotes}
             roundBar={roundBar}
@@ -826,10 +887,12 @@ export function SessionWorkspace({
             // One selection in every mode (S-2, S-11): in replay and in a shared
             // link the Inspector shows it at the page's moment (Part 8, M-5).
             onSelect={(id: string) => {
-              setSelection({ kind: 'coroutine', id })
+              setSelection(isGroupId(id) ? { kind: 'group', id } : { kind: 'coroutine', id })
               // A selection is read in the Inspector: show it (S-4).
               selectDockTab('inspector')
             }}
+            groups={groups}
+            onToggleGroup={toggleGroup}
             panelRef={panelRef}
             maximised={dock.maximised}
             onToggleMaximise={dock.toggleMaximise}
@@ -863,6 +926,23 @@ export function SessionWorkspace({
             }
           >
             <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>
+              {selectedGroup && (
+                <GroupSummary
+                  sessionId={sessionId}
+                  group={selectedGroup}
+                  parentLabel={
+                    selectedGroup.parentId
+                      ? (panelCoroutines.find(c => c.id === selectedGroup.parentId)?.label ?? selectedGroup.parentId)
+                      : null
+                  }
+                  memberLabel={memberLabel}
+                  onRevealMember={chooseFound}
+                  onToggle={toggleGroup}
+                  onClearSelection={() => setSelection(null)}
+                />
+              )}
+              {/* Kept mounted under a group's summary, so its queries stay subscribed (#124). */}
+              <div hidden={!!selectedGroup}>
               <Inspector
                 sessionId={sessionId}
                 coroutine={selectedCoroutine}
@@ -894,6 +974,7 @@ export function SessionWorkspace({
                 onClearSelection={() => setSelection(null)}
                 activity={selectedCoroutine ? (activity.get(selectedCoroutine.id) ?? null) : null}
               />
+              </div>
             </DockTabPanel>
             <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
               {/* What the resources did (M-1/M-2), and — where the rung is the
@@ -925,6 +1006,7 @@ export function SessionWorkspace({
                   events={panelEvents}
                   selection={selection}
                   selectionLabel={selectionLabel}
+                  groupMembers={selectedGroupMembers}
                   subjectOf={subjectOf}
                   onSelect={selectFromEvent}
                   onShowAll={() => setSelection(null)}

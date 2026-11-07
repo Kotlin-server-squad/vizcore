@@ -7,6 +7,7 @@ import { EmptyState } from '../EmptyState'
 import type { StateFilter } from '@/lib/state-counts'
 import type { CoroutineNode } from '@/types/api'
 import type { ActivityLine } from '@/lib/activity'
+import type { NameGroup } from '@/lib/name-groups'
 
 interface CoroutineCanvasProps {
   /** Already filtered and capped by the caller — the canvas renders what it is given. */
@@ -38,6 +39,9 @@ interface CoroutineCanvasProps {
   inRound?: boolean
   /** Children per parent in the view before the cap (the graph's "2 of 262 children"). */
   childTotals?: ReadonlyMap<string, number>
+  /** Siblings grouped by name (S-12), by their group node's id, and their Expand / Collapse. */
+  groups?: ReadonlyMap<string, NameGroup>
+  onToggleGroup?: (id: string) => void
   /** Unfinished children per parent over the whole snapshot (see `CoroutineTree`). */
   pendingChildCounts?: ReadonlyMap<string, number>
   /** Each coroutine's second line (S-6); shown in every mode, read from the same events as the tree. */
@@ -83,6 +87,8 @@ export function CoroutineCanvas({
   reveal,
   inRound = false,
   childTotals,
+  groups,
+  onToggleGroup,
   pendingChildCounts,
   activity,
   stateFilter,
@@ -197,6 +203,8 @@ export function CoroutineCanvas({
                 <CoroutineTreeGraph
                   reveal={reveal}
                   childTotals={childTotals}
+                  groups={groups}
+                  onToggleGroup={onToggleGroup}
                   coroutines={coroutines}
                   onSelect={onSelect}
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
@@ -209,6 +217,8 @@ export function CoroutineCanvas({
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
                   pendingChildCounts={pendingChildCounts}
                   activity={activity}
+                  groups={groups}
+                  onToggleGroup={onToggleGroup}
                 />
               )}
             </div>

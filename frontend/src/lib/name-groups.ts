@@ -144,3 +144,37 @@ export function groupSiblings(
   }
   return { nodes, groups }
 }
+
+/** Where a coroutine was created, as the hierarchy reports it (`creationPoint`). */
+export interface CreationSite {
+  function: string
+  fileName?: string | null
+  lineNumber?: number | null
+}
+
+function siteKey(site: CreationSite | null | undefined): string | null {
+  if (!site?.fileName) return null
+  return `${site.fileName}${site.lineNumber != null ? `:${site.lineNumber}` : ''} (${site.function})`
+}
+
+/**
+ * Where a group's members were created (S-12, "the shared creation site if there is one"). "All created at …" only
+ * when every current member's site is known and they are all the same; otherwise the known sites with their counts,
+ * and the rest as unavailable (H-3).
+ */
+export function creationSiteText(memberIds: readonly string[], sites: ReadonlyMap<string, CreationSite | null>): string {
+  const counts = new Map<string, number>()
+  let unknown = 0
+  for (const id of memberIds) {
+    const key = siteKey(sites.get(id))
+    if (key === null) unknown++
+    else counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  if (counts.size === 0) return 'Creation site unavailable'
+  if (counts.size === 1 && unknown === 0) return `All created at ${[...counts.keys()][0]}`
+  const known = [...counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, n]) => `${key} for ${n.toLocaleString('en-US')}`)
+    .join(', ')
+  return unknown > 0 ? `At ${known}; unavailable for ${unknown.toLocaleString('en-US')}` : `At ${known}`
+}

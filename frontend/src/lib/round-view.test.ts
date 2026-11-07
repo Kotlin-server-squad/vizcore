@@ -397,3 +397,11 @@ describe('capNote in Round unknown', () => {
     )
   })
 })
+
+describe('capNote with groups (cards, not coroutines)', () => {
+  it('counts cards and names the coroutines they stand for', () => {
+    expect(capNote({ total: 350, rendered: 200, found: 0, cap: 200, scope: 'round', canFind: true, coroutines: 1234 })).toBe(
+      'Showing 200 of 350 cards (1,234 coroutines in this round). Find reaches one by its name or creation site.',
+    )
+  })
+})
