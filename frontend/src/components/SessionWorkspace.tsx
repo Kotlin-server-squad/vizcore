@@ -41,6 +41,7 @@ import { RegistrationFlowView } from './scenarios/RegistrationFlowView'
 import type { CoroutineNode, ThreadActivity, VizEvent } from '@/types/api'
 import { CoroutineState } from '@/types/api'
 import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
+import { UNKNOWN_STATE } from '@/lib/cursor-coroutines'
 import { metricsAt } from '@/lib/moment-metrics'
 import { useDockLayout } from '@/hooks/use-dock-layout'
 import { deriveRunOutcome } from '@/lib/run-outcome'
@@ -51,7 +52,7 @@ import { projectActivity } from '@/lib/activity'
 import { eventSubject, resourceIds, resourceNames, type Selection } from '@/lib/selection'
 import type { CoroutinePicker } from './sync/CoroutineName'
 import { useLookCard, useLookSlot } from '@/looks/look-context'
-import { useOneMoment } from '@/hooks/use-one-moment'
+import { useOneMoment, type ShareBinding } from '@/hooks/use-one-moment'
 import { MomentSummary } from './workspace/MomentSummary'
 
 const EMPTY_COROUTINES: CoroutineNode[] = []
@@ -88,6 +89,8 @@ interface SessionWorkspaceProps {
   readOnly?: boolean
   /** Open with the live stream already on (a just-connected real app, #126). */
   startLive?: boolean
+  /** A shared link's token and the cut it loaded (Part 8, M-11): its reads go through the token, bound to that cut. */
+  share?: ShareBinding
 }
 
 export function SessionWorkspace({
@@ -96,6 +99,7 @@ export function SessionWorkspace({
   scenarioName,
   readOnly = false,
   startLive = false,
+  share,
 }: SessionWorkspaceProps) {
   const {
     data: storedEvents,
@@ -213,6 +217,7 @@ export function SessionWorkspace({
   // One moment for every part (Part 8, S-11): the replay cursor or a shared link's loaded cut, and how reads bind to it.
   const oneMoment = useOneMoment({
     sessionId,
+    share,
     readOnly,
     replayActive,
     replay,
@@ -255,7 +260,8 @@ export function SessionWorkspace({
   const pendingChildCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const c of panelCoroutines) {
-      if (c.parentId && !TERMINAL_STATES.has(c.state as CoroutineState)) {
+      // A state unknown at the replay cursor is not known to be unfinished (Part 8, M-9).
+      if (c.parentId && !TERMINAL_STATES.has(c.state as CoroutineState) && c.state !== UNKNOWN_STATE) {
         counts.set(c.parentId, (counts.get(c.parentId) ?? 0) + 1)
       }
     }
@@ -481,6 +487,7 @@ export function SessionWorkspace({
       {replayActive && (
         <ReplayController
           replay={replay}
+          startNote={oneMoment.startNote}
           isRecording={recordReplay.isRecording}
           elapsedMs={recordReplay.elapsedMs}
           onStopRecording={recordReplay.stopRecording}
@@ -599,6 +606,7 @@ export function SessionWorkspace({
                 readOnly={readOnly}
                 // Outside the live view its reads are bound to the page's moment (Part 8, M-3).
                 moment={oneMoment.view}
+                unavailableReason={oneMoment.unavailableReason}
                 pendingSelectionLabel={pendingSelectionLabel}
                 // T-3's session summary: live, from /metrics; at a moment (replay, shared link),
                 // the same tiles computed from what the tree shows at that moment (M-1).

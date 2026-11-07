@@ -395,7 +395,7 @@ html.light[data-look='c'] {
 }
 /* --- end of generated block --- */
 
-/* --- Part 8 · one moment everywhere: the replay bar and the moment marker --- */
+/* --- Part 8 · one moment everywhere: the replay bar, the moment marker, the trimmed notes --- */
 
 /* The replay bar as a bold rounded panel, its time in the display face. */
 [data-look='c'] [data-look-part='replay-bar'] {
@@ -422,4 +422,14 @@ html.light[data-look='c'] {
   font-family: var(--font-display);
   font-size: 0.8125rem;
   font-weight: 700;
+}
+
+/* A note that something is missing: the look's amber callout. */
+[data-look='c'] [data-look-part='trimmed-note'] {
+  padding: 8px 12px;
+  border: 2px solid var(--c-callout-border);
+  border-radius: 12px;
+  background: var(--c-callout-bg);
+  color: var(--text);
+  font-weight: 600;
 }

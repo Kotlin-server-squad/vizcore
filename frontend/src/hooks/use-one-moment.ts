@@ -1,17 +1,31 @@
 import { useMemo } from 'react'
 import type { Moment } from '@/components/workspace/MomentNote'
-import type { MomentRead, MomentSource } from '@/lib/moment-read'
+import type { MomentBinding, MomentRead, MomentSource } from '@/lib/moment-read'
 import { coroutineChangesBetween, indexReplay } from '@/lib/replay-index'
 import { replayClock } from '@/lib/replay-seek'
 import type { CoroutineNode, VizEvent } from '@/types/api'
+import { useCursorCoroutines } from './use-cursor-coroutines'
 import type { MomentView } from './use-moment'
 import type { UseReplayReturn } from './use-replay'
 
-/** How long the cursor must stay put before a read (M-4). */
+/** A shared link's token and the cut its payload was loaded under (Part 8, M-11). */
+export interface ShareBinding {
+  token: string
+  /** The loaded health's `asOfSeq`; null when the payload carried no health. */
+  asOfSeq: number | null
+  /** The health's cut id (`healthCut`), when there is one. */
+  cut: string | null
+  /** Why the payload carried no health (`healthUnavailable`), when it did not. */
+  unavailable: string | null
+}
+
+/** How long the cursor must stay put before a read: session reads, and the smaller shared bucket (M-4). */
 const SESSION_SETTLE_MS = 300
+const SHARED_SETTLE_MS = 2000
 
 interface Args {
   sessionId: string
+  share?: ShareBinding
   readOnly: boolean
   replayActive: boolean
   replay: UseReplayReturn
@@ -22,15 +36,19 @@ interface Args {
 }
 
 /**
- * The page's one moment (Part 8, S-11): in replay the cursor, in a shared link the loaded snapshot, live none. It says
- * what every part shows there: the cursor's coroutines, the replay clock's time (M-2), the marker (M-6) and how the
- * Inspector's reads bind (M-3, M-4). A shared link's reads bind to its loaded cut in Part 8b.
+ * The page's one moment (Part 8, S-11): in replay the cursor, in a shared link the loaded cut, live none. It says what
+ * every part shows there: the cursor's coroutines (with the summaries' when the replay is incomplete, M-9), the replay
+ * clock's time (M-2), the marker (M-6), how the Inspector's reads bind (M-3, M-4, M-11) and the note on where an
+ * incomplete replay starts (M-8).
  */
-export function useOneMoment({ sessionId, readOnly, replayActive, replay, projectedAtCursor, allEvents }: Args) {
-  const { events, currentIndex, currentEvent } = replay
+export function useOneMoment({ sessionId, share, readOnly, replayActive, replay, projectedAtCursor, allEvents }: Args) {
+  const { events, currentIndex, currentEvent, isPlaying } = replay
   const clock = useMemo(() => replayClock(events), [events])
   const index = useMemo(() => indexReplay(events), [events])
-  const source: MomentSource = useMemo(() => ({ kind: 'session', sessionId }), [sessionId])
+  const source: MomentSource = useMemo(
+    () => (share ? { kind: 'shared', sessionId, token: share.token } : { kind: 'session', sessionId }),
+    [share, sessionId],
+  )
   const cursorSeq = currentEvent?.seq ?? 0
   // The events behind the moment do not start at the session's first (seq 1): the replay's, or a shared link's.
   const momentFirstSeq = replayActive ? events[0]?.seq : readOnly ? allEvents[0]?.seq : undefined
@@ -39,10 +57,22 @@ export function useOneMoment({ sessionId, readOnly, replayActive, replay, projec
     () => (replayActive && currentEvent ? { source, binding: { kind: 'replay', atSeq: cursorSeq } } : null),
     [replayActive, currentEvent, source, cursorSeq],
   )
-  const settleMs = SESSION_SETTLE_MS
+  const settleMs = share ? SHARED_SETTLE_MS : SESSION_SETTLE_MS
+  // The shared bucket is 60 reads a minute: a shared replay reads only while it is paused.
+  const hold = !!share && isPlaying
+
+  const cursor = useCursorCoroutines({
+    read: replayRead,
+    projected: projectedAtCursor,
+    cursorSeq,
+    index,
+    incomplete,
+    settleMs,
+    hold,
+  })
 
   const replayAtNanos = replayActive && events.length > 0 ? (clock.times[currentIndex] ?? 0) : null
-  const loadedSeq = allEvents[allEvents.length - 1]?.seq ?? 0
+  const loadedSeq = share?.asOfSeq ?? allEvents[allEvents.length - 1]?.seq ?? 0
   const moment: Moment | null = useMemo(() => {
     if (replayActive && events.length > 0) {
       return { kind: 'replay', atNanos: replayAtNanos ?? 0, index: currentIndex, total: events.length }
@@ -58,12 +88,20 @@ export function useOneMoment({ sessionId, readOnly, replayActive, replay, projec
         cursorSeq,
         changesBetween: (id: string, a: number, b: number) => coroutineChangesBetween(index, id, a, b),
         settleMs,
-        hold: false,
+        hold,
         moment,
       }
     }
+    if (share && share.asOfSeq != null) {
+      const binding: MomentBinding = { kind: 'bound', asOfSeq: share.asOfSeq, asOfCut: share.cut }
+      return { read: { source, binding }, cursorSeq: share.asOfSeq, changesBetween: () => false, settleMs: 0, hold: false, moment }
+    }
     return null
-  }, [moment, replayRead, cursorSeq, index, settleMs])
+  }, [moment, replayRead, cursorSeq, index, settleMs, hold, share, source])
+
+  // A shared link without a health has no cut: its Inspector does not guess one (M-11).
+  const unavailableReason =
+    readOnly && !replayActive && share && share.asOfSeq == null ? (share.unavailable ?? 'no health in the link') : null
 
   // Every coroutine the replay holds at any point, so a selection the cursor has not reached yet is kept (M-5).
   const { replayCoroutineIds, replayLabels } = useMemo(() => {
@@ -75,15 +113,31 @@ export function useOneMoment({ sessionId, readOnly, replayActive, replay, projec
       ids.add(created.coroutineId)
       if (created.label) labels.set(created.coroutineId, created.label)
     }
+    for (const c of cursor.coroutines) {
+      ids.add(c.id)
+      if (c.label) labels.set(c.id, c.label)
+    }
     return { replayCoroutineIds: ids, replayLabels: labels }
-  }, [events])
+  }, [events, cursor.coroutines])
+
+  const startNote = incomplete
+    ? `This replay starts at event ${firstSeq}: earlier events are not in it, so it may be incomplete.${
+        cursor.status === 'ready'
+          ? ' Coroutines created before it come from the server’s summaries.'
+          : cursor.status === 'error'
+            ? ' The coroutines created before it could not be read.'
+            : ' Updating the coroutines created before it…'
+      }`
+    : undefined
 
   return {
-    coroutines: projectedAtCursor,
+    coroutines: cursor.coroutines,
     replayAtNanos,
     moment,
     view,
+    unavailableReason,
     incomplete,
+    startNote,
     replayCoroutineIds,
     replayLabels,
   }

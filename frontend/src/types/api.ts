@@ -172,6 +172,11 @@ export interface CoroutineNode {
   scopeId: string
   label: string | null
   state: CoroutineState
+  /**
+   * Replay only: rebuilt from the server's durable summary at the cursor, because the replayed events do not include
+   * its creation (Part 8, M-9).
+   */
+  fromSummary?: boolean
 }
 
 export interface SessionInfo {

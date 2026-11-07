@@ -71,6 +71,9 @@ export function SharedSessionPage() {
       // so SessionWorkspace renders without any protected (Bearer-bearing) fetch.
       if (res.status === 'ok') {
         const sessionId = res.data.session.sessionId
+        // The loaded cut stays put (Part 8, M-11): no later mount refetches the protected session or its events and
+        // mixes newer data into a view whose reads are bound to this cut. Reload fetches the whole payload again.
+        queryClient.setQueryDefaults(['sessions', sessionId], { staleTime: Infinity })
         queryClient.setQueryData(['sessions', sessionId], res.data.session)
         queryClient.setQueryData(['sessions', sessionId, 'events'], res.data.events)
       }
@@ -154,7 +157,16 @@ export function SharedSessionPage() {
           {COPY.banner}
         </Chip>
       </div>
-      <SessionWorkspace sessionId={result.data.session.sessionId} readOnly />
+      <SessionWorkspace
+        sessionId={result.data.session.sessionId}
+        readOnly
+        share={{
+          token,
+          asOfSeq: result.data.health?.asOfSeq ?? null,
+          cut: result.data.healthCut ?? null,
+          unavailable: result.data.healthUnavailable ?? null,
+        }}
+      />
     </div>
   )
 }

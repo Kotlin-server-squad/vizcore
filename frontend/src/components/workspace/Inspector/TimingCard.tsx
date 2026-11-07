@@ -100,11 +100,22 @@ export function TimingCard({
   /** When the browser received [timeline] (epoch ms), so live timing can count on from it. */
   receivedAtMs?: number
 }) {
-  const unfinished = !!timeline && timeline.totalDuration == null
+  // A timeline at a moment built on a durable summary (Part 8, M-10): what is left is not the whole life, so no
+  // duration and no estimate from it.
+  const trimmed = !!timeline?.eventsTrimmed
+  const unfinished = !!timeline && timeline.totalDuration == null && !trimmed
   const now = useNow(unfinished && !!timeline?.openPhase)
   const live = unfinished && timeline ? liveTiming(timeline, receivedAtMs ?? now, now) : null
   const soFar = unfinished && timeline && !live ? lifetimeSoFar(timeline) : null
   const possiblyBlocked = live?.openPhase === 'ACTIVE' && live.openFor >= POSSIBLY_BLOCKED_AFTER_NANOS
+
+  if (trimmed) {
+    return (
+      <InspectorCard title="Timing" testId="timing-card">
+        <p className="text-sm text-default-500">Unavailable: early events were trimmed.</p>
+      </InspectorCard>
+    )
+  }
 
   return (
     <InspectorCard title="Timing" testId="timing-card">
