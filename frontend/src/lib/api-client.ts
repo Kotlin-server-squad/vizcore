@@ -366,6 +366,13 @@ class ApiClient {
     return this.fetchJson<RoundsPage>(`/sessions/${encodeURIComponent(sessionId)}/rounds${search ? `?${search}` : ''}`)
   }
 
+  /** One round of the hierarchy (triage C-3): its nodes with their creation points, for a group's creation site. */
+  async getRoundHierarchy(sessionId: string, roundId: string): Promise<HierarchyNode[]> {
+    return this.fetchJson<HierarchyNode[]>(
+      `/sessions/${encodeURIComponent(sessionId)}/hierarchy?roundId=${encodeURIComponent(roundId)}`,
+    )
+  }
+
   async getCoroutineTimeline(sessionId: string, coroutineId: string): Promise<CoroutineTimeline> {
     return this.fetchJson<CoroutineTimeline>(`/sessions/${encodeURIComponent(sessionId)}/coroutines/${encodeURIComponent(coroutineId)}/timeline`)
   }

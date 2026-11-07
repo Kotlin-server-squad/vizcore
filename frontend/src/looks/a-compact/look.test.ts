@@ -230,13 +230,19 @@ async function renderPage() {
  */
 async function renderBigApp() {
   const member = (i: number) => ({
-    id: `m${String(i).padStart(3, '0')}`, jobId: 'j', parentId: 'req', scopeId: 's', label: `fetch-${i}`,
+    id: `m${String(i).padStart(3, '0')}`, jobId: 'j', parentId: 'req', scopeId: 's', label: `fetch-${i}-call`,
     state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const,
   })
   const coroutines = [
     { id: 'req', jobId: 'j', parentId: null, scopeId: 's', label: 'request-1', state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const },
     ...Array.from({ length: 210 }, (_, i) => member(i)),
     { id: 'viz', jobId: 'j', parentId: null, scopeId: 's', label: 'nonce-generator', state: 'ACTIVE' as CoroutineState, roundId: 'round:viz', origin: 'VIZCORE' as const },
+    // Siblings that group by name (S-12), one with a child, so the group card shows "+1 below them".
+    ...[1, 2, 3].map(i => ({
+      id: `poll${i}`, jobId: 'j', parentId: 'req', scopeId: 's', label: `poll-${i}`,
+      state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const,
+    })),
+    { id: 'parse', jobId: 'j', parentId: 'poll1', scopeId: 's', label: 'parse', state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const },
   ]
   const round = {
     roundId: 'round:req', anchorId: 'req', anchorName: 'request-1', anchorOrigin: 'APP' as const, anchorCreatedNanos: 0,

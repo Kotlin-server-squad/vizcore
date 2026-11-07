@@ -127,6 +127,14 @@ describe('ApiClient', () => {
     })
   })
 
+  describe('getRoundHierarchy', () => {
+    it('reads one round of the hierarchy', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse([]))
+      await apiClient.getRoundHierarchy('app 1', 'round:dp-job:1')
+      expect(mockFetch.mock.calls[0]![0]).toBe('/api/sessions/app%201/hierarchy?roundId=round%3Adp-job%3A1')
+    })
+  })
+
   describe('createSession', () => {
     it('makes POST request to /api/sessions without name', async () => {
       const response = { sessionId: 'session-new', message: 'Created' }

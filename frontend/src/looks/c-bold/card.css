@@ -105,3 +105,36 @@
   padding: 1px 10px;
   font-weight: 600;
 }
+
+/* Part 6 (S-12): a group of siblings, bold: a dashed card, the name in the display face, its size, the states in
+   words, and a pill Expand under them. "+N below them" is in the Inspector's summary. */
+[data-card-look='c'] [data-look-part='node'][data-kind='group'] {
+  border-style: dashed;
+}
+[data-card-look='c'] [data-kind='group'] [data-look-part='node-body'] > * {
+  margin-top: 2px;
+}
+[data-card-look='c'] [data-look-part='group-name'] {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+}
+[data-card-look='c'] [data-look-part='group-count'],
+[data-card-look='c'] [data-look-part='group-mix'] {
+  font-size: 12px;
+  font-weight: 600;
+}
+[data-card-look='c'] [data-look-part='group-mix'] {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-card-look='c'] [data-look-part='group-below'] {
+  display: none;
+}
+[data-card-look='c'] [data-look-part='group-expand'] {
+  padding: 1px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+}

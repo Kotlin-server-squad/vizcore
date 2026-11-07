@@ -5,6 +5,7 @@ import { CoroutineTreeGraph } from './CoroutineTreeGraph'
 import { findSvgRoot } from '@/lib/export-svg'
 import type { CoroutineNode } from '@/types/api'
 import { CoroutineState } from '@/types/api'
+import userEvent from '@testing-library/user-event'
 
 vi.mock('framer-motion', () => ({
   motion: {
@@ -208,6 +209,53 @@ describe('CoroutineTreeGraph', () => {
     expect(screen.getByText('2 of 262 children')).toBeInTheDocument()
     rerender(<CoroutineTreeGraph coroutines={[parent, child('a'), child('b')]} childTotals={new Map([['p', 2]])} />)
     expect(screen.getByText('2 children')).toBeInTheDocument()
+  })
+
+  describe('a group of siblings (S-12)', () => {
+    const parent = { id: 'p', jobId: 'j', parentId: null, scopeId: 's', label: 'request-1', state: CoroutineState.COMPLETED }
+    const groupNode = { id: 'group:p', jobId: '', parentId: 'p', scopeId: 's', label: 'fetch-*', state: CoroutineState.FAILED }
+    const group = {
+      id: 'group:p', label: 'fetch-*', parentId: 'p', roundId: 'round:p', memberIds: ['a', 'b', 'c'],
+      counts: { COMPLETED: 2, FAILED: 1 }, below: 4, expanded: false,
+    }
+
+    it('draws one card with its name, size, state mix in words and what is below, and neutral edges', () => {
+      render(<CoroutineTreeGraph coroutines={[parent, groupNode]} groups={new Map([['group:p', group]])} />)
+      const card = screen.getByTestId('graph-node-group:p')
+      expect(card).toHaveAttribute('data-state', 'GROUP')
+      expect(card.querySelector('[data-look-part="node"]')).toHaveAttribute('data-kind', 'group')
+      expect(card).toHaveTextContent('fetch-*')
+      expect(card).toHaveTextContent('group of 3')
+      expect(card).toHaveTextContent('1 Failed · 2 Completed')
+      expect(card).toHaveTextContent('+4 below them')
+      const edge = screen.getAllByTestId('graph-edge').find(e => e.getAttribute('data-child') === 'group:p')!
+      expect(edge).toHaveAttribute('stroke', 'currentColor')
+    })
+
+    it('counts the active coroutines a collapsed group stands for, never the card itself', () => {
+      const activeGroup = { ...group, counts: { ACTIVE: 300 } }
+      render(
+        <CoroutineTreeGraph
+          coroutines={[{ ...parent, state: CoroutineState.ACTIVE }, { ...groupNode, state: CoroutineState.ACTIVE }]}
+          groups={new Map([['group:p', activeGroup]])}
+        />,
+      )
+      expect(screen.getByText('301 active')).toBeInTheDocument()
+    })
+
+    it('selects the group from the card, and expands it from its button without selecting', async () => {
+      const onSelect = vi.fn()
+      const onToggleGroup = vi.fn()
+      render(
+        <CoroutineTreeGraph coroutines={[parent, groupNode]} groups={new Map([['group:p', group]])} onSelect={onSelect} onToggleGroup={onToggleGroup} />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Expand fetch-*' }))
+      expect(onToggleGroup).toHaveBeenCalledWith('group:p')
+      expect(onSelect).not.toHaveBeenCalled()
+      screen.getByRole('button', { name: 'Group fetch-*: 3 coroutines' }).focus()
+      await userEvent.keyboard('{Enter}')
+      expect(onSelect).toHaveBeenCalledWith('group:p')
+    })
   })
 
   describe('layout', () => {

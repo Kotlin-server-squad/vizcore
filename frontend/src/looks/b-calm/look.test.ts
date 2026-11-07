@@ -32,6 +32,7 @@ describe('B’s CSS', () => {
     expect([...parts].sort()).toEqual([
       'dock',
       'dock-tabs',
+      'group-summary',
       'header',
       'header-actions',
       'main',
