@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { mergeSummaryNodes } from '@/lib/cursor-coroutines'
 import { hierarchyKey, readAt, type MomentRead } from '@/lib/moment-read'
@@ -49,4 +49,23 @@ export function useCursorCoroutines({
     [enabled, query.data, projected],
   )
   return { coroutines, status: enabled ? query.status : 'off' }
+}
+
+/**
+ * Every coroutine the server's summaries have given the tree since [resetKey] changed (a new replay), by id with its
+ * name (Part 8, M-5): while a later read is updating, a selected one is still known, not "gone".
+ */
+export function useKnownSummaryNodes(coroutines: readonly CoroutineNode[], resetKey: unknown): ReadonlyMap<string, string> {
+  const [known, setKnown] = useState<{ key: unknown; nodes: Map<string, string> }>(() => ({ key: resetKey, nodes: new Map() }))
+  let current = known
+  if (current.key !== resetKey) current = { key: resetKey, nodes: new Map() }
+  const unseen = coroutines.filter(c => c.fromSummary && !current.nodes.has(c.id))
+  if (unseen.length > 0) {
+    const nodes = new Map(current.nodes)
+    for (const c of unseen) nodes.set(c.id, c.label ?? c.id)
+    current = { key: resetKey, nodes }
+  }
+  // Adjusting state while rendering, from props (React's documented pattern): no effect, no extra commit.
+  if (current !== known) setKnown(current)
+  return current.nodes
 }

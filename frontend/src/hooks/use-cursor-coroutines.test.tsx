@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { useCursorCoroutines } from './use-cursor-coroutines'
+import { useCursorCoroutines, useKnownSummaryNodes } from './use-cursor-coroutines'
 import { indexReplay } from '@/lib/replay-index'
 import { CoroutineState, type CoroutineNode, type VizEvent } from '@/types/api'
 
@@ -55,5 +55,27 @@ describe('useCursorCoroutines', () => {
     )
     await waitFor(() => expect(result.current.status).toBe('error'))
     expect(result.current.coroutines).toBe(projected)
+  })
+})
+
+describe('useKnownSummaryNodes', () => {
+  const summary = (id: string): CoroutineNode => ({ id, jobId: '', parentId: null, scopeId: '', label: `name-${id}`, state: CoroutineState.ACTIVE, fromSummary: true })
+
+  it('remembers every coroutine the summaries gave the tree, while a later read is updating', () => {
+    const reset = {}
+    const { result, rerender } = renderHook(({ coroutines }) => useKnownSummaryNodes(coroutines, reset), {
+      initialProps: { coroutines: [summary('old'), ...projected] },
+    })
+    expect(result.current.get('old')).toBe('name-old')
+    rerender({ coroutines: projected })
+    expect(result.current.get('old')).toBe('name-old')
+  })
+
+  it('forgets them for a new replay', () => {
+    const { result, rerender } = renderHook(({ coroutines, reset }) => useKnownSummaryNodes(coroutines, reset), {
+      initialProps: { coroutines: [summary('old')], reset: {} as object },
+    })
+    rerender({ coroutines: [], reset: {} })
+    expect(result.current.has('old')).toBe(false)
   })
 })

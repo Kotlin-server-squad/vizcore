@@ -18,8 +18,21 @@ import type { SessionSnapshot } from '@/types/api'
 // shell behaviour (status branching, no-chrome, read-only wiring) rather than
 // re-testing the full viewer (covered in SessionWorkspace.test.tsx).
 vi.mock('@/components/SessionWorkspace', () => ({
-  SessionWorkspace: ({ sessionId, readOnly }: { sessionId: string; readOnly?: boolean }) => (
-    <div data-testid="session-details" data-session-id={sessionId} data-read-only={String(!!readOnly)}>
+  SessionWorkspace: ({
+    sessionId,
+    readOnly,
+    share,
+  }: {
+    sessionId: string
+    readOnly?: boolean
+    share?: { token: string; asOfSeq: number | null; cut: string | null; unavailable: string | null }
+  }) => (
+    <div
+      data-testid="session-details"
+      data-session-id={sessionId}
+      data-read-only={String(!!readOnly)}
+      data-share={share ? `${share.token}|${share.asOfSeq}|${share.cut}|${share.unavailable ?? ''}` : ''}
+    >
       SessionWorkspace
     </div>
   ),
@@ -50,10 +63,7 @@ function makeSession(): SessionSnapshot {
   } as SessionSnapshot
 }
 
-function renderSharedAt(token = 'tok-123') {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
-  })
+function renderSharedAt(token = 'tok-123', queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })) {
   const rootRoute = createRootRoute({ component: () => <Outlet /> })
   const sharedRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -65,12 +75,12 @@ function renderSharedAt(token = 'tok-123') {
     routeTree,
     history: createMemoryHistory({ initialEntries: [`/shared/${token}`] }),
   })
-  render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router as never} />
     </QueryClientProvider>,
   )
-  return router
+  return Object.assign(router, { unmount: view.unmount })
 }
 
 beforeEach(() => {
@@ -171,6 +181,27 @@ describe('/shared/$token route', () => {
     renderSharedAt()
 
     expect(await screen.findByText('Sign-in required')).toBeInTheDocument()
+  })
+
+  it('keeps the loaded cut while the link is open, and leaves nothing of it behind (Part 8, M-11)', async () => {
+    getSharedSession.mockResolvedValue({ status: 'ok', data: { session: makeSession(), events: [] } })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const router = renderSharedAt('tok-123', client)
+    await screen.findByTestId('session-details')
+    expect(client.getQueryDefaults(['sessions', 'shared-session-1']).staleTime).toBe(Infinity)
+    expect(client.getQueryData(['sessions', 'shared-session-1'])).toBeDefined()
+    router.unmount()
+    expect(client.getQueryDefaults(['sessions', 'shared-session-1']).staleTime).toBeUndefined()
+    expect(client.getQueryData(['sessions', 'shared-session-1'])).toBeUndefined()
+  })
+
+  it('passes the share token and the loaded cut to the workspace (Part 8, M-11)', async () => {
+    getSharedSession.mockResolvedValue({
+      status: 'ok',
+      data: { session: makeSession(), events: [], health: { asOfSeq: 12 }, healthCut: 'k' },
+    })
+    renderSharedAt('tok-9')
+    expect(await screen.findByTestId('session-details')).toHaveAttribute('data-share', 'tok-9|12|k|')
   })
 
   it('shows the "Too many requests" copy on 429 (rate-limited)', async () => {

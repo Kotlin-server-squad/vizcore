@@ -55,6 +55,7 @@ export function SharedSessionPage() {
 
   useEffect(() => {
     let cancelled = false
+    let seeded: string | null = null
     setResult(null)
 
     async function load() {
@@ -74,6 +75,7 @@ export function SharedSessionPage() {
         // The loaded cut stays put (Part 8, M-11): no later mount refetches the protected session or its events and
         // mixes newer data into a view whose reads are bound to this cut. Reload fetches the whole payload again.
         queryClient.setQueryDefaults(['sessions', sessionId], { staleTime: Infinity })
+        seeded = sessionId
         queryClient.setQueryData(['sessions', sessionId], res.data.session)
         queryClient.setQueryData(['sessions', sessionId, 'events'], res.data.events)
       }
@@ -83,6 +85,11 @@ export function SharedSessionPage() {
     void load()
     return () => {
       cancelled = true
+      // Leaving the link: its frozen cut must not stand in for the session elsewhere in the app (an owner's own view).
+      if (seeded) {
+        queryClient.setQueryDefaults(['sessions', seeded], {})
+        queryClient.removeQueries({ queryKey: ['sessions', seeded] })
+      }
     }
   }, [token, queryClient, attempt])
 

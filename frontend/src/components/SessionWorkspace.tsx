@@ -379,6 +379,9 @@ export function SessionWorkspace({
     replayActive && selection?.kind === 'coroutine' && !selectedCoroutine
       ? (oneMoment.replayLabels.get(selection.id) ?? selection.id)
       : null
+  // A coroutine the summaries gave the tree is not missing at the cursor: their read is updating (M-9).
+  const pendingSelectionNote =
+    selection?.kind === 'coroutine' && oneMoment.summaryNodes.has(selection.id) ? 'updating to this moment…' : undefined
   // The session metrics at the moment, from the coroutines the tree shows and the events up to it (M-1).
   const momentMetrics = useMemo(
     () => (oneMoment.moment ? metricsAt(panelEvents, panelCoroutines) : null),
@@ -608,6 +611,7 @@ export function SessionWorkspace({
                 moment={oneMoment.view}
                 unavailableReason={oneMoment.unavailableReason}
                 pendingSelectionLabel={pendingSelectionLabel}
+                pendingSelectionNote={pendingSelectionNote}
                 // T-3's session summary: live, from /metrics; at a moment (replay, shared link),
                 // the same tiles computed from what the tree shows at that moment (M-1).
                 emptyState={

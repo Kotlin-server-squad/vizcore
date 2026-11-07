@@ -501,6 +501,21 @@ describe('Inspector at a moment (Part 8, S-11)', () => {
     expect(getTimelineAt).not.toHaveBeenCalled()
   })
 
+  it('says a selection from the summaries is updating, not missing, while their read catches up', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={null}
+        readOnly={false}
+        moment={replay()}
+        pendingSelectionLabel="sneaker-drop"
+        pendingSelectionNote="updating to this moment…"
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('inspector-pending')).toHaveTextContent('sneaker-drop · updating to this moment…')
+  })
+
   it('keeps a selection that does not exist yet at the cursor, and says so', () => {
     render(
       <Inspector sessionId="s-1" coroutine={null} readOnly={false} moment={replay()} pendingSelectionLabel="order-7" />,

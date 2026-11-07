@@ -4,7 +4,7 @@ import type { MomentBinding, MomentRead, MomentSource } from '@/lib/moment-read'
 import { coroutineChangesBetween, indexReplay } from '@/lib/replay-index'
 import { replayClock } from '@/lib/replay-seek'
 import type { CoroutineNode, VizEvent } from '@/types/api'
-import { useCursorCoroutines } from './use-cursor-coroutines'
+import { useCursorCoroutines, useKnownSummaryNodes } from './use-cursor-coroutines'
 import type { MomentView } from './use-moment'
 import type { UseReplayReturn } from './use-replay'
 
@@ -53,6 +53,9 @@ export function useOneMoment({ sessionId, share, readOnly, replayActive, replay,
   // The events behind the moment do not start at the session's first (seq 1): the replay's, or a shared link's.
   const momentFirstSeq = replayActive ? events[0]?.seq : readOnly ? allEvents[0]?.seq : undefined
   const incomplete = momentFirstSeq !== undefined && momentFirstSeq > 1
+  // The replay itself starts after the session's beginning (M-8, M-9).
+  const firstSeq = events[0]?.seq ?? 1
+  const replayIncomplete = replayActive && events.length > 0 && firstSeq > 1
   const replayRead: MomentRead | null = useMemo(
     () => (replayActive && currentEvent ? { source, binding: { kind: 'replay', atSeq: cursorSeq } } : null),
     [replayActive, currentEvent, source, cursorSeq],
@@ -66,7 +69,7 @@ export function useOneMoment({ sessionId, share, readOnly, replayActive, replay,
     projected: projectedAtCursor,
     cursorSeq,
     index,
-    incomplete,
+    incomplete: replayIncomplete,
     settleMs,
     hold,
   })
@@ -103,6 +106,8 @@ export function useOneMoment({ sessionId, share, readOnly, replayActive, replay,
   const unavailableReason =
     readOnly && !replayActive && share && share.asOfSeq == null ? (share.unavailable ?? 'no health in the link') : null
 
+  // Coroutines the summaries gave the tree in this replay: kept while a later read updates (M-5).
+  const summaryNodes = useKnownSummaryNodes(cursor.coroutines, events)
   // Every coroutine the replay holds at any point, so a selection the cursor has not reached yet is kept (M-5).
   const { replayCoroutineIds, replayLabels } = useMemo(() => {
     const ids = new Set<string>()
@@ -113,14 +118,14 @@ export function useOneMoment({ sessionId, share, readOnly, replayActive, replay,
       ids.add(created.coroutineId)
       if (created.label) labels.set(created.coroutineId, created.label)
     }
-    for (const c of cursor.coroutines) {
-      ids.add(c.id)
-      if (c.label) labels.set(c.id, c.label)
+    for (const [id, label] of summaryNodes) {
+      ids.add(id)
+      labels.set(id, label)
     }
     return { replayCoroutineIds: ids, replayLabels: labels }
-  }, [events, cursor.coroutines])
+  }, [events, summaryNodes])
 
-  const startNote = incomplete
+  const startNote = replayIncomplete
     ? `This replay starts at event ${firstSeq}: earlier events are not in it, so it may be incomplete.${
         cursor.status === 'ready'
           ? ' Coroutines created before it come from the server’s summaries.'
@@ -140,5 +145,6 @@ export function useOneMoment({ sessionId, share, readOnly, replayActive, replay,
     startNote,
     replayCoroutineIds,
     replayLabels,
+    summaryNodes,
   }
 }
