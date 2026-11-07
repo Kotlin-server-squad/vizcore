@@ -315,12 +315,18 @@ export function capRendered(
   forcedIds: ReadonlySet<string>,
 ): { rendered: CoroutineNode[]; total: number; hidden: number; found: number } {
   if (pool.length <= cap) return { rendered: [...pool], total: pool.length, hidden: 0, found: 0 }
-  const kept = new Set(
-    pool
-      .map(c => c.id)
-      .sort()
-      .slice(0, cap),
-  )
+  // The cap spends its cards on whole paths: each card kept brings the ancestors it is missing (within the cap), so no
+  // kept card is drawn without its parents, and an expanded group keeps its card and its parent.
+  const byId = new Map(pool.map(c => [c.id, c]))
+  const kept = new Set<string>()
+  for (const id of pool.map(c => c.id).sort()) {
+    if (kept.has(id)) continue
+    const path: string[] = []
+    for (let c = byId.get(id); c && !kept.has(c.id); c = c.parentId ? byId.get(c.parentId) : undefined) path.push(c.id)
+    if (kept.size + path.length > cap) continue
+    for (const p of path) kept.add(p)
+    if (kept.size === cap) break
+  }
   const rendered = pool.filter(c => kept.has(c.id) || forcedIds.has(c.id))
   const found = rendered.length - kept.size
   return { rendered, total: pool.length, hidden: pool.length - rendered.length, found }

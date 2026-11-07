@@ -107,6 +107,8 @@ export function groupSiblings(
   // groups down there included).
   const hidden = new Set<string>()
   const hiddenBelow = new Set<string>()
+  // Decided once per group: a card is drawn while a member, or anything below the members, is shown.
+  const visible = new Set<string>()
   for (const [id, members] of byGroup) {
     if (members.length < 2) continue
     const first = members[0]!
@@ -126,6 +128,7 @@ export function groupSiblings(
       expanded: isExpanded,
     })
     for (const m of memberIds) groupOf.set(m, id)
+    if (!shown || memberIds.some(m => shown.has(m)) || [...descendants].some(d => shown.has(d))) visible.add(id)
     if (!isExpanded) {
       for (const m of memberIds) hidden.add(m)
       for (const d of descendants) {
@@ -138,7 +141,7 @@ export function groupSiblings(
   const placed = new Set<string>()
   for (const c of coroutines) {
     const gid = groupOf.get(c.id)
-    if (gid && !placed.has(gid) && !hiddenBelow.has(c.id) && (!shown || groups.get(gid)!.memberIds.some(m => shown.has(m)))) {
+    if (gid && !placed.has(gid) && !hiddenBelow.has(c.id) && visible.has(gid)) {
       placed.add(gid)
       const g = groups.get(gid)!
       nodes.push({

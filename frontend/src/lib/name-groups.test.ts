@@ -85,6 +85,24 @@ describe('groupSiblings (S-12: siblings only, ancestry never hidden)', () => {
     expect(ids(groupSiblings(cs, NONE, new Set(['r'])).nodes)).toEqual(['r'])
   })
 
+  it('shows a collapsed group whose members are filtered out when something below them is shown', () => {
+    const cs = [
+      node('r'),
+      node('o1', { parentId: 'r', label: 'order-1', state: CoroutineState.SUSPENDED }),
+      node('o2', { parentId: 'r', label: 'order-2', state: CoroutineState.SUSPENDED }),
+      node('kid', { parentId: 'o1', label: 'charge', state: CoroutineState.ACTIVE }),
+    ]
+    const id = groupIdOf(cs[1]!)!
+    expect(ids(groupSiblings(cs, NONE, new Set(['r', 'kid'])).nodes)).toEqual(['r', id])
+  })
+
+  it('stays linear with many siblings none of which is shown', () => {
+    const many = [node('r', { state: CoroutineState.ACTIVE }), ...Array.from({ length: 20_000 }, (_, i) => node(`s${i}`, { parentId: 'r', label: `fetch-${i}` }))]
+    const started = performance.now()
+    groupSiblings(many, NONE, new Set(['r']))
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
   it('keeps two parents’ order-* children apart', () => {
     const cs = [
       node('a'),

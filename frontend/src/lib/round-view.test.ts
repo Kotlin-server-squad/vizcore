@@ -413,3 +413,14 @@ describe('capNote unit', () => {
     )
   })
 })
+
+describe('capRendered keeps ancestry', () => {
+  it('draws the parents of every coroutine it keeps, even when their ids sort past the cap', () => {
+    const kids = Array.from({ length: 300 }, (_, i) => node(`f${String(i).padStart(3, '0')}`, { parentId: 'zz-group' }))
+    const pool = [node('zz-root'), node('zz-group', { parentId: 'zz-root' }), ...kids]
+    const r = capRendered(pool, 200, new Set())
+    expect(r.rendered.map(c => c.id)).toEqual(expect.arrayContaining(['zz-root', 'zz-group']))
+    expect(r).toMatchObject({ total: 302, found: 0 })
+    expect(r.rendered).toHaveLength(200)
+  })
+})

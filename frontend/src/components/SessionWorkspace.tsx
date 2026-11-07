@@ -343,7 +343,8 @@ export function SessionWorkspace({
       if (gid && grouped.groups.has(gid)) forcedCards.add(gid)
     }
     const capped = capRendered(grouped.nodes, NODE_CAP, forcedCards)
-    return { renderedCoroutines: capped.rendered, cap: capped, groups: grouped.groups, poolSize: shown.length }
+    // The note names the coroutines in the view (every state), as the group cards' counts do.
+    return { renderedCoroutines: capped.rendered, cap: capped, groups: grouped.groups, poolSize: viewCoroutines.length }
   }, [stateFilter, showCompleted, allFinished, viewCoroutines, activeCoroutines, viewLeakIds, forcedIds, grouping, expandedGroups])
 
   // Unfinished children per parent, over the whole snapshot: the "Waiting for N
