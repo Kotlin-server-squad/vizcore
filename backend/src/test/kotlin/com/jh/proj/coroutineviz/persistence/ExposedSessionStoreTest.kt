@@ -286,11 +286,12 @@ class ExposedSessionStoreTest {
     }
 
     @Test
-    fun `recording an event reads the next seq from the session-seq index, not from every stored event`() {
+    fun `recording an event reads one index entry for the next seq, not every stored event`() {
         // Each live ingest frame records one event. Reading the next seq through the session-id index made H2 read every
         // stored event of the session, payload included, for each new one: a few minutes into a busy app an append took
         // ~200 ms, ingest fell behind the app, and the socket's pongs queued behind the backlog until the server's ping
-        // timeout closed a healthy connection, which reads as "delivery uncertain" for the rest of the session.
+        // timeout closed a healthy connection, which reads as "delivery uncertain" for the rest of the session. A MAX(seq)
+        // still walks every index entry of the session (H2 2.4), so the work per append must not grow with the session.
         val store = ExposedSessionStore(db)
         val id = runBlocking { store.createSession("busy") }.sessionId
         transaction(db) {
@@ -331,12 +332,14 @@ class ExposedSessionStoreTest {
         val plans =
             transaction(db) {
                 selects.map { sql ->
-                    exec("EXPLAIN $sql", explicitStatementType = StatementType.SELECT) { rs -> rs.next().let { rs.getString(1) } }!!
+                    exec("EXPLAIN ANALYZE $sql", explicitStatementType = StatementType.SELECT) { rs -> rs.next().let { rs.getString(1) } }!!
                 }
             }
         for (plan in plans) {
             assertTrue("IDX_EVENTS_SESSION_SEQ" in plan.uppercase(), "not read from the (session_id, seq) index: $plan")
             assertFalse("PAYLOAD" in plan.uppercase(), "reads the stored payloads: $plan")
+            val scanned = Regex("""scanCount: (\d+)""").findAll(plan).sumOf { it.groupValues[1].toLong() }
+            assertTrue(scanned in 1..2, "reads $scanned index entries of a 3,001-event session: $plan")
         }
         assertEquals(3_001L, appended.seq, "the next seq follows the stored ones")
     }
