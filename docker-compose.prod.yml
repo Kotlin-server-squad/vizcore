@@ -15,6 +15,7 @@
 #   CORS_ALLOWED_ORIGINS  comma-separated origins the backend accepts
 #   SESSION_MAX_AGE_MS, SESSION_MAX_COUNT, MAX_CONCURRENT_DEMOS,
 #   MAX_DEMO_RUN_SECONDS, DEMO_TIME_SCALE, JAVA_OPTS  backend tuning
+#   LOOK_EXPERIMENT_ENABLED, LOOK_EXPERIMENT, LOOK_SURVEY_URL  the look experiment (off by default)
 services:
   backend:
     image: ghcr.io/kotlin-server-squad/vizcore/backend:${TAG:-latest}
@@ -29,6 +30,10 @@ services:
       - MAX_CONCURRENT_DEMOS=${MAX_CONCURRENT_DEMOS:-3}
       - MAX_DEMO_RUN_SECONDS=${MAX_DEMO_RUN_SECONDS:-60}
       - DEMO_TIME_SCALE=${DEMO_TIME_SCALE:-1.0}
+      # The look experiment (docs/guides/look-experiment.md): off unless switched on.
+      - LOOK_EXPERIMENT_ENABLED=${LOOK_EXPERIMENT_ENABLED:-false}
+      - LOOK_EXPERIMENT=${LOOK_EXPERIMENT:-classic:25,a:25,b:25,c:25}
+      - LOOK_SURVEY_URL=${LOOK_SURVEY_URL:-}
       - JAVA_OPTS=${JAVA_OPTS:--Xmx512m -Xms256m}
     healthcheck:
       # Same readiness probe as the dev stack; curl ships with eclipse-temurin:21-jre.

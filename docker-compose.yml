@@ -14,6 +14,10 @@ services:
       - MAX_CONCURRENT_DEMOS=${MAX_CONCURRENT_DEMOS:-3}
       - MAX_DEMO_RUN_SECONDS=${MAX_DEMO_RUN_SECONDS:-60}
       - DEMO_TIME_SCALE=${DEMO_TIME_SCALE:-1.0}
+      # The look experiment (docs/guides/look-experiment.md): off unless switched on.
+      - LOOK_EXPERIMENT_ENABLED=${LOOK_EXPERIMENT_ENABLED:-false}
+      - LOOK_EXPERIMENT=${LOOK_EXPERIMENT:-classic:25,a:25,b:25,c:25}
+      - LOOK_SURVEY_URL=${LOOK_SURVEY_URL:-}
     healthcheck:
       # /api/ready is the readiness probe (HealthRoutes); "/" is not a route and would make
       # `curl -f` fail forever. curl ships with the eclipse-temurin:21-jre runtime image.

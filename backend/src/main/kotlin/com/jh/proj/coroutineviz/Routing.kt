@@ -2,6 +2,8 @@ package com.jh.proj.coroutineviz
 
 import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.UserStore
+import com.jh.proj.coroutineviz.experiment.LookExperiment
+import com.jh.proj.coroutineviz.experiment.registerLookExperimentRoutes
 import com.jh.proj.coroutineviz.routes.ChecksResults
 import com.jh.proj.coroutineviz.routes.CorrelationRegistry
 import com.jh.proj.coroutineviz.routes.HealthCuts
@@ -59,6 +61,8 @@ fun Application.configureRouting() {
     val shareService = db?.let { ShareService(it) }
     val publicBaseUrl = environment.config.propertyOrNull("app.publicBaseUrl")?.getString()
     val rateLimitShared = attributes.getOrNull(SharedRateLimitEnabledKey) ?: false
+    // The look experiment (lookExperiment.*): in the database when the server has one, else in memory.
+    val lookExperiment = LookExperiment.from(environment.config, db)
 
     routing {
         // Public routes — no auth required (AUTH-01 allowlist), no rate limit.
@@ -98,6 +102,9 @@ fun Application.configureRouting() {
                 // Owner share management (SHAR-01): mint/list/revoke require a credential
                 // when auth is on (T-03-16). createdBy is resolved from the principal.
                 shareService?.let { registerShareOwnerRoutes(it, publicBaseUrl) }
+                // The look experiment: the same access as the sessions list; the writes take only its
+                // anonymous events and votes, and nothing while it is off.
+                registerLookExperimentRoutes(lookExperiment)
             }
         }
     }
