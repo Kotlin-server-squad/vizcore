@@ -55,6 +55,8 @@ vi.mock('@/lib/animation-throttle', () => ({ useAnimationSlot: () => false }))
 vi.mock('@tanstack/react-router', () => ({ useNavigate: vi.fn(() => vi.fn()) }))
 
 const SESSION = 'budget-session'
+/** Rounds the fake app has. */
+const ROUND_COUNT = 600
 
 /** Minimal server: plausible JSON for every read the workspace makes. */
 function respond(url: string) {
@@ -66,9 +68,22 @@ function respond(url: string) {
       coroutineCount: 1,
       eventCount: 1,
       coroutines: [
-        { id: 'c-1', jobId: 'j-1', parentId: null, scopeId: 's', label: 'worker', state: 'ACTIVE' },
+        // A big app's node: with its server round and origin, so the round bar and its list are part of the budget.
+        { id: 'c-1', jobId: 'j-1', parentId: null, scopeId: 's', label: 'worker', state: 'ACTIVE', roundId: 'round:r0', origin: 'APP' },
       ],
+      kind: 'ATTACHED',
+      origin: 'REPORTED',
+      captureStartAppNanos: 0,
     }
+  } else if (path.endsWith('/rounds')) {
+    // Several hundred rounds: the list is one request whatever it shows (the limit grows, pages do not).
+    const limit = Number(new URLSearchParams(url.split('?')[1] ?? '').get('limit') ?? 50)
+    const items = Array.from({ length: Math.min(limit, ROUND_COUNT) }, (_, i) => ({
+      roundId: `round:r${i}`, anchorId: `r${i}`, anchorName: `request-${i}`, anchorOrigin: 'APP',
+      anchorCreatedNanos: i, anchorCreatedSeq: i, inProgress: true, countsByState: {}, memberCount: 1,
+      problem: false, problemKinds: [],
+    }))
+    body = { asOfSeq: 1, total: ROUND_COUNT, items, nextCursor: limit < ROUND_COUNT ? 'next' : null, unknownAtSeq: 0, asOfAppNanos: 1 }
   } else if (path.endsWith('/events')) {
     body = []
   } else if (path.endsWith('/metrics')) {
@@ -209,7 +224,15 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     await advance(1000)
     const es = FakeEventSource.instances[0]!
     act(() => es.open())
+    // List 200 rounds before measuring: still one request per list read.
+    for (let i = 0; i < 3; i++) {
+      fireEvent.change(screen.getByRole('combobox', { name: 'Round' }), { target: { value: '__more__' } })
+      await advance(1000)
+    }
+    expect(fetchMock.mock.calls.at(-1)![0]).toContain('limit=200')
+    await advance(15_000)
     const start = requestCount()
+    const fetchesBefore = fetchMock.mock.calls.length
 
     // A new event every second for five minutes.
     let seq = 1
@@ -224,8 +247,12 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     })
 
     const perMinute = (requestCount() - start) / 5
-    // Three reads (snapshot, threads, metrics) per 5 s refresh window at most.
-    expect(perMinute).toBeLessThanOrEqual(36)
+    // Three reads (snapshot, threads, metrics) per 5 s refresh window at most, plus the round list at most every
+    // 15 s (Part 6) — one request even with 200 rounds listed.
+    expect(perMinute).toBeLessThanOrEqual(40)
+    const roundReads = fetchMock.mock.calls.slice(fetchesBefore).filter(([u]) => String(u).includes('/rounds'))
+    expect(roundReads.length).toBeGreaterThan(0)
+    expect(roundReads.every(([u]) => String(u).includes('limit=200'))).toBe(true)
     // ...and the stream genuinely drives refreshes (the panels stay live).
     expect(perMinute).toBeGreaterThanOrEqual(30)
     // The full event history is never re-downloaded while SSE is connected.
@@ -251,8 +278,8 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     })
 
     const perMinute = (requestCount() - start) / 5
-    // snapshot + metrics + threads every 10 s = 18/min.
-    expect(perMinute).toBeLessThanOrEqual(18)
+    // snapshot + metrics + threads every 10 s = 18/min, plus the round list every 20 s (Part 6) = 21.
+    expect(perMinute).toBeLessThanOrEqual(21)
     expect(perMinute).toBeGreaterThan(0)
     expect(screen.getByTestId('view-status')).toHaveTextContent(/connection lost/i)
   })

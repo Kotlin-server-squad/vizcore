@@ -13,6 +13,8 @@ import type {
   ValidationResponse,
   SessionComparison,
   MetricsResponse,
+  RoundsPage,
+  RoundsQuery,
 } from '@/types/api'
 import type {
   CreateShareResponse,
@@ -217,9 +219,13 @@ class ApiClient {
   }
 
   // Session Management
-  async createSession(name?: string): Promise<CreateSessionResponse> {
-    const url = name ? `/sessions?name=${encodeURIComponent(name)}` : '/sessions'
-    return this.fetchJson<CreateSessionResponse>(url, { method: 'POST' })
+  /** [demoId]: the catalog id of the demo this session is for; the session API returns it (S-13). */
+  async createSession(name?: string, demoId?: string): Promise<CreateSessionResponse> {
+    const query = new URLSearchParams()
+    if (name) query.set('name', name)
+    if (demoId) query.set('demoId', demoId)
+    const search = query.toString().replace(/\+/g, '%20')
+    return this.fetchJson<CreateSessionResponse>(search ? `/sessions?${search}` : '/sessions', { method: 'POST' })
   }
 
   // The look experiment's results (GET /api/experiments/looks/results): same access as the sessions list.
@@ -355,6 +361,20 @@ class ApiClient {
       ? `/sessions/${encodeURIComponent(sessionId)}/hierarchy?scopeId=${encodeURIComponent(scopeId)}`
       : `/sessions/${encodeURIComponent(sessionId)}/hierarchy`
     return this.fetchJson<HierarchyNode[]>(url)
+  }
+
+  /**
+   * One page of the session's rounds (triage C-3, T-4): problem rounds first, then newest. `q` is "find in all
+   * rounds" (names and creation locations); `includeVizcore` lists vizcore's own rounds too.
+   */
+  async getRounds(sessionId: string, query: RoundsQuery = {}): Promise<RoundsPage> {
+    const params = new URLSearchParams()
+    if (query.limit !== undefined) params.set('limit', String(query.limit))
+    if (query.q) params.set('q', query.q)
+    if (query.includeVizcore) params.set('includeVizcore', 'true')
+    if (query.cursor) params.set('cursor', query.cursor)
+    const search = params.toString()
+    return this.fetchJson<RoundsPage>(`/sessions/${encodeURIComponent(sessionId)}/rounds${search ? `?${search}` : ''}`)
   }
 
   async getCoroutineTimeline(sessionId: string, coroutineId: string): Promise<CoroutineTimeline> {

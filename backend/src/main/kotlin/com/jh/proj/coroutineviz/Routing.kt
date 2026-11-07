@@ -8,6 +8,7 @@ import com.jh.proj.coroutineviz.routes.ChecksResults
 import com.jh.proj.coroutineviz.routes.CorrelationRegistry
 import com.jh.proj.coroutineviz.routes.HealthCuts
 import com.jh.proj.coroutineviz.routes.IngestStates
+import com.jh.proj.coroutineviz.routes.SessionDemos
 import com.jh.proj.coroutineviz.routes.registerAuthRoutes
 import com.jh.proj.coroutineviz.routes.registerComparisonRoutes
 import com.jh.proj.coroutineviz.routes.registerFlowScenarioRoutes
@@ -48,6 +49,7 @@ fun Application.configureRouting() {
     SessionManager.addOnSessionClosed { sessionId -> HealthCuts.forget(sessionId) }
     // And its last checks run (memory mode; a database row goes with its session).
     SessionManager.addOnSessionClosed { sessionId -> ChecksResults.forget(sessionId) }
+    SessionManager.addOnSessionClosed { sessionId -> SessionDemos.forget(sessionId) }
 
     // Stores built by configureAuth() (runs first in module()); reused for the token endpoint.
     val userStore = attributes.getOrNull(UserStoreKey) ?: UserStore(emptyList())

@@ -6,13 +6,15 @@ import { CoroutineCanvas } from './CoroutineCanvas'
 import type { CoroutineNode } from '@/types/api'
 
 vi.mock('../CoroutineTreeGraph', () => ({
-  CoroutineTreeGraph: ({ activity }: { activity?: Map<string, unknown> }) => (
-    <div data-testid="coroutine-tree-graph" data-activity={activity?.size ?? 0} />
+  CoroutineTreeGraph: ({ activity, reveal }: { activity?: Map<string, unknown>; reveal?: { id: string } }) => (
+    <div data-testid="coroutine-tree-graph" data-activity={activity?.size ?? 0} data-reveal={reveal?.id ?? ''} />
   ),
 }))
 vi.mock('../CoroutineTree', () => ({
   CoroutineTree: ({ activity }: { activity?: Map<string, unknown> }) => (
-    <div data-testid="coroutine-tree" data-activity={activity?.size ?? 0} />
+    <div data-testid="coroutine-tree" data-activity={activity?.size ?? 0}>
+      <div data-node-id="c-1" />
+    </div>
   ),
 }))
 
@@ -26,7 +28,6 @@ function renderCanvas(props: Partial<Parameters<typeof CoroutineCanvas>[0]> = {}
       viewMode="graph"
       completedCount={0}
       showCompleted={false}
-      moreCount={0}
       stateFilter="all"
       selectedCoroutineId={null}
       panelRef={createRef()}
@@ -109,5 +110,66 @@ describe('CoroutineCanvas — the main view', () => {
   it('explains sampling in an attached app\'s empty state (H-4)', () => {
     renderCanvas({ coroutines: [], isDemo: false })
     expect(screen.getByRole('region', { name: 'Main view' })).toHaveTextContent('on a poll')
+  })
+
+  describe('big apps (S-12)', () => {
+    it('puts the round bar under the toolbar', () => {
+      renderCanvas({ roundBar: <div data-testid="round-bar" /> })
+      expect(screen.getByTestId('round-bar')).toBeInTheDocument()
+    })
+
+    it('says what the cap leaves out, and the notes on what the page holds', () => {
+      renderCanvas({
+        capNote: 'Showing 200 of 1,234 coroutines in this round. Find reaches one by its name or creation site.',
+        notes: [{ key: 'history', text: 'The Events tab reads the newest 10,000 events this page received.' }],
+      })
+      const main = screen.getByRole('region', { name: 'Main view' })
+      expect(main).toHaveTextContent('Showing 200 of 1,234 coroutines in this round. Find reaches one by its name or creation site.')
+      expect(main.querySelector('[data-look-part="cap-note"]')).not.toBeNull()
+      expect(main.querySelector('[data-look-part="history-note"]')).toHaveTextContent('newest 10,000 events')
+    })
+
+    it('says it is loading the rounds instead of drawing every coroutine first', () => {
+      renderCanvas({ loadingRounds: true })
+      expect(screen.getByText('Loading rounds…')).toBeInTheDocument()
+      expect(screen.queryByTestId('coroutine-tree-graph')).toBeNull()
+    })
+
+    it('says why a view is empty when only vizcore coroutines are hidden', () => {
+      renderCanvas({ coroutines: [], emptyReason: 'vizcore-hidden' })
+      expect(screen.getByRole('region', { name: 'Main view' })).toHaveTextContent(
+        "Only vizcore's own coroutines were captured in this view. Turn on vizcore connection to see them.",
+      )
+    })
+
+    it('says a chip matches nothing in this round, not in the session', () => {
+      renderCanvas({ coroutines: [], stateFilter: 'failed', emptyReason: 'round' })
+      expect(screen.getByRole('region', { name: 'Main view' })).toHaveTextContent('No failed coroutines in this round')
+    })
+  })
+
+  describe('revealing a found coroutine', () => {
+    it('hands the reveal to the graph', () => {
+      renderCanvas({ reveal: { id: 'c-1', key: 1 } })
+      expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-reveal', 'c-1')
+    })
+
+    it('scrolls the list to it, once per reveal', () => {
+      const scrolled = vi.fn()
+      Element.prototype.scrollIntoView = scrolled
+      renderCanvas({ viewMode: 'list', reveal: { id: 'c-1', key: 1 } })
+      expect(scrolled).toHaveBeenCalledWith({ block: 'center' })
+      expect(scrolled.mock.instances[0]).toHaveAttribute('data-node-id', 'c-1')
+    })
+
+    it('says "this round" in its heading when it shows one round', () => {
+      renderCanvas({ inRound: true })
+      expect(screen.getByText("What's running in this round")).toBeInTheDocument()
+    })
+
+    it('says a finished round has finished, not everything', () => {
+      renderCanvas({ inRound: true, allFinished: true })
+      expect(screen.getByText('This round has finished')).toBeInTheDocument()
+    })
   })
 })

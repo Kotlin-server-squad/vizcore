@@ -13,6 +13,8 @@ interface SessionSearchParams {
   live?: boolean
   /** A trial look for this page (PR L0): `a`, `b`, `c` or `classic`. Read once, then removed. */
   look?: string
+  /** Opened by Run again: start the run here (S-13). Read once, then removed. */
+  run?: boolean
 }
 
 export const Route = createFileRoute('/sessions/$sessionId')({
@@ -22,6 +24,7 @@ export const Route = createFileRoute('/sessions/$sessionId')({
       scenarioId: search.scenarioId as string | undefined,
       scenarioName: search.scenarioName as string | undefined,
       live: search.live === true || search.live === 'true' ? true : undefined,
+      run: search.run === true || search.run === 'true' ? true : undefined,
       // Present but not text (the search parser reads `?look=1`, `null` or `["a"]` as
       // JSON): unknown, so Classic, never the remembered look.
       look:
@@ -38,6 +41,11 @@ function SessionDetailPage() {
   // so a later choice from the menu is not overruled on reload.
   const dropLookFromAddress = useCallback(
     () => void navigate({ search: prev => ({ ...prev, look: undefined }), replace: true }),
+    [navigate]
+  )
+  // Run again's request to start the run: dropped once read, so a reload never starts a second one.
+  const dropRunFromAddress = useCallback(
+    () => void navigate({ search: prev => ({ ...prev, run: undefined }), replace: true }),
     [navigate]
   )
   // The look experiment (off unless the server runs it): this page only, never the shared view.
@@ -66,6 +74,8 @@ function SessionDetailPage() {
               scenarioId={search.scenarioId}
               scenarioName={search.scenarioName}
               startLive={search.live}
+              autoRun={search.run}
+              onAutoRunConsumed={dropRunFromAddress}
             />
           </div>
         </Layout>

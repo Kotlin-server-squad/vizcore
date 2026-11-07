@@ -196,6 +196,7 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 import { useSession, useDeleteSession } from '@/hooks/use-sessions'
+import { useRunScenario } from '@/hooks/use-scenarios'
 import { useEventStream } from '@/hooks/use-event-stream'
 import { ApiError, NetworkError, RateLimitedError } from '@/lib/api-errors'
 import { apiClient } from '@/lib/api-client'
@@ -402,7 +403,7 @@ describe('SessionWorkspace', () => {
     expect(runButton).not.toBeDisabled()
   })
 
-  it('does NOT show the disabled "Scenario Running" button when all coroutines are terminal', () => {
+  it('offers Run again once a run has finished (S-13)', () => {
     const session = makeSession({
       coroutineCount: 2,
       coroutines: [
@@ -436,13 +437,12 @@ describe('SessionWorkspace', () => {
       { wrapper: createWrapper() },
     )
 
-    // Finished state: the disabled "Scenario Running" button should NOT be present
-    expect(screen.queryByRole('button', { name: /scenario running/i })).not.toBeInTheDocument()
-    // Instead, a finished indicator button should appear
-    expect(screen.getByRole('button', { name: /scenario finished/i })).toBeInTheDocument()
+    // Finished: today's disabled button is replaced by Run again (S-13).
+    expect(screen.queryByRole('button', { name: /scenario finished/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run again' })).toBeEnabled()
   })
 
-  it('shows disabled "Scenario Running" button when some coroutines are still active (in-progress)', () => {
+  it('offers Run again while the run still goes on: the old run keeps running in its session', () => {
     const session = makeSession({
       coroutineCount: 2,
       coroutines: [
@@ -476,9 +476,46 @@ describe('SessionWorkspace', () => {
       { wrapper: createWrapper() },
     )
 
-    // In-progress: "Scenario Running" disabled button is shown
-    const runningButton = screen.getByRole('button', { name: /scenario running/i })
-    expect(runningButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /scenario running/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run again' })).toBeEnabled()
+  })
+
+  it('knows its demo from the session when the address does not name it (S-13)', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ demoId: 'nested' }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="scenario-Nested-1793993830683" />, { wrapper: createWrapper() })
+    expect(screen.getByRole('button', { name: 'Run again' })).toBeEnabled()
+  })
+
+  it('offers no run actions for a session without a demo', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ demoId: null }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="my-app-1793993830683" />, { wrapper: createWrapper() })
+    expect(screen.queryByRole('button', { name: 'Run again' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /run scenario/i })).not.toBeInTheDocument()
+  })
+
+  it('starts the run itself when Run again opened it, and drops the request from the address', async () => {
+    const mutateAsync = vi.fn(() => Promise.resolve({ sessionId: 'session-1' }))
+    vi.mocked(useRunScenario).mockReturnValue({ mutateAsync, isPending: false } as unknown as ReturnType<typeof useRunScenario>)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const onAutoRunConsumed = vi.fn()
+    render(
+      <SessionWorkspace sessionId="session-1" scenarioId="nested" scenarioName="Nested" autoRun onAutoRunConsumed={onAutoRunConsumed} />,
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ scenarioId: 'nested', sessionId: 'session-1' }))
+    expect(onAutoRunConsumed).toHaveBeenCalledTimes(1)
   })
 
   it('lets the user switch the live stream OFF on scenario pages (WR-04: auto-enable only once)', async () => {
@@ -1083,12 +1120,12 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(screen.queryByText(/Show completed/)).toBeNull()
   })
 
-  it('shows "N more coroutines" when the active set exceeds the node cap', () => {
+  it('says how many coroutines the node cap leaves out (S-12)', () => {
     const many = Array.from({ length: 205 }, (_, i) => coro(`a-${i}`, 'ACTIVE'))
     mountSession(many)
 
-    // NODE_CAP = 200 → 5 more
-    expect(screen.getByText('5 more coroutines')).toBeInTheDocument()
+    // NODE_CAP = 200 of 205; no rounds here (older server), so no Find to point at.
+    expect(screen.getByText('Showing 200 of 205 coroutines.')).toBeInTheDocument()
     const graph = screen.getByTestId('coroutine-tree-graph')
     expect(graph).toHaveAttribute('data-count', '200')
   })
@@ -1138,7 +1175,7 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
   it('caps a finished run at the node cap and counts the rest', () => {
     mountSession(Array.from({ length: 205 }, (_, i) => coro(`c-${i}`, 'COMPLETED')))
     expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-count', '200')
-    expect(screen.getByText('5 more coroutines')).toBeInTheDocument()
+    expect(screen.getByText('Showing 200 of 205 coroutines.')).toBeInTheDocument()
   })
 
   it('counts "more" from what the chip selects, not from the whole run', async () => {
@@ -1148,7 +1185,7 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     ])
     await userEvent.click(screen.getByRole('button', { name: 'Failed 1' }))
     expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'f-1')
-    expect(screen.queryByText(/more coroutines/)).toBeNull()
+    expect(screen.queryByText(/^Showing \d+ of/)).toBeNull()
   })
 
   it('tells an app session with no coroutines to start the instrumented app', () => {

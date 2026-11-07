@@ -103,6 +103,30 @@ describe('ApiClient', () => {
     })
   })
 
+  describe('getRounds', () => {
+    it('pages the rounds with only the parameters given', async () => {
+      const page = { asOfSeq: 9, total: 0, items: [], nextCursor: null, unknownAtSeq: 0 }
+      mockFetch.mockResolvedValue(mockJsonResponse(page))
+
+      const result = await apiClient.getRounds('app 1', { limit: 50 })
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/sessions/app%201/rounds?limit=50', {
+        headers: { 'Content-Type': 'application/json' },
+      })
+      expect(result).toEqual(page)
+    })
+
+    it('sends find, the vizcore toggle and the cursor encoded', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ asOfSeq: 1, total: 0, items: [], nextCursor: null, unknownAtSeq: 0 }))
+
+      await apiClient.getRounds('s', { limit: 200, q: 'fetch 2&x', includeVizcore: true, cursor: '0.1.2.YQ' })
+
+      expect(mockFetch.mock.calls[0]![0]).toBe(
+        '/api/sessions/s/rounds?limit=200&q=fetch+2%26x&includeVizcore=true&cursor=0.1.2.YQ',
+      )
+    })
+  })
+
   describe('createSession', () => {
     it('makes POST request to /api/sessions without name', async () => {
       const response = { sessionId: 'session-new', message: 'Created' }
@@ -129,6 +153,17 @@ describe('ApiClient', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         }
+      )
+    })
+
+    it('records the demo the session is for (S-13)', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ sessionId: 'scenario-x-1', message: 'Created' }))
+
+      await apiClient.createSession('scenario-Deadlock', 'sync/mutex/deadlock-demo')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/sessions?name=scenario-Deadlock&demoId=sync%2Fmutex%2Fdeadlock-demo',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' } }
       )
     })
   })

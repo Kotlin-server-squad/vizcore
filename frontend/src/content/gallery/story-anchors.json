@@ -1,0 +1,284 @@
+{
+  "nested": [
+    {
+      "anchor": { "event": "CoroutineSuspended", "coroutine": "fetch-product", "occurrence": 2 },
+      "expect": { "load-product-page": "ACTIVE", "fetch-product": "SUSPENDED" },
+      "prediction": {
+        "question": "While fetch-product loads, have the three sections started yet?",
+        "answers": ["Yes, everything starts at once", "No: join() waits for the product first"],
+        "correct": 1
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineResumed", "coroutine": "load-recommendations", "occurrence": 1 },
+      "expect": {
+        "load-product-page": "WAITING_FOR_CHILDREN",
+        "fetch-product": "COMPLETED",
+        "load-price-box": "WAITING_FOR_CHILDREN",
+        "fetch-price": "SUSPENDED",
+        "load-reviews": "WAITING_FOR_CHILDREN",
+        "fetch-reviews": "SUSPENDED",
+        "load-recommendations": "ACTIVE"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineStarted", "coroutine": "fetch-thumbnails", "occurrence": 1 },
+      "expect": {
+        "fetch-reviews": "WAITING_FOR_CHILDREN",
+        "fetch-review-photos": "SUSPENDED",
+        "load-recommendations": "WAITING_FOR_CHILDREN",
+        "fetch-thumbnails": "ACTIVE"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "load-product-page", "occurrence": 1 },
+      "expect": {
+        "load-product-page": "COMPLETED",
+        "load-price-box": "COMPLETED",
+        "load-reviews": "COMPLETED",
+        "load-recommendations": "COMPLETED",
+        "fetch-thumbnails": "COMPLETED"
+      },
+      "prediction": {
+        "question": "The page's own code ends after 2.5 s. When is load-product-page completed?",
+        "answers": ["Right then, at 2.5 s", "Only when the last request below it is done, at about 16 s"],
+        "correct": 1
+      }
+    }
+  ],
+  "parallel": [
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "fetch-alerts", "occurrence": 1 },
+      "expect": {
+        "load-dashboard": "ACTIVE",
+        "fetch-alerts": "COMPLETED",
+        "fetch-sales": "SUSPENDED",
+        "fetch-orders": "SUSPENDED",
+        "fetch-visitors": "SUSPENDED",
+        "fetch-top-products": "SUSPENDED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "fetch-visitors", "occurrence": 1 },
+      "expect": {
+        "fetch-sales": "COMPLETED",
+        "fetch-orders": "COMPLETED",
+        "fetch-visitors": "COMPLETED",
+        "fetch-alerts": "COMPLETED",
+        "fetch-top-products": "COMPLETED"
+      },
+      "prediction": {
+        "question": "The five requests take 31 s of work together. How long does the dashboard wait for them?",
+        "answers": ["About 31 s, one after another", "About 11 s, as long as the slowest one"],
+        "correct": 1
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "load-dashboard", "occurrence": 1 },
+      "expect": { "load-dashboard": "COMPLETED", "render-dashboard": "COMPLETED" }
+    }
+  ],
+  "cancellation": [
+    {
+      "anchor": { "event": "CoroutineSuspended", "coroutine": "fetch-activity-feed", "occurrence": 1 },
+      "expect": { "fetch-activity-feed": "SUSPENDED" }
+    },
+    {},
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "fetch-avatar", "occurrence": 1 },
+      "expect": {
+        "app-session": "SUSPENDED",
+        "profile-screen": "WAITING_FOR_CHILDREN",
+        "fetch-avatar": "COMPLETED",
+        "fetch-friends": "SUSPENDED",
+        "fetch-activity-feed": "SUSPENDED",
+        "sync-settings": "SUSPENDED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCancelled", "coroutine": "profile-screen", "occurrence": 1 },
+      "expect": {
+        "profile-screen": "CANCELLED",
+        "fetch-avatar": "COMPLETED",
+        "fetch-friends": "CANCELLED",
+        "fetch-activity-feed": "CANCELLED",
+        "sync-settings": "SUSPENDED"
+      },
+      "prediction": {
+        "question": "The user closes the screen. What happens to sync-settings?",
+        "answers": ["It is cancelled with the screen", "It carries on: it is not part of the screen"],
+        "correct": 1
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "app-session", "occurrence": 1 },
+      "expect": { "app-session": "COMPLETED", "sync-settings": "COMPLETED", "profile-screen": "CANCELLED" }
+    }
+  ],
+  "deep-nesting": [
+    {
+      "anchor": { "event": "CoroutineResumed", "coroutine": "index-home", "occurrence": 1 },
+      "expect": { "index-home": "ACTIVE" }
+    },
+    {
+      "anchor": { "event": "CoroutineStarted", "coroutine": "index-src", "occurrence": 1 },
+      "expect": {
+        "index-home": "ACTIVE",
+        "index-ana": "ACTIVE",
+        "index-projects": "ACTIVE",
+        "index-vizcore": "SUSPENDED",
+        "index-src": "ACTIVE"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineResumed", "coroutine": "index-vizcore", "occurrence": 2 },
+      "expect": {
+        "index-projects": "ACTIVE",
+        "index-vizcore": "ACTIVE",
+        "index-backend": "SUSPENDED",
+        "index-src": "SUSPENDED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "index-src", "occurrence": 1 },
+      "expect": {
+        "index-home": "ACTIVE",
+        "index-ana": "ACTIVE",
+        "index-projects": "ACTIVE",
+        "index-vizcore": "ACTIVE",
+        "index-src": "COMPLETED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "index-home", "occurrence": 1 },
+      "expect": {
+        "index-home": "COMPLETED",
+        "index-ana": "COMPLETED",
+        "index-projects": "COMPLETED",
+        "index-vizcore": "COMPLETED",
+        "index-backend": "COMPLETED",
+        "index-src": "COMPLETED"
+      },
+      "prediction": {
+        "question": "Which folder is completed first?",
+        "answers": ["index-home, the top folder", "index-src, the deepest folder"],
+        "correct": 1
+      }
+    }
+  ],
+  "mixed": [
+    {
+      "anchor": { "event": "CoroutineSuspended", "coroutine": "validate-cart", "occurrence": 2 },
+      "expect": { "checkout": "ACTIVE", "validate-cart": "SUSPENDED" }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "calculate-shipping", "occurrence": 1 },
+      "expect": {
+        "checkout": "ACTIVE",
+        "validate-cart": "COMPLETED",
+        "reserve-stock": "SUSPENDED",
+        "calculate-shipping": "COMPLETED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "charge-card", "occurrence": 1 },
+      "expect": {
+        "checkout": "ACTIVE",
+        "reserve-stock": "COMPLETED",
+        "charge-card": "COMPLETED",
+        "calculate-shipping": "COMPLETED"
+      },
+      "prediction": {
+        "question": "joinAll() waits for the slowest of the three. Which one is it?",
+        "answers": ["reserve-stock", "charge-card", "calculate-shipping"],
+        "correct": 1
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineResumed", "coroutine": "send-receipt", "occurrence": 1 },
+      "expect": { "checkout": "ACTIVE", "create-order": "COMPLETED", "send-receipt": "ACTIVE" }
+    }
+  ],
+  "exception": [
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "fetch-delivery-status", "occurrence": 1 },
+      "expect": {
+        "load-account-page": "WAITING_FOR_CHILDREN",
+        "fetch-delivery-status": "COMPLETED",
+        "fetch-profile": "SUSPENDED",
+        "fetch-orders": "SUSPENDED",
+        "fetch-invoices": "SUSPENDED",
+        "fetch-loyalty-points": "SUSPENDED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineFailed", "coroutine": "fetch-loyalty-points", "occurrence": 1 },
+      "expect": {
+        "fetch-delivery-status": "COMPLETED",
+        "fetch-profile": "COMPLETED",
+        "fetch-loyalty-points": "FAILED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineFailed", "coroutine": "load-account-page", "occurrence": 1 },
+      "expect": {
+        "load-account-page": "FAILED",
+        "fetch-orders": "CANCELLED",
+        "fetch-invoices": "CANCELLED",
+        "fetch-loyalty-points": "FAILED"
+      },
+      "prediction": {
+        "question": "fetch-loyalty-points has failed. What happens to fetch-orders and fetch-invoices, which are still loading?",
+        "answers": ["They carry on loading", "They are cancelled", "They fail too"],
+        "correct": 1
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineFailed", "coroutine": "load-account-page", "occurrence": 1 },
+      "expect": { "fetch-delivery-status": "COMPLETED", "fetch-profile": "COMPLETED" }
+    }
+  ],
+  "dispatcher": [
+    {
+      "anchor": { "event": "CoroutineCreated", "coroutine": "process-photo-3", "occurrence": 1 },
+      "expect": {
+        "process-photo-1": "ACTIVE",
+        "download-photo-1": "COMPLETED",
+        "resize-photo-1": "SUSPENDED",
+        "process-photo-2": "ACTIVE"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineSuspended", "coroutine": "download-photo-3", "occurrence": 2 },
+      "expect": {
+        "resize-photo-1": "SUSPENDED",
+        "download-photo-2": "COMPLETED",
+        "resize-photo-2": "SUSPENDED",
+        "download-photo-3": "SUSPENDED"
+      },
+      "prediction": {
+        "question": "Photos 1 and 2 are being resized while photo 3 downloads. Do they run on the same dispatcher?",
+        "answers": ["Yes, all on Dispatchers.IO", "No: resizing runs on Default, downloading on IO"],
+        "correct": 1
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "resize-photo-3", "occurrence": 1 },
+      "expect": {
+        "resize-photo-1": "COMPLETED",
+        "resize-photo-2": "COMPLETED",
+        "upload-thumbnail-2": "COMPLETED",
+        "resize-photo-3": "COMPLETED"
+      }
+    },
+    {
+      "anchor": { "event": "CoroutineCompleted", "coroutine": "make-thumbnails", "occurrence": 1 },
+      "expect": {
+        "make-thumbnails": "COMPLETED",
+        "upload-thumbnail-1": "COMPLETED",
+        "upload-thumbnail-2": "COMPLETED",
+        "upload-thumbnail-3": "COMPLETED"
+      }
+    }
+  ]
+}

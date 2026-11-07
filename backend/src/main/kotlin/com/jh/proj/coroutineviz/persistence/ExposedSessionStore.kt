@@ -127,6 +127,24 @@ class ExposedSessionStore(
                 ?.get(SessionsTable.checks)
         }
 
+    /** Records the demo the session was created for (plan P-1), in the row's `scenario` column. */
+    fun saveDemoId(
+        sessionId: String,
+        demoId: String,
+    ) {
+        transaction(db) { SessionsTable.update({ SessionsTable.id eq sessionId }) { it[scenario] = demoId } }
+    }
+
+    /** The demo the session was created for, or null. */
+    fun loadDemoId(sessionId: String): String? =
+        transaction(db) {
+            SessionsTable
+                .select(SessionsTable.scenario)
+                .where { SessionsTable.id eq sessionId }
+                .firstOrNull()
+                ?.get(SessionsTable.scenario)
+        }
+
     /** Whether the session's row stores an ingest state (rows created before Part 5b-2 do not; plan E-13). */
     fun hasIngestState(sessionId: String): Boolean =
         transaction(db) {

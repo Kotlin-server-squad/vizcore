@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createElement, type ReactNode } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { compact } from '.'
@@ -29,6 +29,7 @@ vi.mock('@/lib/api-client', () => ({
     getMetrics: vi.fn(() => new Promise(() => {})),
     getSessionEvents: vi.fn(() => Promise.resolve([])),
     getCapabilities: vi.fn(() => new Promise(() => {})),
+    getRounds: vi.fn(),
   },
 }))
 vi.mock('@/components/DispatcherOverview', () => ({ DispatcherOverview: () => null }))
@@ -38,6 +39,7 @@ vi.mock('@/lib/animation-throttle', () => ({ useAnimationSlot: () => false }))
 
 import { useSession } from '@/hooks/use-sessions'
 import { useEventStream } from '@/hooks/use-event-stream'
+import { apiClient } from '@/lib/api-client'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const css = readFileSync(join(here, 'tokens.css'), 'utf8')
@@ -222,6 +224,49 @@ async function renderPage() {
   await userEvent.click(screen.getByRole('button', { name: 'Open source for order-2' }))
 }
 
+/**
+ * A big attached app (Part 6, S-12): rounds, a round past the cap, a vizcore coroutine, the find results open. The
+ * demo page above has none of these, so the round bar's rules are checked against this page.
+ */
+async function renderBigApp() {
+  const member = (i: number) => ({
+    id: `m${String(i).padStart(3, '0')}`, jobId: 'j', parentId: 'req', scopeId: 's', label: `fetch-${i}`,
+    state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const,
+  })
+  const coroutines = [
+    { id: 'req', jobId: 'j', parentId: null, scopeId: 's', label: 'request-1', state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const },
+    ...Array.from({ length: 210 }, (_, i) => member(i)),
+    { id: 'viz', jobId: 'j', parentId: null, scopeId: 's', label: 'nonce-generator', state: 'ACTIVE' as CoroutineState, roundId: 'round:viz', origin: 'VIZCORE' as const },
+  ]
+  const round = {
+    roundId: 'round:req', anchorId: 'req', anchorName: 'request-1', anchorOrigin: 'APP' as const, anchorCreatedNanos: 0,
+    anchorCreatedSeq: 1, inProgress: false, countsByState: {}, memberCount: 211, problem: false, problemKinds: [],
+  }
+  vi.mocked(apiClient.getRounds).mockImplementation((_id, q) =>
+    Promise.resolve({
+      asOfSeq: 9, total: 1, nextCursor: null, unknownAtSeq: 0, asOfAppNanos: 1,
+      items: [q?.q ? { ...round, matches: { items: ['m205'], total: 1 } } : round],
+    }),
+  )
+  vi.mocked(useEventStream).mockReturnValue({
+    events: [], isConnected: true, error: null, clearEvents: vi.fn(), droppedCount: 0, receivedCount: 0, reconnect: vi.fn(),
+  } as unknown as ReturnType<typeof useEventStream>)
+  vi.mocked(useSession).mockReturnValue({
+    data: { sessionId: 'app-1', coroutineCount: coroutines.length, eventCount: 1, coroutines, kind: 'ATTACHED', origin: 'REPORTED', captureStartAppNanos: 0 },
+    isLoading: false,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useSession>)
+  page = document.body.appendChild(document.createElement('div'))
+  page.setAttribute('data-look-part', 'page')
+  render(
+    createElement(LookProvider, { link: 'a', children: createElement(SessionWorkspace, { sessionId: 'app-1', startLive: true }) }),
+    { wrapper, container: page.appendChild(document.createElement('div')) },
+  )
+  await screen.findByRole('combobox', { name: 'Round' })
+  await userEvent.type(screen.getByRole('searchbox', { name: 'Find in all rounds' }), 'fetch-205{Enter}')
+  await screen.findByRole('button', { name: /^fetch-205/ })
+}
+
 describe('A · Compact on the real page', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -235,10 +280,13 @@ describe('A · Compact on the real page', () => {
   })
 
   it('every rule of the look matches something on the page (a renamed hook fails here, not silently)', async () => {
+    const all = [...partSelectors, ...cardSelectors]
     await renderPage()
-    const unmatched = [...partSelectors, ...cardSelectors].filter(
-      selector => document.querySelectorAll(selector).length === 0
-    )
+    const onDemo = new Set(all.filter(selector => document.querySelectorAll(selector).length > 0))
+    cleanup()
+    page?.remove()
+    await renderBigApp()
+    const unmatched = all.filter(selector => !onDemo.has(selector) && document.querySelectorAll(selector).length === 0)
     expect(unmatched).toEqual([])
     expect(cardSelectors.length).toBeGreaterThan(10)
   })
@@ -249,7 +297,7 @@ describe('A · Compact on the real page', () => {
     const names = [...document.querySelectorAll(selector)].map(
       b => b.getAttribute('aria-label') ?? b.textContent?.trim()
     )
-    expect(names).toEqual(['Scenario Running', 'Replay', 'Pause view', 'Export', 'More actions'])
+    expect(names).toEqual(['Run again', 'Replay', 'Pause view', 'Export', 'More actions'])
   })
 
   it('turns only the state filter chips into legend items, not the view switch or Maximise', async () => {
