@@ -101,6 +101,8 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, a
             transition: { layout: layoutSpring },
           }
         : {})}
+      // Find brings a coroutine into view by this (S-12).
+      data-node-id={node.id}
       style={{ marginLeft: `${depth * 24}px` }}
     >
       <PulseComponent
