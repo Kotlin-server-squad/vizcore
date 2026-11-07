@@ -25,9 +25,15 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class HealthRoutesTest {
+    // Deliberate: see below.
+    @Suppress("ExplicitGarbageCollectionCall")
     @BeforeEach
     fun setUp() {
         SessionManager.clearAll()
+        // The probes count heap in use, uncollected garbage included (total - free). Late in the suite a 512 MB test JVM
+        // can be past 95 % of it at any moment, so without a collection first these tests would check the suite's
+        // leftovers rather than the route.
+        System.gc()
     }
 
     @AfterEach
