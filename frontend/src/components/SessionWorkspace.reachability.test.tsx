@@ -346,24 +346,22 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     expect(leakBadges).toHaveLength(1)
   })
 
-  it('renders the read-only shared view with no metric strip, no source affordances and no protected fetch', async () => {
+  it('renders the read-only shared view with the summary of the loaded moment and no protected fetch (Part 8)', async () => {
     render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
 
-    // The shared view now uses the same workspace body as every other mode
-    // (M-4), but with the metric strip gated OFF — the shell has no Bearer for
-    // the /metrics fetch behind it.
-    expect(screen.queryByTestId('session-metrics')).toBeNull()
+    // The shared view summarises its loaded moment from the events it holds (Part 8, M-1): the tiles are computed,
+    // never fetched from the protected /metrics.
+    expect(screen.getByTestId('moment-summary')).toBeInTheDocument()
 
-    // The live list still renders (presentational).
+    // The live list still renders.
     expect(screen.getByText(/What's running now/)).toBeInTheDocument()
 
-    // Switch to the REAL CoroutineTree (list view) and prove the nodes carry no
-    // clickable source affordance — onSelect is wired only in the live view.
+    // Selection works read-only (S-11); without a share binding nothing protected is fetched for it.
     await userEvent.click(screen.getByRole('button', { name: 'List' }))
     expect(screen.getByText('LiveWorker')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Open source for LiveWorker' })).toBeNull()
 
-    // And no protected metrics fetch fires in the shared shell (no Bearer).
     expect(mockedApiClient.getMetrics).not.toHaveBeenCalled()
+    expect(mockedApiClient.getCoroutineTimeline).not.toHaveBeenCalled()
   })
+
 })

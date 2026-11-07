@@ -8,14 +8,35 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { useMemo } from 'react'
+import { readAt, timelineKey } from '@/lib/moment-read'
+import { useMomentQuery } from './use-moment-query'
+import { useMomentView } from './use-moment'
 import type { CoroutineTimeline } from '@/types/api'
 
-/**
- * Fetch timeline for a specific coroutine
- */
 /** How often an unfinished coroutine's timeline is re-read while the inspector shows it. */
 export const OPEN_PHASE_REFETCH_MS = 2000
 
+/**
+ * A coroutine's timeline query, live or bound to the page's moment. The live result is React Query's own; at a moment
+ * (Part 8) `moment` says whether the timeline is valid at the cursor (`ready`), being read (`updating`) or failed.
+ */
+export interface TimelineQuery {
+  data: CoroutineTimeline | undefined
+  isLoading: boolean
+  isError: boolean
+  error: unknown
+  dataUpdatedAt: number
+  refetch: () => unknown
+  isSuccess?: boolean
+  isFetching?: boolean
+  moment?: { status: 'ready' | 'updating' | 'error'; dataSeq: number | null }
+}
+
+/**
+ * Fetch timeline for a specific coroutine. Inside a moment (`MomentContext`: a replay cursor or a shared link's loaded
+ * cut) it reads the timeline of that moment instead, through `useMomentQuery` (Part 8, M-3, M-4), and never shows an
+ * event after the cursor.
+ */
 export function useCoroutineTimeline(
   sessionId: string | undefined,
   coroutineId: string | undefined,
@@ -26,16 +47,46 @@ export function useCoroutineTimeline(
    * observer with an interval runs its own timer.
    */
   options: { followOpenPhase?: boolean } = {},
-) {
-  return useQuery({
+): TimelineQuery {
+  const view = useMomentView()
+  const live = useQuery({
     queryKey: ['sessions', sessionId, 'coroutines', coroutineId, 'timeline'],
     queryFn: () => apiClient.getCoroutineTimeline(sessionId!, coroutineId!),
-    enabled: !!sessionId && !!coroutineId,
+    enabled: !view && !!sessionId && !!coroutineId,
     staleTime: 5000,
-    refetchInterval: options.followOpenPhase
+    refetchInterval: options.followOpenPhase && !view
       ? (query) => (query.state.data && query.state.data.totalDuration == null ? OPEN_PHASE_REFETCH_MS : false)
       : false,
   })
+  const read = view?.read
+  const atMoment = useMomentQuery<CoroutineTimeline>({
+    enabled: !!view && !!sessionId && !!coroutineId,
+    identity: `${coroutineId ?? ''}`,
+    keyAt: seq => (read ? timelineKey(readAt(read, seq), coroutineId ?? '') : ['no-moment']),
+    fetchAt: seq => apiClient.getTimelineAt(readAt(read!, seq), coroutineId!),
+    cursorSeq: view?.cursorSeq ?? 0,
+    changesBetween: (a, b) => (view ? view.changesBetween(coroutineId ?? '', a, b) : true),
+    settleMs: view?.settleMs ?? 0,
+    hold: view?.hold ?? false,
+  })
+  const cursorSeq = view?.cursorSeq
+  const data = useMemo(() => {
+    const timeline = atMoment.data
+    if (!timeline || cursorSeq === undefined) return timeline
+    // A second guard: whatever a read returns, nothing after the cursor is shown.
+    const events = timeline.events.filter(e => e.seq <= cursorSeq)
+    return events.length === timeline.events.length ? timeline : { ...timeline, events }
+  }, [atMoment.data, cursorSeq])
+  if (!view) return live
+  return {
+    data,
+    isLoading: atMoment.status === 'updating',
+    isError: atMoment.status === 'error',
+    error: atMoment.error,
+    dataUpdatedAt: 0,
+    refetch: atMoment.retry,
+    moment: { status: atMoment.status, dataSeq: atMoment.dataSeq },
+  }
 }
 
 /**

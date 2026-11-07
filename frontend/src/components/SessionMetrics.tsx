@@ -2,6 +2,7 @@ import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
 import { FiActivity, FiTrendingUp, FiZap, FiCpu, FiAlertCircle } from 'react-icons/fi'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
 import { LeakList } from './LeakList'
+import type { MetricsResponse } from '@/types/api'
 
 interface SessionMetricsProps {
   sessionId: string
@@ -18,6 +19,11 @@ interface SessionMetricsProps {
    * shipped behavior unchanged.
    */
   showLeaks?: boolean
+  /**
+   * The metrics to show instead of fetching them: the metrics at a replay moment or of a shared link's loaded
+   * snapshot (Part 8, M-1). Nothing is fetched when given.
+   */
+  data?: MetricsResponse
 }
 
 /**
@@ -31,8 +37,11 @@ export function SessionMetrics({
   sessionId,
   enabled = true,
   showLeaks = true,
+  data: given,
 }: SessionMetricsProps) {
-  const { data, isLoading } = useSessionMetrics(sessionId, false, enabled)
+  const fetched = useSessionMetrics(sessionId, false, enabled && !given)
+  const data = given ?? fetched.data
+  const isLoading = !given && fetched.isLoading
 
   if (isLoading) {
     return (

@@ -10,14 +10,22 @@ import {
   type ThreadActivity,
 } from '@/types/api'
 import { Inspector } from './Inspector'
+import type { MomentView } from '@/hooks/use-moment'
+import { ApiError, RateLimitedError } from '@/lib/api-errors'
 
 const getCoroutineTimeline = vi.fn()
+const getTimelineAt = vi.fn()
 
-vi.mock('@/lib/api-client', () => ({
-  apiClient: {
-    getCoroutineTimeline: (...args: unknown[]) => getCoroutineTimeline(...args),
-  },
-}))
+vi.mock('@/lib/api-client', async () => {
+  const errors = await vi.importActual<typeof import('@/lib/api-errors')>('@/lib/api-errors')
+  return {
+    ...errors,
+    apiClient: {
+      getCoroutineTimeline: (...args: unknown[]) => getCoroutineTimeline(...args),
+      getTimelineAt: (...args: unknown[]) => getTimelineAt(...args),
+    },
+  }
+})
 
 function createWrapper() {
   const client = new QueryClient({
@@ -361,3 +369,97 @@ describe('Inspector — what the coroutine waits for or holds (S-6)', () => {
   })
 })
 
+
+describe('Inspector at a moment (Part 8, S-11)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  /** A store with events up to seq 20; the backend answers `atSeq` with the events up to it, as it does. */
+  const store = [
+    { seq: 3, tsNanos: 3_000, kind: 'coroutine.created' },
+    { seq: 6, tsNanos: 6_000, kind: 'coroutine.suspended' },
+    { seq: 15, tsNanos: 15_000, kind: 'coroutine.resumed-later-marker' },
+  ]
+  function answerAtSeq() {
+    getTimelineAt.mockImplementation(async (read: { binding: { atSeq: number } }) =>
+      timeline({ events: store.filter(e => e.seq <= read.binding.atSeq) as CoroutineTimeline['events'], totalDuration: null }),
+    )
+  }
+
+  const replay = (over: Partial<MomentView> = {}): MomentView => ({
+    read: { source: { kind: 'session', sessionId: 's-1' }, binding: { kind: 'replay', atSeq: 10 } },
+    cursorSeq: 10,
+    changesBetween: (_id, a, b) => [3, 6, 15].some(seq => seq > Math.min(a, b) && seq <= Math.max(a, b)),
+    settleMs: 5,
+    hold: false,
+    moment: { kind: 'replay', atNanos: 4.2e9, index: 9, total: 20 },
+    ...over,
+  })
+
+  it('inspects the coroutine at the cursor, never showing a later event in the store', async () => {
+    answerAtSeq()
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, {
+      wrapper: createWrapper(),
+    })
+    const events = await screen.findByTestId('events-card')
+    expect(await within(events).findByText('2 events')).toBeInTheDocument()
+    expect(within(events).queryByText('coroutine.resumed-later-marker')).toBeNull()
+    expect(screen.getByTestId('moment-note')).toHaveTextContent('At 4.2 s · event 10 of 20')
+    expect(getCoroutineTimeline).not.toHaveBeenCalled()
+  })
+
+  it('says where it last ran, not where it runs, at a moment', async () => {
+    answerAtSeq()
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} threadActivity={threads()} />, {
+      wrapper: createWrapper(),
+    })
+    expect(await screen.findByRole('heading', { level: 4, name: 'Last observed on' })).toBeInTheDocument()
+  })
+
+  it('reads the coroutine in a shared link, bound to the loaded cut, even though the view is read-only', async () => {
+    getTimelineAt.mockResolvedValue(timeline())
+    const shared: MomentView = replay({
+      read: { source: { kind: 'shared', sessionId: 's-1', token: 'tok' }, binding: { kind: 'bound', asOfSeq: 30, asOfCut: 'k' } },
+      cursorSeq: 30,
+      moment: { kind: 'loaded', seq: 30 },
+    })
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly moment={shared} />, { wrapper: createWrapper() })
+    await screen.findByTestId('events-card')
+    expect(getTimelineAt).toHaveBeenCalledWith(shared.read, 'c-1')
+  })
+
+  it('says it is catching up rather than showing another moment', async () => {
+    getTimelineAt.mockReturnValue(new Promise(() => {}))
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, { wrapper: createWrapper() })
+    expect(await screen.findByText(/updating to this moment/i)).toBeInTheDocument()
+  })
+
+  it('says the shared view has moved on, with a reload, when a bound read is stale', async () => {
+    getTimelineAt.mockRejectedValue(new ApiError(409, 'moved on', 'stale'))
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly moment={replay()} />, { wrapper: createWrapper() })
+    expect(await screen.findByText(/this view has moved on since the link was loaded/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument()
+  })
+
+  it('says a read was rate limited, with a retry', async () => {
+    getTimelineAt.mockRejectedValue(new RateLimitedError(5000))
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, { wrapper: createWrapper() })
+    expect(await screen.findByText(/too many requests/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('says why details are unavailable when the session keeps no summaries', async () => {
+    getTimelineAt.mockRejectedValue(new ApiError(503, 'x', 'history-trimmed'))
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} moment={replay()} />, { wrapper: createWrapper() })
+    expect(await screen.findByText(/details unavailable: this session's early events were trimmed/i)).toBeInTheDocument()
+  })
+
+  it('keeps a selection that does not exist yet at the cursor, and says so', () => {
+    render(
+      <Inspector sessionId="s-1" coroutine={null} readOnly={false} moment={replay()} pendingSelectionLabel="order-7" />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('inspector-pending')).toHaveTextContent('order-7 · not created yet at this moment')
+  })
+})

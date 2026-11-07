@@ -8,6 +8,7 @@ import { JobPanel } from '../jobs/JobPanel'
 import { ThreadTable } from '../ThreadTable'
 import { DispatcherOverview } from '../DispatcherOverview'
 import { LiveDataNotice } from '../replay/LiveDataNotice'
+import { MomentNote, type Moment } from './MomentNote'
 import { plural, resourceSummary, type EvidenceCounts } from '@/lib/evidence-summary'
 import { groupThreadsByName, threadSummary } from '@/lib/thread-groups'
 import type { EventCategories } from '@/hooks/use-event-categories'
@@ -46,6 +47,11 @@ interface EvidencePanelsProps {
   picker?: CoroutinePicker
   /** Selects a resource on the page: a channel picked in Channels (S-2). */
   onSelectResource?: (selection: Selection) => void
+  /**
+   * The moment the page shows outside the live view (Part 8, M-6, M-7): named at the top, and Dispatchers then reads
+   * [threadActivity] (projected at the moment) instead of the live session.
+   */
+  moment?: Moment | null
 }
 
 /** The section a selected resource lives in. */
@@ -99,6 +105,7 @@ export function EvidencePanels({
   selection = null,
   picker,
   onSelectResource,
+  moment = null,
 }: EvidencePanelsProps) {
   // A resource already selected when Evidence mounts has its section open.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => {
@@ -192,6 +199,7 @@ export function EvidencePanels({
 
   return (
     <div className="space-y-2">
+      <MomentNote moment={moment} />
       {/* Threads is not rung-gated: the attach path reports thread and
           dispatcher assignment, so it is populated at every rung. */}
       <Section
@@ -217,9 +225,14 @@ export function EvidencePanels({
         summary={dispatchers > 0 ? plural(dispatchers, 'dispatcher') : 'none named in the thread activity'}
         open={open.has('Dispatchers')}
         onToggle={() => toggle('Dispatchers')}
-        replayActive={replayActive}
+        // At a moment it reads the page's activity, so it follows the cursor like Threads (Part 8, M-7).
+        replayActive={replayActive && !moment}
       >
-        <DispatcherOverview sessionId={sessionId} enabled={!readOnly} />
+        <DispatcherOverview
+          sessionId={sessionId}
+          enabled={!readOnly && !moment}
+          activity={moment ? threadActivity : undefined}
+        />
       </Section>
       {capabilities.map(c =>
         c.present ? (

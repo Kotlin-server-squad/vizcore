@@ -7,10 +7,12 @@ import { useCoroutineTimeline, useTimelineStats, useTimelineVisualizationData } 
 import { apiClient } from '@/lib/api-client'
 import type { CoroutineTimeline, TimelineEvent } from '@/types/api'
 import { CoroutineState } from '@/types/api'
+import { MomentContext, type MomentView } from './use-moment'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
     getCoroutineTimeline: vi.fn(),
+    getTimelineAt: vi.fn(),
   },
 }))
 
@@ -261,5 +263,60 @@ describe('useCoroutineTimeline', () => {
 
     expect(result.current.isFetching).toBe(false)
     expect(mockedApiClient.getCoroutineTimeline).not.toHaveBeenCalled()
+  })
+})
+
+describe('useCoroutineTimeline at a moment (Part 8)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function momentWrapper(view: MomentView) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(MomentContext.Provider, { value: view }, children),
+      )
+    }
+  }
+
+  const view = (over: Partial<MomentView> = {}): MomentView => ({
+    read: { source: { kind: 'session', sessionId: 's' }, binding: { kind: 'replay', atSeq: 10 } },
+    cursorSeq: 10,
+    changesBetween: () => true,
+    settleMs: 10,
+    hold: false,
+    moment: { kind: 'replay', atNanos: 0, index: 9, total: 20 },
+    ...over,
+  })
+
+  it('reads the timeline at the replay cursor, never the live one', async () => {
+    mockedApiClient.getTimelineAt.mockResolvedValue(makeTimeline({ events: [makeTimelineEvent({ seq: 4, kind: 'coroutine.created' })] }))
+    const { result } = renderHook(() => useCoroutineTimeline('s', 'c1'), { wrapper: momentWrapper(view()) })
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    expect(mockedApiClient.getTimelineAt).toHaveBeenCalledWith(
+      { source: { kind: 'session', sessionId: 's' }, binding: { kind: 'replay', atSeq: 10 } },
+      'c1',
+    )
+    expect(mockedApiClient.getCoroutineTimeline).not.toHaveBeenCalled()
+  })
+
+  it('never shows an event after the cursor, even when a read returns one', async () => {
+    mockedApiClient.getTimelineAt.mockResolvedValue(
+      makeTimeline({
+        events: [makeTimelineEvent({ seq: 4, kind: 'coroutine.created' }), makeTimelineEvent({ seq: 12, kind: 'coroutine.suspended' })],
+      }),
+    )
+    const { result } = renderHook(() => useCoroutineTimeline('s', 'c1'), { wrapper: momentWrapper(view()) })
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    expect(result.current.data!.events.map(e => e.seq)).toEqual([4])
+  })
+
+  it('keeps the live read as it was when there is no moment', async () => {
+    mockedApiClient.getCoroutineTimeline.mockResolvedValue(makeTimeline())
+    const { result } = renderHook(() => useCoroutineTimeline('s', 'c1'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    expect(mockedApiClient.getCoroutineTimeline).toHaveBeenCalledWith('s', 'c1')
+    expect(mockedApiClient.getTimelineAt).not.toHaveBeenCalled()
   })
 })

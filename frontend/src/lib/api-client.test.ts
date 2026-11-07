@@ -543,4 +543,49 @@ describe('ApiClient', () => {
       expect(error.status).toBe(503)
     })
   })
+
+  describe('reads bound to a moment (Part 8)', () => {
+    it('reads a session timeline at the replay cursor through the authenticated client', async () => {
+      setToken('jwt')
+      mockFetch.mockResolvedValue(mockJsonResponse({ coroutineId: 'c', events: [] }))
+      await apiClient.getTimelineAt({ source: { kind: 'session', sessionId: 's' }, binding: { kind: 'replay', atSeq: 9 } }, 'c')
+      const [url, init] = mockFetch.mock.calls[0]!
+      expect(url).toBe('/api/sessions/s/coroutines/c/timeline?atSeq=9')
+      expect(init.headers.Authorization).toBe('Bearer jwt')
+    })
+
+    it('reads a shared timeline bound to its cut without a credential', async () => {
+      setToken('jwt')
+      mockFetch.mockResolvedValue(mockJsonResponse({ coroutineId: 'c', events: [] }))
+      await apiClient.getTimelineAt(
+        { source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'bound', asOfSeq: 4, asOfCut: 'k' } },
+        'c',
+      )
+      const [url, init] = mockFetch.mock.calls[0]!
+      expect(url).toBe('/api/shared/tok/coroutines/c/timeline?asOfSeq=4&asOfCut=k')
+      expect(init?.headers?.Authorization).toBeUndefined()
+    })
+
+    it('keeps the code of a shared read the view has moved past, and never sends the viewer to the login', async () => {
+      const onLogin = vi.fn()
+      registerNavigator(onLogin)
+      mockFetch.mockResolvedValue({ ok: false, status: 409, json: () => Promise.resolve({ error: 'moved on', code: 'stale' }) })
+      const error = await apiClient
+        .getTimelineAt({ source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'replay', atSeq: 2 } }, 'c')
+        .catch((e: unknown) => e)
+      expect(mockFetch.mock.calls[0]![0]).toBe('/api/shared/tok/coroutines/c/timeline?atSeq=2')
+      expect(error).toMatchObject({ status: 409, code: 'stale' })
+      mockFetch.mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      await apiClient.getTimelineAt({ source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'replay', atSeq: 2 } }, 'c').catch(() => {})
+      expect(onLogin).not.toHaveBeenCalled()
+    })
+
+    it('says a shared read was rate limited', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 429, headers: { get: () => '7' }, json: () => Promise.resolve({}) })
+      const error = await apiClient
+        .getTimelineAt({ source: { kind: 'shared', sessionId: 's', token: 'tok' }, binding: { kind: 'replay', atSeq: 2 } }, 'c')
+        .catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(RateLimitedError)
+    })
+  })
 })

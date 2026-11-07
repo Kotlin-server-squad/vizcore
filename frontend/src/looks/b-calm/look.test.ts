@@ -29,7 +29,18 @@ describe('B’s CSS', () => {
 
   it('styles only page parts that exist: every hook and label it targets is in the components', () => {
     const parts = new Set([...css.matchAll(/data-look-part='([\w-]+)'/g)].map(m => m[1]!))
-    expect([...parts].sort()).toEqual(['dock', 'dock-tabs', 'header', 'header-actions', 'main', 'page', 'workspace'])
+    expect([...parts].sort()).toEqual([
+      'dock',
+      'dock-tabs',
+      'header',
+      'header-actions',
+      'main',
+      'moment',
+      'page',
+      'replay-bar',
+      'replay-time',
+      'workspace',
+    ])
     for (const part of parts) expect(code, part).toContain(`data-look-part="${part}"`)
     for (const label of [...css.matchAll(/aria-label='([^']+)'/g)].map(m => m[1]!)) {
       expect(code, label).toContain(`aria-label="${label}"`)

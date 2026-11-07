@@ -11,9 +11,19 @@ import type { RunsOn } from '@/lib/runs-on'
  * Resolution — including "newest assignment wins" and "a release means it is no
  * longer there" — lives in `resolveRunsOn`.
  */
-export function RunsOnCard({ runsOn }: { runsOn: RunsOn | null }) {
+export function RunsOnCard({
+  runsOn,
+  title = 'Runs on',
+}: {
+  runsOn: RunsOn | null
+  /**
+   * Outside the live view, "Last observed on" (Part 8, M-13): the thread projection records assignments only, so at a
+   * moment it names where the coroutine last ran, not where it runs.
+   */
+  title?: string
+}) {
   return (
-    <InspectorCard title="Runs on" testId="runs-on-card">
+    <InspectorCard title={title} testId="runs-on-card">
       <InspectorRow label="Thread" value={runsOn?.threadName ?? <NotReported />} />
       <InspectorRow label="Dispatcher" value={runsOn?.dispatcherName ?? <NotReported />} />
     </InspectorCard>
