@@ -170,14 +170,14 @@ function InspectorBody({
   // Re-read after the coroutine's own new events, throttled (P-1). Never at a moment: that read is bound.
   const lastLiveReadRef = useRef<{ id: string; seq: number; at: number } | null>(null)
   useEffect(() => {
-    if (moment || !showTimeline || !coroutineId || liveSeq === undefined) return
+    if (moment || !showTimeline || !coroutineId) return
     const last = lastLiveReadRef.current
     if (!last || last.id !== coroutineId) {
-      // The selection's first read happens anyway; count from it.
-      lastLiveReadRef.current = { id: coroutineId, seq: liveSeq, at: Date.now() }
+      // The selection's first read happens anyway; count from it (and from no event yet, when none has come).
+      lastLiveReadRef.current = { id: coroutineId, seq: liveSeq ?? -1, at: Date.now() }
       return
     }
-    if (liveSeq <= last.seq) return
+    if (liveSeq === undefined || liveSeq <= last.seq) return
     const wait = Math.max(0, last.at + LIVE_TIMELINE_MIN_INTERVAL_MS - Date.now())
     const timer = setTimeout(() => {
       lastLiveReadRef.current = { id: coroutineId, seq: liveSeq, at: Date.now() }

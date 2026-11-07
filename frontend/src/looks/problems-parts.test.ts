@@ -31,3 +31,11 @@ describe('Part 7’s new parts in every trial look', () => {
     }
   })
 })
+
+describe('Part 7’s card facts in every trial look', () => {
+  it.each(folders)('%s keeps the round context after the state visible (it hides only the running mark)', folder => {
+    const css = readFileSync(join(looksDir, folder, 'card.css'), 'utf8')
+    expect(css).not.toMatch(/\[data-look-part='node-state'\] > span \{/)
+    expect(css).toMatch(/\[data-look-part='node-state'\] > span:not\(\[data-look-part\]\)/)
+  })
+})

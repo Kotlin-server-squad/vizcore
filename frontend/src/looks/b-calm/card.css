@@ -90,7 +90,7 @@
   background: hsl(var(--card-hue));
 }
 /* The pill has its own dot. */
-[data-card-look='b'] [data-look-part='node-state'] > span {
+[data-card-look='b'] [data-look-part='node-state'] > span:not([data-look-part]) {
   display: none;
 }
 /* What it waits for or holds, on one line (the full text is in the Inspector). */

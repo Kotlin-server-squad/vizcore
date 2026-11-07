@@ -72,7 +72,8 @@ export function useSessionHealth({ sessionId, mode }: { sessionId: string; mode:
           health: undefined,
           status: 'error',
           error: new ApiError(503, 'Health unavailable', mode.unavailable ?? undefined),
-          retry: noop,
+          // A shared link's health comes with its payload: trying again is loading the link again.
+          retry: () => window.location.reload(),
           updatedAt: 0,
           failedAt: 0,
           refreshError: null,

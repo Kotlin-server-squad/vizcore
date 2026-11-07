@@ -105,7 +105,7 @@
   color: hsl(var(--card-ink));
 }
 /* The name has the dot; the state's running mark goes. */
-[data-card-look='a'] [data-look-part='node-state'] > span {
+[data-card-look='a'] [data-look-part='node-state'] > span:not([data-look-part]) {
   display: none;
 }
 /* What it waits for or holds: up to two lines, as in the sketch (its colour is Part 4's). */

@@ -1,10 +1,9 @@
 package com.jh.proj.coroutineviz.routes
 
-import com.jh.proj.coroutineviz.health.LifetimeKind
-import com.jh.proj.coroutineviz.events.SuspensionPoint
-
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.LifetimeKind
 import com.jh.proj.coroutineviz.health.SessionKind
 import com.jh.proj.coroutineviz.health.SessionOrigin
 import com.jh.proj.coroutineviz.health.WatermarkObservation

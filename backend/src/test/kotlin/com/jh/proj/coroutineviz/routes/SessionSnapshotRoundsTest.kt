@@ -1,12 +1,12 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.module
 import com.jh.proj.coroutineviz.routes.HealthEvents.completed
 import com.jh.proj.coroutineviz.routes.HealthEvents.created
 import com.jh.proj.coroutineviz.routes.HealthEvents.sec
 import com.jh.proj.coroutineviz.routes.HealthEvents.suspended
-import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket

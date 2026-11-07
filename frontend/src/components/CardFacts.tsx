@@ -8,7 +8,9 @@ import type { CoroutineNode } from '@/types/api'
  * Same markup in every look: `node-meta`, `node-badges`, `node-badge` (with `data-badge`).
  */
 export function CardFacts({ node }: { node: CoroutineNode }) {
-  const fact = useContext(CardFactsContext).get(node.id)
+  const facts = useContext(CardFactsContext)
+  const fact = facts.get(node.id)
+  const source = facts.asOf ? ` — from the session health, ${facts.asOf}${facts.stale ? '; its last refresh failed' : ''}` : ''
   const lifetime = lifetimeText(node)
   const site = node.creationLocation?.fileName
     ? `${node.creationLocation.fileName}${node.creationLocation.lineNumber != null ? `:${node.creationLocation.lineNumber}` : ''}`
@@ -36,11 +38,12 @@ export function CardFacts({ node }: { node: CoroutineNode }) {
               key={b.kind}
               data-look-part="node-badge"
               data-badge={b.kind}
-              title={b.text}
+              title={`${b.text}${source}`}
+              data-stale={facts.stale ? 'true' : undefined}
               className={
                 b.kind === 'possibly-blocked'
-                  ? 'min-w-0 truncate rounded-full bg-warning/15 px-2 text-xs font-medium text-warning-700 dark:text-warning'
-                  : 'min-w-0 truncate rounded-full bg-default-200 px-2 text-xs text-default-700'
+                  ? `min-w-0 truncate rounded-full bg-warning/15 px-2 text-xs font-medium text-warning-700 dark:text-warning${facts.stale ? ' opacity-60' : ''}`
+                  : `min-w-0 truncate rounded-full bg-default-200 px-2 text-xs text-default-700${facts.stale ? ' opacity-60' : ''}`
               }
             >
               {b.text}

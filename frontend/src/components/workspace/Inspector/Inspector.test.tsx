@@ -529,6 +529,21 @@ describe('Inspector', () => {
     }
   })
 
+  it("re-reads after the selected coroutine's first live event, when the selection began without one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+      const wrapper = createWrapper()
+      const { rerender } = render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, { wrapper })
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(1))
+      rerender(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} liveSeq={5} />)
+      await vi.advanceTimersByTimeAsync(10_500)
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('moves focus to its heading on request (Show, T-3)', () => {
     render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} focusKey={1} />, { wrapper: createWrapper() })
     expect(screen.getByRole('heading', { level: 2 })).toHaveFocus()

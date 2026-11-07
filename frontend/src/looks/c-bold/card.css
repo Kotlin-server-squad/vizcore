@@ -86,7 +86,7 @@
   background: hsl(var(--card-hue));
   color: hsl(var(--card-on));
 }
-[data-card-look='c'] [data-look-part='node-state'] > span {
+[data-card-look='c'] [data-look-part='node-state'] > span:not([data-look-part]) {
   display: none;
 }
 [data-card-look='c'] [data-look-part='node-activity'] {

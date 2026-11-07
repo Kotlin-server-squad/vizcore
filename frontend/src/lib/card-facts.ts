@@ -48,5 +48,10 @@ export function lifetimeText(node: { lifetimeNanos?: number | null; lifetimeKind
   return formatDuration(node.lifetimeNanos, { soFar: node.lifetimeKind === 'SO_FAR', atLeast: node.lifetimeKind === 'AT_LEAST' })
 }
 
-/** The cards' facts by coroutine id, provided by the session page (empty elsewhere: Compare, exports). */
-export const CardFactsContext = createContext<ReadonlyMap<string, CardFact>>(new Map())
+/**
+ * The cards' facts by coroutine id, provided by the session page (empty elsewhere: Compare, exports), with the health's
+ * "as of" and whether its last refresh failed, which every badge names (H-2).
+ */
+export type CardFacts = ReadonlyMap<string, CardFact> & { asOf?: string; stale?: boolean }
+
+export const CardFactsContext = createContext<CardFacts>(new Map())

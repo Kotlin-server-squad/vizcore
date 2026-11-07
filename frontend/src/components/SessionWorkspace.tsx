@@ -229,7 +229,7 @@ export function SessionWorkspace({
     () => deriveRung(sessionId, eventCategories),
     [sessionId, eventCategories],
   )
-  const { data: metrics } = useSessionMetrics(sessionId, fallbackPollMs, !readOnly)
+  const { data: metrics, refetch: refetchMetrics } = useSessionMetrics(sessionId, fallbackPollMs, !readOnly)
   const metricsLeakIds = useMemo(
     () => new Set((metrics?.leaks ?? []).map(l => l.coroutineId)),
     [metrics?.leaks],
@@ -818,7 +818,12 @@ export function SessionWorkspace({
     !!health &&
     (health.incidents.total > health.incidents.items.length ||
       health.incidents.items.some(i => i.type === 'FAILED_ROUND' && i.failures.total > i.failures.items.length))
-  const facts = useMemo(() => cardFacts(health), [health])
+  const healthAsOf = health ? asOfText(health.asOf, captureStart) : undefined
+  const healthStale = !!sessionHealth.refreshError
+  const facts = useMemo(
+    () => Object.assign(cardFacts(health), { asOf: healthAsOf, stale: healthStale }),
+    [health, healthAsOf, healthStale],
+  )
   // The newest live event of the selected coroutine: its timeline is re-read after it (P-1).
   const selectedLiveSeq = useMemo(() => {
     if (!liveStream || !selectedCoroutineId) return undefined
@@ -1077,6 +1082,8 @@ export function SessionWorkspace({
                 labelOf={memberLabelOrUndefined}
                 onShow={showProblem}
                 onLongLived={() => {
+                  // The filter's coroutines are /metrics' list: read it now, so it agrees with the count just shown.
+                  if (!replayActive && !readOnly) void refetchMetrics()
                   setStateFilter('leaks')
                   forget()
                   if (dock.maximised) dock.toggleMaximise()
