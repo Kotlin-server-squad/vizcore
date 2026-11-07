@@ -496,7 +496,12 @@ class ApiClient {
 
   /** The session's health at this read's moment (Part 7, P-1): live, at a replay cursor, or through a shared token. */
   async getHealthAt(read: MomentRead): Promise<SessionHealth> {
-    return this.momentJson<SessionHealth>(read, healthPath(read))
+    const health = await this.momentJson<SessionHealth>(read, healthPath(read))
+    // A body that is not a health (an older or foreign server) is an unreadable health, never an empty one (H-3).
+    if (!health || typeof health !== 'object' || !health.incidents || !health.observations || !health.counts) {
+      throw new ApiError(502, 'The server answered without a session health')
+    }
+    return health
   }
 
   /** The session's last checks run (triage C-5, T-8); `lastRun` is null before any. */

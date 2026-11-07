@@ -61,6 +61,8 @@ vi.mock('@/lib/api-client', () => ({
     // apiClient.getMetrics. A leak fixture lets us assert the single dock-owned
     // amber leak mount in the live view.
     getMetrics: vi.fn(),
+    getHealthAt: vi.fn(() => new Promise(() => {})),
+    getChecksStatus: vi.fn(() => new Promise(() => {})),
   },
 }))
 
@@ -331,7 +333,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
 
   // ── Surface 001 IDE-dock reconcile (Task 2) ──────────────────────────────
 
-  it('renders the main view and the dock (metric strip + canvas) in the live view, with a single inline leak list', async () => {
+  it('renders the main view and the dock (metric strip + canvas) in the live view, with no leak list (Part 7, T-5)', async () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
 
     // The body mounts the metric tiles exactly once.
@@ -340,10 +342,9 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     // The canvas still renders inside the body's left column.
     expect(screen.getByText(/What's running now/)).toBeInTheDocument()
 
-    // The body owns the single inline amber LeakList (fed by getMetrics). The
-    // "2 potential leaks" badge appears exactly once — no duplicate leak mount.
-    const leakBadges = await screen.findAllByText('2 potential leaks')
-    expect(leakBadges).toHaveLength(1)
+    // Long-lived coroutines are an observation in the Problems tab and the state bar's filter: no leak list here.
+    await screen.findAllByTestId('session-metrics')
+    expect(screen.queryByText(/potential leaks?/)).toBeNull()
   })
 
   it('renders the read-only shared view with the summary of the loaded moment and no protected fetch (Part 8)', async () => {

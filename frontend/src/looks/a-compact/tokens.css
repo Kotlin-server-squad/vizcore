@@ -529,3 +529,61 @@ html.light[data-look='a'] {
   font-size: 0.75rem;
   color: var(--text);
 }
+
+/* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
+
+/* The Problems tab as an IDE problems view: dense rows, square, hairlines between them. */
+[data-look='a'] [data-look-part='problems'] {
+  font-size: 0.8125rem;
+}
+[data-look='a'] [data-look-part='problems-headline'] {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+[data-look='a'] [data-look-part='problems-line'] {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+[data-look='a'] [data-look-part='problem'] {
+  padding: 4px 8px;
+  border-radius: 0;
+  border-width: 0 0 1px 2px;
+  border-left-color: var(--danger);
+}
+[data-look='a'] [data-look-part='problem'][data-kind='possibly-blocked'] {
+  border-left-color: var(--warning);
+}
+[data-look='a'] [data-look-part='problem-show'] {
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+[data-look='a'] [data-look-part='observations'],
+[data-look='a'] [data-look-part='checks-status'] {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+/* The connection as a status-bar fact: small, mono. */
+[data-look='a'] [data-look-part='connection'] {
+  border-radius: var(--radius-sm);
+}
+[data-look='a'] [data-look-part='connection-facts'] {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+/* The count on the Problems tab: a small square badge. */
+[data-look='a'] [data-look-part='dock-tab-badge'] {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
+  line-height: 16px;
+}
+[data-look='a'] [data-look-part='exception-card'] > section,
+[data-look='a'] [data-look-part='clue-card'] > section {
+  border-radius: var(--radius);
+  border-left: 2px solid var(--danger);
+}
+[data-look='a'] [data-look-part='clue-card'] > section {
+  border-left-color: var(--warning);
+}

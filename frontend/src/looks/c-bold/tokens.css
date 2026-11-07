@@ -483,3 +483,61 @@ html.light[data-look='c'] {
   color: var(--text);
   font-weight: 600;
 }
+
+/* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
+
+/* The Problems tab, bold: the headline in the display face, problems as thick-edged panels. */
+[data-look='c'] [data-look-part='problems'] {
+  font-size: 0.875rem;
+}
+[data-look='c'] [data-look-part='problems-headline'] > p:first-child {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+[data-look='c'] [data-look-part='problems-line'] {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+[data-look='c'] [data-look-part='problem'] {
+  padding: 10px 14px;
+  border: 2px solid var(--danger);
+  border-radius: 14px;
+}
+[data-look='c'] [data-look-part='problem'][data-kind='possibly-blocked'] {
+  border-color: var(--warning);
+}
+[data-look='c'] [data-look-part='problem-show'] {
+  padding: 2px 12px;
+  border-radius: 9999px;
+  font-weight: 700;
+}
+[data-look='c'] [data-look-part='observations'],
+[data-look='c'] [data-look-part='checks-status'] {
+  font-weight: 600;
+}
+[data-look='c'] [data-look-part='connection'] {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+[data-look='c'] [data-look-part='connection-facts'] {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+/* The count on the Problems tab: a solid bold pill. */
+[data-look='c'] [data-look-part='dock-tab-badge'] {
+  border-radius: 9999px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+[data-look='c'] [data-look-part='exception-card'] > section,
+[data-look='c'] [data-look-part='clue-card'] > section {
+  border-width: 2px;
+  border-radius: 16px;
+}
+[data-look='c'] [data-look-part='exception-card'] > section {
+  border-color: var(--danger);
+}
+[data-look='c'] [data-look-part='clue-card'] > section {
+  border-color: var(--warning);
+}
