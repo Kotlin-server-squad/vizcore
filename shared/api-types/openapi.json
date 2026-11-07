@@ -2985,9 +2985,10 @@
             "nullable": true,
             "enum": [
               "ACTIVE",
-              "SUSPENDED"
+              "SUSPENDED",
+              "WAITING_FOR_CHILDREN"
             ],
-            "description": "For an unfinished coroutine, the phase it has been in since its last recorded transition. Null once finished."
+            "description": "For an unfinished coroutine, the phase it has been in since its last recorded transition (WAITING_FOR_CHILDREN once its body has ended; that time counts as neither active nor suspended). Null once finished."
           },
           "openPhaseSinceNanos": {
             "type": "integer",

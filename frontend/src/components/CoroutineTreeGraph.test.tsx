@@ -199,6 +199,17 @@ describe('CoroutineTreeGraph', () => {
     expect(screen.getByText('2 children')).toBeInTheDocument()
   })
 
+  it('says how many children it draws of how many when the cap leaves some out (S-12)', () => {
+    const parent = { id: 'p', jobId: 'j', parentId: null, scopeId: 's', label: 'Parent', state: CoroutineState.ACTIVE }
+    const child = (id: string) => ({ ...parent, id, parentId: 'p', label: id })
+    const { rerender } = render(
+      <CoroutineTreeGraph coroutines={[parent, child('a'), child('b')]} childTotals={new Map([['p', 262]])} />,
+    )
+    expect(screen.getByText('2 of 262 children')).toBeInTheDocument()
+    rerender(<CoroutineTreeGraph coroutines={[parent, child('a'), child('b')]} childTotals={new Map([['p', 2]])} />)
+    expect(screen.getByText('2 children')).toBeInTheDocument()
+  })
+
   describe('layout', () => {
     const nested: CoroutineNode[] = [
       makeCoroutine({ id: 'req', label: 'request', state: CoroutineState.SUSPENDED }),

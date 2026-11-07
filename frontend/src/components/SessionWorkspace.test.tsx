@@ -1120,12 +1120,12 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     expect(screen.queryByText(/Show completed/)).toBeNull()
   })
 
-  it('shows "N more coroutines" when the active set exceeds the node cap', () => {
+  it('says how many coroutines the node cap leaves out (S-12)', () => {
     const many = Array.from({ length: 205 }, (_, i) => coro(`a-${i}`, 'ACTIVE'))
     mountSession(many)
 
-    // NODE_CAP = 200 → 5 more
-    expect(screen.getByText('5 more coroutines')).toBeInTheDocument()
+    // NODE_CAP = 200 of 205; no rounds here (older server), so no Find to point at.
+    expect(screen.getByText('Showing 200 of 205 coroutines.')).toBeInTheDocument()
     const graph = screen.getByTestId('coroutine-tree-graph')
     expect(graph).toHaveAttribute('data-count', '200')
   })
@@ -1175,7 +1175,7 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
   it('caps a finished run at the node cap and counts the rest', () => {
     mountSession(Array.from({ length: 205 }, (_, i) => coro(`c-${i}`, 'COMPLETED')))
     expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-count', '200')
-    expect(screen.getByText('5 more coroutines')).toBeInTheDocument()
+    expect(screen.getByText('Showing 200 of 205 coroutines.')).toBeInTheDocument()
   })
 
   it('counts "more" from what the chip selects, not from the whole run', async () => {
@@ -1185,7 +1185,7 @@ describe('SessionWorkspace active-only "What\'s running now" view (RCO-06, D-08)
     ])
     await userEvent.click(screen.getByRole('button', { name: 'Failed 1' }))
     expect(screen.getByTestId('coroutine-tree-graph')).toHaveAttribute('data-ids', 'f-1')
-    expect(screen.queryByText(/more coroutines/)).toBeNull()
+    expect(screen.queryByText(/^Showing \d+ of/)).toBeNull()
   })
 
   it('tells an app session with no coroutines to start the instrumented app', () => {

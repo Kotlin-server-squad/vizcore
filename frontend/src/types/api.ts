@@ -173,10 +173,68 @@ export interface CoroutineNode {
   label: string | null
   state: CoroutineState
   /**
+   * The server's round (S-12): null when it has no round (its parent was never captured) or no summary yet; absent
+   * from older servers, from the replay projection and when the session keeps no usable summaries.
+   */
+  roundId?: string | null
+  /** Its effective origin (triage "Origin"); null or absent without a summary. */
+  origin?: CoroutineOrigin | null
+  /**
    * Replay only: rebuilt from the server's durable summary at the cursor, because the replayed events do not include
    * its creation (Part 8, M-9).
    */
   fromSummary?: boolean
+}
+
+/** Who launched a coroutine (triage "Origin"): the app, vizcore's own connection, or not reported. */
+export type CoroutineOrigin = 'APP' | 'VIZCORE' | 'UNKNOWN'
+
+/** A health list capped at 50, with the full count (`Capped` in the health API). */
+export interface Capped<T> {
+  items: T[]
+  total: number
+}
+
+/** The kinds of problem the health API derives (triage "Problem kinds"). */
+export type IncidentKind = 'FAILED' | 'POSSIBLY_BLOCKED'
+
+/** One round of `GET /api/sessions/{id}/rounds` (triage C-3, T-4). */
+export interface RoundEntry {
+  roundId: string
+  anchorId: string
+  anchorName: string | null
+  anchorOrigin: CoroutineOrigin | null
+  /** App-clock time the anchor was first observed. */
+  anchorCreatedNanos: number
+  anchorCreatedSeq: number
+  inProgress: boolean
+  countsByState: Partial<Record<CoroutineState, number>>
+  memberCount: number
+  problem: boolean
+  problemKinds: IncidentKind[]
+  /** With `q`: the matching members, newest first. */
+  matches?: Capped<string> | null
+  unknownMembers?: number
+}
+
+/** A page of rounds: problem rounds first, then newest anchor first. */
+export interface RoundsPage {
+  asOfSeq: number
+  total: number
+  items: RoundEntry[]
+  nextCursor: string | null
+  unknownAtSeq: number
+  /** With `q`: matching coroutines that belong to no round. */
+  ungroupedMatches?: Capped<string> | null
+  /** App-clock time of the last event this page reflects (its "as of", H-2); null when the view holds none. */
+  asOfAppNanos?: number | null
+}
+
+export interface RoundsQuery {
+  limit?: number
+  q?: string
+  includeVizcore?: boolean
+  cursor?: string
 }
 
 export interface SessionInfo {
@@ -191,6 +249,14 @@ export interface SessionSnapshot {
   coroutines: CoroutineNode[]
   /** The demo the session was created for (S-13); absent from older servers, null when none. */
   demoId?: string | null
+  /** ATTACHED for a connected app, DEMO for vizcore's own runs (triage C-3); absent from older servers. */
+  kind?: 'ATTACHED' | 'DEMO'
+  /** REPORTED when the producer reports origins (or a demo), else UNKNOWN. */
+  origin?: 'REPORTED' | 'UNKNOWN'
+  /** App-clock time of the earliest captured event, the origin of "time into the capture"; null when unknown. */
+  captureStartAppNanos?: number | null
+  /** Coroutines the summaries know that `coroutines` does not hold (events trimmed before a reload), vizcore's left out. */
+  summaryOnlyCount?: number
 }
 
 export interface ScenarioCompletion {
@@ -536,8 +602,11 @@ export interface CoroutineTimeline {
   parentId?: string | null
   childrenIds: string[]
   events: TimelineEvent[]
-  /** Unfinished only: the phase since the last recorded transition, and when it began (tsNanos). */
-  openPhase?: 'ACTIVE' | 'SUSPENDED' | null
+  /**
+   * Unfinished only: the phase since the last recorded transition, and when it began (tsNanos). WAITING_FOR_CHILDREN
+   * once its body has ended: that time is neither active nor suspended.
+   */
+  openPhase?: 'ACTIVE' | 'SUSPENDED' | 'WAITING_FOR_CHILDREN' | null
   openPhaseSinceNanos?: number | null
   /** Creation on the app JVM's monotonic (tsNanos) and wall (epoch ms) clocks. */
   createdAtNanos?: number | null
