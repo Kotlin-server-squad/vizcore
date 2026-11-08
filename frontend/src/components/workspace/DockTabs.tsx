@@ -1,15 +1,17 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react'
 
 /**
- * The dock's tabs, one per question (spec S-4): what is this coroutine, what
- * did the resources do, what exactly happened, how do I read this. Problems
- * ("what is wrong?") is the fifth and arrives with the health API (Part 7).
+ * The dock's tabs, one per question (spec S-4): what is wrong, what is this
+ * coroutine, what did the resources do, what exactly happened, how do I read
+ * this.
  */
-export type DockTabId = 'inspector' | 'evidence' | 'events' | 'learn'
+export type DockTabId = 'problems' | 'inspector' | 'evidence' | 'events' | 'learn'
 
 export interface DockTabSpec {
   id: DockTabId
   label: string
+  /** A count beside the label, shown only above zero (Problems, S-8). */
+  badge?: number
 }
 
 const tabId = (id: DockTabId) => `dock-tab-${id}`
@@ -66,6 +68,7 @@ export function DockTabs({
             aria-selected={active}
             aria-controls={panelId(tab.id)}
             tabIndex={active ? 0 : -1}
+            aria-label={tab.badge ? `${tab.label}, ${tab.badge} ${tab.badge === 1 ? 'problem' : 'problems'}` : undefined}
             onClick={() => onSelect(tab.id)}
             className={
               active
@@ -74,6 +77,15 @@ export function DockTabs({
             }
           >
             {tab.label}
+            {!!tab.badge && tab.badge > 0 && (
+              <span
+                data-look-part="dock-tab-badge"
+                aria-hidden="true"
+                className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-xs font-semibold leading-5 text-danger-foreground"
+              >
+                {tab.badge.toLocaleString('en-US')}
+              </span>
+            )}
           </button>
         )
       })}

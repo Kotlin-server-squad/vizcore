@@ -1,13 +1,8 @@
-import { useEffect, useState } from 'react'
 import { formatDuration } from '@/lib/format-duration'
 import { InspectorCard, InspectorRow, NotReported } from './InspectorCard'
 import type { CoroutineTimeline } from '@/types/api'
-
-/**
- * Running this long since its last resume, with no suspension in between, is worth a hint: a
- * coroutine stuck in a blocking call on a shared thread looks exactly like this (#218).
- */
-export const POSSIBLY_BLOCKED_AFTER_NANOS = 10_000_000_000
+import { lifetimeText } from '@/lib/card-facts'
+import type { PossiblyBlockedIncident, TransitionKind } from '@/types/health'
 
 /**
  * The lifetime the timeline shows so far, for a coroutine that has not
@@ -28,92 +23,42 @@ export function lifetimeSoFar(timeline: CoroutineTimeline): number | null {
   return Math.max(span ?? 0, closed ?? 0)
 }
 
-export interface LiveTiming {
-  total: number
-  active: number | null
-  suspended: number | null
-  /** WAITING_FOR_CHILDREN: its lifetime goes on, its Active and Suspended time do not. */
-  openPhase: 'ACTIVE' | 'SUSPENDED' | 'WAITING_FOR_CHILDREN'
-  /** How long the open phase has lasted so far. */
-  openFor: number
-}
-
-/**
- * Timing of an unfinished coroutine counted up to now (#218), or null when the timeline lacks
- * what that needs (a finished coroutine, or a backend that predates the open-phase fields).
- *
- * "Now" on the app JVM's monotonic clock is estimated from the coroutine's creation, which the
- * backend reports on both of that JVM's clocks, plus the wall-clock time since then: the
- * backend's at [CoroutineTimeline.observedAtEpochMs], then the browser's since the response
- * arrived at [receivedAtMs]. Like the leak age, this assumes the app host's and the backend's
- * wall clocks agree: a backend clock N minutes ahead adds N minutes. The estimate never goes back
- * before the latest recorded event. The backend sends an open phase only while the app is still
- * streaming, and the inspector refetches the timeline while it is open.
- */
-export function liveTiming(
-  timeline: CoroutineTimeline,
-  receivedAtMs: number,
-  nowMs: number,
-): LiveTiming | null {
-  const { openPhase, openPhaseSinceNanos, createdAtNanos, createdAtEpochMs, observedAtEpochMs } = timeline
-  if (timeline.totalDuration != null || !openPhase || openPhaseSinceNanos == null) return null
-  if (createdAtNanos == null || createdAtEpochMs == null || observedAtEpochMs == null) return null
-  if (createdAtEpochMs <= 0) return null // unset on the emitter, not a 1970 creation
-
-  const elapsedMs = observedAtEpochMs - createdAtEpochMs + Math.max(0, nowMs - receivedAtMs)
-  const latestEvent = Math.max(openPhaseSinceNanos, ...timeline.events.map(e => e.tsNanos))
-  const now = Math.max(createdAtNanos + Math.max(0, elapsedMs) * 1_000_000, latestEvent)
-  const openFor = now - openPhaseSinceNanos
-  return {
-    total: now - createdAtNanos,
-    active: openPhase === 'ACTIVE' ? (timeline.activeDuration ?? 0) + openFor : (timeline.activeDuration ?? null),
-    suspended:
-      openPhase === 'SUSPENDED' ? (timeline.suspendedDuration ?? 0) + openFor : (timeline.suspendedDuration ?? null),
-    openPhase,
-    openFor,
-  }
-}
-
-/** The current time, re-read every [intervalMs] while [enabled]. */
-function useNow(enabled: boolean, intervalMs = 1000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!enabled) return
-    setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), intervalMs)
-    return () => clearInterval(timer)
-  }, [enabled, intervalMs])
-  return now
-}
-
 /**
  * How long this coroutine has been alive, working, and waiting.
  *
  * Every duration is `~`-prefixed: the backend samples on a poll, so these are
  * bounded by the poll interval rather than exact (validated sketch 001-C). A
- * coroutine still running gets "~N so far", counting up to now (#145, #218).
+ * coroutine still running reads "at least ~N": the span of its recorded events,
+ * which cannot reach to the app's latest poll (triage "Lifetimes"). Nothing counts on with the browser's clock (#232's
+ * estimate is gone, Part 7). A possibly blocked coroutine shows its observed
+ * transitions from the health (triage T-3), a list rather than a colour bar.
  */
 export function TimingCard({
   timeline,
-  receivedAtMs,
+  blocked,
+  captureStartAppNanos,
+  lifetime,
 }: {
   timeline: CoroutineTimeline | undefined
-  /** When the browser received [timeline] (epoch ms), so live timing can count on from it. */
-  receivedAtMs?: number
+  /** A possibly blocked coroutine's incident: its transitions are listed. */
+  blocked?: PossiblyBlockedIncident
+  /** App-clock time of the session's first event, the origin of "at 2.0 s". */
+  captureStartAppNanos?: number | null
+  /** The server's lifetime for it (triage "Lifetimes", Part 7), as its card shows it; preferred when given. */
+  lifetime?: { lifetimeNanos?: number | null; lifetimeKind?: 'FINISHED' | 'SO_FAR' | 'AT_LEAST' | null }
 }) {
+  const serverLifetime = lifetime ? lifetimeText(lifetime) : null
   // A timeline at a moment built on a durable summary (Part 8, M-10): what is left is not the whole life, so no
-  // duration and no estimate from it.
+  // duration from it.
   const trimmed = !!timeline?.eventsTrimmed
   const unfinished = !!timeline && timeline.totalDuration == null && !trimmed
-  const now = useNow(unfinished && !!timeline?.openPhase)
-  const live = unfinished && timeline ? liveTiming(timeline, receivedAtMs ?? now, now) : null
-  const soFar = unfinished && timeline && !live ? lifetimeSoFar(timeline) : null
-  const possiblyBlocked = live?.openPhase === 'ACTIVE' && live.openFor >= POSSIBLY_BLOCKED_AFTER_NANOS
+  const soFar = unfinished && timeline ? lifetimeSoFar(timeline) : null
 
   if (trimmed) {
     return (
       <InspectorCard title="Timing" testId="timing-card">
         <p className="text-sm text-default-500">Unavailable: early events were trimmed.</p>
+        {blocked && <Transitions incident={blocked} captureStartAppNanos={captureStartAppNanos ?? null} />}
       </InspectorCard>
     )
   }
@@ -123,33 +68,20 @@ export function TimingCard({
       <InspectorRow
         label="Total"
         value={
-          live ? (
-            <span title="Still running: time since it was created">~{formatDuration(live.total, { soFar: true })}</span>
+          serverLifetime ? (
+            <span title="From its first observation, on the app's clock (the server's summary)">{serverLifetime}</span>
           ) : soFar !== null ? (
-            <span title="Still running: time from its first to its latest recorded event">
-              ~{formatDuration(soFar, { soFar: true })}
+            <span title="Still running: from its first to its latest recorded event; it may have run longer since">
+              at least ~{formatDuration(soFar)}
             </span>
           ) : (
             <Approx nanos={timeline?.totalDuration} />
           )
         }
       />
-      <InspectorRow
-        label="Active"
-        value={<Approx nanos={live ? live.active : timeline?.activeDuration} soFar={live?.openPhase === 'ACTIVE'} />}
-      />
-      <InspectorRow
-        label="Suspended"
-        value={
-          <Approx nanos={live ? live.suspended : timeline?.suspendedDuration} soFar={live?.openPhase === 'SUSPENDED'} />
-        }
-      />
-      {possiblyBlocked && live && (
-        <p data-testid="possibly-blocked" className="mt-2 text-xs text-warning">
-          Running for ~{formatDuration(live.openFor)} without suspending since it last resumed. It may be
-          blocked in a call on its thread.
-        </p>
-      )}
+      <InspectorRow label="Active" value={<Approx nanos={timeline?.activeDuration} />} />
+      <InspectorRow label="Suspended" value={<Approx nanos={timeline?.suspendedDuration} />} />
+      {blocked && <Transitions incident={blocked} captureStartAppNanos={captureStartAppNanos ?? null} />}
       <p className="mt-2 text-xs text-default-400">
         Approximate — sampling is poll-bounded.
       </p>
@@ -157,7 +89,38 @@ export function TimingCard({
   )
 }
 
-function Approx({ nanos, soFar = false }: { nanos: number | null | undefined; soFar?: boolean }) {
+const TRANSITION_WORD: Record<TransitionKind, string> = {
+  CREATED: 'Created',
+  STARTED: 'Started',
+  SUSPENDED: 'Suspended',
+  RESUMED: 'Resumed',
+  BODY_COMPLETED: 'Body completed',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+  FAILED: 'Failed',
+}
+
+/** The observed transitions of a possibly blocked coroutine (T-3), newest last, as times into the capture. */
+export function Transitions({ incident, captureStartAppNanos }: { incident: PossiblyBlockedIncident; captureStartAppNanos: number | null }) {
+  const at = (t: { appNanos: number; seq: number }) =>
+    captureStartAppNanos != null ? `at ${formatDuration(t.appNanos - captureStartAppNanos)}` : `at event ${t.seq}`
+  return (
+    <div data-testid="transitions" className="mt-2 space-y-1 border-t border-default-200 pt-2 text-sm">
+      <p>Running for {formatDuration(incident.runningForNanos)} with no suspension observed</p>
+      {incident.firstObservedRunning && <p className="text-default-500">No suspension was ever observed for it.</p>}
+      {incident.transitionsGap && <p className="text-default-500">Earlier transitions were not retained.</p>}
+      <ol className="space-y-0.5 text-xs text-default-600">
+        {incident.transitions.map(t => (
+          <li key={t.seq}>
+            {TRANSITION_WORD[t.kind]} {at(t)}
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+function Approx({ nanos }: { nanos: number | null | undefined }) {
   if (nanos === null || nanos === undefined) return <NotReported />
-  return <>~{formatDuration(nanos, { soFar })}</>
+  return <>~{formatDuration(nanos)}</>
 }

@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader, Chip } from '@heroui/react'
-import { FiActivity, FiTrendingUp, FiZap, FiCpu, FiAlertCircle } from 'react-icons/fi'
+import { FiActivity, FiTrendingUp, FiZap, FiCpu } from 'react-icons/fi'
 import { useSessionMetrics } from '@/hooks/use-session-metrics'
-import { LeakList } from './LeakList'
+import { formatDuration } from '@/lib/format-duration'
 import type { MetricsResponse } from '@/types/api'
 
 interface SessionMetricsProps {
@@ -11,14 +11,8 @@ interface SessionMetricsProps {
    * The shared shell carries no Bearer, so this query would 401/poll noisily.
    */
   enabled?: boolean
-  /**
-   * Render the internal "Potential leaks" Card (default true). Set false when
-   * the leaks are mounted separately (e.g. the LiveDockPanel header strip is
-   * tiles-only and the dock's left column owns the single LeakList mount,
-   * PD-02/PD-04a). Additive — every existing call site omits it and keeps the
-   * shipped behavior unchanged.
-   */
-  showLeaks?: boolean
+  /** App-clock time of the session's first event, for "in retained events since <t>" (T-3). */
+  captureStartAppNanos?: number | null
   /**
    * The metrics to show instead of fetching them: the metrics at a replay moment or of a shared link's loaded
    * snapshot (Part 8, M-1). Nothing is fetched when given.
@@ -29,14 +23,15 @@ interface SessionMetricsProps {
 /**
  * The "Session metrics" panel (RCO-07, D-06/D-07). Delta L1 reflows the tiles
  * into a single horizontal strip (flex-wrap) of Active / Peak / Throughput /
- * Dispatcher utilization, plus a Potential-leaks card backed by LeakList. Fed
- * by useSessionMetrics as a pure observer: it never polls itself — the
- * workspace owns the refresh cadence (#124).
+ * Dispatcher utilization. Fed by useSessionMetrics as a pure observer: it
+ * never polls itself — the workspace owns the refresh cadence (#124). Live, the
+ * figures are the app's own (`byOrigin.app`, T-3) when origins are reported;
+ * long-lived coroutines are an observation in the Problems tab (Part 7, T-5).
  */
 export function SessionMetrics({
   sessionId,
   enabled = true,
-  showLeaks = true,
+  captureStartAppNanos = null,
   data: given,
 }: SessionMetricsProps) {
   const fetched = useSessionMetrics(sessionId, false, enabled && !given)
@@ -63,11 +58,40 @@ export function SessionMetrics({
     )
   }
 
-  const dispatcherEntries = Object.entries(data.dispatcherUtilization)
+  // Live: the app's own figures when every coroutine's origin is known (T-3); otherwise all captured, said so.
+  const byOrigin = given ? null : data.byOrigin
+  const appOnly = !!byOrigin && byOrigin.unknown.captured === 0
+  const shown = appOnly
+    ? {
+        active: byOrigin.app.active,
+        peak: byOrigin.app.peak,
+        throughputPerSec: byOrigin.app.throughputPerSec,
+        dispatcherUtilization: byOrigin.app.dispatcherUtilization,
+      }
+    : data
+  const dispatcherEntries = Object.entries(shown.dispatcherUtilization)
+  const retainedSince =
+    !given && data.retainedOnly
+      ? data.oldestRetainedAppNanos != null && captureStartAppNanos != null
+        ? `${formatDuration(data.oldestRetainedAppNanos - captureStartAppNanos)} into the capture`
+        : 'the oldest retained event'
+      : null
 
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">Session metrics</h3>
+      {!given && (
+        <p data-testid="metrics-scope" className="text-xs text-default-500">
+          {appOnly
+            ? "Your app's coroutines; vizcore's own connection is left out."
+            : "All captured coroutines (origin not available: vizcore's own connection may be included)."}
+        </p>
+      )}
+      {retainedSince && (
+        <p data-testid="metrics-retained" className="text-xs text-default-500">
+          Peak and throughput: in retained events since {retainedSince}.
+        </p>
+      )}
 
       {/* Delta L1: a single horizontal tile strip (wrap allowed on narrow
           widths) — Active · Peak · Throughput /s · Dispatcher util — replacing
@@ -77,14 +101,14 @@ export function SessionMetrics({
         <MetricCard
           icon={<FiActivity className="w-4 h-4 text-primary" />}
           label="Active"
-          value={<span className="text-lg font-semibold text-primary">{data.active}</span>}
+          value={<span className="text-lg font-semibold text-primary">{shown.active}</span>}
         />
 
         {/* Peak — neutral metric numeral */}
         <MetricCard
           icon={<FiTrendingUp className="w-4 h-4 text-default-600" />}
           label="Peak"
-          value={<span className="text-lg font-semibold">{data.peak}</span>}
+          value={<span className="text-lg font-semibold">{shown.peak}</span>}
         />
 
         {/* Throughput — "—" em-dash when zero/no events, else "N /s" */}
@@ -92,9 +116,11 @@ export function SessionMetrics({
           icon={<FiZap className="w-4 h-4 text-default-600" />}
           label="Throughput"
           value={
-            data.throughputPerSec > 0 ? (
+            shown.throughputPerSec === null ? (
+              <span className="text-sm text-default-400">unavailable</span>
+            ) : shown.throughputPerSec > 0 ? (
               <span>
-                <span className="text-lg font-semibold">{formatThroughput(data.throughputPerSec)}</span>
+                <span className="text-lg font-semibold">{formatThroughput(shown.throughputPerSec)}</span>
                 <span className="text-sm text-default-500"> /s</span>
               </span>
             ) : (
@@ -127,26 +153,6 @@ export function SessionMetrics({
         </Card>
       </div>
 
-      {/* Potential leaks (D-07) — warning highlight, never danger. Suppressed
-          when showLeaks={false} so the LiveDockPanel header strip is tiles-only
-          and the dock's left column owns the single LeakList mount (PD-04a). */}
-      {showLeaks && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2 text-sm text-default-600">
-              <FiAlertCircle className="w-4 h-4" />
-              <span>Potential leaks</span>
-            </div>
-          </CardHeader>
-          <CardBody>
-            {data.leaks.length === 0 ? (
-              <div className="text-xs text-default-400">No potential leaks detected</div>
-            ) : (
-              <LeakList leaks={data.leaks} leakThresholdMs={data.leakThresholdMs} />
-            )}
-          </CardBody>
-        </Card>
-      )}
     </div>
   )
 }

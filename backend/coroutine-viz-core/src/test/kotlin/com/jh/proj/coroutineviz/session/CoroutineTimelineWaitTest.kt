@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session
 
+import com.jh.proj.coroutineviz.events.SuspensionProvenance
 import com.jh.proj.coroutineviz.events.WaitKind
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineCreated
 import com.jh.proj.coroutineviz.events.coroutine.CoroutineStarted
@@ -29,6 +30,7 @@ class CoroutineTimelineWaitTest {
                 CoroutineSuspended(
                     "s", 3, 3_000, "c", "job-c", null, "io", "order-7",
                     reason = "mutex", waitKind = WaitKind.MUTEX, resourceId = "mutex-4",
+                    provenance = SuspensionProvenance.CREATION_FALLBACK,
                 ),
             )
             session.send(CoroutineSuspended("s", 4, 4_000, "c", "job-c", null, "io", "order-7", reason = "delay", durationMillis = 5))
@@ -47,6 +49,9 @@ class CoroutineTimelineWaitTest {
             assertEquals("mutex-4", rows[0].resourceId)
             assertNull(rows[1].waitKind)
             assertNull(rows[1].resourceId)
+            // Whether the frame was read or is the creation fallback (triage provenance, Part 7): passed through.
+            assertEquals(SuspensionProvenance.CREATION_FALLBACK, rows[0].provenance)
+            assertNull(rows[1].provenance)
         } finally {
             session.close()
         }

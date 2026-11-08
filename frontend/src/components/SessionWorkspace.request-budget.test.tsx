@@ -97,6 +97,21 @@ function respond(url: string) {
     }
   } else if (path === '/health') {
     body = { sharingEnabled: false }
+  } else if (path === `/sessions/${SESSION}/health`) {
+    // The session health (Part 7): read once, then on the stream's own 10 s throttle.
+    const capped = { items: [], total: 0 }
+    body = {
+      state: 'NO_PROBLEMS', asOf: { kind: 'LAST_EVENT', appNanos: 1, seq: 1 }, asOfSeq: 1, sessionOrigin: 'REPORTED',
+      problemCount: 0, failedRoundCount: 0, ungroupedFailureCount: 0, possiblyBlockedCount: 0, incidents: capped,
+      possiblyBlocked: { status: 'EVALUATED' }, observations: { longLived: capped, longSuspended: capped },
+      counts: { app: 1, vizcore: 0, unknown: 0, untracked: 0 }, failuresAtLeast: false,
+      vizcoreConnection: { captured: 0, failed: 0, failures: capped }, transport: {}, roundCount: 1, problemRoundCount: 0,
+      problemRounds: capped,
+    }
+  } else if (path.endsWith('/timeline')) {
+    body = { coroutineId: 'c-1', name: 'worker', state: 'ACTIVE', totalDuration: null, childrenIds: [], events: [] }
+  } else if (path === `/validate/session/${SESSION}`) {
+    body = { sessionId: SESSION, lastRun: null, newEventsSince: null }
   }
   return {
     ok: true,
@@ -247,9 +262,11 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     })
 
     const perMinute = (requestCount() - start) / 5
-    // Three reads (snapshot, threads, metrics) per 5 s refresh window at most, plus the round list at most every
-    // 15 s (Part 6) — one request even with 200 rounds listed.
-    expect(perMinute).toBeLessThanOrEqual(40)
+    // Three reads (snapshot, threads, metrics) per 5 s refresh window at most (36), plus the round list at most every
+    // 15 s (Part 6, 4) — one request even with 200 rounds listed — and the session health at most every 10 s (Part 7, 6).
+    expect(perMinute).toBeLessThanOrEqual(46)
+    const healthReads = fetchMock.mock.calls.slice(fetchesBefore).filter(([u]) => String(u).endsWith(`/sessions/${SESSION}/health`))
+    expect(healthReads.length / 5).toBeLessThanOrEqual(6)
     const roundReads = fetchMock.mock.calls.slice(fetchesBefore).filter(([u]) => String(u).includes('/rounds'))
     expect(roundReads.length).toBeGreaterThan(0)
     expect(roundReads.every(([u]) => String(u).includes('limit=200'))).toBe(true)
@@ -260,6 +277,29 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     expect(eventsRefetches).toHaveLength(1) // the initial stored-events load only
     // One long-lived stream, not a reconnect storm.
     expect(FakeEventSource.instances).toHaveLength(1)
+  })
+
+  it('stream ON with a selected coroutine that keeps getting events: its timeline adds at most 6 a minute (Part 7)', async () => {
+    renderWorkspace()
+    await advance(1000)
+    fireEvent.click(screen.getByRole('button', { name: 'Resume view' }))
+    await advance(1000)
+    const es = FakeEventSource.instances[0]!
+    act(() => es.open())
+    fireEvent.click(screen.getByRole('button', { name: 'List' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open source for worker' }))
+    await advance(15_000)
+    const fetchesBefore = fetchMock.mock.calls.length
+    const start = requestCount()
+    let seq = 1
+    await advance(5 * MINUTE, 1000, () => {
+      es.emit('CoroutineSuspended', { kind: 'CoroutineSuspended', sessionId: SESSION, seq: seq++, tsNanos: seq, coroutineId: 'c-1' })
+    })
+    const timelineReads = fetchMock.mock.calls.slice(fetchesBefore).filter(([u]) => String(u).includes('/coroutines/c-1/timeline'))
+    expect(timelineReads.length / 5).toBeLessThanOrEqual(6)
+    expect(timelineReads.length).toBeGreaterThan(0)
+    // 46 for the page (see above) + 6 for the selected coroutine's timeline.
+    expect((requestCount() - start) / 5).toBeLessThanOrEqual(52)
   })
 
   it('stream ON but SSE down: falls back to a slow poll, still well under the limit', async () => {
@@ -278,8 +318,9 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     })
 
     const perMinute = (requestCount() - start) / 5
-    // snapshot + metrics + threads every 10 s = 18/min, plus the round list every 20 s (Part 6) = 21.
-    expect(perMinute).toBeLessThanOrEqual(21)
+    // snapshot + metrics + threads every 10 s = 18/min, plus the round list every 20 s (Part 6) = 21, plus the session
+    // health every 20 s (Part 7) = 24.
+    expect(perMinute).toBeLessThanOrEqual(24)
     expect(perMinute).toBeGreaterThan(0)
     expect(screen.getByTestId('view-status')).toHaveTextContent(/connection lost/i)
   })

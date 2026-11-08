@@ -4,6 +4,7 @@ import { Card, CardBody, Chip } from '@heroui/react'
 import { motion, LayoutGroup } from 'framer-motion'
 import type { CoroutineNode, CoroutineState } from '@/types/api'
 import type { ActivityLine } from '@/lib/activity'
+import { CardFacts, CardStateContext } from './CardFacts'
 import { buildCoroutineTree } from '@/lib/utils'
 import { useAnimationSlot } from '@/lib/animation-throttle'
 import { fadeSlideIn, getStateVariant, hoverGlow } from '@/lib/animation-variants'
@@ -221,6 +222,8 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, a
                       {line.text}
                     </div>
                   )}
+                  {/* Lifetime, creation site and the health's badges, as on the graph's cards (Part 7). */}
+                  <CardFacts node={node} compact />
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -238,6 +241,7 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, a
                   }
                 >
                   {stateLabel(node.state)}
+                  <CardStateContext id={node.id} />
                 </Chip>
                 <Chip size="sm" variant="bordered">
                   Scope: {node.scopeId}

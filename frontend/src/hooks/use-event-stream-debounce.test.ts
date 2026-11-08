@@ -8,7 +8,7 @@ import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
-import { useEventStream, LIVE_EVENTS_MAX, LIVE_REFRESH_MIN_INTERVAL_MS, APPEND_FLUSH_MS } from './use-event-stream'
+import { useEventStream, LIVE_EVENTS_MAX, LIVE_REFRESH_MIN_INTERVAL_MS, LIVE_HEALTH_MIN_INTERVAL_MS, APPEND_FLUSH_MS } from './use-event-stream'
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
@@ -124,7 +124,7 @@ describe('useEventStream - throttled, exact-keyed refresh (#124/#137)', () => {
     expect(invalidationCount(queryClient, 'sessions')).toBe(1)
   })
 
-  it('refreshes only the exact snapshot, threads and metrics keys — never the /events history', () => {
+  it('refreshes only the exact snapshot, threads, metrics and health keys — never the /events history', () => {
     renderHook(() => useEventStream('session-1', true), {
       wrapper: createWrapper(queryClient),
     })
@@ -139,7 +139,63 @@ describe('useEventStream - throttled, exact-keyed refresh (#124/#137)', () => {
       { queryKey: ['sessions', 'session-1'], exact: true },
       { queryKey: ['thread-activity', 'session-1'], exact: true },
       { queryKey: ['session-metrics', 'session-1'], exact: true },
+      { queryKey: ['session-health', 'session-1'], exact: true },
     ])
+  })
+
+  it('a watermark frame refreshes the health only, at most once per health interval (Part 7, P-1)', () => {
+    renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    const watermark = JSON.stringify({ appNanos: 1, appEpochMs: 2, receivedEpochMs: 3 })
+    // An attached app with nothing new to report polls once a second, for 20 s.
+    for (let s = 0; s < 20; s++) {
+      act(() => {
+        mockEventSource.simulateEvent('watermark', watermark)
+        vi.advanceTimersByTime(1000)
+      })
+    }
+    expect(LIVE_HEALTH_MIN_INTERVAL_MS).toBe(10_000)
+    expect(invalidationCount(queryClient, 'session-health')).toBe(2)
+    expect(invalidationCount(queryClient, 'sessions')).toBe(0)
+    expect(invalidationCount(queryClient, 'session-metrics')).toBe(0)
+  })
+
+  it('leaving replay refreshes the health once, cancelling a refresh already scheduled (Part 7)', () => {
+    const { rerender } = renderHook(({ replay }) => useEventStream('session-1', true, replay), {
+      wrapper: createWrapper(queryClient),
+      initialProps: { replay: false },
+    })
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(1))
+      vi.advanceTimersByTime(600)
+    })
+    expect(invalidationCount(queryClient, 'session-health')).toBe(1)
+    // Another event schedules the next health refresh for 10 s after the first.
+    act(() => {
+      mockEventSource.simulateEvent('CoroutineCreated', eventPayload(2))
+      vi.advanceTimersByTime(1000)
+    })
+    rerender({ replay: true })
+    act(() => vi.advanceTimersByTime(1000))
+    rerender({ replay: false })
+    expect(invalidationCount(queryClient, 'session-health')).toBe(2)
+    act(() => vi.advanceTimersByTime(9000))
+    expect(invalidationCount(queryClient, 'session-health')).toBe(2)
+  })
+
+  it('events refresh the health on its own, slower interval', () => {
+    renderHook(() => useEventStream('session-1', true), {
+      wrapper: createWrapper(queryClient),
+    })
+    for (let s = 0; s < 20; s++) {
+      act(() => {
+        mockEventSource.simulateEvent('CoroutineCreated', eventPayload(s + 1))
+        vi.advanceTimersByTime(1000)
+      })
+    }
+    expect(invalidationCount(queryClient, 'sessions')).toBe(4)
+    expect(invalidationCount(queryClient, 'session-health')).toBe(2)
   })
 
   it('does not refetch an /events query while SSE is connected (#137)', async () => {

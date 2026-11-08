@@ -1,7 +1,9 @@
 package com.jh.proj.coroutineviz.routes
 
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
+import com.jh.proj.coroutineviz.events.SuspensionPoint
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.LifetimeKind
 import com.jh.proj.coroutineviz.health.SessionKind
 import com.jh.proj.coroutineviz.health.SessionOrigin
 import com.jh.proj.coroutineviz.health.WatermarkObservation
@@ -99,6 +101,12 @@ data class CoroutineNodeDto(
     val roundId: String? = null,
     /** Its effective origin (spec "Origin"); null without a summary. */
     val origin: CoroutineOrigin? = null,
+    /** Its lifetime on the app clock (spec "Lifetimes", dock Part 7's cards); null without a summary. */
+    val lifetimeNanos: Long? = null,
+    /** How [lifetimeNanos] was measured: FINISHED, SO_FAR (to the live watermark) or AT_LEAST (no watermark). */
+    val lifetimeKind: LifetimeKind? = null,
+    /** Where it was created, from its summary (spec C-2); null when unknown. */
+    val creationLocation: SuspensionPoint? = null,
 )
 
 /**

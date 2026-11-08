@@ -668,3 +668,57 @@ html.light[data-look='b'] {
 [data-look='b'] [data-look-part='story-reveal'] {
   border-radius: 9999px;
 }
+
+/* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
+
+/* The Problems tab as calm cards with room to breathe. */
+[data-look='b'] [data-look-part='problems'] {
+  font-size: 0.875rem;
+}
+[data-look='b'] [data-look-part='problems-headline'] {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+[data-look='b'] [data-look-part='problems-line'] {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+[data-look='b'] [data-look-part='problem'] {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+}
+[data-look='b'] [data-look-part='problem-show'] {
+  padding: 2px 12px;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+}
+[data-look='b'] [data-look-part='observations'],
+[data-look='b'] [data-look-part='checks-status'] {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+[data-look='b'] [data-look-part='connection'] {
+  border-radius: 9999px;
+}
+[data-look='b'] [data-look-part='connection-facts'] {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+/* The count on the Problems tab: a soft round pill. */
+[data-look='b'] [data-look-part='dock-tab-badge'] {
+  border-radius: 9999px;
+  font-weight: 600;
+}
+[data-look='b'] [data-look-part='exception-card'] > section,
+[data-look='b'] [data-look-part='clue-card'] > section {
+  border-radius: 16px;
+}
+[data-look='b'] [data-look-part='exception-card'] > section {
+  background: var(--danger-soft, var(--surface));
+}
+[data-look='b'] [data-look-part='clue-card'] > section {
+  background: var(--warning-soft);
+}

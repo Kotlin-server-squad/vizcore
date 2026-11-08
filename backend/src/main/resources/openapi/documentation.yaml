@@ -2890,6 +2890,24 @@ components:
           description: >
             Its effective origin: APP for every demo coroutine, UNKNOWN throughout a session whose
             producer reports no origin. Null without a summary.
+        lifetimeNanos:
+          type: integer
+          format: int64
+          nullable: true
+          description: >
+            Its lifetime on the app clock: first observation to terminal event, or, still running, to
+            the later of the live watermark and its own last event (so far), else to its last event
+            (at least). Null without a summary.
+        lifetimeKind:
+          type: string
+          nullable: true
+          enum: [FINISHED, SO_FAR, AT_LEAST]
+          description: How lifetimeNanos was measured.
+        creationLocation:
+          allOf:
+            - $ref: "#/components/schemas/SuspensionPoint"
+          nullable: true
+          description: Where it was created, from its summary. Null when unknown.
 
     # -----------------------------------------------------------------------
     # Events
@@ -3165,6 +3183,11 @@ components:
           type: string
           nullable: true
           description: "On such a suspension: the mutexId, semaphoreId or channelId waited for."
+        provenance:
+          type: string
+          nullable: true
+          enum: [REAL_FRAME, CREATION_FALLBACK, STALE]
+          description: "On a suspension: whether suspensionPoint is a frame the SDK read or a fallback; null when the producer did not say."
 
     SuspensionPoint:
       type: object

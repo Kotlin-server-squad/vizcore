@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.events.CoroutineOrigin
 import com.jh.proj.coroutineviz.events.VizEvent
+import com.jh.proj.coroutineviz.health.CoroutineLifetime
 import com.jh.proj.coroutineviz.health.CoroutineSummary
 import com.jh.proj.coroutineviz.health.RoundAnchoring
 import com.jh.proj.coroutineviz.health.SessionHealthDerivation
@@ -448,6 +449,8 @@ internal fun snapshotResponseOf(
     val anchoring = summaries?.let(RoundAnchoring::of)
     val demo = facts.kind == SessionKind.DEMO
     val originOf = { s: CoroutineSummary -> SessionHealthDerivation.effectiveOrigin(s, demo, facts.origin) }
+    // Lifetimes run to the app's latest poll only for an attached app that sends one (spec "Lifetimes").
+    val watermarkNanos = facts.lastWatermark?.appNanos?.takeIf { !demo }
     val nodeIds = nodes.mapTo(HashSet()) { it.id }
     return SessionSnapshotResponse(
         sessionId = session.sessionId,
@@ -456,6 +459,7 @@ internal fun snapshotResponseOf(
         coroutines =
             nodes.map { node ->
                 val summary = summaries?.get(node.id)
+                val lifetime = summary?.let { CoroutineLifetime.of(it, watermarkNanos) }
                 CoroutineNodeDto(
                     id = node.id,
                     jobId = node.jobId,
@@ -465,6 +469,9 @@ internal fun snapshotResponseOf(
                     state = node.state.toString(),
                     roundId = summary?.let { anchoring?.roundIdOf(it.id) },
                     origin = summary?.let(originOf),
+                    lifetimeNanos = lifetime?.nanos,
+                    lifetimeKind = lifetime?.kind,
+                    creationLocation = summary?.creationLocation,
                 )
             },
         summaryOnlyCount =

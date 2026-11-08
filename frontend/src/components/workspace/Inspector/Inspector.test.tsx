@@ -193,7 +193,7 @@ describe('Inspector', () => {
     expect(within(timing).queryByText(/~0/)).toBeNull()
   })
 
-  it('shows an approximate total "so far" for a coroutine that is still running (#145)', async () => {
+  it('shows an approximate lower bound for a coroutine that is still running (#145; "at least", Part 7)', async () => {
     // Backend: total is completion-only; active/suspended count closed intervals.
     getCoroutineTimeline.mockResolvedValue(
       timeline({
@@ -214,11 +214,10 @@ describe('Inspector', () => {
     const timing = await screen.findByTestId('timing-card')
     // The event span (3s) is longer than the closed intervals (1.2s) — the
     // larger figure is the honest lower bound.
-    expect(await within(timing).findByText('~3.0 s so far')).toBeInTheDocument()
+    expect(await within(timing).findByText('at least ~3.0 s')).toBeInTheDocument()
   })
 
-  it('counts a running coroutine up to now and flags a long run without suspending (#218)', async () => {
-    // Resumed 3 s after creation and silent since: blocked in a call on its thread.
+  it('estimates no "now" from the browser clock and gives no "may be blocked" hint of its own (Part 7, #232 removed)', async () => {
     const createdAtEpochMs = Date.now() - 60_000
     getCoroutineTimeline.mockResolvedValue(
       timeline({
@@ -242,8 +241,333 @@ describe('Inspector', () => {
     })
 
     const timing = await screen.findByTestId('timing-card')
-    expect(await within(timing).findByText(/^~(59\.\d s|1 m 0 s) so far$/)).toBeInTheDocument()
-    expect(within(timing).getByTestId('possibly-blocked')).toHaveTextContent('without suspending')
+    // The closed intervals (3.0 s) are what the events record; nothing counts on with the browser's clock.
+    expect(await within(timing).findByText('at least ~3.0 s')).toBeInTheDocument()
+    expect(within(timing).queryByTestId('possibly-blocked')).toBeNull()
+  })
+
+  it('leads a failed coroutine with its exception, in T-3\'s order', async () => {
+    getCoroutineTimeline.mockResolvedValue(timeline())
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.FAILED })}
+        readOnly={false}
+        problem={{
+          kind: 'FAILED',
+          failure: { coroutineId: 'c-1', name: 'pay', exceptionType: 'java.lang.IllegalStateException', message: 'card declined', failedAtSeq: 9, detailsDropped: false },
+          round: { failed: 2, cancelledAfter: 3 },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const card = screen.getByTestId('exception-card')
+    expect(card).toHaveTextContent('java.lang.IllegalStateException')
+    expect(card).toHaveTextContent('card declined')
+    expect(card).toHaveTextContent('1 of 2 failed coroutines in this round')
+    expect(card).toHaveTextContent('3 cancelled after the first failure (context, not a cause)')
+    const order = ['exception-card', 'suspended-at-card', 'timing-card', 'runs-on-card', 'identity-card'].map(id => screen.getByTestId(id))
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+  })
+
+  it('says when a failure\'s details were dropped', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.FAILED })}
+        readOnly={false}
+        problem={{
+          kind: 'FAILED',
+          failure: { coroutineId: 'c-1', name: 'pay', exceptionType: null, message: null, failedAtSeq: 9, detailsDropped: true },
+          round: null,
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('exception-card')).toHaveTextContent('Details dropped')
+    expect(screen.getByTestId('exception-card')).toHaveTextContent('Round unavailable')
+  })
+
+  it('shows a possibly blocked coroutine as observed, its clue, then its transitions', async () => {
+    getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.ACTIVE })}
+        readOnly={false}
+        threadActivity={threads()}
+        problem={{
+          kind: 'POSSIBLY_BLOCKED',
+          incident: {
+            type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-1', name: 'poll', roundId: null, anchorId: null,
+            lastThread: { threadId: 3, threadName: 'lettuce-nioEventLoop-4-1', seq: 7 }, dispatcher: 'Dispatchers.Unconfined',
+            lastSuspension: { function: 'com.acme.Poller.poll', fileName: 'Poller.kt', lineNumber: 12, reason: 'delay' },
+            lastSuspensionProvenance: 'CREATION_FALLBACK',
+            lastRunStart: { kind: 'RESUMED', appNanos: 2_000_000_000, seq: 6 }, runningForNanos: 12_300_000_000,
+            transitions: [
+              { kind: 'CREATED', appNanos: 0, seq: 1 },
+              { kind: 'SUSPENDED', appNanos: 500_000_000, seq: 3 },
+              { kind: 'RESUMED', appNanos: 2_000_000_000, seq: 6 },
+            ],
+            transitionsGap: true, firstObservedRunning: false, eventLoopClue: 'lettuce-nioEventLoop-', sortSeq: 6,
+          },
+        }}
+        problemAsOf="as of 14:02:31"
+        captureStartAppNanos={0}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const observed = screen.getByTestId('observed-card')
+    expect(observed).toHaveTextContent('Observed')
+    expect(observed).toHaveTextContent('lettuce-nioEventLoop-4-1')
+    expect(observed).toHaveTextContent('Dispatchers.Unconfined')
+    // Only a frame the SDK read is a "last suspension point" (triage provenance).
+    expect(observed).toHaveTextContent('suspension location unavailable')
+    expect(observed).not.toHaveTextContent('Poller.kt')
+    expect(observed).toHaveTextContent('as of 14:02:31')
+    // The live cards that pick any thread and any frame are not shown for this kind.
+    expect(screen.queryByTestId('runs-on-card')).toBeNull()
+    expect(screen.queryByTestId('suspended-at-card')).toBeNull()
+    const clue = screen.getByTestId('clue-card')
+    expect(clue).toHaveTextContent('lettuce-nioEventLoop-')
+    expect(clue).toHaveTextContent('If the code it is running makes a blocking call')
+    const timing = screen.getByTestId('timing-card')
+    expect(within(timing).getByTestId('transitions')).toHaveTextContent('Running for 12.3 s with no suspension observed')
+    expect(within(timing).getByTestId('transitions')).toHaveTextContent('Resumed at 2.0 s')
+    expect(within(timing).getByTestId('transitions')).toHaveTextContent('Earlier transitions were not retained')
+    const order = ['observed-card', 'clue-card', 'timing-card', 'identity-card'].map(id => screen.getByTestId(id))
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+  })
+
+  it('shows a real suspension frame, and says when no thread was observed in the current run', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.ACTIVE })}
+        readOnly={false}
+        problem={{
+          kind: 'POSSIBLY_BLOCKED',
+          incident: {
+            type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-1', name: 'poll', roundId: null, anchorId: null,
+            lastThread: null, dispatcher: null,
+            lastSuspension: { function: 'com.acme.Poller.poll', fileName: 'Poller.kt', lineNumber: 12, reason: 'delay' },
+            lastSuspensionProvenance: 'REAL_FRAME',
+            lastRunStart: { kind: 'RESUMED', appNanos: 0, seq: 2 }, runningForNanos: 11_000_000_000,
+            transitions: [], transitionsGap: false, firstObservedRunning: false, eventLoopClue: null, sortSeq: 2,
+          },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const observed = screen.getByTestId('observed-card')
+    expect(observed).toHaveTextContent('not observed for the current run')
+    expect(observed).toHaveTextContent('Poller.kt:12')
+  })
+
+  it('says a coroutine missing from a cut list may still have a problem', () => {
+    render(
+      <Inspector sessionId="s-1" coroutine={coroutine({ state: CoroutineState.FAILED })} readOnly={false} problemsCut />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('problem-not-listed')).toHaveTextContent(
+      'Problem details: not among the problems the health lists (it lists the first 50)',
+    )
+  })
+
+  it('opens a problem whose coroutine is not drawn from the incident alone, reading no timeline', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={null}
+        readOnly={false}
+        problemOnly={{
+          id: 'c-9',
+          label: 'pay-9',
+          problem: {
+            kind: 'FAILED',
+            failure: { coroutineId: 'c-9', name: 'pay-9', exceptionType: 'IOException', message: 'reset', failedAtSeq: 3, detailsDropped: false },
+            round: null,
+          },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('pay-9')
+    expect(screen.getByTestId('exception-card')).toHaveTextContent('IOException')
+    expect(screen.getByTestId('problem-only-note')).toHaveTextContent('Not drawn in the tree at this moment')
+    expect(getCoroutineTimeline).not.toHaveBeenCalled()
+  })
+
+  it('hides the session summary under an incident-only selection, and keeps a blocked one\'s transitions', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={null}
+        readOnly={false}
+        emptyState={<p>the session summary</p>}
+        problemOnly={{
+          id: 'c-9',
+          label: 'poll-9',
+          problem: {
+            kind: 'POSSIBLY_BLOCKED',
+            incident: {
+              type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-9', name: 'poll-9', roundId: null, anchorId: null,
+              lastThread: null, dispatcher: null, lastSuspension: null, lastSuspensionProvenance: null,
+              lastRunStart: { kind: 'STARTED', appNanos: 0, seq: 2 }, runningForNanos: 11e9,
+              transitions: [{ kind: 'STARTED', appNanos: 0, seq: 2 }], transitionsGap: true, firstObservedRunning: true,
+              eventLoopClue: null, sortSeq: 2,
+            },
+          },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByText('the session summary')).not.toBeVisible()
+    expect(screen.getByTestId('transitions')).toHaveTextContent('Running for 11.0 s with no suspension observed')
+    expect(getCoroutineTimeline).not.toHaveBeenCalled()
+  })
+
+  it('names each transition by its own event when the capture start is unknown', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.ACTIVE })}
+        readOnly={false}
+        problem={{
+          kind: 'POSSIBLY_BLOCKED',
+          incident: {
+            type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-1', name: 'poll', roundId: null, anchorId: null,
+            lastThread: null, dispatcher: null, lastSuspension: null, lastSuspensionProvenance: null,
+            lastRunStart: { kind: 'RESUMED', appNanos: 9, seq: 6 }, runningForNanos: 11e9,
+            transitions: [{ kind: 'CREATED', appNanos: 0, seq: 1 }, { kind: 'RESUMED', appNanos: 9, seq: 6 }],
+            transitionsGap: false, firstObservedRunning: false, eventLoopClue: null, sortSeq: 6,
+          },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const list = screen.getByTestId('transitions')
+    expect(list).toHaveTextContent('Created at event 1')
+    expect(list).toHaveTextContent('Resumed at event 6')
+  })
+
+  it('has no clue card without a clue', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.ACTIVE })}
+        readOnly={false}
+        problem={{
+          kind: 'POSSIBLY_BLOCKED',
+          incident: {
+            type: 'POSSIBLY_BLOCKED', id: 'b', coroutineId: 'c-1', name: 'poll', roundId: null, anchorId: null,
+            lastThread: null, dispatcher: null, lastSuspension: null, lastSuspensionProvenance: null,
+            lastRunStart: { kind: 'STARTED', appNanos: 0, seq: 2 }, runningForNanos: 11_000_000_000,
+            transitions: [], transitionsGap: false, firstObservedRunning: true, eventLoopClue: null, sortSeq: 2,
+          },
+        }}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.queryByTestId('clue-card')).toBeNull()
+    expect(screen.getByTestId('transitions')).toHaveTextContent('No suspension was ever observed')
+  })
+
+  it("re-reads a live coroutine's timeline after its own new events, at most every 10 s (Part 7, P-1)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+      const wrapper = createWrapper()
+      const { rerender } = render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} liveSeq={1} />, { wrapper })
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(1))
+      rerender(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} liveSeq={2} />)
+      rerender(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} liveSeq={3} />)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(getCoroutineTimeline).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(5_500)
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows the server's lifetime in Timing, as the card does, and the card's facts under the heading (Part 7, P-9)", async () => {
+    getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine({ state: CoroutineState.ACTIVE, lifetimeNanos: 12.3e9, lifetimeKind: 'SO_FAR' })}
+        readOnly={false}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const timing = await screen.findByTestId('timing-card')
+    expect(within(timing).getByText('12.3 s so far')).toBeInTheDocument()
+    expect(screen.getByTestId('node-meta')).toHaveTextContent('12.3 s so far')
+  })
+
+  it('a state change while streaming waits for the same 10 s throttle: one path, not two (Part 7, P-1)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+      const wrapper = createWrapper()
+      const { rerender } = render(<Inspector sessionId="s-1" coroutine={coroutine({ state: CoroutineState.ACTIVE })} readOnly={false} liveSeq={1} />, { wrapper })
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(1))
+      rerender(<Inspector sessionId="s-1" coroutine={coroutine({ state: CoroutineState.SUSPENDED })} readOnly={false} liveSeq={2} />)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(getCoroutineTimeline).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(9_000)
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(getCoroutineTimeline).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("re-reads after the selected coroutine's first live event, when the selection began without one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+      const wrapper = createWrapper()
+      const { rerender } = render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, { wrapper })
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(1))
+      rerender(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} liveSeq={5} />)
+      await vi.advanceTimersByTimeAsync(10_500)
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('re-reads a selection the page comes back to, though its cached read may predate the events since', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      getCoroutineTimeline.mockResolvedValue(timeline({ totalDuration: null }))
+      const wrapper = createWrapper()
+      const a = coroutine({ id: 'c-1' })
+      const b = coroutine({ id: 'c-2' })
+      const { rerender } = render(<Inspector sessionId="s-1" coroutine={a} readOnly={false} liveSeq={3} />, { wrapper })
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(1))
+      rerender(<Inspector sessionId="s-1" coroutine={b} readOnly={false} liveSeq={4} />)
+      await vi.waitFor(() => expect(getCoroutineTimeline).toHaveBeenCalledTimes(2))
+      // Back to A within its read's freshness: the cached read is shown, then read again once the throttle allows.
+      rerender(<Inspector sessionId="s-1" coroutine={a} readOnly={false} liveSeq={9} />)
+      const before = getCoroutineTimeline.mock.calls.filter(c => c[1] === 'c-1').length
+      await vi.advanceTimersByTimeAsync(10_500)
+      await vi.waitFor(() => expect(getCoroutineTimeline.mock.calls.filter(c => c[1] === 'c-1').length).toBeGreaterThan(before))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('moves focus to its heading on request (Show, T-3)', () => {
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} focusKey={1} />, { wrapper: createWrapper() })
+    expect(screen.getByRole('heading', { level: 2 })).toHaveFocus()
   })
 
   it('names the thread and dispatcher from thread activity', () => {

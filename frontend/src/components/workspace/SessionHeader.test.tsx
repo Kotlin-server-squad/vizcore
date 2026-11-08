@@ -54,6 +54,12 @@ function renderHeader(props: Partial<Parameters<typeof SessionHeader>[0]> = {}, 
 }
 
 describe('SessionHeader', () => {
+  it('shows the app connection beside the view pill when given one (Part 7, S-3)', () => {
+    renderHeader({ connection: <span data-testid="connection">App connected</span> })
+    const view = screen.getByTestId('view-status')
+    expect(view.compareDocumentPosition(screen.getByTestId('connection')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('names the session, its rung and its counts', () => {
     renderHeader()
     expect(screen.getByRole('heading', { name: 'Deadlock' })).toBeInTheDocument()

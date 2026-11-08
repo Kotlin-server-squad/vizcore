@@ -587,6 +587,25 @@ describe('ApiClient', () => {
     })
   })
 
+  describe('session health (Part 7)', () => {
+    it('reads the health at a replay cursor, and the last checks run', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ incidents: { items: [], total: 0 }, observations: {}, counts: {} }))
+      await apiClient.getHealthAt({ source: { kind: 'session', sessionId: 's' }, binding: { kind: 'replay', atSeq: 3 } })
+      expect(mockFetch.mock.calls[0]![0]).toBe('/api/sessions/s/health?atSeq=3')
+      mockFetch.mockResolvedValue(mockJsonResponse({ sessionId: 's', lastRun: null, newEventsSince: null }))
+      await apiClient.getChecksStatus('s')
+      expect(mockFetch.mock.calls[1]![0]).toBe('/api/validate/session/s')
+    })
+
+    it('treats a body that is not a health as unreadable, never as an empty health (H-3)', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ sharingEnabled: true }))
+      const error = await apiClient
+        .getHealthAt({ source: { kind: 'session', sessionId: 's' }, binding: { kind: 'current' } })
+        .catch(e => e)
+      expect(error).toBeInstanceOf(ApiError)
+    })
+  })
+
   describe('reads bound to a moment (Part 8)', () => {
     it('reads a session timeline at the replay cursor through the authenticated client', async () => {
       setToken('jwt')

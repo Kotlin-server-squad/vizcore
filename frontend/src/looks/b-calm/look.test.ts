@@ -30,15 +30,27 @@ describe('B’s CSS', () => {
   it('styles only page parts that exist: every hook and label it targets is in the components', () => {
     const parts = new Set([...css.matchAll(/data-look-part='([\w-]+)'/g)].map(m => m[1]!))
     expect([...parts].sort()).toEqual([
+      'checks-status',
+      'clue-card',
+      'connection',
+      'connection-facts',
       'dock',
+      'dock-tab-badge',
       'dock-tabs',
+      'exception-card',
       'group-summary',
       'header',
       'header-actions',
       'main',
       'main-body',
       'moment',
+      'observations',
       'page',
+      'problem',
+      'problem-show',
+      'problems',
+      'problems-headline',
+      'problems-line',
       'replay-bar',
       'replay-time',
       'round-bar',
@@ -134,9 +146,11 @@ describe('B’s graph card', () => {
   })
 
   it('is short enough for the root and its first row of children above the default dock at 1440 × 900', () => {
-    // The graph canvas there is 287 px tall in B (measured); the fit starts 40 px down (the zoom buttons), and the
-    // layout puts 32 px of padding above the root and 64 px between the rows (CoroutineTreeGraph).
-    const canvas = 287
+    // The graph canvas there is 330 px tall in B with its 35 % dock (measured, Part 7; 287 px at 40 %); the fit starts
+    // 40 px down (the zoom buttons), and the layout puts 32 px of padding above the root and 64 px between the rows
+    // (CoroutineTreeGraph).
+    expect(calmCard.dockShare).toBe(0.35)
+    const canvas = 330
     const bottomOfChildren = 40 + (32 + calmCard.height + 64 + calmCard.height) * calmCard.fitMinZoom!
     expect(bottomOfChildren).toBeLessThanOrEqual(canvas)
     // Six children (the E-commerce demo) side by side fit the canvas's 1,374 px width at the floor.

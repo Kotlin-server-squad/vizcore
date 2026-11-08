@@ -50,6 +50,9 @@ vi.mock('@/lib/api-client', () => ({
     getCoroutineTimeline: vi.fn(() => new Promise(() => {})),
     getTimelineAt: vi.fn(() => new Promise(() => {})),
     getHierarchyAt: vi.fn(() => Promise.resolve([])),
+    // The health and the checks status are Part 7's (SessionWorkspace.problems.test.tsx); here they stay unanswered.
+    getHealthAt: vi.fn(() => new Promise(() => {})),
+    getChecksStatus: vi.fn(() => new Promise(() => {})),
   },
 }))
 
@@ -1216,22 +1219,21 @@ describe('SessionWorkspace — the dock tabs (S-4, S-5)', () => {
     } as unknown as ReturnType<typeof useSession>)
   })
 
-  it('offers Inspector, Evidence, Events and Learn — Problems stays hidden until Part 7', () => {
+  it('offers Problems first, then Inspector, Evidence, Events and Learn (Part 7)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
-    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Inspector', 'Evidence', 'Events', 'Learn'])
-    expect(screen.queryByRole('tab', { name: /problems/i })).toBeNull()
+    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Problems', 'Inspector', 'Evidence', 'Events', 'Learn'])
   })
 
   it('keeps the same tabs in the shared view and in replay', async () => {
     const { unmount } = render(<SessionWorkspace sessionId="session-1" readOnly />, { wrapper: createWrapper() })
-    expect(screen.getAllByRole('tab')).toHaveLength(4)
+    expect(screen.getAllByRole('tab')).toHaveLength(5)
     unmount()
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
-    expect(screen.getAllByRole('tab')).toHaveLength(4)
+    expect(screen.getAllByRole('tab')).toHaveLength(5)
   })
 
-  it('opens an attached app on the Inspector, with the session summary', () => {
+  it('shows the Inspector with the session summary while the health is being read (an attached app then opens on Problems)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     expect(screen.getByRole('tab', { name: 'Inspector' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('Select a coroutine to inspect it')).toBeVisible()

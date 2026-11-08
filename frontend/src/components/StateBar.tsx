@@ -5,9 +5,9 @@ import type { StateCounts, StateFilter } from '@/lib/state-counts'
  *
  * One row that says what the session is doing, and doubles as the filter for
  * the canvas below it. Deliberately a *state* bar rather than a problems strip:
- * a problems-only strip opens on a row of zeroes for a demo session, and demo
- * is the rung the SPA uniquely serves. Problems are not a separate surface —
- * they are the chips that carry an alarming colour when non-zero.
+ * problems live in the dock's Problems tab (Part 7, S-8), read from the
+ * session health. Its Long-lived chip is the filter the Problems tab's
+ * "Long-lived (n)" opens; checks are not health and have no chip here (T-8).
  *
  * Presentational only: it fetches nothing and derives nothing.
  */
@@ -22,31 +22,15 @@ interface Chip {
   always?: boolean
 }
 
-/**
- * A chip that is not a filter (M-3).
- *
- * Validation findings belong on the bar per D-4 — problems are chips — but
- * validation is an on-demand run, and its results scope a report rather than a
- * subset of the canvas. So it opens the report instead of filtering, carries no
- * pressed state, and appears only once a run has actually failed something.
- */
-interface StateBarAction {
-  label: string
-  count: number
-  onPress: () => void
-}
-
 export function StateBar({
   counts,
   filter,
   onFilterChange,
-  action,
   bare = false,
 }: {
   counts: StateCounts
   filter: StateFilter
   onFilterChange: (next: StateFilter) => void
-  action?: StateBarAction
   /** In the main view's toolbar the bar sits on the toolbar's surface, so it has no box of its own. */
   bare?: boolean
 }) {
@@ -61,13 +45,13 @@ export function StateBar({
     { filter: 'unknown', label: 'State unknown', count: counts.unknown ?? 0, color: 'var(--text-muted)' },
   ]
 
-  // A potential leak is a heuristic finding, not a lifecycle fact, so it sits
-  // after the state chips and is amber — never danger-red, which is reserved
-  // for coroutines that actually failed.
+  // Long-lived is an observation, not a lifecycle fact nor a problem (triage
+  // T-1, T-5), so it sits after the state chips and is amber — never
+  // danger-red, which is reserved for coroutines that actually failed.
   const leakChip: Chip[] = [
     {
       filter: 'leaks',
-      label: 'Potential leaks',
+      label: 'Long-lived',
       count: counts.leaks,
       color: 'var(--warning)',
     },
@@ -124,23 +108,6 @@ export function StateBar({
           )
         })}
 
-      {action && (
-        <button
-          type="button"
-          // No aria-pressed: this control selects nothing, and announcing a
-          // pressed state would promise a filter the bar does not apply.
-          aria-label={`${action.label} ${action.count}`}
-          onClick={action.onPress}
-          className="ml-1 flex items-center gap-2 rounded-full border border-dashed px-3 py-1 text-sm transition-colors"
-          style={{
-            borderColor: 'color-mix(in srgb, var(--danger) 45%, transparent)',
-            color: 'var(--danger)',
-          }}
-        >
-          <span>{action.label}</span>
-          <span className="font-mono tabular-nums font-semibold">{action.count}</span>
-        </button>
-      )}
     </div>
   )
 }

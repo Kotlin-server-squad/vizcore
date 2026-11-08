@@ -105,7 +105,7 @@
   color: hsl(var(--card-ink));
 }
 /* The name has the dot; the state's running mark goes. */
-[data-card-look='a'] [data-look-part='node-state'] > span {
+[data-card-look='a'] [data-look-part='node-state'] > span:not([data-look-part]) {
   display: none;
 }
 /* What it waits for or holds: up to two lines, as in the sketch (its colour is Part 4's). */
@@ -168,4 +168,33 @@
   border-radius: 3px;
   font-size: 12px;
   line-height: 18px;
+}
+
+/* Part 7 (P-9): the lifetime, creation site and the health's badges on one row across the card (the meta text gives
+   way first); the card grows by that row (card.ts). */
+[data-card-look='a'] [data-look-part='node-facts'] {
+  grid-column: 1 / -1;
+  margin: 0;
+  gap: 4px;
+}
+[data-card-look='a'] [data-look-part='node-meta'] {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+}
+[data-card-look='a'] [data-look-part='node-badge'] {
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 16px;
+}
+[data-card-look='a'] [data-look-part='node-badge-more'] {
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 16px;
+}
+/* With a badge, the badge takes the row: the lifetime and creation site are in the Inspector. */
+[data-card-look='a'] [data-look-part='node-facts']:has([data-look-part='node-badges']) [data-look-part='node-meta'] {
+  display: none;
 }

@@ -70,6 +70,13 @@ const REFRESH_COALESCE_MS = 400
  */
 export const LIVE_REFRESH_MIN_INTERVAL_MS = 5000
 
+/**
+ * The live health (Part 7, P-1) is re-read at most this often, after new events or an attached app's quiet poll (a
+ * `watermark` frame): often enough that a coroutine running on without a suspension shows as possibly blocked within
+ * seconds, within the page's request budget (#124).
+ */
+export const LIVE_HEALTH_MIN_INTERVAL_MS = 10_000
+
 // Upper bound on buffered live events (#137); in its own module so the page can name it without this hook.
 export { LIVE_EVENTS_MAX } from '@/lib/live-events'
 
@@ -176,6 +183,9 @@ export function useEventStream(
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // When the last refresh ran — the throttle's reference point.
   const lastRefreshAtRef = useRef(Number.NEGATIVE_INFINITY)
+  // The health alone, for an attached app's quiet polls (watermark frames, Part 7 P-1): on the same interval.
+  const healthTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastHealthRefreshAtRef = useRef(Number.NEGATIVE_INFINITY)
   // Consecutive fatal-error retries since the last successful open.
   const retryCountRef = useRef(0)
   // Pending reconnect timer (fatal-error backoff), cancelled on teardown.
@@ -248,6 +258,7 @@ export function useEventStream(
     seenSeqsRef.current = new Set()
     highestSeqRef.current = Number.NEGATIVE_INFINITY
     lastRefreshAtRef.current = Number.NEGATIVE_INFINITY
+    lastHealthRefreshAtRef.current = Number.NEGATIVE_INFINITY
     setEvents([])
     setDroppedCount(0)
     setReceivedCount(0)
@@ -257,6 +268,20 @@ export function useEventStream(
       refreshTimerRef.current = null
       lastRefreshAtRef.current = Date.now()
       refreshLiveQueries(queryClient, sessionId)
+    }
+
+    // The health, on its own interval: after new events, and after a watermark frame (the app polled with nothing new,
+    // and a coroutine running on without a suspension may have become possibly blocked).
+    const scheduleHealthRefresh = () => {
+      if (replayActiveRef.current) return
+      if (healthTimerRef.current !== null) return
+      const sinceLast = Date.now() - lastHealthRefreshAtRef.current
+      const delay = Math.max(REFRESH_COALESCE_MS, LIVE_HEALTH_MIN_INTERVAL_MS - sinceLast)
+      healthTimerRef.current = setTimeout(() => {
+        healthTimerRef.current = null
+        lastHealthRefreshAtRef.current = Date.now()
+        void queryClient.invalidateQueries({ queryKey: ['session-health', sessionId], exact: true })
+      }, delay)
     }
 
     // Throttled refresh (#124/#137): at most one per
@@ -300,6 +325,7 @@ export function useEventStream(
       // The refresh follows the events' arrival, not their flush, so clearing the list before the
       // flush does not cancel the threads and metrics refresh they call for.
       scheduleRefresh()
+      scheduleHealthRefresh()
       if (pendingRef.current.length >= LIVE_EVENTS_MAX) {
         flushAppend()
       } else if (appendTimerRef.current === null) {
@@ -500,6 +526,11 @@ export function useEventStream(
         // Liveness frame from the server (no payload the view needs): arms the
         // watchdog on first sight and resets its silence window. Like
         // `dropped`, it never routes through accept/append.
+        eventSource.addEventListener('watermark', () => {
+          if (!isCurrent()) return
+          scheduleHealthRefresh()
+        })
+
         eventSource.addEventListener('heartbeat', () => {
           if (!isCurrent()) return
           heartbeatSeenRef.current = true
@@ -579,6 +610,10 @@ export function useEventStream(
         clearTimeout(refreshTimerRef.current)
         refreshTimerRef.current = null
       }
+      if (healthTimerRef.current !== null) {
+        clearTimeout(healthTimerRef.current)
+        healthTimerRef.current = null
+      }
     }
   }, [sessionId, enabled, queryClient, connectNonce])
 
@@ -601,6 +636,12 @@ export function useEventStream(
       }
       lastRefreshAtRef.current = Date.now()
       refreshLiveQueries(queryClient, sessionId)
+      if (healthTimerRef.current !== null) {
+        clearTimeout(healthTimerRef.current)
+        healthTimerRef.current = null
+      }
+      lastHealthRefreshAtRef.current = Date.now()
+      void queryClient.invalidateQueries({ queryKey: ['session-health', sessionId], exact: true })
     }
   }, [replayActive, sessionId, enabled, queryClient])
 

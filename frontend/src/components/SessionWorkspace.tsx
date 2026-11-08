@@ -34,7 +34,9 @@ import { storyFor } from '@/content/gallery/story-anchors'
 import { storyHeld } from '@/lib/story'
 import { SessionSummary } from './workspace/SessionSummary'
 import { EvidencePanels } from './workspace/EvidencePanels'
-import { ChecksModal, countFailedChecks } from './workspace/ChecksModal'
+import { ChecksModal } from './workspace/ChecksModal'
+import { ProblemsPanel, type ChecksLine } from './workspace/ProblemsPanel'
+import { ConnectionFacts } from './workspace/ConnectionFacts'
 import { useScenarioActions } from './workspace/use-scenario-actions'
 import { useAutoRun } from '@/hooks/use-auto-run'
 import { StateBar } from './StateBar'
@@ -85,6 +87,11 @@ import { groupIdOf, groupSiblings, isGroupId, type NameGroup } from '@/lib/name-
 import { GroupSummary } from './workspace/Inspector/GroupSummary'
 import { useOneMoment, type ShareBinding } from '@/hooks/use-one-moment'
 import { MomentSummary } from './workspace/MomentSummary'
+import { useSessionHealth, type HealthMode } from '@/hooks/use-session-health'
+import { useChecksStatus } from '@/hooks/use-checks-status'
+import { useQuietRefresh } from '@/hooks/use-quiet-refresh'
+import { asOfText, problemOf } from '@/lib/health-text'
+import { CardFactsContext, cardFacts } from '@/lib/card-facts'
 import { useSessionTimeline } from '@/hooks/use-session-timeline'
 import { sessionFirstSeq } from '@/lib/session-first-seq'
 
@@ -178,7 +185,12 @@ export function SessionWorkspace({
   // so a run survives the modal closing, and so the state bar can report it.
   const [checksOpen, setChecksOpen] = useState(false)
   const validation = useValidation(sessionId)
-  const failedChecks = countFailedChecks(validation.data)
+  // The last checks run (T-8): read once, again after a run in this visit; a shared link has the one it loaded.
+  const checksStatus = useChecksStatus(sessionId, !readOnly)
+  const refetchChecks = checksStatus.refetch
+  useEffect(() => {
+    if (validation.data) void refetchChecks()
+  }, [validation.data, refetchChecks])
   // Panel ref for ExportMenu (captures the active visualization region lazily).
   const panelRef = useRef<HTMLDivElement | null>(null)
 
@@ -231,8 +243,8 @@ export function SessionWorkspace({
     () => deriveRung(sessionId, eventCategories),
     [sessionId, eventCategories],
   )
-  const { data: metrics } = useSessionMetrics(sessionId, fallbackPollMs, !readOnly)
-  const leakIds = useMemo(
+  const { data: metrics, refetch: refetchMetrics } = useSessionMetrics(sessionId, fallbackPollMs, !readOnly)
+  const metricsLeakIds = useMemo(
     () => new Set((metrics?.leaks ?? []).map(l => l.coroutineId)),
     [metrics?.leaks],
   )
@@ -284,6 +296,32 @@ export function SessionWorkspace({
     sessionFirstSeq: session && session.trimmed === false ? (session.oldestRetainedSeq ?? undefined) : undefined,
   })
   const panelCoroutines = replayActive ? oneMoment.coroutines : (session?.coroutines ?? EMPTY_COROUTINES)
+  // The session's health at the page's moment (Part 7, P-1): live; at the replay cursor; or as a shared link loaded it.
+  const healthMode: HealthMode = replayActive
+    ? oneMoment.view
+      ? { kind: 'moment', view: oneMoment.view }
+      : { kind: 'loaded', health: null, unavailable: null }
+    : readOnly
+      ? { kind: 'loaded', health: share?.health ?? null, unavailable: share?.unavailable ?? null }
+      : { kind: 'live', pollMs: fallbackPollMs ? fallbackPollMs * 2 : false }
+  const sessionHealth = useSessionHealth({ sessionId, mode: healthMode })
+  const health = sessionHealth.health
+  // The Long-lived filter's coroutines (T-5): live, /metrics' complete list; at a moment, the health's (its first 50).
+  const leakIds = useMemo(
+    () =>
+      !replayActive && !readOnly
+        ? metricsLeakIds
+        : new Set((health?.observations.longLived.items ?? []).map(o => o.coroutineId)),
+    [replayActive, readOnly, metricsLeakIds, health],
+  )
+  // While the stream is on, a quiet or disconnected app still moves the connection pill and the health (P-1).
+  useQuietRefresh({
+    enabled: streamEnabled && isConnected && !replayActive && !readOnly,
+    reads: [
+      { updatedAt: dataUpdatedAt, refetch: () => void refetch() },
+      { updatedAt: sessionHealth.updatedAt, failedAt: sessionHealth.failedAt, refetch: sessionHealth.retry },
+    ],
+  })
   // --- Big apps (S-12, T-4): one round at a time, find in all rounds, the vizcore toggle. Live and paused view
   // only; replay and the shared view keep today's page (Part 8 binds them to one moment). Rounds and origins are the
   // server's (snapshot `roundId`/`origin`, `/rounds`); nothing here decides what a round is (D-8).
@@ -473,10 +511,19 @@ export function SessionWorkspace({
   // are. A tab the user picks wins, and is remembered for this session.
   const [pickedTab, setPickedTab] = useState<DockTabId | null>(null)
   const [openingTab, setOpeningTab] = useState<DockTabId | null>(null)
-  if (openingTab === null && session) {
+  // Whether there is a problem is the health's to say: the choice waits for its first answer, unless a Gallery demo
+  // still running opens on Learn anyway.
+  const learnFirst = hasScenario && (outcome?.outcome === 'notStarted' || outcome?.outcome === 'running')
+  const healthSettled = sessionHealth.status === 'ready' || sessionHealth.status === 'error'
+  if (openingTab === null && session && (learnFirst || healthSettled || rememberedDockTab(sessionId) !== null)) {
     setOpeningTab(
       rememberedDockTab(sessionId) ??
-        openingDockTab({ startedAsDemo: hasScenario, outcome: outcome?.outcome ?? null }),
+        openingDockTab({
+          startedAsDemo: hasScenario,
+          outcome: outcome?.outcome ?? null,
+          attached,
+          problems: (health?.problemCount ?? 0) > 0,
+        }),
     )
   }
   const dockTab: DockTabId = pickedTab ?? openingTab ?? 'inspector'
@@ -575,6 +622,18 @@ export function SessionWorkspace({
     if (dock.maximised) dock.toggleMaximise()
     setReveal(prev => ({ id, key: (prev?.key ?? 0) + 1 }))
     setFindOpen(false)
+  }
+  // "Show" (S-2, T-3): a drawn coroutine is found like a Find match; one the tree does not draw opens from its incident.
+  // Either way focus moves to the Inspector's heading.
+  const [inspectorFocus, setInspectorFocus] = useState<number | undefined>(undefined)
+  const showProblem = (id: string) => {
+    if (panelCoroutines.some(c => c.id === id)) chooseFound(id)
+    else {
+      setSelection({ kind: 'coroutine', id })
+      selectDockTab('inspector')
+      if (dock.maximised) dock.toggleMaximise()
+    }
+    setInspectorFocus(k => (k ?? 0) + 1)
   }
   const findView = (() => {
     if (!findOpen || !findQuery) return null
@@ -767,12 +826,12 @@ export function SessionWorkspace({
     if (selection === null) return
     const gone =
       selection.kind === 'coroutine'
-        ? !coroutineIds.has(selection.id) && !keptIds.has(selection.id) && !summaryPending
+        ? !coroutineIds.has(selection.id) && !keptIds.has(selection.id) && !summaryPending && !problemOf(health, selection.id)
         : selection.kind === 'group'
           ? !groups?.has(selection.id)
           : !resources.has(selection.id) && !replayActive
     if (gone) setSelection(null)
-  }, [selection, coroutineIds, keptIds, resources, replayActive, summaryPending, groups])
+  }, [selection, coroutineIds, keptIds, resources, replayActive, groups, summaryPending, health])
   const pendingSelectionLabel =
     replayActive && selection?.kind === 'coroutine' && !selectedCoroutine
       ? (oneMoment.replayLabels.get(selection.id) ??
@@ -814,6 +873,57 @@ export function SessionWorkspace({
       setStreamEnabled(true)
     }
   }, [autoLive])
+
+  // --- Problems (Part 7): what the Inspector and the Problems tab need from the health. ---
+  // A problem whose coroutine the page does not draw opens from its incident (P-5).
+  const problemOnly = useMemo(() => {
+    if (selection?.kind !== 'coroutine' || selectedCoroutine) return null
+    const problem = problemOf(health, selection.id)
+    if (!problem) return null
+    const label = problem.kind === 'FAILED' ? problem.failure.name : problem.incident.name
+    return { id: selection.id, label: label ?? selection.id, problem }
+  }, [selection, selectedCoroutine, health])
+  // The health lists only part of its problems: a coroutine it does not list may still have one (P-6).
+  const problemsCut =
+    !!health &&
+    (health.incidents.total > health.incidents.items.length ||
+      health.incidents.items.some(i => i.type === 'FAILED_ROUND' && i.failures.total > i.failures.items.length))
+  const healthAsOf = health ? asOfText(health.asOf, captureStart) : undefined
+  const healthStale = !!sessionHealth.refreshError
+  const facts = useMemo(
+    () => Object.assign(cardFacts(health), { asOf: healthAsOf, stale: healthStale }),
+    [health, healthAsOf, healthStale],
+  )
+  // The newest live event of the selected coroutine: its timeline is re-read after it (P-1).
+  const selectedLiveSeq = useMemo(() => {
+    if (!liveStream || !selectedCoroutineId) return undefined
+    for (let i = liveEvents.length - 1; i >= 0; i--) {
+      const e = liveEvents[i] as { coroutineId?: string; seq: number }
+      if (e.coroutineId === selectedCoroutineId) return e.seq
+    }
+    return undefined
+  }, [liveStream, selectedCoroutineId, liveEvents])
+  const memberLabelOrUndefined = (id: string) => panelCoroutines.find(c => c.id === id)?.label ?? undefined
+  // The checks status line (T-8).
+  const latestSeq = allEvents.length > 0 ? (allEvents[allEvents.length - 1]?.seq ?? null) : null
+  const checksLine: ChecksLine = readOnly
+    ? share?.checks
+      ? { kind: 'status', status: share.checks, latestSeq: null }
+      : { kind: 'unavailable' }
+    : checksStatus.data
+      ? {
+          kind: 'status',
+          status: checksStatus.data,
+          latestSeq,
+          onRun: () => {
+            validation.validate()
+            setChecksOpen(true)
+          },
+          onOpen: () => setChecksOpen(true),
+        }
+      : checksStatus.isError
+        ? { kind: 'unavailable' }
+        : { kind: 'loading' }
 
   // isPending too: a paused retry (background tab, offline) is still loading,
   // not a missing session (#139).
@@ -881,6 +991,7 @@ export function SessionWorkspace({
             : () => {
                 void refetch()
                 if (roundFacts) void rounds.refetch()
+                if (!replayActive) sessionHealth.retry()
               }
         }
         onOpenShares={() => setSharesOpen(true)}
@@ -891,6 +1002,8 @@ export function SessionWorkspace({
         panelEvents={panelEvents}
         viewMode={viewMode}
         onRecord={recordReplay.canRecord ? recordReplay.startRecording : undefined}
+        // An attached app's connection, last data and start time (S-3, T-2); a shared link shows what it loaded.
+        connection={attached && !readOnly ? <ConnectionFacts session={session} /> : undefined}
       />
 
       {/* The ReplayController bar (D-13), directly under the header. While
@@ -925,6 +1038,7 @@ export function SessionWorkspace({
         isOpen={checksOpen}
         onOpenChange={setChecksOpen}
         validation={validation}
+        lastRun={checksStatus.data?.lastRun ?? null}
       />
 
       {/* D-26 long-recording confirm (>120s estimate). */}
@@ -938,6 +1052,8 @@ export function SessionWorkspace({
 
       {/* The main view and the dock share the rest of the page (S-1), laid
           out by the look (Classic: a column, the main view above the dock). */}
+      {/* The cards' badges and round context come from the health at the page's moment (Part 7, P-9). */}
+      <CardFactsContext.Provider value={facts}>
       {sessionBody({
         sharedRef: dock.sharedRef,
         overview: { counts: stateCounts, coroutines: viewCoroutines, activity },
@@ -997,13 +1113,6 @@ export function SessionWorkspace({
                   setStateFilter(next)
                   forget()
                 }}
-                // Shown only once a run has actually failed something (M-3): a chip
-                // reading zero for a session nobody validated is a claim we cannot make.
-                action={
-                  failedChecks > 0
-                    ? { label: 'Checks', count: failedChecks, onPress: () => setChecksOpen(true) }
-                    : undefined
-                }
               />
             }
             isDemo={isDemo}
@@ -1037,10 +1146,9 @@ export function SessionWorkspace({
             onToggleFold={dock.toggleFold}
             bar={
               <DockTabs
-                // Problems ("what is wrong?") is the fifth question of S-4. It
-                // stays hidden, not empty, until the health API (Part 5) and its
-                // tab (Part 7) land.
+                // Problems ("what is wrong?") first, with a count only when there are problems (S-8).
                 tabs={[
+                  { id: 'problems', label: 'Problems', badge: health?.problemCount ?? 0 },
                   { id: 'inspector', label: 'Inspector' },
                   { id: 'evidence', label: evidenceTabLabel(evidenceCounts) },
                   { id: 'events', label: 'Events' },
@@ -1051,6 +1159,33 @@ export function SessionWorkspace({
               />
             }
           >
+            <DockTabPanel id="problems" selected={dockTab === 'problems'}>
+              <ProblemsPanel
+                result={sessionHealth}
+                captureStartAppNanos={captureStart}
+                onPage={id => coroutineIds.has(id)}
+                labelOf={memberLabelOrUndefined}
+                onShow={showProblem}
+                onLongLived={() => {
+                  // The filter's coroutines are /metrics' list: read it now, so it agrees with the count just shown.
+                  if (!replayActive && !readOnly) void refetchMetrics()
+                  // The count is the whole session's: show every round, so no long-lived coroutine is out of view.
+                  if (roundsMode) pickView(ALL_ROUNDS)
+                  setStateFilter('leaks')
+                  forget()
+                  if (dock.maximised) dock.toggleMaximise()
+                }}
+                longLivedNote={
+                  (replayActive || readOnly) &&
+                  health &&
+                  health.observations.longLived.total > health.observations.longLived.items.length
+                    ? 'the filter shows the first 50'
+                    : undefined
+                }
+                checks={checksLine}
+                sampled={attached}
+              />
+            </DockTabPanel>
             <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>
               {selectedGroup && (
                 <GroupSummary
@@ -1076,7 +1211,14 @@ export function SessionWorkspace({
                 // Outside the live view its reads are bound to the page's moment (Part 8, M-3).
                 moment={oneMoment.view}
                 unavailableReason={oneMoment.unavailableReason}
-                pendingSelectionLabel={pendingSelectionLabel}
+                pendingSelectionLabel={problemOnly ? null : pendingSelectionLabel}
+                problem={selectedCoroutine ? problemOf(health, selectedCoroutine.id) : null}
+                problemAsOf={health ? asOfText(health.asOf, captureStart) : undefined}
+                problemsCut={problemsCut}
+                problemOnly={problemOnly}
+                captureStartAppNanos={captureStart}
+                focusKey={inspectorFocus}
+                liveSeq={selectedLiveSeq}
                 pendingSelectionNote={pendingSelectionNote}
                 // T-3's session summary: live, from /metrics; at a moment (replay, shared link),
                 // the same tiles computed from what the tree shows at that moment (M-1).
@@ -1087,6 +1229,8 @@ export function SessionWorkspace({
                       enabled={!readOnly}
                       coroutineCount={session.coroutineCount}
                       eventCount={session.eventCount}
+                      counts={health?.counts}
+                      captureStartAppNanos={captureStart}
                     />
                   ) : oneMoment.moment && momentMetrics ? (
                     <MomentSummary
@@ -1169,6 +1313,7 @@ export function SessionWorkspace({
           </SessionDock>
         ),
       })}
+      </CardFactsContext.Provider>
     </div>
   )
 }

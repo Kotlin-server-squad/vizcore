@@ -28,7 +28,8 @@ import { getToken, clearToken } from './auth-store'
 import { navigateToLogin } from './navigation'
 
 import { ApiError, NetworkError, RateLimitedError, parseRetryAfter } from './api-errors'
-import { hierarchyPath, timelinePath, type MomentRead } from './moment-read'
+import { healthPath, hierarchyPath, timelinePath, type MomentRead } from './moment-read'
+import type { ChecksStatus, SessionHealth } from '@/types/health'
 import type { MomentHierarchyNode } from './cursor-coroutines'
 
 export { ApiError, NetworkError, RateLimitedError } from './api-errors'
@@ -495,6 +496,21 @@ class ApiClient {
 
   async getHierarchyAt(read: MomentRead): Promise<MomentHierarchyNode[]> {
     return this.momentJson<MomentHierarchyNode[]>(read, hierarchyPath(read))
+  }
+
+  /** The session's health at this read's moment (Part 7, P-1): live, at a replay cursor, or through a shared token. */
+  async getHealthAt(read: MomentRead): Promise<SessionHealth> {
+    const health = await this.momentJson<SessionHealth>(read, healthPath(read))
+    // A body that is not a health (an older or foreign server) is an unreadable health, never an empty one (H-3).
+    if (!health || typeof health !== 'object' || !health.incidents || !health.observations || !health.counts) {
+      throw new ApiError(502, 'The server answered without a session health')
+    }
+    return health
+  }
+
+  /** The session's last checks run (triage C-5, T-8); `lastRun` is null before any. */
+  async getChecksStatus(sessionId: string): Promise<ChecksStatus> {
+    return this.fetchJson<ChecksStatus>(`/validate/session/${encodeURIComponent(sessionId)}`)
   }
 
   private async momentJson<T>(read: MomentRead, path: string): Promise<T> {

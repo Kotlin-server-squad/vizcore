@@ -425,6 +425,7 @@ class ProjectionService(
                     suspensionPoint = event.suspensionPoint,
                     waitKind = event.waitKind,
                     resourceId = event.resourceId,
+                    provenance = event.provenance,
                 )
 
             is CoroutineCreated ->

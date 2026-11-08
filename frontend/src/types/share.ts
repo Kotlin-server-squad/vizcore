@@ -6,6 +6,7 @@
  */
 
 import type { SessionSnapshot, VizEvent } from '@/types/api'
+import type { ChecksStatus, SessionHealth } from '@/types/health'
 
 /** Allowed share-expiry codes (D-11). `never` → a null `expiresAt` server-side. */
 export type ShareExpiry = '1d' | '7d' | '30d' | 'never'
@@ -29,12 +30,14 @@ export interface ShareSummary {
 export interface SharedSessionResponse {
   session: SessionSnapshot
   events: VizEvent[]
-  /** The health at load; only `asOfSeq` is read here (the shared view's reads bind to it, Part 8 M-11). */
-  health?: { asOfSeq: number } | null
+  /** The health at load: the shared view's reads bind to its `asOfSeq` (Part 8 M-11); the Problems tab presents it (Part 7). */
+  health?: SessionHealth | null
   /** Why there is no health (`summaries-unavailable`, `history-trimmed`). */
   healthUnavailable?: string | null
   /** The health's cut id: the shared view's follow-up reads pass it as `asOfCut`. */
   healthCut?: string | null
+  /** The last checks run at load (triage C-6). */
+  checks?: ChecksStatus | null
 }
 
 /**

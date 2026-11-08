@@ -4,6 +4,7 @@ import type { MomentBinding, MomentRead, MomentSource } from '@/lib/moment-read'
 import { coroutineChangesBetween, indexReplay } from '@/lib/replay-index'
 import { replayClock } from '@/lib/replay-seek'
 import type { CoroutineNode, VizEvent } from '@/types/api'
+import type { ChecksStatus, SessionHealth } from '@/types/health'
 import { useCursorCoroutines, useKnownSummaryNodes } from './use-cursor-coroutines'
 import type { MomentView } from './use-moment'
 import type { UseReplayReturn } from './use-replay'
@@ -17,6 +18,10 @@ export interface ShareBinding {
   cut: string | null
   /** Why the payload carried no health (`healthUnavailable`), when it did not. */
   unavailable: string | null
+  /** The health at load, which the Problems tab presents (Part 7); absent from older servers. */
+  health?: SessionHealth | null
+  /** The last checks run at load (triage C-6). */
+  checks?: ChecksStatus | null
 }
 
 /** How long the cursor must stay put before a read: session reads, and the smaller shared bucket (M-4). */

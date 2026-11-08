@@ -183,7 +183,12 @@ export interface CoroutineNode {
    * Replay only: rebuilt from the server's durable summary at the cursor, because the replayed events do not include
    * its creation (Part 8, M-9).
    */
-  fromSummary?: boolean
+  fromSummary?: boolean  /** Its lifetime on the app clock, from its summary (triage "Lifetimes", Part 7); absent without one. */
+  lifetimeNanos?: number | null
+  /** How the lifetime was measured: finished, so far (to the app's latest poll) or at least (no poll). */
+  lifetimeKind?: 'FINISHED' | 'SO_FAR' | 'AT_LEAST' | null
+  /** Where it was created, from its summary. */
+  creationLocation?: SuspensionPoint | null
 }
 
 /** Who launched a coroutine (triage "Origin"): the app, vizcore's own connection, or not reported. */
@@ -261,6 +266,14 @@ export interface SessionSnapshot {
   captureStartAppNanos?: number | null
   /** Coroutines the summaries know that `coroutines` does not hold (events trimmed before a reload), vizcore's left out. */
   summaryOnlyCount?: number
+  /** When the session was created (the backend's wall clock). */
+  startedAtEpochMs?: number
+  /** Whether an app's ingest socket is open on this backend right now (T-2, S-3). */
+  appConnected?: boolean
+  /** The backend's receipt time of the app's last event frame, null before any. */
+  lastIngestEpochMs?: number | null
+  /** The app's latest poll watermark: its app-clock and wall-clock time, and when the backend received it. */
+  lastWatermark?: { appNanos: number; appEpochMs: number; receivedEpochMs: number } | null
 }
 
 export interface ScenarioCompletion {
@@ -638,6 +651,8 @@ export interface TimelineEvent {
   suspensionPoint?: SuspensionPoint | null
   waitKind?: WaitKind | null
   resourceId?: string | null
+  /** Suspend rows: whether the SDK read the frame (`REAL_FRAME`) or fell back (triage provenance); absent when not reported. */
+  provenance?: 'REAL_FRAME' | 'CREATION_FALLBACK' | 'STALE' | null
 }
 
 // Thread Activity - DERIVED view model.
@@ -978,6 +993,28 @@ export interface MetricsResponse {
   dispatcherUtilization: Record<string, number>
   leaks: LeakDto[]
   leakThresholdMs: number
+  /** Per effective origin (triage C-3); absent when the summaries are unavailable or from older servers. */
+  byOrigin?: {
+    app: OriginSlice
+    vizcore: OriginSlice
+    unknown: OriginSlice
+    untracked: number
+  } | null
+  /** The projection figures come from retained events only (a database session rebuilt after a trim). */
+  retainedOnly?: boolean
+  /** With `retainedOnly`: the app time of the oldest retained event. */
+  oldestRetainedAppNanos?: number | null
+}
+
+/** One origin's figures in `/metrics` (`OriginSlice`). */
+export interface OriginSlice {
+  captured: number
+  active: number
+  peak: number
+  /** Null for a rebuilt database session (no receipt times). */
+  throughputPerSec: number | null
+  dispatcherUtilization: Record<string, number>
+  longLived: number
 }
 
 // A still-active coroutine flagged as a potential leak (alive past the threshold).
