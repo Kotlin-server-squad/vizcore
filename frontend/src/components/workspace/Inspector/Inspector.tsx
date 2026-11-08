@@ -81,6 +81,8 @@ interface InspectorProps {
    * it, at most every 10 s (a suspend and resume between two snapshots leaves its state unchanged).
    */
   liveSeq?: number
+  /** While the Timeline is the main view, its one-sentence summary of the selected row (Part 10, S-10). */
+  sentence?: string | null
 }
 
 /** A live coroutine's timeline is re-read after its own events at most this often (Part 7, P-1). */
@@ -127,6 +129,7 @@ function InspectorBody({
   captureStartAppNanos = null,
   focusKey,
   liveSeq,
+  sentence = null,
 }: InspectorProps) {
   const headingRef = useRef<HTMLHeadingElement | null>(null)
   // "Show" moves focus to the heading (T-3), once per request, after the selection has rendered.
@@ -293,6 +296,12 @@ function InspectorBody({
             className={activity.waiting ? 'text-sm text-warning' : 'text-sm text-default-600'}
           >
             {activity.text}
+          </p>
+        )}
+        {/* The Timeline's one sentence for the selected row (Part 10), from the same spans it draws. */}
+        {sentence && (
+          <p data-testid="inspector-timeline-sentence" data-look-part="timeline-sentence" className="text-sm text-default-700">
+            {sentence}
           </p>
         )}
         {/* At a moment (Part 8): what the read could not give, said once, above the cards. */}

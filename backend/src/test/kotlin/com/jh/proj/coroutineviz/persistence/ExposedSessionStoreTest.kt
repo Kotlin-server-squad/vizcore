@@ -7,7 +7,12 @@ import com.jh.proj.coroutineviz.persistence.tables.SharesTable
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.exposed.v1.core.Transaction
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.statements.StatementContext
+import org.jetbrains.exposed.v1.core.statements.StatementInterceptor
+import org.jetbrains.exposed.v1.core.statements.StatementType
+import org.jetbrains.exposed.v1.core.statements.expandArgs
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -278,6 +283,65 @@ class ExposedSessionStoreTest {
         assertEquals(threads * perThread, seqs.size)
         assertEquals(seqs.size, seqs.distinct().size, "expected no duplicate seqs under concurrency")
         assertEquals((1L..(threads * perThread).toLong()).toList(), seqs.sorted(), "expected contiguous seqs")
+    }
+
+    @Test
+    fun `recording an event reads one index entry for the next seq, not every stored event`() {
+        // Each live ingest frame records one event. Reading the next seq through the session-id index made H2 read every
+        // stored event of the session, payload included, for each new one: a few minutes into a busy app an append took
+        // ~200 ms, ingest fell behind the app, and the socket's pongs queued behind the backlog until the server's ping
+        // timeout closed a healthy connection, which reads as "delivery uncertain" for the rest of the session. A MAX(seq)
+        // still walks every index entry of the session (H2 2.4), so the work per append must not grow with the session.
+        val store = ExposedSessionStore(db)
+        val id = runBlocking { store.createSession("busy") }.sessionId
+        transaction(db) {
+            exec(
+                "insert into events (session_id, seq, kind, ts_nanos, payload) " +
+                    "select '$id', x, 'CoroutineCreated', x, repeat('x', 400) from system_range(1, 3000)",
+            )
+        }
+
+        val appended =
+            CoroutineCreated(
+                sessionId = id,
+                seq = 0,
+                tsNanos = 3_001,
+                coroutineId = "c-new",
+                jobId = "j-new",
+                parentCoroutineId = null,
+                scopeId = "s1",
+                label = "new",
+            )
+        val selects = mutableListOf<String>()
+        transaction(db) {
+            registerInterceptor(
+                object : StatementInterceptor {
+                    override fun beforeExecution(
+                        transaction: Transaction,
+                        context: StatementContext,
+                    ) {
+                        val sql = context.expandArgs(transaction)
+                        if (sql.trimStart().startsWith("SELECT", ignoreCase = true)) selects += sql
+                    }
+                },
+            )
+            ExposedEventStore(db, id).record(appended)
+        }
+
+        assertTrue(selects.isNotEmpty(), "the append reads the session's latest seq")
+        val plans =
+            transaction(db) {
+                selects.map { sql ->
+                    exec("EXPLAIN ANALYZE $sql", explicitStatementType = StatementType.SELECT) { rs -> rs.next().let { rs.getString(1) } }!!
+                }
+            }
+        for (plan in plans) {
+            assertTrue("IDX_EVENTS_SESSION_SEQ" in plan.uppercase(), "not read from the (session_id, seq) index: $plan")
+            assertFalse("PAYLOAD" in plan.uppercase(), "reads the stored payloads: $plan")
+            val scanned = Regex("""scanCount: (\d+)""").findAll(plan).sumOf { it.groupValues[1].toLong() }
+            assertTrue(scanned in 1..2, "reads $scanned index entries of a 3,001-event session: $plan")
+        }
+        assertEquals(3_001L, appended.seq, "the next seq follows the stored ones")
     }
 
     @Test

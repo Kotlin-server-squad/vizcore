@@ -696,6 +696,33 @@ describe('Inspector — what the coroutine waits for or holds (S-6)', () => {
 })
 
 
+describe('Inspector — the Timeline’s sentence (Part 10, S-10)', () => {
+  beforeEach(() => {
+    getCoroutineTimeline.mockReset()
+    getCoroutineTimeline.mockResolvedValue(timeline())
+  })
+
+  it('sums the selected row up in one sentence when given one', () => {
+    render(
+      <Inspector
+        sessionId="s-1"
+        coroutine={coroutine()}
+        readOnly={false}
+        sentence="order-7 was active for 600 ms, and completed at 9.6 s."
+      />,
+      { wrapper: createWrapper() },
+    )
+    const line = screen.getByTestId('inspector-timeline-sentence')
+    expect(line).toHaveTextContent('order-7 was active for 600 ms, and completed at 9.6 s.')
+    expect(line).toHaveAttribute('data-look-part', 'timeline-sentence')
+  })
+
+  it('has no sentence otherwise', () => {
+    render(<Inspector sessionId="s-1" coroutine={coroutine()} readOnly={false} />, { wrapper: createWrapper() })
+    expect(screen.queryByTestId('inspector-timeline-sentence')).toBeNull()
+  })
+})
+
 describe('Inspector at a moment (Part 8, S-11)', () => {
   beforeEach(() => {
     vi.clearAllMocks()

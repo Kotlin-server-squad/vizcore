@@ -62,7 +62,7 @@ interface SessionHeaderProps {
   /** ExportMenu wiring (ADR-018 / EXPT-01/02 / D-22). */
   panelRef: RefObject<HTMLDivElement | null>
   panelEvents: VizEvent[]
-  viewMode: 'graph' | 'list'
+  viewMode: 'graph' | 'list' | 'timeline'
   onRecord?: () => void
   /** The app connection, last data and start time of an attached app (S-3, T-2; Part 7), beside the view pill. */
   connection?: ReactNode
@@ -250,7 +250,7 @@ export function SessionHeader({
             sessionId={sessionId}
             sessionName={title}
             events={panelEvents}
-            panel={viewMode === 'graph' ? 'graph' : 'tree'}
+            panel={viewMode === 'graph' ? 'graph' : viewMode === 'timeline' ? 'timeline' : 'tree'}
             onRecord={onRecord}
           />
           <Dropdown>
