@@ -176,7 +176,8 @@ paths:
       description: >
         Kubernetes-compatible readiness probe. Returns HTTP 200 with
         {"status":"UP"} when the application is ready to serve traffic
-        (SessionManager reachable and memory usage below 95%). Returns
+        (SessionManager reachable and memory usage below 95%, measured as
+        the heap left after the last garbage collection, not uncollected garbage). Returns
         HTTP 503 with {"status":"DOWN","reason":"high memory"} when
         memory exceeds the threshold.
       operationId: getReadiness

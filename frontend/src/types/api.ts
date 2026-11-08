@@ -552,6 +552,8 @@ export interface HierarchyNode {
   activeChildrenCount?: number
   // Additional metadata for enhanced visualization
   suspensionPoints?: SuspensionPoint[]
+  /** Where it was created (the hierarchy read, triage C-3); null when not captured. */
+  creationPoint?: SuspensionPoint | null
   activeTime?: number  // Total active time in nanos
   suspendedTime?: number  // Total suspended time in nanos
 }

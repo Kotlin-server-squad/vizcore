@@ -17,6 +17,8 @@ interface EventsPanelProps {
   onShowAll?: () => void
   /** Resource id -> name, so a row about a channel can name it. */
   resourceNames?: ReadonlyMap<string, string>
+  /** With a group selected (S-12): its members, whose events are the group's. */
+  groupMembers?: ReadonlySet<string>
 }
 
 /**
@@ -32,10 +34,11 @@ export function EventsPanel({
   onSelect,
   onShowAll,
   resourceNames,
+  groupMembers,
 }: EventsPanelProps) {
   const scoped = useMemo(
-    () => (selection ? events.filter(e => eventConcerns(e, selection)) : events),
-    [events, selection],
+    () => (selection ? events.filter(e => eventConcerns(e, selection, groupMembers)) : events),
+    [events, selection, groupMembers],
   )
   const who = selection ? (selectionLabel ?? selection.id) : null
   // "All events" disappears once pressed: keep focus in the tab, on the scope line.
