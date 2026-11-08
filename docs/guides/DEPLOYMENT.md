@@ -203,12 +203,10 @@ No special scaling needed — CDN handles it.
 ### Backend
 
 - **Vertical**: Increase memory for more concurrent sessions/SSE connections
-- **Horizontal**: Sessions are in-memory and not shared across instances. Sticky sessions required if running multiple instances behind a load balancer.
-
-Current limitations:
-- Sessions are ephemeral (in-memory only)
-- No session replication across instances
-- Single-instance deployment is recommended until persistence is added
+- **Horizontal**: not supported yet. Run one backend instance, also with a database: part of a
+  session's live state (the app's ingest connection, the live stream, kept health results) stays
+  in the process that handles it, and sticky sessions do not help, because the app and the browser
+  are different clients. See [Run one backend instance](../DEPLOYMENT.md#run-one-backend-instance).
 
 ---
 
