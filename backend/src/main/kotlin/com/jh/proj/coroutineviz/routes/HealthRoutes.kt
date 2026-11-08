@@ -52,7 +52,8 @@ private suspend fun ApplicationCall.respondHealth() {
 
     val sessions = SessionManager.listSessions().size
     val uptimeMs = System.currentTimeMillis() - startTime
-    val healthy = usagePercent < 90.0
+    // The verdict reads the heap the app keeps, not uncollected garbage; `memory` above still reports what is in use now.
+    val healthy = liveHeapPercent() < 90.0
 
     val status =
         HealthStatus(
@@ -86,13 +87,11 @@ fun Route.registerHealthRoutes() {
         }
 
         get("/ready") {
-            val runtime = Runtime.getRuntime()
-            val maxMb = runtime.maxMemory()
-            val usedMb = runtime.totalMemory() - runtime.freeMemory()
-            val usagePercent = if (maxMb > 0) (usedMb.toDouble() / maxMb * 100) else 0.0
             // Verify SessionManager is reachable by calling listSessions()
             SessionManager.listSessions()
-            if (usagePercent < 95.0) {
+            // The heap the app keeps, not uncollected garbage: a probe on `total - free` took a healthy instance out of
+            // service between collections.
+            if (liveHeapPercent() < 95.0) {
                 call.respond(HttpStatusCode.OK, mapOf("status" to "UP"))
             } else {
                 call.respond(
