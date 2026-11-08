@@ -456,6 +456,13 @@ html.light[data-look='b'] {
   font-size: 0.8125rem;
 }
 
+/* --- Part 9 · Run again --- */
+
+/* Run again: soft pills. */
+[data-look='b'] [data-look-part='run-again'] {
+  border-radius: 9999px;
+}
+
 /* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
 
 /* The Problems tab as calm cards with room to breathe. */

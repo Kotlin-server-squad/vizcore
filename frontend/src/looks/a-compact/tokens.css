@@ -530,6 +530,14 @@ html.light[data-look='a'] {
   color: var(--text);
 }
 
+/* --- Part 9 · Run again --- */
+
+/* Run again: the small square buttons of the header. */
+[data-look='a'] [data-look-part='run-again'] {
+  height: 1.75rem;
+  border-radius: var(--radius);
+}
+
 /* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
 
 /* The Problems tab as an IDE problems view: dense rows, square, hairlines between them. */

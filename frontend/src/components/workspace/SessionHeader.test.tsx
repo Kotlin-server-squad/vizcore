@@ -180,7 +180,10 @@ describe('SessionHeader', () => {
     })
 
     it('adds Reset session and Clear events to "⋯" for a demo, and the Run button', async () => {
-      const scenario = { run: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isResetPending: false, errorText: null }
+      const scenario = {
+        run: vi.fn(), runAgain: vi.fn(), reset: vi.fn(), clear: vi.fn(),
+        isRunPending: false, isRunAgainPending: false, isResetPending: false, errorText: null,
+      }
       renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
       expect(screen.getByRole('button', { name: 'Run Scenario' })).toBeEnabled()
       await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
@@ -190,8 +193,8 @@ describe('SessionHeader', () => {
 
     it('shows why a scenario action failed', () => {
       const scenario = {
-        run: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isResetPending: false,
-        errorText: 'Could not run the scenario: Server busy',
+        run: vi.fn(), runAgain: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isRunAgainPending: false,
+        isResetPending: false, errorText: 'Could not run the scenario: Server busy',
       }
       renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
       expect(screen.getByRole('alert')).toHaveTextContent('Could not run the scenario: Server busy')

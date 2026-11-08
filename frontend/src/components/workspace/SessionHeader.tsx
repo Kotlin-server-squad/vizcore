@@ -73,8 +73,8 @@ interface SessionHeaderProps {
  * facts apart: the run outcome of a demo (Running, Finished, Failed — a run
  * with any failed coroutine is Failed, in red), the app connection of an
  * attached app (`connection`: the pill, last data, start time) and the
- * view (updating, paused, replay, loaded). Then the actions: Run (demos, until
- * Run again in Part 9), Replay, Pause view, Export and "⋯".
+ * view (updating, paused, replay, loaded). Then the actions: Run, then Run
+ * again (demos, S-13), Replay, Pause view, Export and "⋯".
  *
  * Presentational apart from `useCapabilities`, which decides whether Share is
  * offered — nothing else in the workspace reads it.
@@ -215,7 +215,13 @@ export function SessionHeader({
 
         <div data-look-part="header-actions" className="flex flex-wrap items-center gap-2">
           {scenario && outcome && (
-            <RunScenarioButton outcome={outcome.outcome} isPending={scenario.isRunPending} onRun={() => void scenario.run()} />
+            <RunScenarioButton
+              outcome={outcome.outcome}
+              isPending={scenario.isRunPending}
+              isRunAgainPending={scenario.isRunAgainPending}
+              onRun={() => void scenario.run()}
+              onRunAgain={() => void scenario.runAgain()}
+            />
           )}
           {/* Replay toggle (D-01) — always available, the shared view included. */}
           <Button

@@ -49,7 +49,7 @@ describe('NewDemoSessionModal', () => {
   it('mints a scenario-prefixed session so the DEMO badge derives correctly', async () => {
     renderModal()
     await userEvent.click((await screen.findAllByRole('button', { name: /start/i }))[0]!)
-    expect(mutateAsync).toHaveBeenCalledWith('scenario-Order Processing')
+    expect(mutateAsync).toHaveBeenCalledWith({ name: 'scenario-Order Processing', demoId: 'order-processing' })
   })
 
   it('navigates to the created session', async () => {
@@ -78,7 +78,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
 
   beforeEach(() => {
     useScenariosMock.mockReturnValue({ data: { scenarios: all }, isLoading: false })
-    mutateAsync.mockImplementation(async (name: string) => ({ sessionId: `sid-${name}` }))
+    mutateAsync.mockImplementation(async ({ name }: { name: string }) => ({ sessionId: `sid-${name}` }))
   })
 
   const sectionOf = (label: string) => screen.getByRole('heading', { name: label }).closest('section')!
@@ -137,7 +137,7 @@ describe('NewDemoSessionModal with the full catalog', () => {
     const row = within(sectionOf(label)).getByText(demo.name).closest('[data-demo-row]') as HTMLElement
     await userEvent.click(within(row).getByRole('button', { name: /start/i }))
 
-    expect(mutateAsync).toHaveBeenCalledWith(`scenario-${demo.name}`)
+    expect(mutateAsync).toHaveBeenCalledWith({ name: `scenario-${demo.name}`, demoId: id })
     expect(navigate).toHaveBeenCalledWith({
       to: '/sessions/$sessionId',
       params: { sessionId: `sid-scenario-${demo.name}` },

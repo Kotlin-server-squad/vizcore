@@ -58,6 +58,7 @@ describe('B’s CSS', () => {
       'round-find-match',
       'round-find-results',
       'round-picker',
+      'run-again',
       'trimmed-note',
       'workspace',
     ])

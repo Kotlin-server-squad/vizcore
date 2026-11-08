@@ -252,6 +252,8 @@ export interface SessionSnapshot {
   coroutineCount: number
   eventCount: number
   coroutines: CoroutineNode[]
+  /** The demo the session was created for (S-13); absent from older servers, null when none. */
+  demoId?: string | null
   /** ATTACHED for a connected app, DEMO for vizcore's own runs (triage C-3); absent from older servers. */
   kind?: 'ATTACHED' | 'DEMO'
   /** REPORTED when the producer reports origins (or a demo), else UNKNOWN. */
@@ -615,8 +617,11 @@ export interface CoroutineTimeline {
   parentId?: string | null
   childrenIds: string[]
   events: TimelineEvent[]
-  /** Unfinished only: the phase since the last recorded transition, and when it began (tsNanos). */
-  openPhase?: 'ACTIVE' | 'SUSPENDED' | null
+  /**
+   * Unfinished only: the phase since the last recorded transition, and when it began (tsNanos). WAITING_FOR_CHILDREN
+   * once its body has ended: that time is neither active nor suspended.
+   */
+  openPhase?: 'ACTIVE' | 'SUSPENDED' | 'WAITING_FOR_CHILDREN' | null
   openPhaseSinceNanos?: number | null
   /** Creation on the app JVM's monotonic (tsNanos) and wall (epoch ms) clocks. */
   createdAtNanos?: number | null

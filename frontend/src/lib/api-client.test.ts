@@ -163,6 +163,17 @@ describe('ApiClient', () => {
         }
       )
     })
+
+    it('records the demo the session is for (S-13)', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ sessionId: 'scenario-x-1', message: 'Created' }))
+
+      await apiClient.createSession('scenario-Deadlock', 'sync/mutex/deadlock-demo')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/sessions?name=scenario-Deadlock&demoId=sync%2Fmutex%2Fdeadlock-demo',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+      )
+    })
   })
 
   describe('deleteSession', () => {

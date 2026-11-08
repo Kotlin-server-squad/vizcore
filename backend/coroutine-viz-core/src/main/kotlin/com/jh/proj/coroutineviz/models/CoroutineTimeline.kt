@@ -23,7 +23,8 @@ data class CoroutineTimeline(
     val childrenIds: List<String> = emptyList(),
     val events: List<TimelineEventSummary> = emptyList(),
     // The phase an unfinished coroutine has been in since its last recorded transition
-    // ("ACTIVE" or "SUSPENDED"), and that transition's tsNanos. Null once finished.
+    // ("ACTIVE", "SUSPENDED", or "WAITING_FOR_CHILDREN" once its body has ended), and that transition's tsNanos.
+    // Null once finished.
     val openPhase: String? = null,
     val openPhaseSinceNanos: Long? = null,
     // Creation on the emitting JVM's two clocks: tsNanos (monotonic) and wall-clock millis.

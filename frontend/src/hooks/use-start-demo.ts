@@ -40,7 +40,7 @@ export function useStartDemo(onStarted?: () => void) {
       setPreparing(scenario.id)
       setStartError(null)
       try {
-        const result = await createSession.mutateAsync(`scenario-${scenario.name}`)
+        const result = await createSession.mutateAsync({ name: `scenario-${scenario.name}`, demoId: scenario.id })
         if (!mounted.current) return
         onStarted?.()
         navigate({

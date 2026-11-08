@@ -484,6 +484,15 @@ html.light[data-look='c'] {
   font-weight: 600;
 }
 
+/* --- Part 9 · Run again --- */
+
+/* Run again: pill buttons, bold. */
+[data-look='c'] [data-look-part='run-again'] {
+  border-radius: 9999px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
 /* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
 
 /* The Problems tab, bold: the headline in the display face, problems as thick-edged panels. */
