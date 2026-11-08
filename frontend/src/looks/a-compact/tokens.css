@@ -538,6 +538,47 @@ html.light[data-look='a'] {
   border-radius: var(--radius);
 }
 
+/* --- Part 9 · story mode --- */
+
+/* The story as an IDE tool window section: flat, no cards of its own. */
+[data-look='a'] [data-look-part='story'] {
+  gap: 8px;
+}
+
+/* A chapter: a flat row with a 1 px border, square. */
+[data-look='a'] [data-look-part='story-chapter'] {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* The guide's words: explanation, so a muted rule at the left and muted text. */
+[data-look='a'] [data-look-part='story-explanation'] {
+  padding-left: 8px;
+  border-left: 2px solid var(--text-faint);
+  color: var(--text-muted);
+}
+
+/* What was recorded at the moment: a monospace block like a console line. */
+[data-look='a'] [data-look-part='story-recorded'] {
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
+[data-look='a'] [data-look-part='story-prediction'] {
+  padding: 6px 0;
+  border-top: 1px dashed var(--border);
+}
+
+/* Reveal: the small square buttons of the header. */
+[data-look='a'] [data-look-part='story-reveal'] {
+  height: 1.75rem;
+  border-radius: var(--radius);
+}
+
 /* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
 
 /* The Problems tab as an IDE problems view: dense rows, square, hairlines between them. */

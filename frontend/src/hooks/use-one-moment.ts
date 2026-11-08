@@ -38,6 +38,11 @@ interface Args {
   projectedAtCursor: CoroutineNode[]
   /** The events the page holds outside replay (a shared link: the loaded cut's). */
   allEvents: readonly VizEvent[]
+  /**
+   * The session's first event's seq when the server never trimmed it (its `oldestRetainedSeq`): seqs before it hold
+   * no event (vizcore spends some on ids), so events starting there start at the beginning. Unknown: 1.
+   */
+  sessionFirstSeq?: number
 }
 
 /**
@@ -46,7 +51,16 @@ interface Args {
  * clock's time (M-2), the marker (M-6), how the Inspector's reads bind (M-3, M-4, M-11) and the note on where an
  * incomplete replay starts (M-8).
  */
-export function useOneMoment({ sessionId, share, readOnly, replayActive, replay, projectedAtCursor, allEvents }: Args) {
+export function useOneMoment({
+  sessionId,
+  share,
+  readOnly,
+  replayActive,
+  replay,
+  projectedAtCursor,
+  allEvents,
+  sessionFirstSeq = 1,
+}: Args) {
   const { events, currentIndex, currentEvent, isPlaying } = replay
   const clock = useMemo(() => replayClock(events), [events])
   const index = useMemo(() => indexReplay(events), [events])
@@ -55,12 +69,12 @@ export function useOneMoment({ sessionId, share, readOnly, replayActive, replay,
     [share, sessionId],
   )
   const cursorSeq = currentEvent?.seq ?? 0
-  // The events behind the moment do not start at the session's first (seq 1): the replay's, or a shared link's.
+  // The events behind the moment do not start at the session's first: the replay's, or a shared link's.
   const momentFirstSeq = replayActive ? events[0]?.seq : readOnly ? allEvents[0]?.seq : undefined
-  const incomplete = momentFirstSeq !== undefined && momentFirstSeq > 1
+  const incomplete = momentFirstSeq !== undefined && momentFirstSeq > sessionFirstSeq
   // The replay itself starts after the session's beginning (M-8, M-9).
   const firstSeq = events[0]?.seq ?? 1
-  const replayIncomplete = replayActive && events.length > 0 && firstSeq > 1
+  const replayIncomplete = replayActive && events.length > 0 && firstSeq > sessionFirstSeq
   const replayRead: MomentRead | null = useMemo(
     () => (replayActive && currentEvent ? { source, binding: { kind: 'replay', atSeq: cursorSeq } } : null),
     [replayActive, currentEvent, source, cursorSeq],

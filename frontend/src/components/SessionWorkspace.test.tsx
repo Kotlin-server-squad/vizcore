@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { SessionWorkspace } from './SessionWorkspace'
 import { LOOK_STORAGE_KEY, LookProvider, forgetVisitLook } from '@/looks/look-context'
 import { CARDS, LOOKS } from '@/looks/registry'
-import type { SessionSnapshot, CoroutineState, ThreadActivity } from '@/types/api'
+import type { SessionSnapshot, CoroutineState, ThreadActivity, VizEvent } from '@/types/api'
 
 // Mock all hooks the component depends on
 vi.mock('@/hooks/use-sessions', () => ({
@@ -147,13 +147,16 @@ vi.mock('./validation/ValidationPanel', () => ({
 vi.mock('./replay/ReplayController', () => ({
   ReplayController: ({
     replay,
+    startNote,
   }: {
     replay: { totalEvents: number; currentIndex: number }
+    startNote?: string
   }) => (
     <div
       data-testid="replay-controller"
       data-total={replay.totalEvents}
       data-index={replay.currentIndex}
+      data-start-note={startNote ?? ''}
     />
   ),
 }))
@@ -1446,5 +1449,101 @@ describe('SessionWorkspace — header, main view and dock (S-1)', () => {
     } as unknown as ReturnType<typeof useSession>)
     render(<SessionWorkspace sessionId="session-1" scenarioId="demo" scenarioName="Demo" />, { wrapper: createWrapper() })
     expect(screen.getByTestId('run-outcome')).toHaveTextContent('Failed · 1 coroutine failed')
+  })
+})
+
+describe('SessionWorkspace — story mode (Part 9, S-9)', () => {
+  let n = 0
+  const e = (kind: string, id: string, ms: number, extra: Record<string, unknown> = {}) =>
+    ({ seq: ++n, tsNanos: ms * 1e6, sessionId: 's', kind, coroutineId: id, jobId: `j-${id}`, parentCoroutineId: null, scopeId: 'sc', label: id, ...extra }) as unknown as VizEvent
+  // Nested's first moment: fetch-product's second suspension, while the page waits for it.
+  const story = () => {
+    n = 0
+    return [
+      e('coroutine.created', 'load-product-page', 0),
+      e('coroutine.started', 'load-product-page', 0),
+      e('coroutine.created', 'fetch-product', 0, { parentCoroutineId: 'load-product-page' }),
+      e('coroutine.started', 'fetch-product', 0),
+      e('coroutine.suspended', 'fetch-product', 0),
+      e('coroutine.resumed', 'fetch-product', 1500),
+      e('coroutine.suspended', 'fetch-product', 1500),
+      e('coroutine.resumed', 'fetch-product', 2500),
+      e('coroutine.completed', 'fetch-product', 2500),
+    ]
+  }
+
+  async function mountNested(events: VizEvent[]) {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ demoId: 'nested' }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: events } as unknown as ReturnType<typeof useSessionEvents>)
+    render(<SessionWorkspace sessionId="scenario-Nested-1793993830683" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('tab', { name: 'Learn' }))
+  }
+
+  it('tells the demo\'s story in Learn, first chapter first', async () => {
+    await mountNested(story())
+    const learn = screen.getByRole('region', { name: /Story/ })
+    expect(within(learn).getByRole('article', { name: /The product comes first/ })).toBeInTheDocument()
+    expect(within(learn).getByText('3 more chapters')).toBeInTheDocument()
+  })
+
+  it('Reveal moves the page to the anchor: replay at that event, its coroutine selected, the whole tree shown', async () => {
+    const events = story()
+    await mountNested(events)
+    await userEvent.click(screen.getByRole('button', { name: 'Reveal' }))
+    const controller = screen.getByTestId('replay-controller')
+    expect(controller).toHaveAttribute('data-index', '6')
+    expect(controller).toHaveAttribute('data-total', String(events.length))
+    // The dock stays on Learn; the tree shows completed coroutines too.
+    expect(screen.getByRole('tab', { name: 'Learn' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('coroutine-tree-graph').getAttribute('data-ids')).toContain('fetch-product')
+  })
+
+  it('a replay that starts at the session\'s first held event is not called incomplete (seq 1 and 2 hold no event)', async () => {
+    const events = story().map((ev, i) => ({ ...ev, seq: i + 3 }) as VizEvent)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ demoId: 'nested', oldestRetainedSeq: 3, trimmed: false }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: events } as unknown as ReturnType<typeof useSessionEvents>)
+    render(<SessionWorkspace sessionId="scenario-Nested-1793993830683" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    expect(screen.getByTestId('replay-controller')).toHaveAttribute('data-start-note', '')
+  })
+
+  it('still says so when the server trimmed the session\'s history', async () => {
+    const events = story().map((ev, i) => ({ ...ev, seq: i + 40 }) as VizEvent)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ demoId: 'nested', oldestRetainedSeq: 40, trimmed: true }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: events } as unknown as ReturnType<typeof useSessionEvents>)
+    render(<SessionWorkspace sessionId="scenario-Nested-1793993830683" />, { wrapper: createWrapper() })
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    expect(screen.getByTestId('replay-controller').getAttribute('data-start-note')).toMatch(/starts at event 40/)
+  })
+
+  it('re-freezes on Reveal when the page holds newer events than the frozen replay, so the tree matches the story\'s facts', async () => {
+    const events = story()
+    await mountNested(events.slice(0, 7))
+    // Freeze a replay of the first seven events, then the page learns of more (a refetch).
+    await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
+    expect(screen.getByTestId('replay-controller')).toHaveAttribute('data-total', '7')
+    const { useSessionEvents } = await import('@/hooks/use-sessions')
+    vi.mocked(useSessionEvents).mockReturnValue({ data: events } as unknown as ReturnType<typeof useSessionEvents>)
+    // Any render now reads the newer history.
+    await userEvent.click(screen.getByRole('tab', { name: 'Inspector' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Learn' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Reveal' }))
+    expect(screen.getByTestId('replay-controller')).toHaveAttribute('data-total', String(events.length))
+    expect(screen.getByTestId('replay-controller')).toHaveAttribute('data-index', '6')
   })
 })

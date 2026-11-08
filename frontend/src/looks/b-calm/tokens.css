@@ -463,6 +463,49 @@ html.light[data-look='b'] {
   border-radius: 9999px;
 }
 
+/* --- Part 9 · story mode --- */
+
+[data-look='b'] [data-look-part='story'] {
+  gap: 14px;
+}
+
+/* A chapter: a calm white card with a hairline, like the dock. */
+[data-look='b'] [data-look-part='story-chapter'] {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+/* The guide's words: explanation, on a soft tint with a quiet label. */
+[data-look='b'] [data-look-part='story-explanation'] {
+  padding: 8px 12px;
+  border-left: none;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+/* What was recorded: plain, on the page colour, so it reads apart from the explanation. */
+[data-look='b'] [data-look-part='story-recorded'] {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 0.8125rem;
+}
+
+[data-look='b'] [data-look-part='story-prediction'] {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+/* Reveal: soft pills. */
+[data-look='b'] [data-look-part='story-reveal'] {
+  border-radius: 9999px;
+}
+
 /* --- Part 7 · Problems: the tab, its lines, the connection facts and the problem cards --- */
 
 /* The Problems tab as calm cards with room to breathe. */

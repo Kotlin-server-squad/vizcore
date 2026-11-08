@@ -4,6 +4,14 @@ import { useRecordReplay } from './use-record-replay'
 import { useEventStream } from './use-event-stream'
 import type { VizEvent } from '@/types/api'
 
+/** Where entering replay puts the cursor, and what the frozen events lost on their way in. */
+export interface EnterReplayOptions {
+  /** Seek to this event instead of the end (story Reveal, Part 9 P-8). */
+  atSeq?: number
+  /** Events the stream shed before the snapshot was frozen; defaults to the live stream's count when it is on. */
+  shedCount?: number
+}
+
 interface UseWorkspaceReplayArgs {
   sessionId: string
   /** Whether the SSE stream is driving the live view. */
@@ -35,6 +43,13 @@ export function useWorkspaceReplay({
   // at replay entry so live SSE events do not mutate the frozen view (D-02).
   const [replayActive, setReplayActive] = useState(false)
   const [replaySnapshot, setReplaySnapshot] = useState<VizEvent[]>([])
+  // What the frozen events lost to the stream's shedding: the live count moves on (and restarts
+  // with the stream), so the replay keeps its own (Part 9: story counts must not trust a gap).
+  const [replayShedCount, setReplayShedCount] = useState(0)
+  // The event the post-entry seek goes to, instead of the end; read once by the seek below.
+  const pendingSeekSeq = useRef<number | null>(null)
+  // The frozen list itself, so freezing it again (a recording of a paused replay) keeps its shed count.
+  const replaySnapshotRef = useRef<VizEvent[]>([])
 
   // The SSE gate: while replaying, the stream stays connected but its cache
   // invalidations are suppressed, so buffered events apply on exit (D-02/D-04).
@@ -75,7 +90,7 @@ export function useWorkspaceReplay({
   // a ref at click time and passes the SAME list here — so the frozen view and
   // the recorder's auto-stop boundary can never diverge.
   const enterReplay = useCallback(
-    (snapshot?: readonly VizEvent[]) => {
+    (snapshot?: readonly VizEvent[], options?: EnterReplayOptions) => {
       // Defensive: only honor an explicit array snapshot (a stray PressEvent
       // from an onPress handler must fall through to the closure source). The
       // explicit snapshot is copied into a mutable array — it is frozen on
@@ -86,17 +101,22 @@ export function useWorkspaceReplay({
         : streamEnabled
           ? liveEvents
           : storedEvents || []
+      pendingSeekSeq.current = options?.atSeq ?? null
+      const refreezing = Array.isArray(snapshot) && snapshot === replaySnapshotRef.current && snapshot.length > 0
+      setReplayShedCount(prev => options?.shedCount ?? (refreezing ? prev : streamEnabled ? droppedCount : 0))
+      replaySnapshotRef.current = frozen
       setReplaySnapshot(frozen)
       setReceivedAtEntry(receivedCount)
       setReplayActive(true)
     },
-    [streamEnabled, liveEvents, storedEvents, receivedCount],
+    [streamEnabled, liveEvents, storedEvents, receivedCount, droppedCount],
   )
 
   // Exit replay: drop the cursor and apply buffered events (the gated
   // useEventStream flush re-validates the live panels) — D-04.
   const exitReplay = useCallback(() => {
     setReplayActive(false)
+    replaySnapshotRef.current = []
     setReplaySnapshot([])
   }, [])
 
@@ -145,7 +165,10 @@ export function useWorkspaceReplay({
     if (replaySnapshot.length === 0) return
     if (seekedSnapshotRef.current === replaySnapshot) return
     seekedSnapshotRef.current = replaySnapshot
-    replaySeekTo(replaySnapshot.length - 1)
+    const target = pendingSeekSeq.current
+    pendingSeekSeq.current = null
+    const at = target === null ? -1 : replaySnapshot.findIndex(e => e.seq === target)
+    replaySeekTo(at >= 0 ? at : replaySnapshot.length - 1)
   }, [
     replayActive,
     replaySnapshot,
@@ -163,6 +186,7 @@ export function useWorkspaceReplay({
     reconnect,
     replayActive,
     replaySnapshot,
+    replayShedCount,
     enterReplay,
     exitReplay,
     replay,
