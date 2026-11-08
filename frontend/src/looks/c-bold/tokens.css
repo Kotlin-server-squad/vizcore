@@ -492,3 +492,52 @@ html.light[data-look='c'] {
   font-family: var(--font-display);
   font-weight: 700;
 }
+
+/* --- Part 9 · story mode --- */
+
+[data-look='c'] [data-look-part='story'] {
+  gap: 14px;
+}
+
+/* A chapter: a bold rounded panel; its title in the display face. */
+[data-look='c'] [data-look-part='story-chapter'] {
+  padding: 14px 18px;
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+[data-look='c'] [data-look-part='story-chapter'] h4 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* The guide's words: explanation, behind a thick accent rule. */
+[data-look='c'] [data-look-part='story-explanation'] {
+  padding-left: 12px;
+  border-left: 4px solid var(--primary);
+  color: var(--text);
+}
+
+/* What was recorded: an inverted block, the facts in the display face. */
+[data-look='c'] [data-look-part='story-recorded'] {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+}
+
+[data-look='c'] [data-look-part='story-prediction'] {
+  padding: 10px 14px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+}
+
+/* Reveal: pill buttons, bold. */
+[data-look='c'] [data-look-part='story-reveal'] {
+  border-radius: 9999px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}

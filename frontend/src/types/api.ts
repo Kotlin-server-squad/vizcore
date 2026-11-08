@@ -249,6 +249,10 @@ export interface SessionSnapshot {
   coroutines: CoroutineNode[]
   /** The demo the session was created for (S-13); absent from older servers, null when none. */
   demoId?: string | null
+  /** Whether the server dropped older events (bounded store or retention). */
+  trimmed?: boolean
+  /** Seq of the oldest event the server still holds, null when none. */
+  oldestRetainedSeq?: number | null
   /** ATTACHED for a connected app, DEMO for vizcore's own runs (triage C-3); absent from older servers. */
   kind?: 'ATTACHED' | 'DEMO'
   /** REPORTED when the producer reports origins (or a demo), else UNKNOWN. */

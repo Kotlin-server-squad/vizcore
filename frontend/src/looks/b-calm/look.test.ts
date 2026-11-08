@@ -47,6 +47,12 @@ describe('B’s CSS', () => {
       'round-find-results',
       'round-picker',
       'run-again',
+      'story',
+      'story-chapter',
+      'story-explanation',
+      'story-prediction',
+      'story-recorded',
+      'story-reveal',
       'trimmed-note',
       'workspace',
     ])
