@@ -110,7 +110,10 @@ class RealLifeDemoPacingTest {
     private fun virtual(id: String): VirtualDemoRun =
         virtualRuns.getOrPut(id) {
             var run: VirtualDemoRun? = null
-            runTest { run = runOnVirtualTime("virtual-${id.replace(Regex("[/?=]"), "-")}") { session, context -> start(id, session, context) } }
+            runTest {
+                run =
+                    runOnVirtualTime("virtual-${id.replace(Regex("[/?=]"), "-")}") { session, context -> start(id, session, context) }
+            }
             assertNotNull(run)
         }
 
@@ -203,7 +206,14 @@ class RealLifeDemoPacingTest {
         val outcomes = run("user-registration?failEmail=true").outcomes
 
         assertEquals("failed", outcomes["EmailService.attempt-1"])
-        assertEquals(storyLabels.getValue("user-registration?failEmail=true") - "EmailService.attempt-1", outcomes.filterValues { it == "completed" }.keys)
+        assertEquals(
+            storyLabels.getValue("user-registration?failEmail=true") - "EmailService.attempt-1",
+            outcomes
+                .filterValues {
+                    it ==
+                        "completed"
+                }.keys,
+        )
     }
 
     /**
@@ -276,7 +286,13 @@ class RealLifeDemoPacingTest {
         private val storyLabels =
             mapOf(
                 "order-processing" to
-                    order + setOf("Database.saveOrder", "EmailService.sendConfirmation", "SmsService.sendSms", "AnalyticsService.trackPurchase"),
+                    order +
+                    setOf(
+                        "Database.saveOrder",
+                        "EmailService.sendConfirmation",
+                        "SmsService.sendSms",
+                        "AnalyticsService.trackPurchase",
+                    ),
                 "order-processing?fail=true" to order,
                 "user-registration" to registration,
                 "user-registration?failEmail=true" to registration + "EmailService.attempt-2",
