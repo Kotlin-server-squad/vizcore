@@ -41,6 +41,32 @@ class MetricsProjectionByOriginTest {
     }
 
     @Test
+    fun `the session's total throughput is on the backend clock too, whatever the app's clock reads`() {
+        // Years away from any backend's nanoTime, ahead of it: read against the backend's clock, the events' own
+        // timestamps would count as none.
+        val farAppClock = sec(10L * 365 * 24 * 3600)
+        EventScript("m").apply {
+            created("one", at = farAppClock)
+            started("one", at = farAppClock)
+            completed("one", at = farAppClock + 1)
+        }.events.forEach(session::send)
+        runBlocking { awaitApplied { session.metricsProjection.byOrigin().getValue(OriginBucket.APP).throughputPerSec == 0.3 } }
+        val total = session.metricsProjection.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000).throughputPerSec
+        assertTrue(total > 0.0, "three events just received must count, was $total")
+    }
+
+    @Test
+    fun `a projection rebuilt from stored events has no throughput, per origin or in total`() {
+        // Live arrivals first: the rebuild must clear their window too.
+        script().events.forEach(session::send)
+        runBlocking { awaitApplied { session.metricsProjection.byOrigin().getValue(OriginBucket.UNREPORTED).peak == 1 } }
+        session.metricsProjection.rebuildFrom(script().events)
+        // Read on the events' own clock, just after them: counting their timestamps would give a rate here.
+        val total = session.metricsProjection.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000, nowNanos = appClock + 2)
+        assertEquals(0.0, total.throughputPerSec)
+    }
+
+    @Test
     fun `a projection rebuilt from stored events has no per-origin throughput`() {
         session.metricsProjection.rebuildFrom(script().events)
         val buckets = session.metricsProjection.byOrigin()
