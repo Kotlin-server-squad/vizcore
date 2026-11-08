@@ -107,28 +107,34 @@ class MetricsProjectionTest {
             val metrics = session.metricsProjection
             assertEquals(0.0, metrics.snapshot(0, 30_000).throughputPerSec, "no events -> 0 throughput")
 
-            // 4 events spread across ~1s of arrivals.
+            // Live: counted at the backend's receipt time, whatever the events' own timestamps.
             val oneMs = 1_000_000L
-            val events =
+            sendAndAwait(
+                session,
                 listOf(
                     created(session, "a", "io", 0),
                     started(session, "a", "io", 100 * oneMs),
                     created(session, "b", "io", 500 * oneMs),
                     started(session, "b", "io", 900 * oneMs),
-                )
-            metrics.rebuildFrom(events)
-            // Read the throughput clock just after the last arrival so the window retains
-            // all 4 events (WR-04: throughput is evicted against the nowNanos read clock).
-            val snap =
-                metrics.snapshot(
-                    nowEpochMs = 1_000,
-                    leakThresholdMs = 30_000,
-                    nowNanos = 1_000 * oneMs,
-                )
+                ),
+                active = 2,
+            )
+            val snap = metrics.snapshot(nowEpochMs = 1_000, leakThresholdMs = 30_000)
             assertTrue(snap.throughputPerSec > 0.0, "throughput must be positive after a burst; was ${snap.throughputPerSec}")
         } finally {
             session.close()
         }
+    }
+
+    /** Send [events] through the live bus and wait until the projection has applied them. */
+    private fun sendAndAwait(
+        session: VizSession,
+        events: List<VizEvent>,
+        active: Int,
+    ) = runBlocking {
+        events.forEach { session.send(it) }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline && session.metricsProjection.snapshot(0, 30_000).active != active) Thread.sleep(10)
     }
 
     @Test
@@ -305,22 +311,23 @@ class MetricsProjectionTest {
         try {
             val metrics = session.metricsProjection
             val oneMs = 1_000_000L
-            metrics.rebuildFrom(
+            sendAndAwait(
+                session,
                 listOf(
                     created(session, "a", "io", 0),
                     started(session, "a", "io", 100 * oneMs),
                     created(session, "b", "io", 200 * oneMs),
                     started(session, "b", "io", 300 * oneMs),
                 ),
+                active = 2,
             )
             // Right after the burst: positive throughput.
-            val live =
-                metrics.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000, nowNanos = 300 * oneMs)
+            val now = System.nanoTime()
+            val live = metrics.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000, nowNanos = now)
             assertTrue(live.throughputPerSec > 0.0, "throughput must be positive right after a burst")
 
             // 60s later with no new arrivals (window is 10s): the window is empty -> ~0 /s.
-            val idle =
-                metrics.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000, nowNanos = 60_000 * oneMs)
+            val idle = metrics.snapshot(nowEpochMs = 0, leakThresholdMs = 30_000, nowNanos = now + 60_000 * oneMs)
             assertEquals(0.0, idle.throughputPerSec, "idle throughput must decay to 0; was ${idle.throughputPerSec}")
         } finally {
             session.close()
