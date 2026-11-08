@@ -55,6 +55,10 @@ class IngestTransportTimeoutTest {
     // must stay well inside the tests' own deadlines.
     private val pingTimeouts = IngestTimeouts(handshakeMillis = 500, pingIntervalMillis = 100, pingTimeoutMillis = 200)
 
+    // The same pings with a far roomier handshake, for the silent peer: its socket ends on Ktor's ping with no session
+    // lookup to bound, and 500 ms was not enough for a CI runner's upgrade (it timed out there twice in a row).
+    private val silentPeerTimeouts = pingTimeouts.copy(handshakeMillis = 5_000)
+
     @Test
     fun `an upgrade the peer never answers is abandoned and its connection closed`() =
         runBlocking {
@@ -82,7 +86,7 @@ class IngestTransportTimeoutTest {
                     withTimeout(10.seconds) {
                         // The ping goes unanswered, the socket counts as closed by the peer, and
                         // stream() returns so the reconnect loop can try again.
-                        stream(client, peer.url, "s-1", "t", OutboundBuffer(), pingTimeouts, lifetime)
+                        stream(client, peer.url, "s-1", "t", OutboundBuffer(), silentPeerTimeouts, lifetime)
                     }
                     assertTrue(lifetime.lastedAtLeast(0), "the upgraded socket must be reported open")
                     assertTrue(peer.upgraded, "the socket must have been upgraded before it went silent")
