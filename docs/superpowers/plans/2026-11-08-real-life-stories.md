@@ -20,7 +20,7 @@ After this every gallery group has guides.
 
 ## What the code did, and what is untrue about it
 
-Structured concurrency: a `launch` child that fails cancels its parent, and the parent fails with the child's exception. `join()` never throws the child's exception; in a parent that is being cancelled it throws `CancellationException`. So a `try/catch (e: Exception)` around `join()` never sees a child's failure.
+Structured concurrency: a `launch` child that fails cancels its parent, and the parent fails with the child's exception. `join()` never throws the child's exception; in a parent that is being cancelled it throws `CancellationException`. The old code catches that first (`catch (e: CancellationException) { throw e }`), so the `catch (e: Exception)` after it never runs; and a catch that swallowed the `CancellationException` would not stop the cancellation either: the parent is already cancelling and fails with the child's exception when its body ends.
 
 - **User Registration, `?failEmail=true` (the known bug):** `EmailService.sendWelcome` launches `EmailService.retry-1`, which throws "SMTP server timeout". The root wraps the notifications' `join()` in `try { … } catch (e: Exception) { /* Don't fail registration if notifications fail */ }`. False: `retry-1` fails `sendWelcome`, which fails `UserService.register`; Slack and analytics are cancelled; the catch never runs. Also, there is no retry: the "retry" is the failing coroutine, and nothing tries again.
   **Fix: a real retry.** `sendWelcome` runs each try in its own child (`EmailService.attempt-1`, `-2`) inside `coroutineScope`, which hands a failed child's exception back to `sendWelcome` instead of cancelling it (as the Retry demo does since #289). `sendWelcome` catches only `SmtpTimeout`, waits 1 s and tries again; the second try sends the email and the registration completes. Had every try failed, the error would leave `sendWelcome` and fail the registration: the guide says so.
@@ -76,7 +76,7 @@ Ben signs up for a recipe app. The backend checks his details, makes sure the em
 | `AnalyticsService.trackSignup` | 1.0 | 9.0–10.0 |
 
 - The root is Active in its joins (0–9.0), then *Waiting for children* (9.0–11.5); `sendWelcome` is Active while it waits for its try. Moments: 0, 1, 2, 4, 5, 6.5, 7.5, 8, 9, 9.5, 10, 11, 11.5 (13). **~11.5 s.**
-- **`?failEmail=true`, the mail server times out once:** `attempt-1` connects (9.0–9.5) and waits 2.5 s for the server, which never answers: at 12.0 it throws `SmtpTimeout` and fails. `coroutineScope` hands the exception to `sendWelcome`, which catches it, waits 1 s (12.0–13.0, Suspended) and starts `attempt-2`: 0.5 connect, 2.0 send (13.0–15.5). `sendWelcome` completes at 15.5, then the root: the registration completes; Slack and analytics are not touched by the failure. Moments: 0 … 9.5, 10, 11, 12, 13, 13.5, 15.5 (15). **15.5 s.**
+- **`?failEmail=true`, the mail server times out once:** `attempt-1` connects (9.0–9.5) and waits 2.5 s for the server, which never answers: at 12.0 it throws `SmtpTimeout` and fails. `coroutineScope` hands the exception to `sendWelcome`, which catches it, waits 1 s (12.0–13.0, Suspended) and starts `attempt-2`: 0.5 connect, 2.0 send (13.0–15.5). `sendWelcome` completes at 15.5, then the root: the registration completes; Slack and analytics are not touched by the failure. Moments: 0, 1, 2, 4, 5, 6.5, 7.5, 8, 9, 9.5, 10, 11, 12, 13, 13.5, 15.5 (16). **15.5 s.**
 
 ### 3. Report Generation: The Monthly Sales Report (`report-generation`)
 
@@ -102,7 +102,7 @@ On the first of the month a shop's backend builds last month's sales report for 
 
 - The root is Suspended in `await` while it waits for the users (0–2.5) and the transactions (2.5–4.5), Active in its joins (4.5–12.5), then *Waiting for children* (12.5–15.0). Moments: 0, 1, 2, 2.5, 3, 4.5, 5.5, 6, 6.5, 7, 8, 10, 11.5, 12.5, 13.5, 14.5, 15 (17). **15 s.** `onReport` gets the sections: users, transactions, analytics, stock.
 - **`?timeout=true`, the analytics API is overloaded:** `AnalyticsApi.request` connects (0–1.0) and waits 2.0 + 2.0 s (it would answer at 5.0). At 4.0 the time limit cancels it: `request` ends Cancelled, `fetchMetrics` gets `null` and completes at 4.0. The transactions come at 4.5, and from there the run is the same; the report goes out at 15 s with "Analytics: not available this month" instead of the analytics. The time limit (4.0) is 1 s from the request's steps (3.0, 5.0) and 0.5 s from the transactions (4.5). **15 s**, the same moments plus 4.0.
-- On real time (scale 0.1) the time limit (400 ms) and the answer it beats (500 ms) are 100 ms apart, so the real-time test checks only what holds either way (the report completes, every coroutine ends); the exact story is on virtual time.
+- On real time (scale 0.1) the time limit (400 ms) is only 100 ms from the answer in both runs (300 ms by default, 500 ms overloaded), so the real-time tests check only what holds either way: the report completes with its four sections, and `AnalyticsApi.request` may end completed or cancelled. The exact stories are on virtual time. (Live, at scale 1, the margin is 1 s.)
 
 ### Bursts
 
@@ -156,3 +156,12 @@ Checked by `GuideLabelsTest` on virtual time (the three join `VIRTUAL_TIME_DEMOS
 - [ ] Backend and frontend gates.
 - [ ] Backend on 18801, frontend on 13801; `scripts/demo-pacing-audit.py` for the three; each picture against the live tree. Screenshots: the three How it works pages, and one running demo in Classic, A, B and C, into `docs/superpowers/plans/2026-11-08-real-life-stories/`. Stop the servers.
 - [ ] Codex code review; CHANGELOG (Added, and Fixed for the registration); push; PR in the style of #302; CI green. Never merge.
+
+---
+
+## Changes after the Codex plan review
+
+**Round 1** (2 P2, 1 P3), all taken:
+- **P2, the default report on real time:** the analytics request answers 300 ms into its 400 ms limit at scale 0.1, so a slow scheduler could cancel it. The real-time tests allow either outcome for `AnalyticsApi.request` and check only that the report completes with its four sections; the exact stories stay on virtual time.
+- **P2, "the catch never sees it":** the old code's `catch (e: CancellationException)` does see the `CancellationException` that `join()` throws in a cancelled parent (and rethrows it); only the `catch (e: Exception)` after it never runs. The explanation above now says so, and the guides will not say "the catch never runs" of a cancellation catch.
+- **P3:** the registration retry has 16 moments, not 15.
