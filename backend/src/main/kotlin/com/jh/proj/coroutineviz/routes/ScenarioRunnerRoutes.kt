@@ -4,6 +4,7 @@ import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarioDurationTimerRef
 import com.jh.proj.coroutineviz.scenarios.BasicScenarios
 import com.jh.proj.coroutineviz.scenarios.ChannelScenarios
+import com.jh.proj.coroutineviz.scenarios.RealLifeScenarios
 import com.jh.proj.coroutineviz.scenarios.ScenarioConfigRequest
 import com.jh.proj.coroutineviz.scenarios.ScenarioExecutionResponse
 import com.jh.proj.coroutineviz.scenarios.ScenarioRunner
@@ -223,7 +224,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running Order Processing scenario (fail=$shouldFail) in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runOrderProcessingScenario(session, shouldFail)
+            RealLifeScenarios.runOrderProcessing(session, cardDeclined = shouldFail).join()
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -242,7 +243,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running User Registration scenario (failEmail=$shouldFailEmail) in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runUserRegistrationScenario(session, shouldFailEmail)
+            RealLifeScenarios.runUserRegistration(session, firstEmailTimesOut = shouldFailEmail).join()
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -261,7 +262,7 @@ fun Route.registerScenarioRunnerRoutes() {
         logger.info("Running Report Generation scenario (timeout=$shouldTimeout) in session: ${session.sessionId}")
 
         call.runScenarioWithResponse(session) {
-            ScenarioRunner.runReportGenerationScenario(session, shouldTimeout)
+            RealLifeScenarios.runReportGeneration(session, analyticsTimesOut = shouldTimeout).join()
             ScenarioCompletionResponse(
                 success = true,
                 sessionId = session.sessionId,
@@ -367,8 +368,8 @@ private suspend fun ApplicationCall.runScenarioWithResponse(
         delay(100)
         respond(HttpStatusCode.OK, response)
     } catch (e: CancellationException) {
-        // Client disconnect cancels the handler (realistic scenarios block 15-35s on
-        // job.join()) — rethrow to honor cooperative cancellation instead of trying
+        // Client disconnect cancels the handler (the Real life demos block 11-16 s on
+        // join()) — rethrow to honor cooperative cancellation instead of trying
         // to respond inside a cancelled coroutine.
         throw e
     } catch (e: Exception) {

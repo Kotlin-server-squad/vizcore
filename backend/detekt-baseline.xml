@@ -12,9 +12,6 @@
     <ID>LongMethod:FlowScenarioRoutes.kt$fun Route.registerFlowScenarioRoutes()</ID>
     <ID>LongMethod:MetricsWiringTest.kt$MetricsWiringTest$@Test fun `viz sse clients active gauge increments while a stream is open and returns to zero after disconnect`()</ID>
     <ID>LongMethod:PatternRoutes.kt$fun Route.registerPatternRoutes()</ID>
-    <ID>LongMethod:ScenarioRunner.kt$ScenarioRunner$suspend fun runOrderProcessingScenario( session: VizSession, shouldFail: Boolean = false, ): Job</ID>
-    <ID>LongMethod:ScenarioRunner.kt$ScenarioRunner$suspend fun runReportGenerationScenario( session: VizSession, shouldTimeout: Boolean = false, ): Job</ID>
-    <ID>LongMethod:ScenarioRunner.kt$ScenarioRunner$suspend fun runUserRegistrationScenario( session: VizSession, shouldFailEmail: Boolean = false, ): Job</ID>
     <ID>LongMethod:ScenarioRunnerRoutes.kt$fun Route.registerScenarioRunnerRoutes()</ID>
     <ID>LongMethod:SessionRoutes.kt$fun Route.registerSessionRoutes()</ID>
     <ID>LongMethod:ShareRoutes.kt$@OptIn(ExperimentalTime::class) fun Route.registerShareOwnerRoutes( service: ShareService, publicBaseUrl: String?, )</ID>
@@ -68,25 +65,6 @@
     <ID>MagicNumber:PatternScenarios.kt$PatternScenarios$80</ID>
     <ID>MagicNumber:PatternScenarios.kt$PatternScenarios$9</ID>
     <ID>MagicNumber:ScenarioDTO.kt$1000L</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$10</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$100</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$1000</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$120</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$150</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$1500</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$200</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$2000</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$2500</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$3</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$300</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$3000</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$3500</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$4000</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$5</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$50</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$500</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$5000</ID>
-    <ID>MagicNumber:ScenarioRunner.kt$ScenarioRunner$8000</ID>
     <ID>MagicNumber:ScenarioRunnerRoutes.kt$100</ID>
     <ID>MagicNumber:ScenarioRunnerRoutes.kt$5</ID>
     <ID>MagicNumber:ShareRoutes.kt$443</ID>
@@ -128,7 +106,6 @@
     <ID>TooGenericExceptionCaught:MetricsWiringTest.kt$MetricsWiringTest$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PatternRoutes.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PatternScenarios.kt$PatternScenarios$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:ScenarioRunner.kt$ScenarioRunner$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ScenarioRunnerRoutes.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:SessionRoutes.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:StructuredConcurrencyTest.kt$StructuredConcurrencyTest$e: Exception</ID>
@@ -157,10 +134,6 @@
     <ID>UnusedParameter:ScenarioRunnerRoutes.kt$session: VizSession</ID>
     <ID>UnusedPrivateProperty:MetricsWiringTest.kt$MetricsWiringTest$val requiredMetrics = listOf( "viz_sessions_active", "viz_sse_clients_active", "events_emitted", // Counter naming: may be _total or plain "events_dropped_total", "events_buffer_size", "scenario_duration", "event_processing_duration", )</ID>
     <ID>UseCheckOrError:ScenarioDSL.kt$ScenarioBuilder$throw IllegalStateException("Root coroutine not defined")</ID>
-    <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("Analytics API timeout after 8s")</ID>
-    <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("Intentional failure for demo")</ID>
-    <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("Payment declined: Insufficient funds")</ID>
-    <ID>UseCheckOrError:ScenarioRunner.kt$ScenarioRunner$throw IllegalStateException("SMTP server timeout")</ID>
     <ID>UseCheckOrError:VizScopeCompletionHandlerTest.kt$VizScopeCompletionHandlerTest$throw IllegalStateException("Intentional failure for regression test")</ID>
   </CurrentIssues>
 </SmellBaseline>

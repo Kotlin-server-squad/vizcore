@@ -139,6 +139,9 @@ class GuideLabelsTest {
             "sync/semaphore/resource-timeout" -> SyncScenarios.runResourceTimeout(session, context)
             "sync/semaphore/producer-consumer" -> SyncScenarios.runProducerConsumer(session, context)
             "sync/combined/ecommerce" -> SyncScenarios.runOrderProcessing(session, context)
+            "order-processing" -> RealLifeScenarios.runOrderProcessing(session, context)
+            "user-registration" -> RealLifeScenarios.runUserRegistration(session, context)
+            "report-generation" -> RealLifeScenarios.runReportGeneration(session, context)
             else -> error("$demoId does not run on virtual time")
         }
 
@@ -223,7 +226,10 @@ class GuideLabelsTest {
         }
 
     companion object {
-        /** The demos whose picture is checked on virtual time: who gets a lock or a permit first decides their tree. */
+        /**
+         * The demos whose picture is checked on virtual time: who gets a lock or a permit first decides their tree, or
+         * (the Real life demos) a long chain of joined steps would drift on real time.
+         */
         private val VIRTUAL_TIME_DEMOS =
             setOf(
                 "sync/mutex/counter",
@@ -236,6 +242,9 @@ class GuideLabelsTest {
                 "sync/semaphore/resource-timeout",
                 "sync/semaphore/producer-consumer",
                 "sync/combined/ecommerce",
+                "order-processing",
+                "user-registration",
+                "report-generation",
             )
 
         /** A tenth of scripted speed: each demo takes 1-2 s here. */
