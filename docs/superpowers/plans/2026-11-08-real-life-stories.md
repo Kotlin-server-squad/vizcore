@@ -167,3 +167,23 @@ Checked by `GuideLabelsTest` on virtual time (the three join `VIRTUAL_TIME_DEMOS
 - **P3:** the registration retry has 16 moments, not 15.
 
 **Round 2** (1 P3), taken: the pacing test's real-time and virtual runs completed the same report deferreds, so a virtual run could answer for a real-time one. Only the real-time runs now pass the report hook, keyed by run id.
+
+---
+
+## Changes while building
+
+- **Measured live** (scale 1, `scripts/demo-pacing-audit.py`, backend 18801, frontend 13801): Order Processing 14.6 s, User Registration 11.6 s, Report Generation 15.1 s; 13, 13 and 17 separate half-second moments; the busiest half second holds 26 %, 25 % and 20 % of the events. The three failure options, posted to the live server: the order's payment and root Failed after 10.2 s; the registration's `attempt-1` Failed and nothing else, 15.7 s; the report's `AnalyticsApi.request` Cancelled and nothing else, 15.2 s.
+- **Code boxes:** none of the three scrolls sideways (0 px overflow, dark and light).
+- **Live view lag:** on this machine (load average 40-90 from other work) the live session view ran 1.5-3 s behind the run, so live screenshots showed an earlier moment than they were taken at. The four-look screenshots are therefore taken in replay at 13.0 s, which shows the exact moment; the lag is the machine's, not the demo's (the session events have the right times).
+- **The retry run's header:** a session where `EmailService.attempt-1` failed reads "Failed · 1 coroutine failed", and Problems lists the failed try, although the registration completes. The session health counts every failed coroutine, as it does for the Retry demo's failed tries; the guide does not mention the header. Left as is (not in this scope).
+
+## Codex code review
+
+**Round 1:** no P1/P2; the catalog, the fixture and the guides' timelines agree with the code.
+
+## Screenshots (`2026-11-08-real-life-stories/`)
+
+- `guide-<demo>-dark.png`, `guide-<demo>-light.png`: the three How it works pages. The looks change only the session page, so these are the same in every look.
+- `order-processing-at-13s-dark-{classic,a,b,c}.png`: Order Processing in replay at 13.0 s in the four looks.
+- `registration-failEmail-at-12s-dark-classic.png`: `?failEmail=true` at 12.0 s, the first try failed; `report-timeout-at-4s-dark-classic.png`: `?timeout=true` at 4.0 s, the request cancelled.
+- `gallery-real-life-{dark,light}.png`: the Real life tab, every card with its level and How it works link.
