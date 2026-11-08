@@ -3,6 +3,7 @@ package com.jh.proj.coroutineviz.persistence
 import com.jh.proj.coroutineviz.auth.TenantContext
 import com.jh.proj.coroutineviz.auth.TenantScopedSessionStore
 import com.jh.proj.coroutineviz.events.CoroutineEvent
+import com.jh.proj.coroutineviz.health.SummaryLimits
 import com.jh.proj.coroutineviz.models.SessionInfo
 import com.jh.proj.coroutineviz.persistence.tables.EventsTable
 import com.jh.proj.coroutineviz.persistence.tables.SessionsTable
@@ -39,6 +40,8 @@ import kotlin.time.ExperimentalTime
 class ExposedSessionStore(
     private val db: Database,
     private val maxEvents: Int = 100_000,
+    /** The summary-table limits of every session this store builds (`health.summaries.*`). */
+    private val summaryLimits: SummaryLimits = SummaryLimits.DEFAULT,
 ) : SessionStoreInterface,
     TenantScopedSessionStore {
     private val logger = LoggerFactory.getLogger(ExposedSessionStore::class.java)
@@ -239,6 +242,7 @@ class ExposedSessionStore(
             maxEvents = maxEvents,
             createdAtMs = createdAtMs,
             keepSummaries = true,
+            summaryLimits = summaryLimits,
             eventStoreFactory = { id -> ExposedEventStore(db, id) },
         ).also(::rehydrate)
 

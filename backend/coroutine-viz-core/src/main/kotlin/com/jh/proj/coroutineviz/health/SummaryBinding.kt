@@ -31,9 +31,17 @@ object SummaryBinding {
         durable: SummaryView,
         retained: List<VizEvent>,
         atSeq: Long,
+    ): BoundSummaries = bindAt(durable, retained, atSeq, SummaryLimits.DEFAULT)
+
+    /** [bindAt] whose replay fold uses [limits]: the limits [durable] was built with. */
+    fun bindAt(
+        durable: SummaryView,
+        retained: List<VizEvent>,
+        atSeq: Long,
+        limits: SummaryLimits,
     ): BoundSummaries {
         if (atSeq >= durable.lastEventSeq) return BoundSummaries.exact(durable)
-        val fold = SummaryFold.foldTo(retained, atSeq, durable)
+        val fold = SummaryFold.foldTo(retained, atSeq, durable, limits)
         val oldestRetained = retained.firstOrNull()?.seq ?: Long.MAX_VALUE
         val overrides = HashMap<String, CoroutineSummary>()
         val unknown = HashSet<String>()

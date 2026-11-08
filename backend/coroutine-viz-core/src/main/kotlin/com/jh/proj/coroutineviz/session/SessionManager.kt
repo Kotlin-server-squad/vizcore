@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.session
 
+import com.jh.proj.coroutineviz.health.SummaryLimits
 import com.jh.proj.coroutineviz.models.SessionInfo
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
@@ -46,6 +47,11 @@ object SessionManager : SessionStoreInterface {
     private val sessions = ConcurrentHashMap<String, VizSession>()
 
     private var maxEventsPerSession: Int = 100_000
+
+    /** The summary-table limits of the sessions created in memory ([configure]); a backing store has its own. */
+    @Volatile
+    var summaryLimits: SummaryLimits = SummaryLimits.DEFAULT
+        private set
 
     /**
      * Optional backing store. When set via [useStore] (e.g. the persistence
@@ -194,9 +200,16 @@ object SessionManager : SessionStoreInterface {
     /**
      * Configure session defaults. Call before creating sessions.
      */
-    fun configure(maxEventsPerSession: Int = 100_000) {
+    fun configure(maxEventsPerSession: Int = 100_000) = configure(maxEventsPerSession, SummaryLimits.DEFAULT)
+
+    /** [configure] with the summary-table limits of the sessions created in memory. */
+    fun configure(
+        maxEventsPerSession: Int,
+        summaryLimits: SummaryLimits,
+    ) {
         this.maxEventsPerSession = maxEventsPerSession
-        logger.info("SessionManager configured: maxEventsPerSession=$maxEventsPerSession")
+        this.summaryLimits = summaryLimits
+        logger.info("SessionManager configured: maxEventsPerSession=$maxEventsPerSession, summaryLimits=$summaryLimits")
     }
 
     /**
@@ -238,7 +251,7 @@ object SessionManager : SessionStoreInterface {
             name?.let { "${slugifySessionName(it)}-${System.currentTimeMillis()}" }
                 ?: "session-${System.currentTimeMillis()}"
 
-        val session = VizSession(sessionId, maxEvents = maxEventsPerSession, keepSummaries = true)
+        val session = VizSession(sessionId, maxEvents = maxEventsPerSession, keepSummaries = true, summaryLimits = summaryLimits)
         sessions[sessionId] = session
 
         logger.info("Created session: $sessionId")

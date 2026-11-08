@@ -18,8 +18,16 @@ object SummaryFold {
         events: Iterable<VizEvent>,
         atSeq: Long,
         durable: SummaryView?,
+    ): SummaryView = foldTo(events, atSeq, durable, SummaryLimits.DEFAULT)
+
+    /** The fold with [limits]: the session's own, so the replay tracks and reduces exactly as its live table did. */
+    fun foldTo(
+        events: Iterable<VizEvent>,
+        atSeq: Long,
+        durable: SummaryView?,
+        limits: SummaryLimits,
     ): SummaryView {
-        val table = SummaryTable()
+        val table = SummaryTable(limits)
         if (durable != null) table.seed(durable, retainedFrom = events.firstOrNull()?.seq ?: Long.MAX_VALUE, atSeq = atSeq)
         for (event in events) {
             if (event.seq > atSeq) break

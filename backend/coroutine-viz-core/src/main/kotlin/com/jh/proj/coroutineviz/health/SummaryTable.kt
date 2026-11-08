@@ -49,13 +49,22 @@ interface SummaryView {
  * [trackedCapacity], and reduces finished summaries to stubs beyond [fullSummaryTarget] (finished non-failed
  * first, then failed, oldest first), checked on every creation and every terminal event.
  *
+ * Once a coroutine was beyond capacity the table stays closed: a table restored under a larger capacity (see [restore])
+ * does not start tracking again, so it still covers the first coroutines of the session and nothing after a gap.
+ *
  * Not thread-safe: the owner serializes [apply] and reads (VizSession does both under its send lock).
  */
 class SummaryTable(
     private val fullSummaryTarget: Int = HealthThresholds.DEFAULT_FULL_SUMMARY_TARGET,
     private val trackedCapacity: Int = HealthThresholds.DEFAULT_TRACKED_CAPACITY,
 ) : SummaryView {
+    constructor(limits: SummaryLimits) : this(limits.fullSummaryTarget, limits.trackedCapacity)
+
     private val summaries = LinkedHashMap<String, CoroutineSummary>()
+
+    // Replay only (see [seed]): admits exactly the coroutines the durable table tracks, instead of the capacity rule, so
+    // a replay agrees with the live table's decisions even when the limits changed since (a restore under new limits).
+    private var admitted: ((String) -> Boolean)? = null
     private val subtrees = SubtreeIndex()
 
     // Finished summaries eligible for reduction, keyed by a per-table creation counter (first-observation
@@ -119,8 +128,11 @@ class SummaryTable(
         if (parent != null && parent.promotedAtSeq != null && !parent.grewAfterPromotion) {
             summaries[parent.id] = parent.copy(grewAfterPromotion = true, lastModifiedSeq = seq)
         }
-        if (summaries.size >= trackedCapacity) {
+        val admit = admitted?.invoke(id) ?: (untrackedCount == 0L && summaries.size < trackedCapacity)
+        if (!admit) {
             untrackedCount++
+            // A table restored under a smaller target may be over it with nothing running: reduce on this creation too.
+            reduceOverTarget(seq)
             return
         }
         summaries[id] = create()
@@ -137,7 +149,9 @@ class SummaryTable(
      * finished at its terminal transition when that is in the same range, all in seq order through the same bookkeeping
      * as [apply]. Promotion and round anchoring depend only on creations and terminals, so they are those of the cursor.
      * Nothing in between is known, so nothing is invented: a seeded coroutine reads as created until a retained event
-     * says more. Call it on an empty table, before any [apply].
+     * says more. From then on the table admits exactly the coroutines [durable] tracks (it saw every creation, so a coroutine
+     * created by then is tracked there if and only if the live table admitted it), whatever this table's limits are.
+     * Call it on an empty table, before any [apply].
      */
     internal fun seed(
         durable: SummaryView,
@@ -145,6 +159,7 @@ class SummaryTable(
         atSeq: Long,
     ) {
         check(lastEventSeq == 0L && summaries.isEmpty()) { "seed an empty table only" }
+        admitted = { id -> durable.get(id) != null }
         val trimmed = { seq: Long -> seq < retainedFrom && seq <= atSeq }
         val steps = ArrayList<SeedStep>()
         for (s in durable.all) {
@@ -202,6 +217,18 @@ class SummaryTable(
             fullSummaryTarget: Int = HealthThresholds.DEFAULT_FULL_SUMMARY_TARGET,
             trackedCapacity: Int = HealthThresholds.DEFAULT_TRACKED_CAPACITY,
         ): SummaryTable = SummaryTable(fullSummaryTarget, trackedCapacity).also { it.load(state) }
+
+        /**
+         * The table [state] was taken from, going on with [limits], which may differ from the ones it was taken under (a
+         * restart with new settings). Restoring drops nothing and changes nothing by itself. Under a smaller capacity every
+         * summary and stub stays and no new coroutine is tracked; finished summaries above a smaller target are reduced to
+         * stubs at the next creation or terminal event, as usual. Under a larger capacity a table that had room tracks up to
+         * the new capacity, and one that had already overflowed stays closed (see the class).
+         */
+        fun restore(
+            state: SummaryTableState,
+            limits: SummaryLimits,
+        ): SummaryTable = restore(state, limits.fullSummaryTarget, limits.trackedCapacity)
     }
 
     private class SeedStep(

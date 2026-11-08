@@ -1,6 +1,7 @@
 package com.jh.proj.coroutineviz.persistence
 
 import com.jh.proj.coroutineviz.appJson
+import com.jh.proj.coroutineviz.health.SummaryLimits
 import com.jh.proj.coroutineviz.health.SummaryTable
 import com.jh.proj.coroutineviz.health.SummaryTableState
 import com.jh.proj.coroutineviz.health.toState
@@ -44,14 +45,16 @@ internal object SummaryCheckpoints {
      * oldest stored seq > 1: folding what is left would lose ancestry), or an event that does not decode or apply. The
      * events are deleted next either way, and a checkpoint that does not cover them must not stay, or a read would take
      * the gap for complete history (H-3): the session then reads as trimmed without a checkpoint (503 history-trimmed).
+     * [limits] are the ones the store's sessions are built with, so the checkpoint tracks and reduces as their tables do.
      */
     fun foldBelow(
         sessionId: String,
         keepFromSeq: Long,
+        limits: SummaryLimits = SummaryLimits.DEFAULT,
     ): Boolean {
         val written =
             try {
-                fold(sessionId, keepFromSeq)
+                fold(sessionId, keepFromSeq, limits)
             } catch (e: SerializationException) {
                 failed(sessionId, e) // a stored payload that does not decode
             } catch (e: IllegalArgumentException) {
@@ -74,6 +77,7 @@ internal object SummaryCheckpoints {
     private fun fold(
         sessionId: String,
         keepFromSeq: Long,
+        limits: SummaryLimits,
     ): Boolean {
         val current = read(sessionId)
         val after = current?.lastEventSeq ?: 0L
@@ -87,7 +91,7 @@ internal object SummaryCheckpoints {
             rows.isEmpty() -> current != null
             current == null && rows.first()[EventsTable.seq] > 1 -> false
             else -> {
-                val table = current?.let(SummaryTable::restore) ?: SummaryTable()
+                val table = current?.let { SummaryTable.restore(it, limits) } ?: SummaryTable(limits)
                 rows.forEach { table.apply(decodeStoredEvent(it[EventsTable.payload])) }
                 write(sessionId, table.toState())
                 true

@@ -4,6 +4,7 @@ import com.jh.proj.coroutineviz.events.CoroutineEvent
 import com.jh.proj.coroutineviz.events.VizEvent
 import com.jh.proj.coroutineviz.events.job.JobStateChanged
 import com.jh.proj.coroutineviz.health.SummariesUnavailableException
+import com.jh.proj.coroutineviz.health.SummaryLimits
 import com.jh.proj.coroutineviz.health.SummaryTable
 import com.jh.proj.coroutineviz.health.SummaryTableState
 import com.jh.proj.coroutineviz.health.SummaryView
@@ -69,6 +70,11 @@ class VizSession(
      */
     keepSummaries: Boolean = false,
     /**
+     * The limits of the summary table (spec C-2), used by every table built for this session: the live one, one restored
+     * from a checkpoint by [rehydrateFrom], and the replay fold of its reads. Ignored without [keepSummaries].
+     */
+    val summaryLimits: SummaryLimits = SummaryLimits.DEFAULT,
+    /**
      * Event-store factory seam. Defaults to the in-memory bounded [EventStore]
      * so the SDK default is byte-for-byte unchanged (D-04a). The persistence
      * layer (`:backend`) injects a factory that returns a DB-backed
@@ -77,6 +83,20 @@ class VizSession(
      */
     eventStoreFactory: (sessionId: String) -> EventStoreInterface = { EventStore(maxEvents) },
 ) {
+    /**
+     * The 0.3.x constructor with every argument (what Java callers and six positional arguments use), kept visible so
+     * that code written or compiled against 0.3.x still compiles and links: `summaryLimits` was added before
+     * `eventStoreFactory` (kept last for the trailing-lambda form). No defaults, so it never competes with the primary one.
+     */
+    constructor(
+        sessionId: String,
+        maxEvents: Int,
+        clock: () -> Long,
+        createdAtMs: Long,
+        keepSummaries: Boolean,
+        eventStoreFactory: (String) -> EventStoreInterface,
+    ) : this(sessionId, maxEvents, clock, createdAtMs, keepSummaries, SummaryLimits.DEFAULT, eventStoreFactory)
+
     /**
      * The 0.2.x constructor, kept (hidden from source) so code compiled against 0.2.x still links:
      * `keepSummaries` was added in the middle of the parameter list, which changed the JVM signatures.
@@ -88,7 +108,7 @@ class VizSession(
         clock: () -> Long = System::currentTimeMillis,
         createdAtMs: Long = clock(),
         eventStoreFactory: (String) -> EventStoreInterface = { EventStore(maxEvents) },
-    ) : this(sessionId, maxEvents, clock, createdAtMs, false, eventStoreFactory)
+    ) : this(sessionId, maxEvents, clock, createdAtMs, false, SummaryLimits.DEFAULT, eventStoreFactory)
 
     // Session-scoped coroutine scope for async operations
     val sessionScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -152,7 +172,7 @@ class VizSession(
     private val applier = EventApplier(snapshot)
 
     // Durable per-coroutine summaries (spec 2026-10-21, C-2); guarded by [sendLock] like the snapshot.
-    private var summaryTable: SummaryTable? = if (keepSummaries) SummaryTable() else null
+    private var summaryTable: SummaryTable? = if (keepSummaries) SummaryTable(summaryLimits) else null
 
     /** The last seq of the checkpoint the summaries were restored from, `null` when they were folded from the events alone. */
     @Volatile
@@ -399,7 +419,7 @@ class VizSession(
         synchronized(sendLock) {
             rehydratedEvents = events
             if (seed != null && summaryTable != null) {
-                summaryTable = SummaryTable.restore(seed)
+                summaryTable = SummaryTable.restore(seed, summaryLimits)
                 summarySeedSeq = seed.lastEventSeq
             }
             val after = summarySeedSeq ?: Long.MIN_VALUE
