@@ -89,7 +89,7 @@ Logs are rotated at 10 MB with 3 files retained per service.
 ### Health check
 
 `/api/ready` is the readiness probe both compose files wire into the container healthcheck.
-It answers `{"status":"UP"}` while the session manager is reachable and heap use is under 95%,
+It answers `{"status":"UP"}` while the session manager is reachable and heap use is under 95% (the heap left after the last garbage collection, so uncollected garbage does not count),
 and 503 otherwise. `/api/health` returns the full status payload (version, session count,
 uptime, memory) and is the one to read when diagnosing:
 

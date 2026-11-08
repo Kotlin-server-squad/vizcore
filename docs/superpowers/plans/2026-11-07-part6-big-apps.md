@@ -271,6 +271,17 @@ Gates: frontend `pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm build`
 
 ## Review history
 
+- **Codex code review of 6b (group by name).** R1 — request changes (4 P2, 2 P3), all taken: groups are built over the
+  whole view (every state) and drawn while any member is shown, so a member finishing never dissolves its group and its
+  counts cover every member; the hierarchy read's key uses sorted member ids; the active badge counts the members a
+  collapsed group stands for, never the card; grouping is linear; a selected group is ringed; the cap note says "cards"
+  whenever groups are drawn. R2 — request changes (3 P2, 1 P3), all taken: a group whose members are filtered out still
+  shows when something below them is shown; group visibility is decided once; the cap keeps the ancestors of every card
+  it keeps (an expanded group keeps its card and parent); the note's coroutine count is the round's. R3 — request
+  changes (1 P2), taken: the cap walks a path only as far as the cards left allow. Confirmation round — 2 P2, fixed
+  with tests (nested groups in linear passes; Find opens every group on the path, however deep); the review budget
+  (three rounds and a confirmation) was used up, so no further round reviewed those two fixes.
+
 - **Codex code review R1 (6a) — request changes** (6 P2, 1 P3), all taken: a found coroutine's ancestors survive the
   state chip; a failed round list comes back (Refresh, and the live rule gated on the last error too); the reveal
   re-centres while the canvas settles (restoring the dock) until the user pans or zooms; a round the snapshot holds

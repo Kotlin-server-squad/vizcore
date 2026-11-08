@@ -7,12 +7,18 @@ import { EmptyState } from '../EmptyState'
 import type { StateFilter } from '@/lib/state-counts'
 import type { CoroutineNode } from '@/types/api'
 import type { ActivityLine } from '@/lib/activity'
+import type { NameGroup } from '@/lib/name-groups'
+
+/** The main view's modes (S-10): the graph, the list, and the Timeline. */
+export type MainViewMode = 'graph' | 'list' | 'timeline'
 
 interface CoroutineCanvasProps {
   /** Already filtered and capped by the caller — the canvas renders what it is given. */
   coroutines: CoroutineNode[]
-  viewMode: 'graph' | 'list'
-  onViewModeChange: (next: 'graph' | 'list') => void
+  viewMode: MainViewMode
+  onViewModeChange: (next: MainViewMode) => void
+  /** The Timeline (Part 10, S-10), drawn in place of the graph in its mode; no Timeline button without it. */
+  timeline?: ReactNode
   /** Terminal coroutines collapsed out of the default active-only view (D-08). */
   completedCount: number
   /** Nothing is live and the canvas shows the whole finished run (spec Part 1). */
@@ -38,6 +44,9 @@ interface CoroutineCanvasProps {
   inRound?: boolean
   /** Children per parent in the view before the cap (the graph's "2 of 262 children"). */
   childTotals?: ReadonlyMap<string, number>
+  /** Siblings grouped by name (S-12), by their group node's id, and their Expand / Collapse. */
+  groups?: ReadonlyMap<string, NameGroup>
+  onToggleGroup?: (id: string) => void
   /** Unfinished children per parent over the whole snapshot (see `CoroutineTree`). */
   pendingChildCounts?: ReadonlyMap<string, number>
   /** Each coroutine's second line (S-6); shown in every mode, read from the same events as the tree. */
@@ -71,6 +80,7 @@ export function CoroutineCanvas({
   coroutines,
   viewMode,
   onViewModeChange,
+  timeline,
   completedCount,
   allFinished = false,
   showCompleted,
@@ -83,6 +93,8 @@ export function CoroutineCanvas({
   reveal,
   inRound = false,
   childTotals,
+  groups,
+  onToggleGroup,
   pendingChildCounts,
   activity,
   stateFilter,
@@ -113,6 +125,9 @@ export function CoroutineCanvas({
         <div role="group" aria-label="View" className="flex gap-0.5 rounded-medium bg-default-100 p-0.5">
           <ViewButton label="Graph" pressed={viewMode === 'graph'} onPress={() => onViewModeChange('graph')} />
           <ViewButton label="List" pressed={viewMode === 'list'} onPress={() => onViewModeChange('list')} />
+          {timeline !== undefined && (
+            <ViewButton label="Timeline" pressed={viewMode === 'timeline'} onPress={() => onViewModeChange('timeline')} />
+          )}
         </div>
         <h2 className="text-sm font-semibold">
           {inRound
@@ -187,16 +202,25 @@ export function CoroutineCanvas({
           </div>
         ) : (
           <>
-            {/* The list scrolls inside the box; the graph fills it and pans. */}
-            <div ref={panelRef} className={viewMode === 'graph' ? 'min-h-0 flex-1' : 'min-h-0 flex-1 overflow-auto'}>
+            {/* The list scrolls inside the box; the graph fills it and pans; the Timeline scrolls inside its own. */}
+            <div
+              ref={panelRef}
+              className={
+                viewMode === 'graph' ? 'min-h-0 flex-1' : viewMode === 'timeline' ? 'flex min-h-0 min-w-0 flex-1 flex-col' : 'min-h-0 flex-1 overflow-auto'
+              }
+            >
               {/* Source-selection is LIVE-ONLY (PD-01): omit
                   onSelect/selectedNodeId in replay/shared so those
                   renders stay presentational with no added
                   interactivity (Pitfall 1 back-compat). */}
-              {viewMode === 'graph' ? (
+              {viewMode === 'timeline' && timeline !== undefined ? (
+                timeline
+              ) : viewMode === 'graph' || viewMode === 'timeline' ? (
                 <CoroutineTreeGraph
                   reveal={reveal}
                   childTotals={childTotals}
+                  groups={groups}
+                  onToggleGroup={onToggleGroup}
                   coroutines={coroutines}
                   onSelect={onSelect}
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
@@ -209,6 +233,8 @@ export function CoroutineCanvas({
                   selectedNodeId={onSelect ? selectedCoroutineId : undefined}
                   pendingChildCounts={pendingChildCounts}
                   activity={activity}
+                  groups={groups}
+                  onToggleGroup={onToggleGroup}
                 />
               )}
             </div>
@@ -231,7 +257,7 @@ export function CoroutineCanvas({
 
 /** A line under the canvas about what the page holds; `key` names its look hook (`history-note`, `summary-only-note`). */
 export interface CanvasNote {
-  key: 'history' | 'summary-only'
+  key: 'history' | 'summary-only' | 'path'
   text: string
 }
 

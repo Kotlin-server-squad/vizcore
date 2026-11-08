@@ -58,6 +58,8 @@ interface InspectorProps {
   pendingSelectionLabel?: string | null
   /** Why they do not: by default it does not exist yet at the cursor. */
   pendingSelectionNote?: string
+  /** While the Timeline is the main view, its one-sentence summary of the selected row (Part 10, S-10). */
+  sentence?: string | null
 }
 
 /**
@@ -94,6 +96,7 @@ function InspectorBody({
   unavailableReason = null,
   pendingSelectionLabel = null,
   pendingSelectionNote = 'not created yet at this moment',
+  sentence = null,
 }: InspectorProps) {
   // The shared view has no credential: only a read bound to its cut (through the token) may fetch (M-11).
   const showTimeline = !!coroutine && (!readOnly || !!moment) && !unavailableReason
@@ -192,6 +195,12 @@ function InspectorBody({
             className={activity.waiting ? 'text-sm text-warning' : 'text-sm text-default-600'}
           >
             {activity.text}
+          </p>
+        )}
+        {/* The Timeline's one sentence for the selected row (Part 10), from the same spans it draws. */}
+        {sentence && (
+          <p data-testid="inspector-timeline-sentence" data-look-part="timeline-sentence" className="text-sm text-default-700">
+            {sentence}
           </p>
         )}
         {/* At a moment (Part 8): what the read could not give, said once, above the cards. */}

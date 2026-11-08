@@ -15,6 +15,7 @@ import { useAnimationSlot } from '@/lib/animation-throttle'
 import { getStateColors, isActiveState, stateLabel } from '@/lib/coroutine-state-colors'
 import { chooseRowWidth, layoutTree, type TreeLayout } from '@/lib/tree-layout'
 import { useLook, useLookCard } from '@/looks/look-context'
+import { groupMix, type NameGroup } from '@/lib/name-groups'
 import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize2, FiMinimize2, FiCrosshair } from 'react-icons/fi'
 
 interface CoroutineTreeGraphProps {
@@ -36,6 +37,10 @@ interface CoroutineTreeGraphProps {
   reveal?: { id: string; key: number }
   /** Children per parent in the whole view, before the cap: a parent whose children were capped says "2 of 262". */
   childTotals?: ReadonlyMap<string, number>
+  /** Siblings grouped by name (S-12), by their group node's id: those nodes draw as group cards. */
+  groups?: ReadonlyMap<string, NameGroup>
+  /** Expand or collapse a group (its card's button). */
+  onToggleGroup?: (id: string) => void
 }
 
 interface TreeNode extends CoroutineNode {
@@ -86,14 +91,22 @@ export function CoroutineTreeGraph({
   activity,
   reveal,
   childTotals,
+  groups,
+  onToggleGroup,
 }: CoroutineTreeGraphProps) {
   const tree = useMemo(() => buildCoroutineTree(coroutines) as TreeNode[], [coroutines])
   // The badge counts what the state bar calls Active (CREATED or ACTIVE); a parent
   // waiting for its children is not running its body (spec S-6).
-  const activeCount = useMemo(
-    () => coroutines.filter(c => c.state === 'ACTIVE' || c.state === 'CREATED').length,
-    [coroutines]
-  )
+  // A group card is no coroutine: a collapsed group counts the active members it stands for (S-12).
+  const activeCount = useMemo(() => {
+    let n = 0
+    for (const c of coroutines) {
+      const g = groups?.get(c.id)
+      if (g) n += g.expanded ? 0 : (g.counts.ACTIVE ?? 0) + (g.counts.CREATED ?? 0)
+      else if (c.state === 'ACTIVE' || c.state === 'CREATED') n++
+    }
+    return n
+  }, [coroutines, groups])
   const nodesById = useMemo(() => {
     const map = new Map<string, TreeNode>()
     const walk = (n: TreeNode) => {
@@ -420,26 +433,37 @@ export function CoroutineTreeGraph({
               contentStyle={{ width: layout.width + 2 * PADDING, height: layout.height + 2 * PADDING }}
             >
               <div className="relative" style={{ width: layout.width + 2 * PADDING, height: layout.height + 2 * PADDING }}>
-                <GraphEdges layout={layout} nodesById={nodesById} />
+                <GraphEdges layout={layout} nodesById={nodesById} groups={groups} />
                 {[...layout.nodes].map(([id, pos]) => {
                   const node = nodesById.get(id)!
+                  const group = groups?.get(id)
                   return (
                     <div
                       key={id}
                       data-testid={`graph-node-${id}`}
-                      // The state, for a look's CSS to colour the card by (Classic: unused).
-                      data-state={node.state}
+                      // The state, for a look's CSS to colour the card by (Classic: unused); a group is no one state.
+                      data-state={group ? 'GROUP' : node.state}
                       className="absolute"
                       style={{ left: pos.x + PADDING, top: pos.y + PADDING, width: cardWidth, height: cardHeight }}
                     >
-                      <NodeCard
-                        node={node}
-                        isRoot={!node.parentId || !nodesById.has(node.parentId)}
-                        onSelect={onSelect}
-                        onClickSelect={selectOnClick}
-                        selected={selectedNodeId === node.id}
-                        activity={activity?.get(id)}
-                      />
+                      {group ? (
+                        <GroupCard
+                          group={group}
+                          onSelect={onSelect}
+                          onClickSelect={selectOnClick}
+                          selected={selectedNodeId === node.id}
+                          onToggle={onToggleGroup}
+                        />
+                      ) : (
+                        <NodeCard
+                          node={node}
+                          isRoot={!node.parentId || !nodesById.has(node.parentId)}
+                          onSelect={onSelect}
+                          onClickSelect={selectOnClick}
+                          selected={selectedNodeId === node.id}
+                          activity={activity?.get(id)}
+                        />
+                      )}
                       {node.children.length > 0 && (
                         <div
                           data-look-part="node-children"
@@ -468,7 +492,15 @@ function childrenLabel(drawn: number, total: number | undefined): string {
 }
 
 /** Every parent→child line, drawn from the same positions as the cards so a line always meets its card. */
-function GraphEdges({ layout, nodesById }: { layout: TreeLayout; nodesById: Map<string, TreeNode> }) {
+function GraphEdges({
+  layout,
+  nodesById,
+  groups,
+}: {
+  layout: TreeLayout
+  nodesById: Map<string, TreeNode>
+  groups?: ReadonlyMap<string, NameGroup>
+}) {
   const shouldAnimate = useAnimationSlot()
   return (
     <svg
@@ -480,7 +512,8 @@ function GraphEdges({ layout, nodesById }: { layout: TreeLayout; nodesById: Map<
     >
       <g transform={`translate(${PADDING} ${PADDING})`}>
         {layout.edges.map(edge => {
-          const child = nodesById.get(edge.childId)
+          // A line into a group is neutral: a group is no one state.
+          const child = groups?.has(edge.childId) ? undefined : nodesById.get(edge.childId)
           const running = !!child && isRunning(child.state)
           return (
             <path
@@ -644,6 +677,76 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
               <div className="h-full bg-primary" style={{ width: '50%' }} />
             )}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface GroupCardProps {
+  group: NameGroup
+  onSelect?: (id: string) => void
+  onClickSelect?: (id: string) => void
+  selected: boolean
+  onToggle?: (id: string) => void
+}
+
+/** Siblings grouped by name (S-12): one card for them, its states in words, and Expand / Collapse. */
+function GroupCard({ group, onSelect, onClickSelect, selected, onToggle }: GroupCardProps) {
+  const size = group.memberIds.length
+  return (
+    <div
+      data-look-part="node"
+      data-kind="group"
+      className={
+        'relative h-full overflow-hidden rounded-2xl border-2 border-dashed border-default-400 bg-content1 p-4 shadow-lg' +
+        (selected ? ' ring-2 ring-primary' : onSelect ? ' cursor-pointer' : '')
+      }
+      {...(onSelect
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            'aria-label': `Group ${group.label}: ${size} coroutines`,
+            onClick: () => (onClickSelect ?? onSelect)(group.id),
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.target !== e.currentTarget) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect(group.id)
+              }
+            },
+          }
+        : {})}
+    >
+      <div data-look-part="node-body" className="relative z-10 space-y-1">
+        <div data-look-part="group-name" className="truncate font-mono text-base font-bold" title={group.label}>
+          {group.label}
+        </div>
+        <div data-look-part="group-count" className="text-xs text-default-500">
+          {`group of ${size.toLocaleString('en-US')}`}
+        </div>
+        <div data-look-part="group-mix" className="text-xs text-default-600">
+          {groupMix(group.counts)}
+        </div>
+        {group.below > 0 && (
+          <div data-look-part="group-below" className="text-xs text-default-500">
+            {`+${group.below.toLocaleString('en-US')} below them`}
+          </div>
+        )}
+        {onToggle && (
+          <button
+            type="button"
+            data-look-part="group-expand"
+            aria-label={`${group.expanded ? 'Collapse' : 'Expand'} ${group.label}`}
+            aria-expanded={group.expanded}
+            onClick={e => {
+              e.stopPropagation()
+              onToggle(group.id)
+            }}
+            className="mt-1 rounded-medium border border-default-300 px-2 py-0.5 text-xs text-default-700 hover:bg-default-100"
+          >
+            {group.expanded ? 'Collapse' : 'Expand'}
+          </button>
         )}
       </div>
     </div>

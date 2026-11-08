@@ -70,6 +70,25 @@ describe('CoroutineCanvas — the main view', () => {
     expect(onViewModeChange).toHaveBeenCalledWith('list')
   })
 
+  it('offers the Timeline as a third view and shows it in that mode (Part 10)', async () => {
+    const { onViewModeChange } = renderCanvas({ timeline: <div data-testid="timeline-view" /> })
+    await userEvent.click(screen.getByRole('button', { name: 'Timeline' }))
+    expect(onViewModeChange).toHaveBeenCalledWith('timeline')
+    expect(screen.queryByTestId('timeline-view')).toBeNull()
+  })
+
+  it('draws the Timeline instead of the graph while it is the view', () => {
+    renderCanvas({ timeline: <div data-testid="timeline-view" />, viewMode: 'timeline' })
+    expect(screen.getByRole('button', { name: 'Timeline' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('timeline-view')).toBeInTheDocument()
+    expect(screen.queryByTestId('coroutine-tree-graph')).toBeNull()
+  })
+
+  it('offers no Timeline when none is given', () => {
+    renderCanvas()
+    expect(screen.queryByRole('button', { name: 'Timeline' })).toBeNull()
+  })
+
   it('maximises, and says when it is maximised', async () => {
     const { onToggleMaximise } = renderCanvas()
     const button = screen.getByRole('button', { name: 'Maximise' })
