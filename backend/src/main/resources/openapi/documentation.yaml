@@ -1944,18 +1944,21 @@ paths:
   /api/scenarios/order-processing:
     post:
       tags: [Scenarios - Realistic]
-      summary: Run order processing scenario
+      summary: "Order Processing: Running Shoes for Anna"
       description: >
-        Simulates an e-commerce order flow: validation, inventory check,
-        payment processing, database persistence, and parallel notifications.
-        Use the fail parameter to simulate a payment failure.
+        Anna buys running shoes: the order is validated, the warehouse asked,
+        her card charged and the order saved, one step after the other; then
+        the confirmation email, an SMS and an analytics event go out at once.
+        About 15 s. With fail=true the card is declined: the payment fails,
+        and with it the order, so nothing is saved or sent (about 10 s).
+        Answers once the demo has ended.
       operationId: runOrderProcessingScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
         - name: fail
           in: query
           required: false
-          description: When true, simulates a payment failure mid-flow
+          description: When true, the bank declines the card and the order fails
           schema:
             type: boolean
             default: false
@@ -1976,19 +1979,22 @@ paths:
   /api/scenarios/user-registration:
     post:
       tags: [Scenarios - Realistic]
-      summary: Run user registration scenario
+      summary: "User Registration: Ben Joins a Recipe App"
       description: >
-        Simulates a full user registration flow: input validation, database
-        uniqueness check, user creation, parallel setup tasks (profile,
-        settings, avatar), and notification delivery. Use the failEmail
-        parameter to simulate email delivery retry.
+        Ben signs up: his details are checked, the email looked up and the
+        account created, one after the other; then profile, settings and
+        avatar are set up at once, and the welcome email, a Slack message and
+        an analytics event go out. About 12 s. With failEmail=true the mail
+        server times out on the first try; the email is sent on the second
+        and the registration completes (about 16 s). Answers once the demo
+        has ended.
       operationId: runUserRegistrationScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
         - name: failEmail
           in: query
           required: false
-          description: When true, simulates an email delivery failure triggering retry
+          description: When true, the first welcome email times out and is retried
           schema:
             type: boolean
             default: false
@@ -2009,18 +2015,21 @@ paths:
   /api/scenarios/report-generation:
     post:
       tags: [Scenarios - Realistic]
-      summary: Run report generation scenario
+      summary: "Report Generation: The Monthly Sales Report"
       description: >
-        Simulates a data pipeline: parallel API fetches, data aggregation,
-        PDF generation, and parallel delivery (S3 upload, email, Slack
-        notification). Use the timeout parameter to simulate an API timeout.
+        A shop's monthly sales report: four sources are fetched at once,
+        added up, written into a PDF part by part and delivered three ways at
+        once (S3, email, Slack). The analytics API gets at most 4 s. About
+        15 s. With timeout=true the analytics API is too slow: its request is
+        cancelled at 4 s and the report goes out without analytics. Answers
+        once the demo has ended.
       operationId: runReportGenerationScenario
       parameters:
         - $ref: "#/components/parameters/SessionIdQuery"
         - name: timeout
           in: query
           required: false
-          description: When true, simulates an API timeout during data fetching
+          description: When true, the analytics API misses its 4 s time limit and the report goes out without analytics
           schema:
             type: boolean
             default: false

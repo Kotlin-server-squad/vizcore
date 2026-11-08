@@ -342,5 +342,44 @@
       { "label": "order-eva", "state": "SUSPENDED", "depth": 1 },
       { "label": "order-finn", "state": "SUSPENDED", "depth": 1 }
     ]
+  },
+  "order-processing": {
+    "atSeconds": 12.75,
+    "moment": "About 13 s in: the order is checked, paid and saved. The analytics event is in; the SMS and the confirmation email are still going out, and processOrder waits for them",
+    "coroutines": [
+      { "label": "OrderService.processOrder", "state": "WAITING_FOR_CHILDREN", "depth": 0 },
+      { "label": "OrderValidator.validate", "state": "COMPLETED", "depth": 1 },
+      { "label": "InventoryService.checkStock", "state": "COMPLETED", "depth": 1 },
+      { "label": "PaymentService.processPayment", "state": "COMPLETED", "depth": 1 },
+      { "label": "Database.saveOrder", "state": "COMPLETED", "depth": 1 },
+      { "label": "EmailService.sendConfirmation", "state": "SUSPENDED", "depth": 1 },
+      { "label": "SmsService.sendSms", "state": "SUSPENDED", "depth": 1 },
+      { "label": "AnalyticsService.trackPurchase", "state": "COMPLETED", "depth": 1 }
+    ]
+  },
+  "user-registration": {
+    "atSeconds": 8.5,
+    "moment": "About 8.5 s in: Ben's account exists. The avatar and the settings are ready, the profile is not, and register waits for all three before it sends anything",
+    "coroutines": [
+      { "label": "UserService.register", "state": "ACTIVE", "depth": 0 },
+      { "label": "InputValidator.validateUserData", "state": "COMPLETED", "depth": 1 },
+      { "label": "UserRepository.checkExists", "state": "COMPLETED", "depth": 1 },
+      { "label": "UserRepository.createUser", "state": "COMPLETED", "depth": 1 },
+      { "label": "ProfileService.createProfile", "state": "SUSPENDED", "depth": 1 },
+      { "label": "SettingsService.createDefaults", "state": "COMPLETED", "depth": 1 },
+      { "label": "AvatarService.generateDefault", "state": "COMPLETED", "depth": 1 }
+    ]
+  },
+  "report-generation": {
+    "atSeconds": 3.75,
+    "moment": "About 3.5 s in: three of the four sources have answered, the analytics well within its 4 s. The report waits in await for the transactions",
+    "coroutines": [
+      { "label": "ReportService.generateMonthlyReport", "state": "SUSPENDED", "depth": 0 },
+      { "label": "UserApi.fetchActiveUsers", "state": "COMPLETED", "depth": 1 },
+      { "label": "TransactionApi.fetchTransactions", "state": "SUSPENDED", "depth": 1 },
+      { "label": "AnalyticsApi.fetchMetrics", "state": "COMPLETED", "depth": 1 },
+      { "label": "AnalyticsApi.request", "state": "COMPLETED", "depth": 2 },
+      { "label": "InventoryApi.fetchStockLevels", "state": "COMPLETED", "depth": 1 }
+    ]
   }
 }
