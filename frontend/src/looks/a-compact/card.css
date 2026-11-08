@@ -123,3 +123,49 @@
   border-radius: 3px;
   font-size: 12px;
 }
+
+/* Part 6 (S-12): a group of siblings, in the same 188 × 66 box: a dashed border, the name and its size on one line,
+   the states in words on the next, Expand at the top right. "+N below them" is in the Inspector's summary. */
+[data-card-look='a'] [data-look-part='node'][data-kind='group'] {
+  border-style: dashed;
+  border-color: hsl(var(--heroui-default-400));
+}
+[data-card-look='a'] [data-kind='group'] [data-look-part='node-body'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  padding-right: 52px;
+}
+[data-card-look='a'] [data-kind='group'] [data-look-part='node-body'] > * {
+  margin-top: 0;
+}
+[data-card-look='a'] [data-look-part='group-name'] {
+  max-width: 96px;
+  font-size: 12px;
+  line-height: 16px;
+}
+[data-card-look='a'] [data-look-part='group-count'],
+[data-card-look='a'] [data-look-part='group-mix'] {
+  font-size: 12px;
+  line-height: 16px;
+}
+[data-card-look='a'] [data-look-part='group-mix'] {
+  flex-basis: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-card-look='a'] [data-look-part='group-below'] {
+  display: none;
+}
+[data-card-look='a'] [data-look-part='group-expand'] {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  margin: 0;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 18px;
+}

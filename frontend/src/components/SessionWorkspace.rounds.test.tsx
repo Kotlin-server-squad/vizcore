@@ -63,7 +63,13 @@ const page = (items: RoundEntry[], over: Partial<RoundsPage> = {}): RoundsPage =
 
 /** An app: two request rounds, a vizcore root, a big round of 250 members (c240 finished). */
 const big = Array.from({ length: 250 }, (_, i) =>
-  node(`c${String(i).padStart(3, '0')}`, { parentId: 'big', roundId: 'round:big', state: i === 240 ? CoroutineState.COMPLETED : CoroutineState.ACTIVE }),
+  // Names without a trailing number: these siblings do not group by name (that is SessionWorkspace.groups.test.tsx).
+  node(`c${String(i).padStart(3, '0')}`, {
+    parentId: 'big',
+    roundId: 'round:big',
+    label: `c${String(i).padStart(3, '0')}-task`,
+    state: i === 240 ? CoroutineState.COMPLETED : CoroutineState.ACTIVE,
+  }),
 )
 const appNodes = [
   node('req-2'),

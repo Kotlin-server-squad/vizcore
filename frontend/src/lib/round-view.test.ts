@@ -4,6 +4,7 @@ import {
   asOfLabel,
   capNote,
   capRendered,
+  cutPath,
   withForced,
   defaultChoice,
   findResults,
@@ -395,5 +396,82 @@ describe('capNote in Round unknown', () => {
     expect(capNote({ total: 300, rendered: 200, found: 0, cap: 200, scope: 'unknown', canFind: false })).toBe(
       'Showing 200 of 300 coroutines without a summary. Find cannot search them.',
     )
+  })
+})
+
+describe('capNote with groups (cards, not coroutines)', () => {
+  it('counts cards and names the coroutines they stand for', () => {
+    expect(capNote({ total: 350, rendered: 200, found: 0, cap: 200, scope: 'round', canFind: true, coroutines: 1234 })).toBe(
+      'Showing 200 of 350 cards (1,234 coroutines in this round). Find reaches one by its name or creation site.',
+    )
+  })
+})
+
+describe('capNote unit', () => {
+  it('counts cards whenever groups are drawn, even when the totals happen to be equal', () => {
+    expect(capNote({ total: 205, rendered: 200, found: 0, cap: 200, scope: 'round', canFind: true, coroutines: 205 })).toBe(
+      'Showing 200 of 205 cards (205 coroutines in this round). Find reaches one by its name or creation site.',
+    )
+  })
+})
+
+describe('capRendered keeps ancestry', () => {
+  it('draws the parents of every coroutine it keeps, even when their ids sort past the cap', () => {
+    const kids = Array.from({ length: 300 }, (_, i) => node(`f${String(i).padStart(3, '0')}`, { parentId: 'zz-group' }))
+    const pool = [node('zz-root'), node('zz-group', { parentId: 'zz-root' }), ...kids]
+    const r = capRendered(pool, 200, new Set())
+    expect(r.rendered.map(c => c.id)).toEqual(expect.arrayContaining(['zz-root', 'zz-group']))
+    expect(r).toMatchObject({ total: 302, found: 0 })
+    expect(r.rendered).toHaveLength(200)
+  })
+})
+
+describe('capRendered on a deep chain', () => {
+  it('stays fast when the deepest coroutines sort first', () => {
+    // c00000 is the deepest: every candidate's path runs up the whole chain.
+    const n = 20_000
+    const chain = Array.from({ length: n }, (_, i) =>
+      node(`c${String(i).padStart(5, '0')}`, { parentId: i === n - 1 ? null : `c${String(i + 1).padStart(5, '0')}` }),
+    )
+    const started = performance.now()
+    const r = capRendered(chain, 200, new Set())
+    expect(performance.now() - started).toBeLessThan(500)
+    expect(r.rendered).toHaveLength(200)
+    // What it keeps is connected: the top 200 of the chain.
+    expect(r.rendered.every(c => c.parentId === null || r.rendered.some(p => p.id === c.parentId))).toBe(true)
+  })
+})
+
+describe('revealPlan on a deep path', () => {
+  it('forces the match and its nearest 50 ancestors, and says how deep the path really is', () => {
+    const chain = Array.from({ length: 120 }, (_, i) => node(`d${i}`, { parentId: i === 0 ? null : `d${i - 1}`, roundId: 'round:d0' }))
+    const plan = revealPlan('d119', chain, { stateFilter: 'all', includeVizcore: false, leakIds: new Set(), anchorOf: () => 'd0' })!
+    expect(plan.pathDepth).toBe(119)
+    expect(plan.forcedIds.size).toBe(51)
+    expect(plan.forcedIds.has('d69')).toBe(true)
+    expect(plan.forcedIds.has('d68')).toBe(false)
+  })
+
+  it('stops at a cycle in the reported parents', () => {
+    const cyc = [node('p', { parentId: 'q', roundId: 'round:x' }), node('q', { parentId: 'p', roundId: 'round:x' })]
+    expect(revealPlan('p', cyc, { stateFilter: 'all', includeVizcore: false, leakIds: new Set(), anchorOf: () => 'p' })!.pathDepth).toBe(1)
+  })
+})
+
+describe('cutPath (the found coroutine’s path as drawn)', () => {
+  const chain = Array.from({ length: 120 }, (_, i) => node(`d${i}`, { parentId: i === 0 ? null : `d${i - 1}`, roundId: 'round:d0' }))
+  const ids = (from: number, to: number) => new Set(Array.from({ length: to - from + 1 }, (_, i) => `d${from + i}`))
+
+  it('is null when every ancestor is drawn', () => {
+    expect(cutPath('d119', chain, ids(0, 119))).toBeNull()
+  })
+
+  it('counts the ancestors that are not drawn, whatever else is', () => {
+    const drawn = new Set([...ids(69, 119), 'd0', 'd1'])
+    expect(cutPath('d119', chain, drawn)).toEqual({ depth: 119, missing: 67 })
+  })
+
+  it('is null when the found coroutine itself is not drawn (its group was collapsed again)', () => {
+    expect(cutPath('d119', chain, ids(0, 100))).toBeNull()
   })
 })
