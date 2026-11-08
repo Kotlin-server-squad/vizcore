@@ -57,6 +57,25 @@ beforeEach(() => {
   useScenariosMock.mockReturnValue({ data: { scenarios: all }, isLoading: false, error: null, refetch })
 })
 
+/**
+ * Every demo in the catalog has a guide now. A demo the server adds before its guide is written still gets a page
+ * with Run: this catalog has one.
+ */
+const UNGUIDED = {
+  id: 'labs/new-demo',
+  name: 'New demo',
+  description: 'A demo without a guide yet.',
+  category: 'labs',
+  group: 'labs',
+  groupLabel: 'Labs',
+  duration: '~10 seconds',
+  method: 'POST',
+  endpoint: '/api/scenarios/labs/new-demo',
+}
+
+const withUnguidedDemo = () =>
+  useScenariosMock.mockReturnValue({ data: { scenarios: [...all, UNGUIDED] }, isLoading: false, error: null, refetch })
+
 const renderPage = (slug: string) =>
   render(
     <HeroUIProvider>
@@ -137,15 +156,24 @@ describe('HowItWorksPage', () => {
   })
 
   it('finds a demo whose id has slashes by its slug', () => {
-    renderPage('order-processing')
+    withUnguidedDemo()
+    renderPage('labs-new-demo')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('No guide for this example yet')
+    expect(screen.getByRole('button', { name: 'Run this example' })).toBeInTheDocument()
   })
 
   it('offers Run for a demo that has no guide yet', async () => {
-    renderPage('order-processing')
+    withUnguidedDemo()
+    renderPage('labs-new-demo')
     expect(screen.getByRole('link', { name: /back to the gallery/i })).toHaveAttribute('href', '/gallery')
     await userEvent.click(screen.getByRole('button', { name: 'Run this example' }))
-    expect(start).toHaveBeenCalledWith(all.find((s) => s.id === 'order-processing'))
+    expect(start).toHaveBeenCalledWith(UNGUIDED)
+  })
+
+  it('shows the guide of a Real life demo', () => {
+    renderPage('user-registration')
+    expect(screen.getByText(GUIDES['user-registration']!.story)).toBeInTheDocument()
+    expect(screen.getByTestId('guide-code').textContent).toBe(GUIDES['user-registration']!.code)
   })
 
   it('has no Run for an unknown slug', () => {

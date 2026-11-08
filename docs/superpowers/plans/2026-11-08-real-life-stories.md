@@ -165,3 +165,5 @@ Checked by `GuideLabelsTest` on virtual time (the three join `VIRTUAL_TIME_DEMOS
 - **P2, the default report on real time:** the analytics request answers 300 ms into its 400 ms limit at scale 0.1, so a slow scheduler could cancel it. The real-time tests allow either outcome for `AnalyticsApi.request` and check only that the report completes with its four sections; the exact stories stay on virtual time.
 - **P2, "the catch never sees it":** the old code's `catch (e: CancellationException)` does see the `CancellationException` that `join()` throws in a cancelled parent (and rethrows it); only the `catch (e: Exception)` after it never runs. The explanation above now says so, and the guides will not say "the catch never runs" of a cancellation catch.
 - **P3:** the registration retry has 16 moments, not 15.
+
+**Round 2** (1 P3), taken: the pacing test's real-time and virtual runs completed the same report deferreds, so a virtual run could answer for a real-time one. Only the real-time runs now pass the report hook, keyed by run id.

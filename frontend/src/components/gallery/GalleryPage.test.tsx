@@ -60,6 +60,25 @@ const renderPage = (group?: string, onGroupChange = vi.fn()) =>
     </HeroUIProvider>,
   )
 
+/**
+ * Every demo in the catalog has a guide now. A demo the server adds before its guide is written still gets a card
+ * and Run, without a level or a How it works link: this catalog has one, in a group of its own.
+ */
+const withUnguidedDemo = () =>
+  useScenariosMock.mockReturnValue({ data: { scenarios: [...all, UNGUIDED] }, isLoading: false, error: null, refetch })
+
+const UNGUIDED = {
+  id: 'labs/new-demo',
+  name: 'New demo',
+  description: 'A demo without a guide yet.',
+  category: 'labs',
+  group: 'labs',
+  groupLabel: 'Labs',
+  duration: '~10 seconds',
+  method: 'POST',
+  endpoint: '/api/scenarios/labs/new-demo',
+}
+
 const cardTitles = () => screen.queryAllByTestId('demo-card').map((c) => within(c).getByRole('heading').textContent)
 
 describe('GalleryPage', () => {
@@ -219,12 +238,13 @@ describe('GalleryPage', () => {
   })
 
   it('shows no level for a demo without a guide', () => {
-    renderPage('real-life')
+    withUnguidedDemo()
+    renderPage('labs')
     expect(screen.getAllByTestId('demo-card').length).toBeGreaterThan(0)
     expect(screen.queryByText(/^(beginner|intermediate|advanced)$/)).toBeNull()
   })
 
-  it.each(['basics', 'channels', 'flow', 'patterns', 'sync-mutex', 'sync-semaphore', 'combined'])('links every %s card to its How it works page', (group) => {
+  it.each(['real-life', 'basics', 'channels', 'flow', 'patterns', 'sync-mutex', 'sync-semaphore', 'combined'])('links every %s card to its How it works page', (group) => {
     renderPage(group)
     for (const s of all.filter((d) => d.group === group)) {
       expect(screen.getByRole('link', { name: `How it works: ${s.name}` })).toHaveAttribute('href', `/gallery/${demoSlug(s.id)}`)
@@ -239,7 +259,9 @@ describe('GalleryPage', () => {
   })
 
   it('has no How it works link for a demo without a guide', () => {
-    renderPage('real-life')
+    withUnguidedDemo()
+    renderPage('labs')
+    expect(screen.getAllByTestId('demo-card').length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: /how it works/i })).toBeNull()
   })
 })

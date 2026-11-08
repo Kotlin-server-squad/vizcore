@@ -66,24 +66,29 @@ val demoCatalog: List<DemoCatalogEntry> =
         "realistic",
         Demo(
             "order-processing",
-            "🛒 Order Processing",
-            "E-commerce flow: validation, inventory check, payment, database, notifications (parallel). " +
-                "Use ?fail=true to simulate payment failure.",
-            "~15-20 seconds",
+            "🛒 Order Processing: Running Shoes for Anna",
+            "Anna buys running shoes. The backend checks her order, asks the warehouse, charges her card and " +
+                "saves the order, one step after the other, then sends the email, the SMS and an analytics event at " +
+                "once. With ?fail=true her card is declined: the payment fails, so does the order, and nothing is " +
+                "saved or sent.",
+            "~15 seconds",
         ),
         Demo(
             "user-registration",
-            "👤 User Registration",
-            "Complete registration: validation, DB check, create user, parallel setup (profile, settings, avatar), " +
-                "notifications. Use ?failEmail=true to simulate email retry.",
-            "~18-25 seconds",
+            "👤 User Registration: Ben Joins a Recipe App",
+            "Ben signs up. His details are checked, the email looked up and the account created, one after the " +
+                "other; then profile, settings and avatar at once, and the welcome email, a Slack message and an " +
+                "analytics event. With ?failEmail=true the mail server times out once and the email is sent on the " +
+                "second try.",
+            "~12 seconds",
         ),
         Demo(
             "report-generation",
-            "📊 Report Generation",
-            "Data pipeline: parallel API fetches, data aggregation, PDF generation, parallel delivery " +
-                "(S3, email, Slack). Use ?timeout=true to simulate API timeout.",
-            "~25-35 seconds",
+            "📊 Report Generation: The Monthly Sales Report",
+            "A shop's monthly sales report: four sources fetched at once, added up, written into a PDF part by " +
+                "part and delivered three ways at once. The analytics API gets at most 4 s; with ?timeout=true it is " +
+                "too slow, its request is cancelled and the report goes out without analytics.",
+            "~15 seconds",
         ),
     ) +
         group(

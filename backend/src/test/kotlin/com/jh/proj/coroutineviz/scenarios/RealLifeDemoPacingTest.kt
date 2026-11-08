@@ -65,20 +65,23 @@ class RealLifeDemoPacingTest {
                     }.toMap()
     }
 
-    /** Runs the demo with this id ("order-processing", or with its failure option, "order-processing?fail=true"). */
+    /**
+     * Runs the demo with this id ("order-processing", or with its failure option, "order-processing?fail=true"). Only
+     * the real-time runs pass [onReport], so the report tests read what a real-time run reported.
+     */
     private suspend fun start(
         id: String,
         session: VizSession,
         context: CoroutineContext = EmptyCoroutineContext,
+        onReport: (List<String>) -> Unit = {},
     ): Job =
         when (id) {
             "order-processing" -> RealLifeScenarios.runOrderProcessing(session, context)
             "order-processing?fail=true" -> RealLifeScenarios.runOrderProcessing(session, context, cardDeclined = true)
             "user-registration" -> RealLifeScenarios.runUserRegistration(session, context)
             "user-registration?failEmail=true" -> RealLifeScenarios.runUserRegistration(session, context, firstEmailTimesOut = true)
-            "report-generation" -> RealLifeScenarios.runReportGeneration(session, context) { reports["report"]?.complete(it) }
-            "report-generation?timeout=true" ->
-                RealLifeScenarios.runReportGeneration(session, context, analyticsTimesOut = true) { reports["timeout"]?.complete(it) }
+            "report-generation" -> RealLifeScenarios.runReportGeneration(session, context, onReport = onReport)
+            "report-generation?timeout=true" -> RealLifeScenarios.runReportGeneration(session, context, analyticsTimesOut = true, onReport)
             else -> error("not a Real life demo: $id")
         }
 
@@ -91,7 +94,7 @@ class RealLifeDemoPacingTest {
             try {
                 val run = assertNotNull(DemoRuns(maxConcurrent = 0, timeScale = SCALE).tryStart())
                 withTimeout(20.seconds) {
-                    withContext(run) { start(id, session) }.join()
+                    withContext(run) { start(id, session) { reports[id]?.complete(it) } }.join()
                     // A parent's terminal event can follow its job's completion by a moment.
                     while (session.store.all().count { it.isTerminal() } < session.store.all().count { it is CoroutineCreated }) {
                         delay(5)
@@ -209,9 +212,9 @@ class RealLifeDemoPacingTest {
      */
     @Test
     fun `the report goes out whether or not the analytics api answers in time`() {
-        for ((id, key) in listOf("report-generation" to "report", "report-generation?timeout=true" to "timeout")) {
+        for (id in listOf("report-generation", "report-generation?timeout=true")) {
             assertEquals("completed", run(id).outcomes["ReportService.generateMonthlyReport"], id)
-            val sections = runBlocking { withTimeout(5.seconds) { reports.getValue(key).await() } }
+            val sections = runBlocking { withTimeout(5.seconds) { reports.getValue(id).await() } }
             assertEquals(listOf("users", "transactions", "analytics", "stock"), sections.map { it.substringBefore(':') }, id)
         }
     }
@@ -223,9 +226,9 @@ class RealLifeDemoPacingTest {
         private val runs = ConcurrentHashMap<String, Run>()
         private val virtualRuns = ConcurrentHashMap<String, VirtualDemoRun>()
 
-        /** The reports of the two real-time report runs; the virtual runs find no key and complete nothing. */
+        /** The sections each real-time report run reported, by run id. */
         private val reports =
-            ConcurrentHashMap(mapOf("report" to CompletableDeferred<List<String>>(), "timeout" to CompletableDeferred()))
+            mapOf("report-generation" to CompletableDeferred<List<String>>(), "report-generation?timeout=true" to CompletableDeferred())
 
         private val order =
             setOf(

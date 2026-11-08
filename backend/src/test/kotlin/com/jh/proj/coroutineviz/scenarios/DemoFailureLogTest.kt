@@ -73,29 +73,35 @@ class DemoFailureLogTest {
     }
 
     /**
-     * The real-life demos' failure options (`?fail=true`, `?timeout=true`) end the demo with a
-     * failure on purpose; the failing child cancels its parent's join, which is no error either.
+     * The order's failure option (`?fail=true`) ends the demo with a failure on purpose: the declined payment fails
+     * the order, which is logged in one line, and is no error. The other two failure options are handled inside the
+     * demo (a retry, a time limit) and log nothing at all at ERROR.
      */
     @org.junit.jupiter.params.ParameterizedTest(name = "{0}")
-    @org.junit.jupiter.params.provider.ValueSource(strings = ["order-processing", "report-generation"])
-    fun `a real-life demo's designed failure logs no error`(demo: String) =
+    @org.junit.jupiter.params.provider.ValueSource(
+        strings = ["order-processing?fail=true", "user-registration?failEmail=true", "report-generation?timeout=true"],
+    )
+    fun `a real-life demo's failure option logs no error`(demo: String) =
         runBlocking {
             val appender = ListAppender<ILoggingEvent>().apply { start() }
             val root = LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME) as Logger
             root.addAppender(appender)
             val session = VizSession("demo-designed-failure")
             try {
-                val run = assertNotNull(DemoRuns(maxConcurrent = 1).tryStart())
+                val run = assertNotNull(DemoRuns(maxConcurrent = 1, timeScale = 0.1).tryStart())
                 withContext(run) {
                     val job =
                         when (demo) {
-                            "order-processing" -> ScenarioRunner.runOrderProcessingScenario(session, shouldFail = true)
-                            else -> ScenarioRunner.runReportGenerationScenario(session, shouldTimeout = true)
+                            "order-processing?fail=true" -> RealLifeScenarios.runOrderProcessing(session, cardDeclined = true)
+                            "user-registration?failEmail=true" -> RealLifeScenarios.runUserRegistration(session, firstEmailTimesOut = true)
+                            else -> RealLifeScenarios.runReportGeneration(session, analyticsTimesOut = true)
                         }
-                    withTimeout(60.seconds) { listOf(job).joinAll() }
+                    withTimeout(20.seconds) { listOf(job).joinAll() }
                 }
-                withTimeout(5.seconds) {
-                    while (appender.list.none { it.formattedMessage.contains("failed on purpose") }) delay(10)
+                if (demo.startsWith("order-processing")) {
+                    withTimeout(5.seconds) {
+                        while (appender.list.none { it.formattedMessage.contains("failed on purpose") }) delay(10)
+                    }
                 }
                 assertEquals(emptyList(), appender.list.filter { it.level == Level.ERROR }.map { it.formattedMessage })
             } finally {
