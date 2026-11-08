@@ -15,6 +15,7 @@ import org.jetbrains.exposed.v1.exceptions.ExposedSQLException
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
@@ -76,11 +77,16 @@ class ExposedEventStore(
     private fun insert(event: VizEvent) {
         lockFor(sessionId).withLock {
             transaction(db) {
+                // One entry of the (session_id, seq) index: ordering by both of its columns lets H2 read it backwards and
+                // stop at the first entry. Ordering by seq alone made H2 take the session-id index and read every stored
+                // event, payload included, on each append (and MAX(seq) still walks every index entry of the session), so
+                // ingest slowed down as a live session grew until it fell behind the app and the server's ping timeout
+                // closed the socket.
                 val maxSeq =
                     EventsTable
-                        .selectAll()
+                        .select(EventsTable.seq)
                         .where { EventsTable.sessionId eq this@ExposedEventStore.sessionId }
-                        .orderBy(EventsTable.seq to SortOrder.DESC)
+                        .orderBy(EventsTable.sessionId to SortOrder.DESC, EventsTable.seq to SortOrder.DESC)
                         .limit(1)
                         .firstOrNull()
                         ?.get(EventsTable.seq) ?: 0L
