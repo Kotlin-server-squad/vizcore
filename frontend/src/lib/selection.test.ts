@@ -68,6 +68,18 @@ describe('eventConcerns', () => {
   })
 })
 
+describe('eventConcerns for a group (S-12)', () => {
+  it('a group\'s events are its members\' events, never unrelated ones', () => {
+    const sel = { kind: 'group', id: 'group:r' } as const
+    const members = new Set(['c-1', 'c-2'])
+    expect(eventConcerns(ev('coroutine.started', { coroutineId: 'c-2' }), sel, members)).toBe(true)
+    expect(eventConcerns(ev('MutexLockAcquired', { ...lock, acquirerId: 'c-1' }), sel, members)).toBe(true)
+    expect(eventConcerns(ev('coroutine.started', { coroutineId: 'c-9' }), sel, members)).toBe(false)
+    expect(eventConcerns(ev('MutexCreated', lock), sel, members)).toBe(false)
+    expect(eventConcerns(ev('coroutine.started', { coroutineId: 'c-2' }), sel)).toBe(false)
+  })
+})
+
 describe('resourceNames', () => {
   it('names locks, semaphores and channels by their labels', () => {
     const names = resourceNames([

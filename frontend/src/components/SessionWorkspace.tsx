@@ -29,6 +29,9 @@ import { Inspector } from './workspace/Inspector/Inspector'
 import { EventsPanel } from './workspace/EventsPanel'
 import { DockTabs, DockTabPanel, type DockTabId } from './workspace/DockTabs'
 import { LearnPanel } from './workspace/LearnPanel'
+import { StoryPanel } from './workspace/StoryPanel'
+import { storyFor } from '@/content/gallery/story-anchors'
+import { storyHeld } from '@/lib/story'
 import { SessionSummary } from './workspace/SessionSummary'
 import { EvidencePanels } from './workspace/EvidencePanels'
 import { ChecksModal, countFailedChecks } from './workspace/ChecksModal'
@@ -67,6 +70,7 @@ import {
   poolFor,
   resolveChoice,
   revealPlan,
+  cutPath,
   roundOptionLabel,
   withForced,
   ungroupedCount,
@@ -77,6 +81,8 @@ import {
   type RoundChoice,
 } from '@/lib/round-view'
 import type { RoundEntry } from '@/types/api'
+import { groupIdOf, groupSiblings, isGroupId, type NameGroup } from '@/lib/name-groups'
+import { GroupSummary } from './workspace/Inspector/GroupSummary'
 import { useOneMoment, type ShareBinding } from '@/hooks/use-one-moment'
 import { MomentSummary } from './workspace/MomentSummary'
 import { useSessionTimeline } from '@/hooks/use-session-timeline'
@@ -186,6 +192,7 @@ export function SessionWorkspace({
     droppedCount,
     reconnect,
     replayActive,
+    replayShedCount,
     enterReplay,
     exitReplay,
     replay,
@@ -273,6 +280,8 @@ export function SessionWorkspace({
     replay,
     projectedAtCursor,
     allEvents,
+    // A session the server never trimmed starts at its oldest held event, whatever its seq (seqs also number ids).
+    sessionFirstSeq: session && session.trimmed === false ? (session.oldestRetainedSeq ?? undefined) : undefined,
   })
   const panelCoroutines = replayActive ? oneMoment.coroutines : (session?.coroutines ?? EMPTY_COROUTINES)
   // --- Big apps (S-12, T-4): one round at a time, find in all rounds, the vizcore toggle. Live and paused view
@@ -292,6 +301,7 @@ export function SessionWorkspace({
   // Shown past the cap: a found coroutine and its ancestors (S-12). Cleared when the user picks another view.
   const [forcedIds, setForcedIds] = useState<ReadonlySet<string>>(NO_IDS)
   const [reveal, setReveal] = useState<{ id: string; key: number } | undefined>(undefined)
+  const forget = useCallback(() => setForcedIds(NO_IDS), [])
   const vizRule = useMemo(() => ({ includeVizcore }), [includeVizcore])
   const choice = useMemo<RoundChoice>(() => {
     if (!roundsMode) return ALL_ROUNDS
@@ -310,6 +320,13 @@ export function SessionWorkspace({
     return new Set([...leakIds].filter(id => ids.has(id)))
   }, [roundsMode, leakIds, viewCoroutines])
 
+  // Group by name (S-12): on by default for an attached app, offered where every shown coroutine shares one round (a
+  // round, or the coroutines in no round); never in All rounds, where two siblings can be in different rounds.
+  const [groupByName, setGroupByName] = useState<boolean | null>(null)
+  const groupingAvailable = roundsMode && (choice.kind === 'round' || choice.kind === 'ungrouped')
+  const grouping = groupingAvailable && (groupByName ?? attached)
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(NO_IDS)
+
   // Active-only "What's running now" derivation (D-08). Default the live view to
   // the non-terminal set, cap rendered nodes at NODE_CAP, and surface the
   // remainder ("N more") + the collapsed completed aggregate ("Show completed").
@@ -325,7 +342,7 @@ export function SessionWorkspace({
   }, [viewCoroutines])
   // What the tree/graph render, and how many the cap leaves out — both from the
   // same pool, so "N more" always counts what this view would have shown.
-  const { renderedCoroutines, cap } = useMemo(() => {
+  const { renderedCoroutines, cap, groups, poolSize } = useMemo(() => {
     // A named chip selects that state explicitly across the whole snapshot, and
     // bypasses the active-only default — you asked for completed, you get
     // completed. With no chip, the active set; everything when the user expands
@@ -337,9 +354,25 @@ export function SessionWorkspace({
           ? viewCoroutines
           : activeCoroutines
     // A coroutine Find revealed is drawn even past the cap, with its ancestors, whatever the chip shows (S-12).
-    const capped = capRendered(withForced(pool, viewCoroutines, forcedIds), NODE_CAP, forcedIds)
-    return { renderedCoroutines: capped.rendered, cap: capped }
-  }, [stateFilter, showCompleted, allFinished, viewCoroutines, activeCoroutines, viewLeakIds, forcedIds])
+    const shown = withForced(pool, viewCoroutines, forcedIds)
+    if (!grouping) {
+      const capped = capRendered(shown, NODE_CAP, forcedIds)
+      return { renderedCoroutines: capped.rendered, cap: capped, groups: undefined, poolSize: shown.length }
+    }
+    // Grouped over the whole view (every state), drawn from what the chip shows: a member finishing never dissolves
+    // its group. The cap counts cards; the groups on a found coroutine's path stay drawn with it.
+    const shownIds = new Set(shown.map(c => c.id))
+    // (The shown coroutines are always part of the view: the pool and the forced path are both drawn from it.)
+    const grouped = groupSiblings(viewCoroutines, expandedGroups, shownIds)
+    const forcedCards = new Set(forcedIds)
+    for (const c of shown) {
+      const gid = forcedIds.has(c.id) ? groupIdOf(c) : null
+      if (gid && grouped.groups.has(gid)) forcedCards.add(gid)
+    }
+    const capped = capRendered(grouped.nodes, NODE_CAP, forcedCards)
+    // The note names the coroutines in the view (every state), as the group cards' counts do.
+    return { renderedCoroutines: capped.rendered, cap: capped, groups: grouped.groups, poolSize: viewCoroutines.length }
+  }, [stateFilter, showCompleted, allFinished, viewCoroutines, activeCoroutines, viewLeakIds, forcedIds, grouping, expandedGroups])
 
   // Unfinished children per parent, over the whole snapshot: the "Waiting for N
   // child coroutines" line must not shrink when a chip or the cap hides them.
@@ -358,9 +391,11 @@ export function SessionWorkspace({
   const childTotals = useMemo(() => {
     if (cap.hidden === 0) return undefined
     const totals = new Map<string, number>()
-    for (const c of viewCoroutines) if (c.parentId) totals.set(c.parentId, (totals.get(c.parentId) ?? 0) + 1)
+    // Grouped, a parent's children are cards (a group counts once), as drawn.
+    const cards = groups ? groupSiblings(viewCoroutines, expandedGroups).nodes : viewCoroutines
+    for (const c of cards) if (c.parentId) totals.set(c.parentId, (totals.get(c.parentId) ?? 0) + 1)
     return totals
-  }, [cap.hidden, viewCoroutines])
+  }, [cap.hidden, viewCoroutines, groups, expandedGroups])
 
   /** Counts for the state bar — the whole snapshot, never the capped subset. */
   const stateCounts = useMemo(
@@ -399,6 +434,34 @@ export function SessionWorkspace({
     run: scenarioActions.run,
     onConsumed: onAutoRunConsumed ?? noAutoRun,
   })
+
+  // Story mode (S-9): the demo's guide as chapters, read from the newest events the page holds.
+  const story = useMemo(() => (demoId ? storyFor(demoId) : null), [demoId])
+  const held = useMemo(
+    () =>
+      storyHeld({
+        live: { events: allEvents, shedCount: streamEnabled ? droppedCount : 0 },
+        frozen: replayActive ? { events: replay.events, shedCount: replayShedCount } : null,
+        streaming: streamEnabled,
+        serverTrimmed: session?.trimmed === true,
+        coroutines: session?.coroutines ?? EMPTY_COROUTINES,
+      }),
+    [allEvents, streamEnabled, droppedCount, replayActive, replay.events, replayShedCount, session?.trimmed, session?.coroutines],
+  )
+  const recording = recordReplay.isArming || recordReplay.isRecording
+  // Reveal moves the page's one moment to the anchor (S-2, S-11): the replay cursor at that event,
+  // its coroutine selected, the whole tree shown. Never while a recording runs (it would stall it).
+  const revealMoment = (seq: number, coroutineId: string) => {
+    if (recording) return
+    setStateFilter('all')
+    setShowCompleted(true)
+    setSelection({ kind: 'coroutine', id: coroutineId })
+    // Seek in the frozen replay only when it is what the story read its facts from; otherwise
+    // freeze those events, so the tree at the moment is the one the chapter describes.
+    const at = replayActive && held.events === replay.events ? replay.events.findIndex(e => e.seq === seq) : -1
+    if (at >= 0) replay.seekTo(at)
+    else enterReplay(held.events, { atSeq: seq, shedCount: held.shedCount })
+  }
   // The run's length over everything the page has held: the history loaded
   // with it and whatever streamed in since — kept when the view is paused.
   const runSpanNanos = useRecordedSpan(storedEvents ?? [], liveEvents)
@@ -470,7 +533,7 @@ export function SessionWorkspace({
   }
   const pickView = (next: RoundChoice) => {
     setPickedChoice(next)
-    setForcedIds(NO_IDS)
+    forget()
   }
   // Re-read the list after a snapshot refresh while live, at most every 15 s; never while paused (it would run ahead
   // of the frozen tree).
@@ -495,6 +558,17 @@ export function SessionWorkspace({
     if (plan.showCompleted) setShowCompleted(true)
     setIncludeVizcore(plan.includeVizcore)
     setForcedIds(plan.forcedIds)
+    // Every collapsed group on the way to it opens: its own, and those its ancestors are members of (S-12).
+    const byId = new Map(panelCoroutines.map(c => [c.id, c]))
+    // The whole path, however deep; a coroutine met twice (a cycle in the reported parents) ends the walk.
+    const toOpen: string[] = []
+    const walked = new Set<string>()
+    for (let c = byId.get(id); c && !walked.has(c.id); c = c.parentId ? byId.get(c.parentId) : undefined) {
+      walked.add(c.id)
+      const gid = groupIdOf(c)
+      if (gid) toOpen.push(gid)
+    }
+    if (toOpen.length > 0) setExpandedGroups(prev => new Set([...prev, ...toOpen]))
     setSelection({ kind: 'coroutine', id })
     selectDockTab('inspector')
     // The Inspector is where a found coroutine is read: a maximised main view gives the dock back.
@@ -541,6 +615,9 @@ export function SessionWorkspace({
       vizcoreCount={vizcoreN}
       includeVizcore={includeVizcore}
       onToggleVizcore={setIncludeVizcore}
+      groupToggle={
+        groupingAvailable ? { checked: grouping, onChange: (next: boolean) => setGroupByName(next) } : undefined
+      }
       originUnknown={attached && session?.origin === 'UNKNOWN'}
       find={{
         results: findView,
@@ -571,9 +648,25 @@ export function SessionWorkspace({
         : choice.kind === 'unknown'
           ? 'unknown'
           : 'all'
+  // A found coroutine deeper than Find draws (S-12): from what is actually drawn, and only while it is.
+  const foundPathCut = useMemo(
+    () =>
+      reveal && forcedIds.size > 0
+        ? cutPath(reveal.id, viewCoroutines, new Set(renderedCoroutines.map(c => c.id)))
+        : null,
+    [reveal, forcedIds, viewCoroutines, renderedCoroutines],
+  )
   const canvasNotes: CanvasNote[] = [
     ...(liveStream && liveEvents.length >= LIVE_EVENTS_MAX
       ? [{ key: 'history' as const, text: `The Events tab, the second lines and the Locks, Channels, Flows and Jobs sections read the newest ${LIVE_EVENTS_MAX.toLocaleString('en-US')} events this page received.` }]
+      : []),
+    ...(foundPathCut
+      ? [
+          {
+            key: 'path' as const,
+            text: `The coroutine you found is ${foundPathCut.depth.toLocaleString('en-US')} levels below its round’s root: ${foundPathCut.missing.toLocaleString('en-US')} of its ancestors are not drawn.`,
+          },
+        ]
       : []),
     ...(isLiveView && (session?.summaryOnlyCount ?? 0) > 0
       ? [{ key: 'summary-only' as const, text: `${session!.summaryOnlyCount!.toLocaleString('en-US')} coroutines are known only from their summaries (their events were trimmed) and are not drawn.` }]
@@ -616,12 +709,35 @@ export function SessionWorkspace({
     }),
     [coroutineIds],
   )
+  // The selected group, its members (for the Events tab) and the names of its members (S-12).
+  const selectedGroup: NameGroup | undefined = selection?.kind === 'group' ? groups?.get(selection.id) : undefined
+  const selectedGroupMembers = useMemo(
+    () => (selectedGroup ? new Set(selectedGroup.memberIds) : undefined),
+    [selectedGroup],
+  )
+  const memberLabel = useCallback(
+    (id: string) => panelCoroutines.find(c => c.id === id)?.label ?? id,
+    [panelCoroutines],
+  )
+  const toggleGroup = useCallback((id: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
   const selectionLabel =
     selection === null
       ? null
       : selection.kind === 'coroutine'
         ? (selectedCoroutine?.label ?? selection.id)
-        : (names.get(selection.id) ?? selection.id)
+        : selection.kind === 'group'
+          ? (() => {
+              const g = groups?.get(selection.id)
+              return g ? `${g.label} · ${g.memberIds.length.toLocaleString('en-US')} coroutines` : selection.id
+            })()
+          : (names.get(selection.id) ?? selection.id)
   // A selection made inside a tab keeps you there; a resource opens its
   // Evidence section (S-2), which EvidencePanels unfolds and scrolls to.
   const selectFromEvent = (next: Selection) => {
@@ -652,9 +768,11 @@ export function SessionWorkspace({
     const gone =
       selection.kind === 'coroutine'
         ? !coroutineIds.has(selection.id) && !keptIds.has(selection.id) && !summaryPending
-        : !resources.has(selection.id) && !replayActive
+        : selection.kind === 'group'
+          ? !groups?.has(selection.id)
+          : !resources.has(selection.id) && !replayActive
     if (gone) setSelection(null)
-  }, [selection, coroutineIds, keptIds, resources, replayActive, summaryPending])
+  }, [selection, coroutineIds, keptIds, resources, replayActive, summaryPending, groups])
   const pendingSelectionLabel =
     replayActive && selection?.kind === 'coroutine' && !selectedCoroutine
       ? (oneMoment.replayLabels.get(selection.id) ??
@@ -849,7 +967,7 @@ export function SessionWorkspace({
             onToggleCompleted={() => {
               setShowCompleted(prev => !prev)
               // A filter the user picks after a find is theirs: the found path is no longer forced (S-12).
-              setForcedIds(NO_IDS)
+              forget()
             }}
             capNote={capNote({
               total: cap.total,
@@ -858,6 +976,7 @@ export function SessionWorkspace({
               cap: NODE_CAP,
               scope: capScope,
               canFind: roundsMode && choice.kind !== 'unknown',
+              coroutines: groups && groups.size > 0 ? poolSize : undefined,
             })}
             notes={canvasNotes}
             roundBar={roundBar}
@@ -876,7 +995,7 @@ export function SessionWorkspace({
                 filter={stateFilter}
                 onFilterChange={next => {
                   setStateFilter(next)
-                  setForcedIds(NO_IDS)
+                  forget()
                 }}
                 // Shown only once a run has actually failed something (M-3): a chip
                 // reading zero for a session nobody validated is a claim we cannot make.
@@ -888,15 +1007,18 @@ export function SessionWorkspace({
               />
             }
             isDemo={isDemo}
-            selectedCoroutineId={selectedCoroutineId}
+            // A selected group is ringed like a coroutine (S-12).
+            selectedCoroutineId={selection?.kind === 'group' ? selection.id : selectedCoroutineId}
             activity={activity}
             // One selection in every mode (S-2, S-11): in replay and in a shared
             // link the Inspector shows it at the page's moment (Part 8, M-5).
             onSelect={(id: string) => {
-              setSelection({ kind: 'coroutine', id })
+              setSelection(isGroupId(id) ? { kind: 'group', id } : { kind: 'coroutine', id })
               // A selection is read in the Inspector: show it (S-4).
               selectDockTab('inspector')
             }}
+            groups={groups}
+            onToggleGroup={toggleGroup}
             panelRef={panelRef}
             maximised={dock.maximised}
             onToggleMaximise={dock.toggleMaximise}
@@ -930,6 +1052,23 @@ export function SessionWorkspace({
             }
           >
             <DockTabPanel id="inspector" selected={dockTab === 'inspector'}>
+              {selectedGroup && (
+                <GroupSummary
+                  sessionId={sessionId}
+                  group={selectedGroup}
+                  parentLabel={
+                    selectedGroup.parentId
+                      ? (panelCoroutines.find(c => c.id === selectedGroup.parentId)?.label ?? selectedGroup.parentId)
+                      : null
+                  }
+                  memberLabel={memberLabel}
+                  onRevealMember={chooseFound}
+                  onToggle={toggleGroup}
+                  onClearSelection={() => setSelection(null)}
+                />
+              )}
+              {/* Kept mounted under a group's summary, so its queries stay subscribed (#124). */}
+              <div hidden={!!selectedGroup}>
               <Inspector
                 sessionId={sessionId}
                 coroutine={selectedCoroutine}
@@ -965,6 +1104,7 @@ export function SessionWorkspace({
                 // While the Timeline is the main view, its one sentence for the selected row (S-10).
                 sentence={sessionTimeline.sentence}
               />
+              </div>
             </DockTabPanel>
             <DockTabPanel id="evidence" selected={dockTab === 'evidence'}>
               {/* What the resources did (M-1/M-2), and — where the rung is the
@@ -996,6 +1136,7 @@ export function SessionWorkspace({
                   events={panelEvents}
                   selection={selection}
                   selectionLabel={selectionLabel}
+                  groupMembers={selectedGroupMembers}
                   subjectOf={subjectOf}
                   onSelect={selectFromEvent}
                   onShowAll={() => setSelection(null)}
@@ -1004,7 +1145,18 @@ export function SessionWorkspace({
               )}
             </DockTabPanel>
             <DockTabPanel id="learn" selected={dockTab === 'learn'}>
-              <LearnPanel>
+              <LearnPanel
+                story={
+                  story && (
+                    <StoryPanel
+                      chapters={story}
+                      held={held}
+                      onReveal={revealMoment}
+                      revealBlocked={recording ? 'Recording…' : null}
+                    />
+                  )
+                }
+              >
                 {/* Scenario Pipeline View - shown for realistic scenarios */}
                 {scenarioId === 'order-processing' && allEvents.length > 0 && (
                   <OrderProcessingView events={allEvents} />

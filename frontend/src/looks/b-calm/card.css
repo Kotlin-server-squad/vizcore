@@ -109,3 +109,47 @@
   font-size: 13px;
   line-height: 17px;
 }
+
+/* Part 6 (S-12): a group of siblings, calm: a soft dashed card, the name and size, the states in words, Expand as a
+   small pill at the top right. "+N below them" is in the Inspector's summary. */
+[data-card-look='b'] [data-look-part='node'][data-kind='group'] {
+  border-style: dashed;
+  border-color: hsl(var(--heroui-default-300));
+}
+[data-card-look='b'] [data-kind='group'] [data-look-part='node-body'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding-right: 60px;
+}
+[data-card-look='b'] [data-kind='group'] [data-look-part='node-body'] > * {
+  margin-top: 0;
+}
+[data-card-look='b'] [data-look-part='group-name'] {
+  max-width: 110px;
+  font-size: 14px;
+  font-weight: 600;
+}
+[data-card-look='b'] [data-look-part='group-count'],
+[data-card-look='b'] [data-look-part='group-mix'] {
+  font-size: 13px;
+}
+[data-card-look='b'] [data-look-part='group-mix'] {
+  flex-basis: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-card-look='b'] [data-look-part='group-below'] {
+  display: none;
+}
+[data-card-look='b'] [data-look-part='group-expand'] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 13px;
+}

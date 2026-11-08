@@ -1,6 +1,6 @@
 /**
  * The page's one selection (spec S-2): a coroutine, or a resource — a lock, a semaphore or a channel.
- * Groups (S-12) join it with Part 6.
+ * And a group of siblings (S-12, Part 6).
  *
  * What an event is about: its coroutine; for lock and permit events, the requester, acquirer or releaser;
  * otherwise the resource it names. A wrapper used outside any coroutine records the coroutine as
@@ -13,6 +13,8 @@ export type ResourceKind = 'mutex' | 'semaphore' | 'channel'
 export type Selection =
   | { kind: 'coroutine'; id: string }
   | { kind: 'resource'; resource: ResourceKind; id: string }
+  /** Siblings grouped by name (S-12), by the group's id (`name-groups.ts`). */
+  | { kind: 'group'; id: string }
 
 /** The fields of the events this module reads; each kind carries some of them. */
 interface Fields {
@@ -58,11 +60,12 @@ export function eventSubject(event: VizEvent): Selection | null {
   return null
 }
 
-/** Whether the event belongs in the Events tab while this is selected. */
-export function eventConcerns(event: VizEvent, selection: Selection): boolean {
-  if (selection.kind === 'coroutine') {
+/** Whether the event belongs in the Events tab while this is selected; a group's are its [members]' events. */
+export function eventConcerns(event: VizEvent, selection: Selection, members?: ReadonlySet<string>): boolean {
+  if (selection.kind === 'coroutine' || selection.kind === 'group') {
     const subject = eventSubject(event)
-    return subject?.kind === 'coroutine' && subject.id === selection.id
+    if (subject?.kind !== 'coroutine') return false
+    return selection.kind === 'coroutine' ? subject.id === selection.id : !!members?.has(subject.id)
   }
   const f = fieldsOf(event)
   return f[RESOURCE_ID[selection.resource]] === selection.id || f.resourceId === selection.id

@@ -80,7 +80,9 @@ export interface RoundBarProps {
     onOpenRound: (groupKey: string) => void
     onClose: () => void
   }
-  /** More controls after the toggles (Part 6b: Group by name). */
+  /** "Group by name" (S-12), where the view offers it. */
+  groupToggle?: { checked: boolean; onChange: (next: boolean) => void }
+  /** More controls after the toggles. */
   children?: ReactNode
 }
 
@@ -108,6 +110,7 @@ export function RoundBar({
   onToggleVizcore,
   originUnknown,
   find,
+  groupToggle,
   children,
 }: RoundBarProps) {
   const pickerId = useId()
@@ -174,6 +177,17 @@ export function RoundBar({
             className="accent-primary"
           />
           {`vizcore connection (${vizcoreCount.toLocaleString('en-US')})`}
+        </label>
+      )}
+      {groupToggle && (
+        <label data-look-part="group-toggle" className="flex cursor-pointer items-center gap-1.5 text-default-600">
+          <input
+            type="checkbox"
+            checked={groupToggle.checked}
+            onChange={e => groupToggle.onChange(e.target.checked)}
+            className="accent-primary"
+          />
+          Group by name
         </label>
       )}
       {children}
