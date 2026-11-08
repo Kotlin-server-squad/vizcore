@@ -1420,7 +1420,10 @@ export interface components {
         MetricsResponse: {
             active: number;
             peak: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Events per second, counted at the backend's receipt time (an attached app's own clock is not used): the events received in the last 10 s divided by the time since the oldest of them (byOrigin divides by the whole 10 s); 0 for a database session rebuilt from stored events
+             */
             throughputPerSec: number;
             dispatcherUtilization: {
                 [key: string]: number;

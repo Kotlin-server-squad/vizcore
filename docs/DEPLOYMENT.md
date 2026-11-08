@@ -86,6 +86,49 @@ docker compose -f docker-compose.prod.yml up -d
 
 Logs are rotated at 10 MB with 3 files retained per service.
 
+### Run one backend instance
+
+Run exactly one backend instance: one per database with `STORAGE_TYPE=database`, one in all in
+memory mode. Scaling out is not supported yet. Several instances behind one load balancer, or
+sharing one database, do not coordinate with each other.
+
+Part of a session's state lives in the memory of the backend process, not in the database:
+
+- what the instance knows about an app's ingest connection: whether it is open, the app's
+  latest poll watermark, when its last data arrived, and whether delivery is uncertain. In
+  database mode a copy goes to the session row when the connection opens and closes, and at
+  most every 5 s in between; only the instance holding the socket knows the current state
+- the live stream: events and watermark signals reach only the streams opened on the
+  instance the app sends to
+- the health results kept briefly so that follow-up reads (Problems, a coroutine's details)
+  answer from exactly what the health saw
+- the correlation tokens an app uses to find its session, and, in memory mode, the sessions
+  themselves
+- the rate-limit buckets and the demo slots (`MAX_CONCURRENT_DEMOS`), which are counted per
+  instance
+
+An app's ingest socket and the browser's requests are separate connections. A load balancer can
+send them to different instances, and sticky sessions do not help because they are different
+clients. Then health, "delivery uncertain", Problems and the live views disagree depending on
+which instance answers:
+
+- the browser's instance sees the app's connection through a copy that is seconds old at best,
+  and once the browser has opened its live stream there, not at all, so health reads as if no
+  app were connected
+- a follow-up read that lands on an instance which did not keep the health's result rebuilds it
+  from the stored events, and may answer that the view is stale or show something else
+- the live view does not update, because the app's events arrive on the other instance
+- in memory mode a session exists only on the instance that created it; the others answer 404
+- an instance that starts against a database treats every connection still marked open as
+  left behind by a crash, so starting a second instance marks the first one's live sessions
+  "delivery uncertain"
+- the database retention spares a session an app is streaming into only when the app is
+  connected to the same instance, so another instance may delete it by age
+
+Deploying a new version: stop the old instance before starting the new one; a rolling update
+that runs both for a while has the same start-up effect. `docker compose up -d` with
+`docker-compose.prod.yml` already replaces the container that way.
+
 ## Monitoring
 
 ### Health check

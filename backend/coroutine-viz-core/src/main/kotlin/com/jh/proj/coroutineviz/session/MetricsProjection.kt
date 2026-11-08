@@ -30,8 +30,9 @@ import java.util.ArrayDeque
  *   active on [CoroutineCreated] and leaves the active set on
  *   [CoroutineCompleted]/[CoroutineCancelled]/[CoroutineFailed].
  * - **peak** — the monotonic high-water mark of [active] observed across the stream.
- * - **throughputPerSec** — observed events/sec over a sliding window of recent event
- *   arrival timestamps. This is intentionally honest about the poll-bounded source:
+ * - **throughputPerSec** — observed events/sec over a sliding window of the backend's receipt
+ *   times as the live bus delivers each event (0 once rebuilt from stored events, which carry no
+ *   receipt time). This is intentionally honest about the poll-bounded source:
  *   coroutines that start and finish between DebugProbes polls are never observed,
  *   so this reflects what the projection actually saw, not ground truth (Pitfall 2).
  * - **dispatcherUtilization** — `Map<dispatcherName, activeCount>` derived from the
@@ -61,11 +62,12 @@ import java.util.ArrayDeque
  *   read against `nowEpochMs` = [System.currentTimeMillis]). Epoch millis has a fixed
  *   origin, so leak age stays well-defined across a backend restart on the DB-rehydrated
  *   path (CR-01). It must NOT use [System.nanoTime].
- * - **Throughput** uses a per-process MONOTONIC [System.nanoTime] basis (event [tsNanos],
- *   evicted against a `nowNanos` read clock captured inside [snapshot]). nanoTime is
- *   immune to wall-clock adjustments, which is what a /s rate wants — but it is meaningless
- *   across processes, so on the DB-rehydrated path (no live arrivals) throughput correctly
- *   reads ~0.
+ * - **Throughput** uses the backend's MONOTONIC [System.nanoTime] basis: the time the live bus
+ *   delivered each event, evicted against a `nowNanos` read clock captured inside [snapshot].
+ *   Never an event's own `tsNanos`: an attached app stamps it on ITS JVM's nanoTime, which has
+ *   nothing to do with the backend's, so its events read as none or as an arbitrary rate. nanoTime
+ *   is immune to wall-clock adjustments, which is what a /s rate wants — but it is meaningless
+ *   across processes, so the DB-rehydrated path (no live arrivals) reads 0.
  * Collapsing these onto one clock would re-break either leak age (if forced onto nanoTime)
  * or throughput (if forced onto epoch millis) — see WR-04 / CR-01.
  */
@@ -80,8 +82,8 @@ class MetricsProjection(
     /** Monotonic high-water mark of [activeCoroutines] size. */
     private var peakActive = 0
 
-    /** Recent event arrival timestamps (tsNanos), bounded to the sliding window. */
-    private val recentEventTsNanos = ArrayDeque<Long>()
+    /** Recent event receipt times (the backend's nanoTime), bounded to the sliding window. */
+    private val recentReceiptNanos = ArrayDeque<Long>()
 
     // Per reported origin (spec C-3 `/metrics` by origin): which bucket each active coroutine is in, each bucket's active
     // count and peak, and a throughput window on ONE clock, the backend's receipt time as the live bus delivers each event
@@ -116,7 +118,7 @@ class MetricsProjection(
         synchronized(lock) {
             activeCoroutines.clear()
             peakActive = 0
-            recentEventTsNanos.clear()
+            recentReceiptNanos.clear()
             bucketOf.clear()
             activeByBucket.clear()
             peakByBucket.clear()
@@ -131,8 +133,10 @@ class MetricsProjection(
         synchronized(lock) {
             // The bucket before the event applies: a terminal event removes it, and still counts.
             val bucket = bucketFor(event)
+            val receiptNanos = System.nanoTime()
             applyLocked(event)
-            bucket?.let { recordReceipt(it, System.nanoTime()) }
+            recordArrival(receiptNanos)
+            bucket?.let { recordReceipt(it, receiptNanos) }
         }
     }
 
@@ -141,7 +145,6 @@ class MetricsProjection(
      * (the live [processEvent] path and the [rebuildFrom] replay both wrap this).
      */
     private fun applyLocked(event: VizEvent) {
-        recordArrival(event.tsNanos)
         when (event) {
             is CoroutineCreated -> {
                 val bucket = OriginBucket.of(event.origin)
@@ -164,8 +167,8 @@ class MetricsProjection(
             is CoroutineCancelled -> finished(event.coroutineId)
             is CoroutineFailed -> finished(event.coroutineId)
 
-            // Non-terminal lifecycle transitions keep the coroutine active; they
-            // are still observed events (counted toward throughput above).
+            // Non-terminal lifecycle transitions keep the coroutine active; on the live path
+            // they still count toward throughput (processEvent).
             is CoroutineStarted,
             is CoroutineSuspended,
             is CoroutineResumed,
@@ -176,12 +179,6 @@ class MetricsProjection(
         }
     }
 
-    /**
-     * Append [tsNanos] to the throughput window and bound it against the most recent
-     * arrival. The authoritative eviction for the rate happens in [computeThroughput]
-     * against the READ clock (WR-04) — this append-time trim only keeps the deque bounded
-     * between reads.
-     */
     private fun finished(coroutineId: String) {
         activeCoroutines.remove(coroutineId)
         bucketOf.remove(coroutineId)?.let { activeByBucket[it] = (activeByBucket[it] ?: 1) - 1 }
@@ -220,15 +217,21 @@ class MetricsProjection(
             }
         }
 
-    private fun recordArrival(tsNanos: Long) {
-        recentEventTsNanos.addLast(tsNanos)
-        evictOlderThan(tsNanos - THROUGHPUT_WINDOW_NANOS)
+    /**
+     * Append [receiptNanos] to the throughput window and bound it against the most recent
+     * receipt. The authoritative eviction for the rate happens in [computeThroughput]
+     * against the READ clock (WR-04) — this append-time trim only keeps the deque bounded
+     * between reads.
+     */
+    private fun recordArrival(receiptNanos: Long) {
+        recentReceiptNanos.addLast(receiptNanos)
+        evictOlderThan(receiptNanos - THROUGHPUT_WINDOW_NANOS)
     }
 
     /** Drop arrivals at or before [cutoffNanos] from the front of the window. */
     private fun evictOlderThan(cutoffNanos: Long) {
-        while (recentEventTsNanos.isNotEmpty() && recentEventTsNanos.peekFirst() < cutoffNanos) {
-            recentEventTsNanos.removeFirst()
+        while (recentReceiptNanos.isNotEmpty() && recentReceiptNanos.peekFirst() < cutoffNanos) {
+            recentReceiptNanos.removeFirst()
         }
     }
 
@@ -300,14 +303,14 @@ class MetricsProjection(
      */
     private fun computeThroughput(nowNanos: Long): Double {
         evictOlderThan(nowNanos - THROUGHPUT_WINDOW_NANOS)
-        if (recentEventTsNanos.size < 2) return 0.0
-        val firstRetained = recentEventTsNanos.peekFirst()
+        if (recentReceiptNanos.size < 2) return 0.0
+        val firstRetained = recentReceiptNanos.peekFirst()
         // Span from the oldest retained arrival up to the read clock (not last-arrival),
         // so the divisor keeps growing while the session is idle.
         val spanNanos = (nowNanos - firstRetained).coerceAtMost(THROUGHPUT_WINDOW_NANOS)
         if (spanNanos <= 0L) return 0.0
         val spanSeconds = spanNanos.toDouble() / NANOS_PER_SECOND
-        return recentEventTsNanos.size.toDouble() / spanSeconds
+        return recentReceiptNanos.size.toDouble() / spanSeconds
     }
 
     private data class ActiveCoroutine(

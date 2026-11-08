@@ -52,6 +52,8 @@ style:
       - '**/scenarios/PatternScenarios.kt'
       # The Sync demos' scripts, the same way.
       - '**/scenarios/SyncScenarios.kt'
+      # The Real life demos' scripts, the same way.
+      - '**/scenarios/RealLifeScenarios.kt'
     ignorePropertyDeclaration: true
     ignoreCompanionObjectPropertyDeclaration: true
     ignoreAnnotation: true

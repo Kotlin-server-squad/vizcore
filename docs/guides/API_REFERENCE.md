@@ -189,7 +189,8 @@ a failed round's failures, then the cancellations recorded after its first failu
 GET /api/sessions/{id}/metrics?leakThresholdMs={optional}
 ```
 
-Response `200`: `active`, `peak`, `throughputPerSec`, `dispatcherUtilization` (the whole session), `leaks` (coroutines
+Response `200`: `active`, `peak`, `throughputPerSec` (events per second at the backend's receipt time: those of the last 10 s over the time since the
+oldest of them; `0` for a database session rebuilt from stored events), `dispatcherUtilization` (the whole session), `leaks` (coroutines
 alive longer than the threshold, each with its `origin` and an age frozen at its last observation, or at the live
 watermark: the same rule as the health's long-lived list), `leakThresholdMs`, and `byOrigin` (`app`, `vizcore`,
 `unknown`: `captured`, `active`, `peak`, `throughputPerSec` — `null` for a database session rebuilt from stored events —
