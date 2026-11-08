@@ -117,7 +117,7 @@ internal fun readView(
             )
         is ViewBinding.Replay -> {
             val cursor = minOf(binding.atSeq, last)
-            val bound = SummaryBinding.bindAt(durable, allEvents, cursor)
+            val bound = SummaryBinding.bindAt(durable, allEvents, cursor, session.summaryLimits)
             val input =
                 base.copy(
                     summaries = bound.view,
@@ -166,7 +166,7 @@ private fun boundView(
     if (binding.transportRevision != null && binding.transportRevision != base.transport.revision) {
         throw StaleViewException("the transport changed since the health")
     }
-    val bound = SummaryBinding.bindAt(durable, allEvents, s)
+    val bound = SummaryBinding.bindAt(durable, allEvents, s, session.summaryLimits)
     val watermark =
         binding.watermarkNanos?.let { w ->
             base.watermark?.takeIf { it.appNanos == w } ?: WatermarkObservation(w, appEpochMs = 0, receivedEpochMs = 0)

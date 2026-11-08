@@ -40,6 +40,17 @@ session:
   maxCount: ${SESSION_MAX_COUNT:100}
   checkIntervalMs: ${SESSION_CHECK_INTERVAL_MS:60000}
 
+health:
+  summaries:
+    # Per-session summary table behind the health view (spec 2026-10-21, C-2). Read at startup; restart to change.
+    # Each session keeps a full summary for up to fullSummaryTarget coroutines (finished ones beyond it shrink to
+    # small stubs) and tracks at most trackedCapacity coroutines in all; later ones are only counted ("N coroutines
+    # beyond capacity were not tracked"). Applies to in-memory sessions, database sessions and replays alike.
+    # A value that is not a positive whole number falls back to its default with a warning; a target above the
+    # capacity is lowered to the capacity.
+    fullSummaryTarget: ${HEALTH_FULL_SUMMARY_TARGET:50000}
+    trackedCapacity: ${HEALTH_TRACKED_CAPACITY:100000}
+
 sse:
   # Keep-alive for GET /api/sessions/{id}/stream. A named `heartbeat` event (not an SSE
   # comment — browser EventSource drops comments) is merged into the frame flow every

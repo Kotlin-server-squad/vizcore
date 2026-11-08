@@ -24,7 +24,7 @@ import io.ktor.server.application.log
  * T-12-11). `tracing.shutdown()` is registered on [ApplicationStopping] to flush pending spans
  * before the process exits (the `DbRetentionPolicy.stop()` analog).
  *
- * Call from `Application.module()` on its own line, right after `configureStorage(maxEvents)`.
+ * Call from `Application.module()` on its own line, right after `configureStorage(...)`.
  */
 fun Application.configureObservability() {
     val enabled =

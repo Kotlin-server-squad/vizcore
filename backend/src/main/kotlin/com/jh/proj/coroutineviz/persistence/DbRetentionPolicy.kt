@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.persistence
 
+import com.jh.proj.coroutineviz.health.SummaryLimits
 import com.jh.proj.coroutineviz.persistence.tables.EventsTable
 import com.jh.proj.coroutineviz.persistence.tables.SessionsTable
 import com.jh.proj.coroutineviz.persistence.tables.SharesTable
@@ -53,6 +54,8 @@ import kotlin.time.Instant
  * @property onSessionDeleted called with each deleted session's id after the delete commits, so
  *   open streams and ingest sockets of those sessions are closed (the application passes
  *   [com.jh.proj.coroutineviz.session.SessionManager.notifySessionDeleted]).
+ * @property summaryLimits the limits the trim folds the session's summary checkpoint with: the ones every session
+ *   of the store is built with (`health.summaries.*`).
  * @property streaming the sessions an app is streaming into, which are never deleted by age (#261);
  *   the application passes [com.jh.proj.coroutineviz.routes.IngestConnections]. The check and the
  *   delete run as one decision no new socket can register into. Sockets are tracked per process, so
@@ -67,6 +70,7 @@ class DbRetentionPolicy(
     private val clock: () -> Long = System::currentTimeMillis,
     private val onSessionDeleted: (String) -> Unit = {},
     private val streaming: StreamingSessions = StreamingSessions.None,
+    private val summaryLimits: SummaryLimits = SummaryLimits.DEFAULT,
 ) {
     private val logger = LoggerFactory.getLogger(DbRetentionPolicy::class.java)
     private var job: Job? = null
@@ -190,7 +194,7 @@ class DbRetentionPolicy(
                 // smallest kept seq, and anything strictly below it is trimmed.
                 val keepCutoffSeq = seqs.sortedDescending()[maxEventsPerSession - 1]
                 // What the deleted events told is kept in the session's summary checkpoint first (spec C-4).
-                SummaryCheckpoints.foldBelow(sessionId, keepCutoffSeq)
+                SummaryCheckpoints.foldBelow(sessionId, keepCutoffSeq, summaryLimits)
                 EventsTable.deleteWhere {
                     (EventsTable.sessionId eq sessionId) and (EventsTable.seq less keepCutoffSeq)
                 }

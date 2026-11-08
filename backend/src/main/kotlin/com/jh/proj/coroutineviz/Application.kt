@@ -2,6 +2,7 @@ package com.jh.proj.coroutineviz
 
 import com.jh.proj.coroutineviz.auth.ApiKeyPrincipal
 import com.jh.proj.coroutineviz.auth.UserPrincipal
+import com.jh.proj.coroutineviz.health.SummaryLimits
 import com.jh.proj.coroutineviz.observability.configureObservability
 import com.jh.proj.coroutineviz.persistence.DatabaseFactory
 import com.jh.proj.coroutineviz.persistence.DbRetentionPolicy
@@ -60,6 +61,9 @@ const val LOGIN_RATE_LIMIT_NAME = "login"
 /** The limits [configureRateLimit] installed, read from the `rateLimit.*` config block. */
 internal val RateLimitPolicyKey = AttributeKey<RateLimitPolicy>("RateLimitPolicy")
 
+/** The summary-table limits `module()` read from `health.summaries.*`, for whatever builds a table later. */
+internal val SummaryLimitsKey = AttributeKey<SummaryLimits>("SummaryLimits")
+
 /** True when the shared-read [RateLimit] scope was installed (config-gated). */
 val SharedRateLimitEnabledKey = AttributeKey<Boolean>("SharedRateLimitEnabled")
 
@@ -84,9 +88,12 @@ fun Application.module() {
             .propertyOrNull("session.maxEvents")
             ?.getString()
             ?.toIntOrNull() ?: 10_000
-    SessionManager.configure(maxEventsPerSession = maxEvents)
+    // Summary-table limits (spec C-2) for every session's health: in memory, in the database and in replays.
+    val summaryLimits = SummaryLimitsConfig.fromConfig(environment.config)
+    attributes.put(SummaryLimitsKey, summaryLimits)
+    SessionManager.configure(maxEventsPerSession = maxEvents, summaryLimits = summaryLimits)
 
-    configureStorage(maxEvents)
+    configureStorage(maxEvents, summaryLimits)
 
     // OTEL-01 construction gate: builds the OTel SDK + per-session span exporter ONLY when
     // observability.otel.enabled=true; returns immediately (constructs nothing) when off.
@@ -291,11 +298,14 @@ internal data class RateLimitPolicy(
  *
  * Persistence does NOT force auth on (D-04b); auth wiring is Plan 02's concern.
  */
-private fun Application.configureStorage(maxEvents: Int) {
+private fun Application.configureStorage(
+    maxEvents: Int,
+    summaryLimits: SummaryLimits,
+) {
     val storageType = environment.config.propertyOrNull("storage.type")?.getString() ?: "memory"
     if (storageType.equals("database", ignoreCase = true)) {
         val db = DatabaseFactory.init(environment.config)
-        SessionManager.useStore(ExposedSessionStore(db, maxEvents = maxEvents))
+        SessionManager.useStore(ExposedSessionStore(db, maxEvents = maxEvents, summaryLimits = summaryLimits))
         // A connection open when the previous process stopped makes its session uncertain, then ingest state persists.
         ExposedIngestStatePersistence(db).also {
             it.sweepOpenMarkers()
@@ -341,6 +351,7 @@ internal fun Application.dbRetentionPolicy(db: org.jetbrains.exposed.v1.jdbc.Dat
             cfg.propertyOrNull("storage.retention.cleanupIntervalMinutes")?.getString()?.toLongOrNull() ?: 60,
         onSessionDeleted = SessionManager::notifySessionDeleted,
         streaming = IngestConnections,
+        summaryLimits = attributes.getOrNull(SummaryLimitsKey) ?: SummaryLimitsConfig.fromConfig(cfg),
     )
 }
 
