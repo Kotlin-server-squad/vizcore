@@ -10,7 +10,8 @@ interface HomeHeroProps {
   /** Another demo is starting; one start at a time. */
   isDisabled: boolean
   onWatch: () => void
-  onConnect: () => void
+  /** Absent on a public demo server, where a visitor cannot connect an app. */
+  onConnect?: () => void
 }
 
 /**
@@ -49,9 +50,11 @@ export function HomeHero({ compact, isStarting, isDisabled, onWatch, onConnect }
           >
             Watch a checkout run
           </Button>
-          <Button variant="bordered" size={compact ? 'md' : 'lg'} onPress={onConnect}>
-            Connect your app
-          </Button>
+          {onConnect && (
+            <Button variant="bordered" size={compact ? 'md' : 'lg'} onPress={onConnect}>
+              Connect your app
+            </Button>
+          )}
         </div>
         <p className="text-sm text-default-500">About 15 seconds. Nothing to install. Runs on this server.</p>
       </div>

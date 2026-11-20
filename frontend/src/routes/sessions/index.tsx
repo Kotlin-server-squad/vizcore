@@ -4,6 +4,7 @@ import { Layout } from '@/components/Layout'
 import { SessionsSidebar } from '@/components/sessions/SessionsSidebar'
 import { ConnectWizard } from '@/components/connect/ConnectWizard'
 import { NewDemoSessionModal } from '@/components/sessions/NewDemoSessionModal'
+import { usePublicDemo } from '@/hooks/use-public-demo'
 
 export const Route = createFileRoute('/sessions/')({
   component: SessionsPage,
@@ -22,6 +23,8 @@ function SessionsPage() {
   // The empty state's "Run a demo scenario instead" opens the picker in place
   // here too, so the CTA is never dead in either placement (#139).
   const [demoOpen, setDemoOpen] = useState(false)
+  // A public demo's visitor cannot connect an app: no Connect, no wizard.
+  const publicDemo = usePublicDemo()
 
   return (
     <Layout>
@@ -29,9 +32,10 @@ function SessionsPage() {
         <SessionsSidebar
           onConnect={() => setWizardOpen(true)}
           onNewDemo={() => setDemoOpen(true)}
+          publicDemo={publicDemo}
         />
       </div>
-      <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
+      {!publicDemo && <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />}
       <NewDemoSessionModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
     </Layout>
   )

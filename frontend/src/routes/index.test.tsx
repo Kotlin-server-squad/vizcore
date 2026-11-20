@@ -24,6 +24,12 @@ vi.mock('@/hooks/use-sessions', () => ({
   useSessions: () => useSessionsMock(),
 }))
 
+// Whether the server is a public demo and the viewer its visitor (hooks/use-public-demo).
+const usePublicDemoMock = vi.fn(() => false)
+vi.mock('@/hooks/use-public-demo', () => ({
+  usePublicDemo: () => usePublicDemoMock(),
+}))
+
 const useScenariosMock = vi.fn()
 vi.mock('@/hooks/use-scenarios', () => ({ useScenarios: () => useScenariosMock() }))
 
@@ -62,6 +68,7 @@ const precedes = (a: Element, b: Element) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  usePublicDemoMock.mockReturnValue(false)
   localStorage.clear()
   startState.preparing = null
   startState.preparingVariant = null
@@ -248,5 +255,25 @@ describe('root route: the front door', () => {
     expect(screen.getByRole('button', { name: /new demo session/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^compare$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+  })
+
+  it('on a public demo server offers no Connect and no wizard, and says how to connect your own app', () => {
+    usePublicDemoMock.mockReturnValue(true)
+    render(<HomePage />)
+    expect(screen.queryByRole('button', { name: /connect/i })).not.toBeInTheDocument()
+    expect(wizard).not.toHaveBeenCalled()
+    // The front door's hero keeps the demo, without the way to connect.
+    expect(screen.getByRole('button', { name: 'Watch a checkout run' })).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('This is a public demo.')
+    // What a visitor can do stays.
+    expect(screen.getByRole('button', { name: /new demo session/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^compare$/i })).toBeInTheDocument()
+  })
+
+  it('on any other server keeps the wizard and shows no note', () => {
+    render(<HomePage />)
+    expect(wizard).toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Connect your app' })).toBeInTheDocument()
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 })

@@ -134,6 +134,10 @@ export function describeApiError(error: unknown, subject = 'This resource'): Des
         retryable: false,
       }
     }
+    // A public demo server (PUBLIC_DEMO_MODE) says in its own words what a visitor cannot do.
+    if (error.code === 'public-demo') {
+      return { kind: 'unauthorized', title: 'Not available on the public demo', message: error.message, retryable: false }
+    }
     // 403 is not "please sign in": the request was understood and refused. Besides
     // missing access, a vizcore server answers it when the page's address is not in
     // its allowed origins (cors.allowedOrigins).

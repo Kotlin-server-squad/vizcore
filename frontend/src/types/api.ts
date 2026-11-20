@@ -1023,3 +1023,13 @@ export interface LeakDto {
   label: string | null
   aliveMs: number
 }
+
+// The capability flags on /health. Structurally matches the generated
+// `components["schemas"]["HealthStatus"]` (shared/api-types/generated.ts); older
+// servers send neither field.
+export interface HealthCapabilities {
+  /** Share links are available (only with the database). */
+  sharingEnabled?: boolean
+  /** A public demo server (PUBLIC_DEMO_MODE): visitors watch and run the built-in demos only. */
+  publicDemo?: boolean
+}

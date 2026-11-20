@@ -19,6 +19,9 @@
 | `LOOK_SURVEY_URL` | _(empty)_ | Optional absolute `http(s)` link to an outside survey. When set, a "Tell us more" link next to the vote opens it with `look=<id>` added; when empty, no link |
 | `HEALTH_FULL_SUMMARY_TARGET` | `50000` | Per session, how many coroutines keep a full summary for the health view (Problems, the Inspector). Past it, finished coroutines are reduced to a stub, oldest finished first, failed ones last: a stub keeps the coroutine's place in the tree, its state and whether it failed, but not its failure details, last suspension point or last thread. Running coroutines always stay full. Applies to in-memory and database sessions and to replays. Must be at most `HEALTH_TRACKED_CAPACITY` (a larger value is lowered to it, with a warning) |
 | `HEALTH_TRACKED_CAPACITY` | `100000` | Per session, how many coroutines the health view tracks at all (full summaries plus stubs). Later coroutines are only counted, and the page says "N coroutines beyond capacity were not tracked: health covers the first M". Memory: roughly 1 KB per tracked coroutine with a full summary and about 0.65 KB per stub (an estimate from one local measurement of synthetic coroutines, including ids, names and creation sites; long names cost more), so a session at the default capacity can hold some 65-95 MB. Size `JAVA_OPTS` and the container's memory limit for the number of busy sessions you keep. A value that is not a positive whole number falls back to the default with a warning in the log. A database session checkpointed under other limits keeps everything it has: under a smaller capacity it tracks no more coroutines, under a larger one it tracks more only if it had not reached its old capacity |
+| `PUBLIC_DEMO_MODE` | `false` | `true` makes this a server anyone may open: a visitor with no credential can list and open sessions and run the built-in demos, and nothing else. See [Public demo](#public-demo). Needs `STORAGE_TYPE=memory`; the backend refuses to start otherwise |
+| `TRUSTED_PROXY_HOPS` | `0` | How many reverse proxies stand between the visitor and the backend (the frontend image's nginx counts as one). `0` never reads `X-Forwarded-For`. See [Behind a reverse proxy](#behind-a-reverse-proxy) before setting it |
+| `SEED_USER`, `SEED_HASH_B64`, `SEED_ROLE`, `JWT_SECRET` | _(empty)_ | One user who can sign in on `/login`: the name, the Base64 of the password's Argon2id hash (see `auth.users` in `application.yaml`), the role (`viewer`, `runner` or `admin`; default `viewer`) and the secret the sign-in tokens are signed with. All empty: no user. With a user and a secret set, every request needs a credential, except on a public demo |
 | `JAVA_OPTS` | `-Xmx512m -Xms256m` | JVM options for backend container |
 | `TAG` | `latest` | Docker image tag for prod compose |
 | `BACKEND_PORT` | `8080` | Host port published for the backend (container port stays 8080) |
@@ -129,6 +132,82 @@ Deploying a new version: stop the old instance before starting the new one; a ro
 that runs both for a while has the same start-up effect. `docker compose up -d` with
 `docker-compose.prod.yml` already replaces the container that way.
 
+## Public demo
+
+A server on a public address where anyone can watch and run the built-in demos, and nobody
+without an admin credential can do more. People who want to see their own app run vizcore on
+their own machine (the README's Quickstart); a public demo is not the place for it.
+
+```bash
+PUBLIC_DEMO_MODE=true \
+CORS_ALLOWED_ORIGINS=https://demo.example.com \
+docker compose -f docker-compose.prod.yml up -d
+```
+
+It is off by default, and with it off nothing below applies.
+
+What a visitor (no credential) can do:
+
+- list and open sessions, and read everything about them: the live stream, events, replay,
+  export, health, Checks, compare
+- start a session for a built-in demo and run that demo in it, once. "Run again" opens a new
+  session. A demo runs only in a session that was started for it: not in a session an admin
+  opened for an app, and not in one started for another demo. `MAX_CONCURRENT_DEMOS`, `MAX_DEMO_RUN_SECONDS` and the rate limits apply as always
+
+What a visitor cannot do; each answers `403` with `"code": "public-demo"` and a sentence saying
+what is not open to visitors, never a `401`:
+
+- connect an app: open the ingest WebSocket, or create a session that is not for a built-in demo
+- post a scenario of their own (`POST /api/scenarios/custom`)
+- delete a session, which is also what Reset does, or change one in any other way. Any write
+  that is not listed above as allowed is refused, so a write added to the API later is closed to
+  visitors until it is opened on purpose
+- create, list or revoke share links
+- call the developer endpoints (`/api/viz/run-scenario-with-data`,
+  `/api/examples/dispatcher-scenario`, `/api/tests/run-all`) or the `GET /api/sync/...` runs that
+  open a session per call
+
+The page follows: on a public demo it shows no Connect, no Share, Reset session or Clear events,
+and no custom scenario builder, and the sessions list says that this is a public demo and how to
+run vizcore yourself.
+
+Everything on a public demo is public to read. Do not connect an app with private data to it.
+
+### Sessions do not pile up
+
+Public demo mode runs with `STORAGE_TYPE=memory` only. There `SESSION_MAX_AGE_MS` removes a
+session that has been idle that long and `SESSION_MAX_COUNT` caps their number; a visitor's new
+session removes the least recently active ones beyond the cap at once, not only at the next
+sweep. Because a visitor's demo runs once in a session, a session cannot be kept alive, or grown,
+by running demos into it over and over. A session an admin's app is streaming into is never
+removed, and counts toward the cap: if such sessions fill it by themselves, a visitor's new
+session is the one removed. With the database, sessions are kept for 30 days and their number has no
+cap, which is why the two settings together are refused at startup.
+
+### An admin on a public demo
+
+Optional. Configure one user with the admin role and a signing secret, and sign in on `/login`:
+
+```bash
+PUBLIC_DEMO_MODE=true \
+SEED_USER=owner SEED_HASH_B64=<base64 of the Argon2id hash> SEED_ROLE=admin \
+JWT_SECRET=<a long random string> \
+docker compose -f docker-compose.prod.yml up -d
+```
+
+An admin (a user or an API key with the `admin` role) can do everything, as on any server.
+Visitors still get in without signing in. A credential that is not an admin's is treated like a
+visitor, and one that is wrong gets `401`. `API_KEY` alone adds a `runner` key, not an admin.
+
+### Not covered
+
+Public demo mode decides who may do what. It does not cap how many people watch at once (open
+live streams), and all visitors share the `MAX_CONCURRENT_DEMOS` slots: when they are taken, the
+next demo gets "Server busy" for a few seconds. Put the server behind a reverse proxy and set
+`TRUSTED_PROXY_HOPS`, or every visitor shares one rate-limit bucket. Before you set it, make sure
+the backend port is not reachable past the proxy (see
+[Behind a reverse proxy](#behind-a-reverse-proxy)): `docker-compose.prod.yml` publishes it.
+
 ## Monitoring
 
 ### Health check
@@ -170,9 +249,55 @@ Expected headers:
 
 ### Rate limiting
 
-- API routes: 60 requests/minute per IP
-- Session creation: 10 requests/minute per IP
-- Exceeding limits returns HTTP 429
+Per client and minute (`rateLimit.*` in `application.yaml`, each with a `RATE_LIMIT_*_RPM`
+variable): 1200 reads, 300 writes, 120 live-stream or ingest connects, 10 new sessions, 10
+sign-in attempts. A client is the API key or user when the request has one, else its address.
+Exceeding a limit returns HTTP 429 with `Retry-After`.
+
+### Behind a reverse proxy
+
+The backend counts a caller without a credential by the address of the connection it arrives
+on. Behind a reverse proxy (Traefik, Cloudflare, the frontend image's nginx) that is the proxy,
+so all visitors share one bucket: one busy visitor uses up everyone's 10 new sessions a minute.
+
+`TRUSTED_PROXY_HOPS` tells the backend how many proxies stand in front of it. Each proxy must
+append the address it received the request from to `X-Forwarded-For`; Traefik and nginx with
+`$proxy_add_x_forwarded_for` do, and the frontend image's nginx is set up that way. With `N`
+hops the backend takes the `N`th entry from the right, which is the visitor as the outermost
+proxy saw them, and ignores everything to its left, which the visitor can make up.
+
+| Setup | `TRUSTED_PROXY_HOPS` |
+|---|---|
+| Backend port reachable directly | `0` (the default) |
+| Browser → frontend image (nginx) → backend | `1` |
+| Browser → Traefik → frontend image (nginx) → backend | `2` |
+| Browser → Cloudflare → Traefik → frontend image (nginx) → backend | `3` |
+| Browser → Traefik → backend (Traefik routes `/api` itself) | `1` |
+
+The number has to be exact, and the backend must be reachable through those proxies alone:
+
+- too high, or the backend port also published directly: the entry the backend reads is one the
+  visitor sent, so anyone can pick a new bucket for every request by sending their own
+  `X-Forwarded-For`
+- too low: a proxy is counted as the visitor, which is the shared bucket again
+
+Two things the table takes for granted:
+
+- **The backend port is closed to the outside.** `docker-compose.prod.yml` publishes it on every
+  interface (`${BACKEND_PORT:-8080}:8080`). Before setting `TRUSTED_PROXY_HOPS` to 1 or more with
+  that file, bind it to the machine itself (`"127.0.0.1:${BACKEND_PORT:-8080}:8080"`), or remove
+  the `ports:` entry when the proxy reaches the backend over the Docker network.
+- **Each proxy trusts the one before it, and appends.** A proxy that does not trust its upstream
+  replaces `X-Forwarded-For` instead of adding to it. Traefik trusts none by default: for the
+  Cloudflare row it must list Cloudflare's address ranges in
+  `entryPoints.<name>.forwardedHeaders.trustedIPs`, or it writes the Cloudflare edge's address
+  over the visitor's. The backend then finds fewer entries than hops and counts by the
+  connection's address, the shared bucket again; with the number lowered to match, it counts
+  per Cloudflare edge, not per visitor. An nginx of your own in the chain needs
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`.
+
+`0` never reads the header. A request with fewer entries than hops, or with an entry that is not
+an IP address, is counted by the connection's address. The setting affects rate limits only.
 
 ## Troubleshooting
 

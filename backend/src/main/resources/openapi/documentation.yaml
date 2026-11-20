@@ -6,7 +6,10 @@ info:
     to manage visualization sessions, run built-in and custom coroutine
     scenarios, stream events in real time via SSE, query coroutine hierarchy
     and thread activity, and validate event streams against structured
-    concurrency rules.
+    concurrency rules. On a public demo server (PUBLIC_DEMO_MODE, reported as
+    publicDemo by /api/health) a caller without an admin credential can read
+    everything and start and run the built-in demos; every other write, the
+    ingest WebSocket and the developer endpoints answer 403 with code public-demo.
   version: "1.0.0"
   contact:
     name: "Coroutine Visualizer"
@@ -277,6 +280,8 @@ paths:
       description: >
         Creates a new empty visualization session. An optional name can be
         provided via query parameter; otherwise a default name is assigned.
+        On a public demo server a visitor can create a session only for a
+        built-in demo (demoId), and not with a correlation token.
       operationId: createSession
       parameters:
         - name: name
@@ -314,6 +319,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Internal server error
           content:
@@ -388,6 +395,8 @@ paths:
                   message:
                     type: string
                     example: "Session closed"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "400":
           description: Missing session ID
           content:
@@ -2299,6 +2308,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2323,6 +2334,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2347,6 +2360,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2371,6 +2386,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2395,6 +2412,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2420,6 +2439,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2444,6 +2465,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2468,6 +2491,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2493,6 +2518,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2518,6 +2545,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution failed
           content:
@@ -2557,6 +2586,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScenarioExecutionResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
         "500":
           description: Scenario execution error
           content:
@@ -2631,6 +2662,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScenarioResultData"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
 
   /api/examples/dispatcher-scenario:
     get:
@@ -2647,6 +2680,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
 
   # ==========================================================================
   # TESTS (DEPRECATED)
@@ -2667,11 +2702,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScenarioResponse"
+        "403":
+          $ref: "#/components/responses/PublicDemoRefused"
 
 # ===========================================================================
 # COMPONENTS
 # ===========================================================================
 components:
+  # =========================================================================
+  # RESPONSES
+  # =========================================================================
+  responses:
+    PublicDemoRefused:
+      description: >
+        Refused on a public demo server (PUBLIC_DEMO_MODE) for a caller without an
+        admin credential. The error says what is not open to visitors
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   # =========================================================================
   # PARAMETERS
   # =========================================================================
@@ -2711,12 +2761,13 @@ components:
           description: Human-readable error message
         code:
           type: string
-          enum: [demo-limit, demo-time-limit, summaries-unavailable, history-trimmed]
+          enum: [demo-limit, demo-time-limit, summaries-unavailable, history-trimmed, public-demo]
           description: >
             Machine-readable reason, present only where a client acts on it:
             demo-limit (every MAX_CONCURRENT_DEMOS slot is taken) and
             demo-time-limit (the demo ran past MAX_DEMO_RUN_SECONDS) on the demo limit's 503s;
-            summaries-unavailable and history-trimmed on the session health's 503
+            summaries-unavailable and history-trimmed on the session health's 503;
+            public-demo on the 403 a public demo server gives a visitor
 
     # -----------------------------------------------------------------------
     # Health
@@ -2751,6 +2802,15 @@ components:
             Included components: sessionManager, memory.
           additionalProperties:
             type: string
+        sharingEnabled:
+          type: boolean
+          description: Whether share links are available (only with the database)
+        publicDemo:
+          type: boolean
+          description: >
+            Whether this is a public demo server (PUBLIC_DEMO_MODE). Visitors can watch and
+            run the built-in demos; connecting an app, custom scenarios, deleting and sharing
+            sessions are refused with 403 unless an admin credential is sent
 
     MemoryInfo:
       type: object

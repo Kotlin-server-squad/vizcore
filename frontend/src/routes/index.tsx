@@ -14,6 +14,7 @@ import { useSessions } from '@/hooks/use-sessions'
 import { useStartDemo } from '@/hooks/use-start-demo'
 import { rememberHadApps, rememberedHadApps } from '@/lib/front-door-memory'
 import { deriveSessionKind } from '@/lib/session-kind'
+import { usePublicDemo } from '@/hooks/use-public-demo'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -38,6 +39,8 @@ export function HomePage() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [demoOpen, setDemoOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
+  // A public demo's visitor cannot connect an app: no Connect, no wizard.
+  const publicDemo = usePublicDemo()
 
   // One demo start for the whole page: the hero and the cards take turns.
   const demoStart = useStartDemo()
@@ -63,6 +66,7 @@ export function HomePage() {
       // The dialog has its own start: not while this page's is under way.
       isNewDemoDisabled={preparing !== null}
       onCompare={() => setCompareOpen(true)}
+      publicDemo={publicDemo}
     />
   )
 
@@ -74,14 +78,15 @@ export function HomePage() {
           isStarting={startingCheckout}
           isDisabled={preparing !== null && !startingCheckout}
           onWatch={() => void start(checkout)}
-          onConnect={() => setWizardOpen(true)}
+          // A public demo's visitor cannot connect an app: the hero offers the demo only.
+          onConnect={publicDemo ? undefined : () => setWizardOpen(true)}
         />
         {startError && <DemoStartAlert startError={startError} />}
         {hasApps && sessionsList}
         <RealLifeStories demoStart={demoStart} />
         {!hasApps && sessionsList}
       </div>
-      <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
+      {!publicDemo && <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />}
       <NewDemoSessionModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
       <CompareOverlay isOpen={compareOpen} onClose={() => setCompareOpen(false)} />
     </Layout>

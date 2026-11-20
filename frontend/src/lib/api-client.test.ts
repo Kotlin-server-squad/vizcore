@@ -26,6 +26,35 @@ function mockJsonResponse(data: unknown, status = 200) {
 }
 
 describe('ApiClient', () => {
+  describe('getCapabilities', () => {
+    it('reads sharing and public demo from /health', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ status: 'UP', sharingEnabled: false, publicDemo: true }))
+
+      expect(await apiClient.getCapabilities()).toEqual({ sharingEnabled: false, publicDemo: true })
+      expect(mockFetch.mock.calls[0]?.[0]).toBe('/api/health')
+    })
+
+    it('reads a server that says neither as offering neither', async () => {
+      mockFetch.mockResolvedValue(mockJsonResponse({ status: 'UP' }))
+
+      expect(await apiClient.getCapabilities()).toEqual({ sharingEnabled: false, publicDemo: false })
+    })
+
+    it("does not send a public demo's 403 to the login page", async () => {
+      const navigate = vi.fn()
+      registerNavigator(navigate)
+      const message = 'This is a public demo: visitors cannot delete, reset or change sessions. To do this, run vizcore on your own machine.'
+      mockFetch.mockResolvedValue(mockJsonResponse({ error: message, code: 'public-demo' }, 403))
+
+      const error = await apiClient.deleteSession('s-1').catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ApiError)
+      expect((error as ApiError).code).toBe('public-demo')
+      expect((error as ApiError).message).toBe(message)
+      expect(navigate).not.toHaveBeenCalled()
+    })
+  })
+
   describe('runScenario', () => {
     it('keeps the code of a refusal by the demo limit, so it reads as busy', async () => {
       mockFetch.mockResolvedValue(

@@ -81,10 +81,12 @@ fun Application.configureAuth() {
             authenticate { context ->
                 val requestKey = apiKeyCandidate(context.call)
                 val entry = requestKey?.let { apiKeyStore.validate(it) }
-                if (entry != null) {
-                    context.principal(ApiKeyPrincipal(entry.name, entry.role))
-                } else {
-                    context.challengeUnauthorized("ApiKey")
+                when {
+                    entry != null -> context.principal(ApiKeyPrincipal(entry.name, entry.role))
+                    // No key at all is "no credentials", which public demo mode lets through as a
+                    // visitor; a key that matches nothing is always refused.
+                    requestKey == null -> context.challengeUnauthorized("ApiKey", AuthenticationFailedCause.NoCredentials)
+                    else -> context.challengeUnauthorized("ApiKey", AuthenticationFailedCause.InvalidCredentials)
                 }
             }
         }
@@ -153,9 +155,12 @@ private fun JWTCredential.toUserPrincipalOrNull(): UserPrincipal? {
     return UserPrincipal(userId = userId, role = role)
 }
 
-private fun io.ktor.server.auth.AuthenticationContext.challengeUnauthorized(scheme: String) {
-    error(scheme, AuthenticationFailedCause.InvalidCredentials)
-    challenge(scheme, AuthenticationFailedCause.InvalidCredentials) { ch, call ->
+private fun io.ktor.server.auth.AuthenticationContext.challengeUnauthorized(
+    scheme: String,
+    cause: AuthenticationFailedCause,
+) {
+    error(scheme, cause)
+    challenge(scheme, cause) { ch, call ->
         call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Unauthorized"))
         ch.complete()
     }
@@ -164,6 +169,10 @@ private fun io.ktor.server.auth.AuthenticationContext.challengeUnauthorized(sche
 /**
  * Wrap non-public routes so EITHER a valid API key (X-API-Key or Bearer) OR a valid JWT satisfies the request (D-08).
  * When auth is disabled it is a pure pass-through — no auth plugin in the path (Pitfall 1, D-04a).
+ *
+ * In public demo mode ([publicDemoMode]) a request with no credential at all goes through as a
+ * visitor, and what a visitor may do is decided by [publicDemoGuarded]; a credential that is sent
+ * and is wrong still gets 401.
  */
 fun Route.authenticatedApi(build: Route.() -> Unit) {
     val authDisabled = application.attributes.getOrNull(AuthDisabledKey) ?: true
@@ -171,7 +180,7 @@ fun Route.authenticatedApi(build: Route.() -> Unit) {
         build()
         return
     }
-    authenticate("api-key", "jwt", optional = false) {
+    authenticate("api-key", "jwt", optional = application.publicDemoMode) {
         build()
     }
 }

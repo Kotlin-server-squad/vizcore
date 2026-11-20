@@ -12,11 +12,13 @@ export function SessionsHome({
   onNewDemo,
   isNewDemoDisabled,
   onCompare,
+  publicDemo,
 }: {
   onConnect: () => void
   onNewDemo?: () => void
   isNewDemoDisabled?: boolean
   onCompare?: () => void
+  publicDemo?: boolean
 }) {
   return (
     <SessionsSidebar
@@ -24,6 +26,7 @@ export function SessionsHome({
       onNewDemo={onNewDemo}
       isNewDemoDisabled={isNewDemoDisabled}
       onCompare={onCompare}
+      publicDemo={publicDemo}
       className="w-full"
     />
   )

@@ -33,7 +33,7 @@ private val moduleLogger = LoggerFactory.getLogger("com.jh.proj.coroutineviz.App
 
 // Session-lifecycle defaults (used when not overridden via application.yaml / env).
 private const val DEFAULT_SESSION_MAX_AGE_MS = 3_600_000L // 1 hour
-private const val DEFAULT_SESSION_MAX_COUNT = 100
+internal const val DEFAULT_SESSION_MAX_COUNT = 100
 private const val DEFAULT_SESSION_CHECK_INTERVAL_MS = 60_000L // 1 minute
 
 /**
@@ -75,6 +75,8 @@ fun main(args: Array<String>) {
 fun Application.module() {
     configureCompression()
     configureHTTP()
+    // Before configureAuth and configureRouting: both read whether public demo mode is on.
+    configurePublicDemo()
     configureAuth()
     configureMonitoring()
     configureSerialization()
@@ -157,15 +159,16 @@ fun Application.configureSessionLifecycle() {
  *  - `api` ([API_RATE_LIMIT_NAME]) — one provider with three independent buckets per
  *    client: cheap reads (GET/HEAD), writes, and SSE/ingest-WebSocket connects
  *    ([ApiTier], [classifyApiTier]). The client is the authenticated principal when
- *    present, else the remote address ([rateLimitClientKey]).
+ *    present, else the client address ([rateLimitClientKey]).
  *  - `session-create` ([SESSION_CREATE_RATE_LIMIT_NAME]) — POST /api/sessions, nested
  *    inside `api`, so a create draws from both the write bucket and this one.
- *  - `login` ([LOGIN_RATE_LIMIT_NAME]) — the public POST /api/auth/token, by remote address.
- *  - `shared` (SHAR-02, D-12) — the public shared read, keyed on `remoteHost`,
+ *  - `login` ([LOGIN_RATE_LIMIT_NAME]) — the public POST /api/auth/token, by client address.
+ *  - `shared` (SHAR-02, D-12) — the public shared read, by client address,
  *    config-gated by `share.rateLimit.enabled` and sized by `requestsPerMinute`.
  *
- * Behind a reverse proxy, install `XForwardedHeaders` so the client IP (not the
- * proxy) is used — otherwise all viewers share one bucket. That is DEPLOY config.
+ * The client address is the socket's ([clientAddress]). Behind a reverse proxy that is the
+ * proxy, so all visitors share one bucket, unless `rateLimit.trustedProxyHops` (env
+ * `TRUSTED_PROXY_HOPS`) says how many proxies stand in front; only then is `X-Forwarded-For` read.
  * Limits are read at install time; changing them requires a restart.
  */
 private fun Application.configureRateLimit() {
@@ -175,6 +178,7 @@ private fun Application.configureRateLimit() {
     val sharedRpm = cfg.propertyOrNull("share.rateLimit.requestsPerMinute")?.getString()?.toIntOrNull() ?: 60
     val policy = RateLimitPolicy.fromConfig(cfg)
     attributes.put(RateLimitPolicyKey, policy)
+    val trustedProxyHops = configureTrustedProxy()
 
     install(RateLimit) {
         register(RateLimitName(API_RATE_LIMIT_NAME)) {
@@ -192,24 +196,25 @@ private fun Application.configureRateLimit() {
         }
         register(RateLimitName(LOGIN_RATE_LIMIT_NAME)) {
             rateLimiter(limit = policy.login, refillPeriod = 1.minutes)
-            requestKey { call -> call.request.local.remoteAddress }
+            requestKey { call -> call.clientAddress() }
         }
         if (sharedEnabled) {
             register(RateLimitName(SHARED_RATE_LIMIT_NAME)) {
                 rateLimiter(limit = sharedRpm, refillPeriod = 1.minutes)
-                requestKey { call -> call.request.local.remoteHost }
+                requestKey { call -> call.clientAddress() }
             }
         }
     }
     moduleLogger.info(
         "Rate limiting installed (read={}/min, write={}/min, stream={}/min, login={}/min, " +
-            "session-create={}/min, shared={})",
+            "session-create={}/min, shared={}, trusted proxy hops={})",
         policy.read,
         policy.write,
         policy.stream,
         policy.login,
         policy.sessionCreate,
         if (sharedEnabled) "$sharedRpm/min" else "disabled",
+        trustedProxyHops,
     )
 }
 
@@ -239,13 +244,13 @@ internal fun classifyApiTier(call: ApplicationCall): ApiTier {
 
 /**
  * Rate-limit client identity: the authenticated principal when there is one (so
- * clients behind one address do not share a bucket), else the remote address.
+ * clients behind one address do not share a bucket), else the client address.
  */
 internal fun ApplicationCall.rateLimitClientKey(): String =
     when (val principal = currentPrincipal()) {
         is ApiKeyPrincipal -> "key:${principal.name}"
         is UserPrincipal -> "user:${principal.userId}"
-        else -> "ip:${request.local.remoteAddress}"
+        else -> "ip:${clientAddress()}"
     }
 
 /** Per-minute request limits for each rate-limit bucket, from the `rateLimit.*` config block. */

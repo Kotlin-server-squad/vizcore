@@ -2,6 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { ApiError, describeApiError } from './api-errors'
 
 describe('describeApiError', () => {
+  it("gives a public demo's refusal in the server's own words, not as a CORS or access problem", () => {
+    const message = 'This is a public demo: visitors cannot connect an app. To do this, run vizcore on your own machine.'
+    const described = describeApiError(new ApiError(403, message, 'public-demo'))
+    expect(described.title).toBe('Not available on the public demo')
+    expect(described.message).toBe(message)
+    expect(described.retryable).toBe(false)
+  })
+
   it('says the server is busy when the demo limit refuses a demo, with its reason', () => {
     const described = describeApiError(
       new ApiError(503, 'Server busy: too many demos running, try again in a few seconds', 'demo-limit'),

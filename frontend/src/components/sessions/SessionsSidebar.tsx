@@ -5,6 +5,7 @@ import { ErrorState } from '../ErrorState'
 import { useSessions } from '@/hooks/use-sessions'
 import { deriveSessionKind } from '@/lib/session-kind'
 import { SessionRow } from './SessionRow'
+import { PublicDemoNote } from './PublicDemoNote'
 
 /**
  * The badged sessions-sidebar-as-home (Phase 08.5, Surface 003 winner C).
@@ -16,6 +17,9 @@ import { SessionRow } from './SessionRow'
  * INLINE into the list region (not a standalone screen, UI-SPEC line 145) with both
  * CTAs. It no longer leads: the front door's hero does (routes/index.tsx).
  *
+ * On a public demo server (`publicDemo`) a visitor cannot connect an app, so
+ * neither Connect action is offered and a note says how to run vizcore yourself.
+ *
  * Reuses the shipped `useSessions` hook. Literal Tailwind only (IN-12).
  */
 export function SessionsSidebar({
@@ -25,6 +29,7 @@ export function SessionsSidebar({
   onNewDemo,
   isNewDemoDisabled = false,
   onCompare,
+  publicDemo = false,
 }: {
   onConnect: () => void
   selectedSessionId?: string
@@ -36,6 +41,8 @@ export function SessionsSidebar({
   isNewDemoDisabled?: boolean
   /** Opens the re-hosted comparison overlay (D-3). Omitted in the sidebar placement. */
   onCompare?: () => void
+  /** A public demo server's visitor: no Connect, and a note on running vizcore yourself. */
+  publicDemo?: boolean
 }) {
   const { data: sessions, isLoading, isPending, isError, error, refetch } = useSessions()
   // `isPending`, not just `isLoading`: a retry TanStack Query has paused (tab
@@ -77,16 +84,20 @@ export function SessionsSidebar({
                 New demo session
               </Button>
             )}
-            <Button
-              color="primary"
-              size="sm"
-              startContent={<FiPlus />}
-              onPress={onConnect}
-            >
-              Connect
-            </Button>
+            {!publicDemo && (
+              <Button
+                color="primary"
+                size="sm"
+                startContent={<FiPlus />}
+                onPress={onConnect}
+              >
+                Connect
+              </Button>
+            )}
           </div>
         </div>
+
+        {publicDemo && <PublicDemoNote />}
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -94,6 +105,18 @@ export function SessionsSidebar({
           </div>
         ) : failed ? (
           <ErrorState error={error} subject="The sessions list" onRetry={() => void refetch()} bare />
+        ) : isEmpty && publicDemo ? (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <h3 className="text-sm font-semibold">No sessions yet</h3>
+            <p className="text-sm text-default-500">
+              Run a built-in demo and watch its coroutines here, live.
+            </p>
+            {onNewDemo && (
+              <Button color="primary" size="sm" onPress={onNewDemo}>
+                Run a demo scenario
+              </Button>
+            )}
+          </div>
         ) : isEmpty ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-medium border border-dashed border-default-300 px-4 py-3">
             <div className="flex min-w-0 flex-col gap-1">
