@@ -39,7 +39,8 @@ import { ProblemsPanel, type ChecksLine } from './workspace/ProblemsPanel'
 import { ConnectionFacts } from './workspace/ConnectionFacts'
 import { useScenarioActions } from './workspace/use-scenario-actions'
 import { useAutoRun } from '@/hooks/use-auto-run'
-import { validVariant } from '@/lib/demo-variants'
+import { secondEnding, validVariant } from '@/lib/demo-variants'
+import { rememberEnding, rememberedEnding } from '@/lib/ending-memory'
 import { StateBar } from './StateBar'
 import { ReplayController } from './replay/ReplayController'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
@@ -264,13 +265,24 @@ export function SessionWorkspace({
   // was created for. What is about how the page was opened (auto-live, the
   // opening tab) stays on the address below.
   const demoId = scenarioId ?? session?.demoId ?? undefined
+  // Which ending it plays: the address's when Run opened the page (it names the demo), else the one
+  // this browser remembers for the session, so reopening it from the list keeps the ending.
+  const twoEndings = secondEnding(demoId) !== undefined
+  const endingId = useMemo(
+    () => (scenarioId !== undefined ? (validVariant(demoId, variant)?.id ?? null) : rememberedEnding(sessionId)),
+    [scenarioId, demoId, variant, sessionId],
+  )
+  useEffect(() => {
+    if (scenarioId !== undefined && twoEndings && !readOnly) rememberEnding(sessionId, endingId ?? null)
+  }, [scenarioId, twoEndings, readOnly, sessionId, endingId])
   // Run / Run again / Reset / Clear (S-3). Mutation hooks only — nothing is requested until
   // an action is used, and none is offered in the shared view.
   const scenarioActions = useScenarioActions({
     sessionId,
     scenarioId: demoId ?? '',
     scenarioName,
-    variant: validVariant(demoId, variant),
+    variant: validVariant(demoId, endingId),
+    endingUnknown: endingId === undefined,
     onClearEvents: () => {
       clearEvents()
       setSelection(null)

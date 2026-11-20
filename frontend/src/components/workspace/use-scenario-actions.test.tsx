@@ -121,7 +121,7 @@ describe('useScenarioActions', () => {
       const { result } = renderHook(() => useScenarioActions(order()))
       await act(() => result.current.run())
       expect(runScenario).toHaveBeenCalledWith({ scenarioId: 'order-processing', sessionId: 's-1' })
-      expect(result.current.ending).toBeUndefined()
+      expect(result.current.ending).toBe('it works')
       expect(result.current.otherEnding?.label).toBe('Play: card declined')
 
       await act(() => result.current.otherEnding!.play())
@@ -175,9 +175,16 @@ describe('useScenarioActions', () => {
       })
     })
 
-    it('offers no other ending for a demo that has one ending', () => {
+    it('names no ending when it is not known which one the session played', () => {
+      const { result } = renderHook(() => useScenarioActions(order({ endingUnknown: true })))
+      expect(result.current.ending).toBeUndefined()
+      expect(result.current.otherEnding?.label).toBe('Play: card declined')
+    })
+
+    it('offers no other ending, and names none, for a demo that has one ending', () => {
       const { result } = renderHook(() => useScenarioActions(args()))
       expect(result.current.otherEnding).toBeUndefined()
+      expect(result.current.ending).toBeUndefined()
     })
   })
 

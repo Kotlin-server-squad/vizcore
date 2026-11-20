@@ -44,6 +44,12 @@ export function HowItWorksPage({ slug, mistakes = MISTAKES }: { slug: string; mi
   const starting = scenario !== undefined && preparing === scenario.id
   const run = scenario && (
     <div className="flex flex-wrap gap-2">
+      <RunButton
+        scenario={scenario}
+        isStarting={starting && !preparingVariant}
+        isDisabled={preparing !== null && !(starting && !preparingVariant)}
+        onRun={() => void start(scenario)}
+      />
       {second && (
         <RunButton
           scenario={scenario}
@@ -54,12 +60,6 @@ export function HowItWorksPage({ slug, mistakes = MISTAKES }: { slug: string; mi
           onRun={() => void start(scenario, second.id)}
         />
       )}
-      <RunButton
-        scenario={scenario}
-        isStarting={starting && !preparingVariant}
-        isDisabled={preparing !== null && !(starting && !preparingVariant)}
-        onRun={() => void start(scenario)}
-      />
     </div>
   )
   const alert = startError && (
