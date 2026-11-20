@@ -169,7 +169,11 @@ describe('HowItWorksPage', () => {
   ])('offers both endings of %s, and its text names the button, not %4$s', async (slug, label, variant, param) => {
     renderPage(slug)
     const scenario = all.find((s) => s.id === slug)!
-    await userEvent.click(screen.getByRole('button', { name: label }))
+    // Run stays the main button, before the second ending's, as on the Gallery card.
+    const run = screen.getByRole('button', { name: 'Run this example' })
+    const play = screen.getByRole('button', { name: label })
+    expect(run.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await userEvent.click(play)
     expect(start).toHaveBeenCalledWith(scenario, variant)
     await userEvent.click(screen.getByRole('button', { name: 'Run this example' }))
     expect(start).toHaveBeenLastCalledWith(scenario)

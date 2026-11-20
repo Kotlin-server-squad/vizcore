@@ -14,6 +14,8 @@ interface ScenarioActionArgs {
   scenarioName?: string
   /** The ending this session plays, already checked against the demo; none is the usual one. */
   variant?: DemoVariant
+  /** Opened without its ending on the address and none remembered (ending-memory): the header names none. */
+  endingUnknown?: boolean
   /** Empties the live event list. Never deletes the session (WR-05). */
   onClearEvents: () => void
   onRefetch: () => void
@@ -23,7 +25,7 @@ export interface ScenarioActions {
   run: () => Promise<void>
   /** A new session for the same demo and the same ending, opened so that it starts the run there (S-13). */
   runAgain: () => Promise<void>
-  /** The second ending this session plays ("card declined"), for the header; none for the usual one. */
+  /** The ending this session plays ("card declined", "it works"), for the header; none for a demo with one ending. */
   ending?: string
   /** The demo's other ending, when it has two: a new session that plays it, like Run again. */
   otherEnding?: { label: string; play: () => Promise<void>; isPending: boolean }
@@ -48,6 +50,7 @@ export function useScenarioActions({
   scenarioId,
   scenarioName,
   variant,
+  endingUnknown = false,
   onClearEvents,
   onRefetch,
 }: ScenarioActionArgs): ScenarioActions {
@@ -136,7 +139,7 @@ export function useScenarioActions({
   return {
     run,
     runAgain,
-    ending: variant?.outcome,
+    ending: variant?.outcome ?? (second && !endingUnknown ? USUAL_OUTCOME : undefined),
     otherEnding: second && {
       label: playLabel(other ? other.outcome : USUAL_OUTCOME),
       play: () => openFresh('other', other),
