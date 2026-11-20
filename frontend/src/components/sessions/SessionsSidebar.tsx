@@ -12,8 +12,9 @@ import { SessionRow } from './SessionRow'
  * One grouped, badged list: a "Your apps" group then a "Demo scenarios" group,
  * each row carrying an unmistakable APP/DEMO badge (PD-10, #145). A primary `+ Connect`
  * action opens the 3-step connect wizard (wired by the route via `onConnect`).
- * When the whole list is empty the "No app connected" empty state folds INLINE
- * into the list region (not a standalone screen, UI-SPEC line 145) with both CTAs.
+ * When the whole list is empty a quiet "Your apps: none connected yet" note folds
+ * INLINE into the list region (not a standalone screen, UI-SPEC line 145) with both
+ * CTAs. It no longer leads: the front door's hero does (routes/index.tsx).
  *
  * Reuses the shipped `useSessions` hook. Literal Tailwind only (IN-12).
  */
@@ -36,7 +37,7 @@ export function SessionsSidebar({
   const { data: sessions, isLoading, isPending, isError, error, refetch } = useSessions()
   // `isPending`, not just `isLoading`: a retry TanStack Query has paused (tab
   // in the background, browser offline) is pending but not fetching, and must
-  // read as "still loading" — not fall through to "No app connected" (#139).
+  // read as "still loading" — not fall through to "none connected yet" (#139).
   const loading = isLoading || isPending === true
 
   const live: SessionInfo[] = []
@@ -49,7 +50,7 @@ export function SessionsSidebar({
     }
   }
 
-  // A failed load is NOT an empty list (#139): "No app connected" on a 429 or
+  // A failed load is NOT an empty list (#139): "none connected yet" on a 429 or
   // a dead server would send the user off to debug their app for nothing.
   // Data from an earlier successful load keeps rendering through a failed
   // background refresh.
@@ -59,9 +60,10 @@ export function SessionsSidebar({
   return (
     <Card className={className}>
       <CardBody className="gap-4">
-        <div className="flex items-center justify-between">
+        {/* Wraps at phone width, so the last action is not cut off. */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Sessions</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {onCompare && (
               <Button size="sm" variant="light" onPress={onCompare}>
                 Compare
@@ -90,23 +92,25 @@ export function SessionsSidebar({
         ) : failed ? (
           <ErrorState error={error} subject="The sessions list" onRetry={() => void refetch()} bare />
         ) : isEmpty ? (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <h3 className="text-sm font-semibold">No app connected</h3>
-            <p className="text-sm text-default-500">
-              Add <code className="font-mono text-xs">vizcore-client</code> to your app and call{' '}
-              <code className="font-mono text-xs">VizcoreClient.start()</code>. Its coroutines will
-              stream in here live.
-            </p>
-            <Button color="primary" size="sm" onPress={onConnect}>
-              Connect your app
-            </Button>
-            {/* Opens the demo picker in place. It used to navigate to
-                /scenarios, which redirects straight back here (#139). */}
-            {onNewDemo && (
-              <Button variant="ghost" size="sm" onPress={onNewDemo}>
-                Run a demo scenario instead
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-medium border border-dashed border-default-300 px-4 py-3">
+            <div className="flex min-w-0 flex-col gap-1">
+              <h3 className="text-sm font-semibold">Your apps</h3>
+              <p className="text-sm text-default-500">
+                None connected yet. A connected app shows up here by itself.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="flat" size="sm" onPress={onConnect}>
+                How to connect in 3 steps
               </Button>
-            )}
+              {/* Opens the demo picker in place. It used to navigate to
+                  /scenarios, which redirects straight back here (#139). */}
+              {onNewDemo && (
+                <Button variant="light" size="sm" onPress={onNewDemo}>
+                  Run a demo scenario instead
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-4">

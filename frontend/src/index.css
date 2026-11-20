@@ -38,6 +38,16 @@ html.vz-no-transitions *::after {
   transition: none !important;
 }
 
+/* The front door (routes/index.tsx) holds still when reduced motion is asked for. */
+@media (prefers-reduced-motion: reduce) {
+  .vz-still-when-reduced *,
+  .vz-still-when-reduced *::before,
+  .vz-still-when-reduced *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 body {
   margin: 0;
   min-width: 320px;

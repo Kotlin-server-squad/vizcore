@@ -86,16 +86,20 @@ describe('SessionsSidebar', () => {
     expect(onConnect).toHaveBeenCalledTimes(1)
   })
 
-  it('renders the inline "No app connected" empty state with both CTAs when the list is empty', () => {
+  it('renders the quiet inline "Your apps: none connected yet" note with both CTAs when the list is empty', () => {
     const onConnect = vi.fn()
     const onNewDemo = vi.fn()
     useSessionsMock.mockReturnValue({ data: [], isLoading: false })
     render(<SessionsSidebar onConnect={onConnect} onNewDemo={onNewDemo} />)
 
-    expect(screen.getByText('No app connected')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your apps' })).toBeInTheDocument()
+    expect(screen.getByText('None connected yet. A connected app shows up here by itself.')).toBeInTheDocument()
+    // It no longer leads the page: no install instructions, and no promised time.
+    expect(screen.queryByText('No app connected')).not.toBeInTheDocument()
+    expect(screen.queryByText(/vizcore-client/)).not.toBeInTheDocument()
 
-    // Primary CTA folds into the list and fires onConnect.
-    const connectYourApp = screen.getByRole('button', { name: 'Connect your app' })
+    // The way to the connect wizard folds into the list and fires onConnect.
+    const connectYourApp = screen.getByRole('button', { name: 'How to connect in 3 steps' })
     fireEvent.click(connectYourApp)
     expect(onConnect).toHaveBeenCalledTimes(1)
 
@@ -116,12 +120,12 @@ describe('SessionsSidebar - failed loads are not an empty list (#139)', () => {
     ['network', new NetworkError(new TypeError('Failed to fetch')), /can't reach vizcore/i],
   ]
 
-  it.each(cases)('a %s renders its own state with Retry, never "No app connected"', (_, error, title) => {
+  it.each(cases)('a %s renders its own state with Retry, never "none connected yet"', (_, error, title) => {
     const refetch = vi.fn()
     useSessionsMock.mockReturnValue({ data: undefined, isLoading: false, isError: true, error, refetch })
     render(<SessionsSidebar onConnect={vi.fn()} />)
 
-    expect(screen.queryByText('No app connected')).not.toBeInTheDocument()
+    expect(screen.queryByText(/None connected yet/)).not.toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent(title)
     if (!(error instanceof ApiError && error.status === 401)) {
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -129,7 +133,7 @@ describe('SessionsSidebar - failed loads are not an empty list (#139)', () => {
     }
   })
 
-  it('a paused retry (pending, not fetching) still reads as loading, not "No app connected"', () => {
+  it('a paused retry (pending, not fetching) still reads as loading, not "none connected yet"', () => {
     useSessionsMock.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -140,7 +144,7 @@ describe('SessionsSidebar - failed loads are not an empty list (#139)', () => {
     })
     render(<SessionsSidebar onConnect={vi.fn()} />)
 
-    expect(screen.queryByText('No app connected')).not.toBeInTheDocument()
+    expect(screen.queryByText(/None connected yet/)).not.toBeInTheDocument()
   })
 
   it('keeps showing an earlier list through a failed background refresh', () => {

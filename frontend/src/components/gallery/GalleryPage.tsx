@@ -4,14 +4,12 @@ import { FiAlertTriangle } from 'react-icons/fi'
 import { useScenarios } from '@/hooks/use-scenarios'
 import { useStartDemo } from '@/hooks/use-start-demo'
 import { groupDemos } from '@/lib/demo-groups'
-import { GUIDES } from '@/content/gallery/guides'
 import { MISTAKES, hasRunnableMistake } from '@/content/gallery/mistakes'
 import type { Mistake } from '@/content/gallery/types'
-import { playLabel, secondEnding } from '@/lib/demo-variants'
 import { DemoStartAlert } from '../demos/DemoStartAlert'
 import { ErrorState } from '../ErrorState'
-import { DemoCard } from './DemoCard'
 import { MistakeCard } from './MistakeCard'
+import { StartableDemoCard } from './StartableDemoCard'
 
 /** The tab key of the Common-mistakes tab, as kept in `?group=`. */
 export const MISTAKES_TAB = 'mistakes'
@@ -110,28 +108,14 @@ export function GalleryPage({ group, onGroupChange, mistakes = MISTAKES }: Galle
             ...groups.map((g) => (
               <Tab key={g.key} title={<TabTitle label={g.label} count={g.demos.length} />}>
                 <div className={GRID}>
-                  {g.demos.map((scenario) => {
-                    const second = secondEnding(scenario.id)
-                    const starting = preparing === scenario.id
-                    return (
-                      <DemoCard
-                        key={scenario.id}
-                        scenario={scenario}
-                        groupLabel={g.label}
-                        guide={GUIDES[scenario.id]}
-                        isStarting={starting && !preparingVariant}
-                        isDisabled={preparing !== null && !starting}
-                        onRun={() => void start(scenario)}
-                        secondEnding={
-                          second && {
-                            label: playLabel(second.outcome),
-                            isStarting: starting && preparingVariant === second.id,
-                            onPlay: () => void start(scenario, second.id),
-                          }
-                        }
-                      />
-                    )
-                  })}
+                  {g.demos.map((scenario) => (
+                    <StartableDemoCard
+                      key={scenario.id}
+                      scenario={scenario}
+                      groupLabel={g.label}
+                      demoStart={{ start, preparing, preparingVariant }}
+                    />
+                  ))}
                 </div>
               </Tab>
             )),

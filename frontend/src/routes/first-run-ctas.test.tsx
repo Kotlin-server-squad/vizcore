@@ -110,6 +110,29 @@ afterEach(() => {
 })
 
 describe('first-run CTAs go somewhere useful (#139)', () => {
+  it('/: "Watch a checkout run" starts the order demo with one click, and nothing before it', async () => {
+    const router = renderAt('/')
+    const watch = await screen.findByRole('button', { name: 'Watch a checkout run' })
+    // The sessions list is in, so the page has settled: it has made no session and run no demo.
+    await screen.findByText('None connected yet. A connected app shows up here by itself.')
+    const posts = () => fetchMock.mock.calls.filter(([, init]) => (init?.method ?? 'GET').toUpperCase() === 'POST')
+    expect(posts()).toHaveLength(0)
+
+    fireEvent.click(watch)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/sessions/scenario-fresh-1'))
+    // Opened with the demo to run; the session page starts it and drops `run` from the address.
+    expect(router.state.location.search).toMatchObject({ scenarioId: 'order-processing' })
+    expect(posts()[0]![0]).toContain('demoId=order-processing')
+  })
+
+  it('/: "Connect your app" opens the connect wizard in place', async () => {
+    const router = renderAt('/')
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect your app' }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Connect your app')
+    expect(router.state.location.pathname).toBe('/')
+  })
+
   it.each(['/', '/sessions'])(
     '%s: "Run a demo scenario instead" opens the demo picker, and Start lands in the new session',
     async path => {
