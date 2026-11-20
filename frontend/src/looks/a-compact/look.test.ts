@@ -229,8 +229,10 @@ async function renderPage() {
       link: 'a',
       children: createElement(SessionWorkspace, {
         sessionId: 'session-1',
-        scenarioId: 'sync/combined/ecommerce',
+        // A demo with a second ending, playing it: the header then names the ending (its pill is styled too).
+        scenarioId: 'order-processing',
         scenarioName: 'E-commerce Orders',
+        variant: 'card-declined',
         startLive: true,
       }),
     }),
@@ -318,7 +320,7 @@ describe('A · Compact on the real page', () => {
     const names = [...document.querySelectorAll(selector)].map(
       b => b.getAttribute('aria-label') ?? b.textContent?.trim()
     )
-    expect(names).toEqual(['Run again', 'Replay', 'Pause view', 'Export', 'More actions'])
+    expect(names).toEqual(['Run again', 'Play: it works', 'Replay', 'Pause view', 'Export', 'More actions'])
   })
 
   it('turns only the state filter chips into legend items, not the view switch or Maximise', async () => {

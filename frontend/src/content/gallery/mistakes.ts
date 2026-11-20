@@ -87,3 +87,9 @@ export const MISTAKES: Mistake[] = [
     detected: false,
   },
 ]
+
+/**
+ * Whether any mistake has a demo to run. The Gallery shows its Common mistakes
+ * tab only then: a tab of cards that all end in "Demo coming" promises nothing.
+ */
+export const hasRunnableMistake = (mistakes: Mistake[] = MISTAKES) => mistakes.some((m) => m.demoId !== undefined)

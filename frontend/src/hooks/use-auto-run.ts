@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react'
 import type { RunOutcome } from '@/lib/run-outcome'
 
 /**
- * Run again (S-13) opens its new session with `?run=true`, and the new page
- * starts the run itself: some demo routes answer only when the demo has
+ * Run (Gallery, How it works, the demo picker) and Run again (S-13) open their
+ * new session with `?run=true`, and the new page starts the run itself: some demo routes answer only when the demo has
  * finished, so a run started by the old page would open a finished session.
  *
  * Once the session has loaded ([outcome] known), the request is dropped from

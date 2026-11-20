@@ -111,6 +111,76 @@ describe('useScenarioActions', () => {
     expect(result.current.errorText).toBe('Could not run it again: Too many sessions created, wait a minute')
   })
 
+  describe('a demo with a second ending', () => {
+    const declined = { id: 'card-declined', param: 'fail', outcome: 'card declined' }
+    const order = (over = {}) => args({ scenarioId: 'order-processing', scenarioName: 'Order Processing', ...over })
+
+    it('runs the usual ending without a parameter, and offers the second one', async () => {
+      runScenario.mockResolvedValue({ sessionId: 's-1' })
+      createSession.mockResolvedValue({ sessionId: 's-2' })
+      const { result } = renderHook(() => useScenarioActions(order()))
+      await act(() => result.current.run())
+      expect(runScenario).toHaveBeenCalledWith({ scenarioId: 'order-processing', sessionId: 's-1' })
+      expect(result.current.ending).toBeUndefined()
+      expect(result.current.otherEnding?.label).toBe('Play: card declined')
+
+      await act(() => result.current.otherEnding!.play())
+      expect(navigate).toHaveBeenCalledWith({
+        to: '/sessions/$sessionId',
+        params: { sessionId: 's-2' },
+        search: { scenarioId: 'order-processing', scenarioName: 'Order Processing', run: true, variant: 'card-declined' },
+      })
+    })
+
+    it('runs the second ending with its parameter, and names it', async () => {
+      runScenario.mockResolvedValue({ sessionId: 's-1' })
+      const { result } = renderHook(() => useScenarioActions(order({ variant: declined })))
+      await act(() => result.current.run())
+      expect(runScenario).toHaveBeenCalledWith({
+        scenarioId: 'order-processing',
+        sessionId: 's-1',
+        params: { fail: 'true' },
+      })
+      expect(result.current.ending).toBe('card declined')
+    })
+
+    it('runs the SAME ending again, and offers the usual one as the other', async () => {
+      createSession.mockResolvedValue({ sessionId: 's-2' })
+      const { result } = renderHook(() => useScenarioActions(order({ variant: declined })))
+      await act(() => result.current.runAgain())
+      expect(navigate).toHaveBeenLastCalledWith({
+        to: '/sessions/$sessionId',
+        params: { sessionId: 's-2' },
+        search: { scenarioId: 'order-processing', scenarioName: 'Order Processing', run: true, variant: 'card-declined' },
+      })
+
+      expect(result.current.otherEnding?.label).toBe('Play: it works')
+      await act(() => result.current.otherEnding!.play())
+      expect(navigate).toHaveBeenLastCalledWith({
+        to: '/sessions/$sessionId',
+        params: { sessionId: 's-2' },
+        search: { scenarioId: 'order-processing', scenarioName: 'Order Processing', run: true },
+      })
+    })
+
+    it('keeps the ending through Reset', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      createSession.mockResolvedValue({ sessionId: 's-2' })
+      const { result } = renderHook(() => useScenarioActions(order({ variant: declined })))
+      await act(() => result.current.reset())
+      expect(navigate).toHaveBeenCalledWith({
+        to: '/sessions/$sessionId',
+        params: { sessionId: 's-2' },
+        search: { scenarioId: 'order-processing', scenarioName: 'Order Processing', variant: 'card-declined' },
+      })
+    })
+
+    it('offers no other ending for a demo that has one ending', () => {
+      const { result } = renderHook(() => useScenarioActions(args()))
+      expect(result.current.otherEnding).toBeUndefined()
+    })
+  })
+
   it('does nothing on reset when the user cancels the confirmation', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     const { result } = renderHook(() => useScenarioActions(args()))

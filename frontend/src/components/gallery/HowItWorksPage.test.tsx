@@ -7,7 +7,7 @@ const useScenariosMock = vi.fn()
 vi.mock('@/hooks/use-scenarios', () => ({ useScenarios: () => useScenariosMock() }))
 
 const start = vi.fn()
-const startState = { preparing: null as string | null, startError: null as unknown }
+const startState = { preparing: null as string | null, preparingVariant: null as string | null, startError: null as unknown }
 vi.mock('@/hooks/use-start-demo', () => ({
   useStartDemo: () => ({ start, ...startState }),
 }))
@@ -41,6 +41,8 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { HowItWorksPage } from './HowItWorksPage'
 import { GUIDES } from '@/content/gallery/guides'
+import { MISTAKES } from '@/content/gallery/mistakes'
+import type { Mistake } from '@/content/gallery/types'
 import { willSeeFor } from '@/content/gallery/will-see'
 import { ApiError } from '@/lib/api-errors'
 // What GET /api/scenarios serves; a backend test keeps this copy equal to it.
@@ -76,10 +78,10 @@ const UNGUIDED = {
 const withUnguidedDemo = () =>
   useScenariosMock.mockReturnValue({ data: { scenarios: [...all, UNGUIDED] }, isLoading: false, error: null, refetch })
 
-const renderPage = (slug: string) =>
+const renderPage = (slug: string, mistakes?: Mistake[]) =>
   render(
     <HeroUIProvider>
-      <HowItWorksPage slug={slug} />
+      <HowItWorksPage slug={slug} mistakes={mistakes} />
     </HeroUIProvider>,
   )
 
@@ -135,8 +137,19 @@ describe('HowItWorksPage', () => {
     expect(row('load-product-page').parentElement!.closest('li')).toBeNull()
   })
 
-  it('links the common mistake to its card in the Gallery', () => {
+  it('tells the common mistake and its fix, without a link, while the Gallery has no Common mistakes tab', () => {
     renderPage('nested')
+    const mistake = MISTAKES.find((m) => m.id === 'GLOBAL_SCOPE_USAGE')!
+    expect(screen.getByText(mistake.title)).toBeInTheDocument()
+    expect(screen.getByText(mistake.fix)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /launching in globalscope/i })).toBeNull()
+  })
+
+  it('links the common mistake to its card in the Gallery once that tab is there', () => {
+    renderPage(
+      'nested',
+      MISTAKES.map((m) => (m.id === 'GLOBAL_SCOPE_USAGE' ? { ...m, demoId: 'nested' } : m)),
+    )
     expect(screen.getByRole('link', { name: /launching in globalscope/i })).toHaveAttribute(
       'href',
       '/gallery?group=mistakes#GLOBAL_SCOPE_USAGE',
@@ -147,6 +160,27 @@ describe('HowItWorksPage', () => {
     renderPage('nested')
     await userEvent.click(screen.getByRole('button', { name: 'Run this example' }))
     expect(start).toHaveBeenCalledWith(nested)
+  })
+
+  it.each([
+    ['order-processing', 'Play: card declined', 'card-declined', '?fail'],
+    ['user-registration', 'Play: email retried', 'email-retried', '?failEmail'],
+    ['report-generation', 'Play: slow API cancelled', 'slow-api-cancelled', '?timeout'],
+  ])('offers both endings of %s, and its text names the button, not %4$s', async (slug, label, variant, param) => {
+    renderPage(slug)
+    const scenario = all.find((s) => s.id === slug)!
+    await userEvent.click(screen.getByRole('button', { name: label }))
+    expect(start).toHaveBeenCalledWith(scenario, variant)
+    await userEvent.click(screen.getByRole('button', { name: 'Run this example' }))
+    expect(start).toHaveBeenLastCalledWith(scenario)
+    const steps = screen.getByRole('list', { name: 'Step by step' })
+    expect(steps).toHaveTextContent(`With “${label}”`)
+    expect(steps.textContent).not.toContain(param)
+  })
+
+  it('offers one ending for a demo that has one', () => {
+    renderPage('nested')
+    expect(screen.queryByRole('button', { name: /^Play: / })).toBeNull()
   })
 
   it('shows why the example could not start', () => {

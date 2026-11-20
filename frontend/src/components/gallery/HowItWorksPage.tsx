@@ -5,9 +5,10 @@ import { useScenarios } from '@/hooks/use-scenarios'
 import { useStartDemo } from '@/hooks/use-start-demo'
 import { demoSlug } from '@/lib/demo-slug'
 import { GUIDES } from '@/content/gallery/guides'
-import { MISTAKES } from '@/content/gallery/mistakes'
+import { MISTAKES, hasRunnableMistake } from '@/content/gallery/mistakes'
 import { willSeeFor } from '@/content/gallery/will-see'
-import type { DemoGuide } from '@/content/gallery/types'
+import type { DemoGuide, Mistake } from '@/content/gallery/types'
+import { playLabel, secondEnding } from '@/lib/demo-variants'
 import type { Scenario } from '@/types/api'
 import { DemoStartAlert } from '../demos/DemoStartAlert'
 import { ErrorState } from '../ErrorState'
@@ -19,11 +20,12 @@ const LEVEL_COLOR = { beginner: 'success', intermediate: 'warning', advanced: 'd
 /**
  * "How it works" for one demo (`/gallery/$slug`): the story, the code next to
  * its steps, what the session tree will show, the key idea and a common
- * mistake. Run opens the same session view as the Gallery's Run.
+ * mistake. Run opens the same session view as the Gallery's Run, and a demo
+ * with a second ending has a second button for it, as in the Gallery.
  */
-export function HowItWorksPage({ slug }: { slug: string }) {
+export function HowItWorksPage({ slug, mistakes = MISTAKES }: { slug: string; mistakes?: Mistake[] }) {
   const { data, isLoading, isPending, error, refetch } = useScenarios()
-  const { start, preparing, startError } = useStartDemo()
+  const { start, preparing, preparingVariant, startError } = useStartDemo()
 
   // Pending without loading is a request waiting for the network (offline): still no list.
   const waiting = isLoading || (isPending === true && !data && !error)
@@ -38,13 +40,27 @@ export function HowItWorksPage({ slug }: { slug: string }) {
 
   const scenario = data?.scenarios.find((s) => demoSlug(s.id) === slug)
   const guide = scenario ? GUIDES[scenario.id] : undefined
+  const second = secondEnding(scenario?.id)
+  const starting = scenario !== undefined && preparing === scenario.id
   const run = scenario && (
-    <RunButton
-      scenario={scenario}
-      isStarting={preparing === scenario.id}
-      isDisabled={preparing !== null && preparing !== scenario.id}
-      onRun={() => void start(scenario)}
-    />
+    <div className="flex flex-wrap gap-2">
+      {second && (
+        <RunButton
+          scenario={scenario}
+          label={playLabel(second.outcome)}
+          secondary
+          isStarting={starting && preparingVariant === second.id}
+          isDisabled={preparing !== null && !(starting && preparingVariant === second.id)}
+          onRun={() => void start(scenario, second.id)}
+        />
+      )}
+      <RunButton
+        scenario={scenario}
+        isStarting={starting && !preparingVariant}
+        isDisabled={preparing !== null && !(starting && !preparingVariant)}
+        onRun={() => void start(scenario)}
+      />
+    </div>
   )
   const alert = startError && (
     <div className="mb-4">
@@ -89,7 +105,7 @@ export function HowItWorksPage({ slug }: { slug: string }) {
         {run}
       </header>
       {alert}
-      <GuideBody guide={guide} />
+      <GuideBody guide={guide} mistakes={mistakes} />
     </div>
   )
 }
@@ -114,9 +130,11 @@ function Breadcrumb({ scenario }: { scenario: Scenario }) {
   )
 }
 
-function GuideBody({ guide }: { guide: DemoGuide }) {
+function GuideBody({ guide, mistakes }: { guide: DemoGuide; mistakes: Mistake[] }) {
   const picture = willSeeFor(guide.demoId)
-  const mistake = MISTAKES.find((m) => m.id === guide.mistakeId)
+  const mistake = mistakes.find((m) => m.id === guide.mistakeId)
+  // The Gallery has its Common mistakes tab only while a mistake has a demo: no link to a tab that is not there.
+  const mistakeHasCard = hasRunnableMistake(mistakes)
   return (
     <div className="flex flex-col gap-8">
       <Section title="The story">
@@ -168,16 +186,26 @@ function GuideBody({ guide }: { guide: DemoGuide }) {
             <CardBody className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <FiAlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden />
-                <Link
-                  to="/gallery"
-                  search={{ group: MISTAKES_TAB }}
-                  hash={mistake.id}
-                  className="font-semibold hover:underline"
-                >
-                  {mistake.title} →
-                </Link>
+                {mistakeHasCard ? (
+                  <Link
+                    to="/gallery"
+                    search={{ group: MISTAKES_TAB }}
+                    hash={mistake.id}
+                    className="font-semibold hover:underline"
+                  >
+                    {mistake.title} →
+                  </Link>
+                ) : (
+                  <span className="font-semibold">{mistake.title}</span>
+                )}
               </div>
               <p className="text-sm">{mistake.whatGoesWrong}</p>
+              {!mistakeHasCard && (
+                <p className="text-sm">
+                  <span className="font-semibold">Do instead: </span>
+                  {mistake.fix}
+                </p>
+              )}
             </CardBody>
           </Card>
         </Section>
@@ -197,25 +225,31 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function RunButton({
   scenario,
+  label = 'Run this example',
+  secondary = false,
   isStarting,
   isDisabled,
   onRun,
 }: {
   scenario: Scenario
+  label?: string
+  /** The second ending's button: outlined, so Run stays the main one. */
+  secondary?: boolean
   isStarting: boolean
   isDisabled: boolean
   onRun: () => void
 }) {
   return (
     <Button
-      color="primary"
-      startContent={isStarting ? undefined : <FiZap className="h-4 w-4" />}
+      color={secondary ? 'default' : 'primary'}
+      variant={secondary ? 'bordered' : 'solid'}
+      startContent={isStarting || secondary ? undefined : <FiZap className="h-4 w-4" />}
       isLoading={isStarting}
       isDisabled={isDisabled}
       onPress={onRun}
       data-demo-id={scenario.id}
     >
-      Run this example
+      {label}
     </Button>
   )
 }

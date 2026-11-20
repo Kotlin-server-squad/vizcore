@@ -39,6 +39,7 @@ import { ProblemsPanel, type ChecksLine } from './workspace/ProblemsPanel'
 import { ConnectionFacts } from './workspace/ConnectionFacts'
 import { useScenarioActions } from './workspace/use-scenario-actions'
 import { useAutoRun } from '@/hooks/use-auto-run'
+import { validVariant } from '@/lib/demo-variants'
 import { StateBar } from './StateBar'
 import { ReplayController } from './replay/ReplayController'
 import { RecordConfirmModal } from './replay/RecordConfirmModal'
@@ -144,8 +145,10 @@ interface SessionWorkspaceProps {
   startLive?: boolean
   /** A shared link's token and the cut it loaded (Part 8, M-11): its reads go through the token, bound to that cut. */
   share?: ShareBinding
-  /** Opened by Run again (`?run=true`): start the run once the session has loaded (S-13). */
+  /** Opened by Run or Run again (`?run=true`): start the run once the session has loaded (S-13). */
   autoRun?: boolean
+  /** The ending the address names (`?variant=`); used only if this session's demo has it. */
+  variant?: string
   /** Drops `run` from the address, so a reload never starts a second run. */
   onAutoRunConsumed?: () => void
 }
@@ -158,6 +161,7 @@ export function SessionWorkspace({
   startLive = false,
   share,
   autoRun = false,
+  variant,
   onAutoRunConsumed,
 }: SessionWorkspaceProps) {
   const {
@@ -266,6 +270,7 @@ export function SessionWorkspace({
     sessionId,
     scenarioId: demoId ?? '',
     scenarioName,
+    variant: validVariant(demoId, variant),
     onClearEvents: () => {
       clearEvents()
       setSelection(null)
@@ -464,7 +469,7 @@ export function SessionWorkspace({
   // A demo's run outcome (S-3); an attached app has none.
   const isDemo = hasScenario || !!demoId || isDemoSessionId(sessionId)
   const outcome = useMemo(() => (isDemo && session ? deriveRunOutcome(session) : null), [isDemo, session])
-  // Run again opened this session: it starts its own run (S-13).
+  // Run or Run again opened this session: it starts its own run (S-13).
   const noAutoRun = useCallback(() => {}, [])
   useAutoRun({
     requested: autoRun && !!demoId && !readOnly,

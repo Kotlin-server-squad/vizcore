@@ -53,6 +53,7 @@ html[data-look='a'] {
 
 /* The header's pills: square, 1 px, compact. */
 [data-look='a'] [data-look-part='header'] [data-testid='rung-badge'],
+[data-look='a'] [data-look-part='header'] [data-testid='run-ending'],
 [data-look='a'] [data-look-part='header'] [data-testid='run-outcome'],
 [data-look='a'] [data-look-part='header'] [data-testid='dropped-count'] {
   height: 1.375rem;

@@ -141,8 +141,8 @@ describe('NewDemoSessionModal with the full catalog', () => {
     expect(navigate).toHaveBeenCalledWith({
       to: '/sessions/$sessionId',
       params: { sessionId: `sid-scenario-${demo.name}` },
-      // The session page runs it with POST /api/scenarios/{scenarioId}.
-      search: { scenarioId: id, scenarioName: demo.name },
+      // The session page runs it with POST /api/scenarios/{scenarioId}, by itself (`run`).
+      search: { scenarioId: id, scenarioName: demo.name, run: true },
     })
   })
 

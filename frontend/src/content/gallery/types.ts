@@ -24,4 +24,6 @@ export interface Mistake {
   fix: string
   /** Whether the visualizer's detector reports this kind today. */
   detected: boolean
+  /** Catalog id of the demo that shows this mistake; none until it has one ("Demo coming"). */
+  demoId?: string
 }
