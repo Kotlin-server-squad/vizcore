@@ -15,6 +15,7 @@ import type {
   MetricsResponse,
   RoundsPage,
   RoundsQuery,
+  HealthCapabilities,
 } from '@/types/api'
 import type {
   CreateShareResponse,
@@ -444,11 +445,12 @@ class ApiClient {
    * Server capability flags read from /health. `sharingEnabled` is false in
    * memory mode (storage.type=memory), where the share routes are absent — the
    * UI uses it to gate the Share affordance rather than offering an action that
-   * 404s.
+   * 404s. `publicDemo` is true on a public demo server (PUBLIC_DEMO_MODE), where
+   * a visitor's Connect, custom scenario, Reset and Share are refused with 403.
    */
-  async getCapabilities(): Promise<{ sharingEnabled: boolean }> {
-    const health = await this.fetchJson<{ sharingEnabled?: boolean }>('/health')
-    return { sharingEnabled: health.sharingEnabled ?? false }
+  async getCapabilities(): Promise<{ sharingEnabled: boolean; publicDemo: boolean }> {
+    const health = await this.fetchJson<HealthCapabilities>('/health')
+    return { sharingEnabled: health.sharingEnabled ?? false, publicDemo: health.publicDemo ?? false }
   }
 
   // PUBLIC shared-session read — the token IS the credential, so NO Bearer is

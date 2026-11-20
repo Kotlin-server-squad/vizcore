@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Application health status and server capabilities */
+        get: operations["getHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -608,10 +625,10 @@ export interface components {
         ErrorResponse: {
             error: string;
             /**
-             * @description Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s)
+             * @description Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s, and the 403 a public demo server gives a visitor)
              * @enum {string}
              */
-            code?: "demo-limit" | "demo-time-limit" | "summaries-unavailable" | "history-trimmed";
+            code?: "demo-limit" | "demo-time-limit" | "summaries-unavailable" | "history-trimmed" | "public-demo";
         };
         /** @enum {string} */
         CoroutineState: "CREATED" | "ACTIVE" | "SUSPENDED" | "WAITING_FOR_CHILDREN" | "COMPLETED" | "CANCELLED" | "FAILED";
@@ -1452,8 +1469,42 @@ export interface components {
             healthCut: string | null;
             checks: components["schemas"]["ChecksStatus"] | null;
         };
+        HealthStatus: {
+            /** @enum {string} */
+            status: "UP" | "DEGRADED";
+            version: string;
+            sessions: number;
+            /** Format: int64 */
+            uptimeMs: number;
+            memory: components["schemas"]["MemoryInfo"];
+            components?: {
+                [key: string]: string;
+            };
+            /** @description Whether share links are available (only with the database) */
+            sharingEnabled?: boolean;
+            /** @description Whether this is a public demo server (PUBLIC_DEMO_MODE). Visitors can watch and run the built-in demos; connecting an app, custom scenarios, deleting and sharing sessions are refused with 403 unless an admin credential is sent */
+            publicDemo?: boolean;
+        };
+        MemoryInfo: {
+            /** Format: int64 */
+            usedMb: number;
+            /** Format: int64 */
+            maxMb: number;
+            /** Format: double */
+            usagePercent: number;
+        };
     };
-    responses: never;
+    responses: {
+        /** @description Refused on a public demo server (PUBLIC_DEMO_MODE) for a caller without an admin credential. The error says what is not open to visitors */
+        PublicDemoRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+    };
     parameters: never;
     requestBodies: never;
     headers: never;
@@ -1461,6 +1512,35 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Application is healthy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthStatus"];
+                };
+            };
+            /** @description Application is degraded (memory usage above 90%) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthStatus"];
+                };
+            };
+        };
+    };
     listSessions: {
         parameters: {
             query?: never;
@@ -1502,6 +1582,7 @@ export interface operations {
                     "application/json": components["schemas"]["CreateSessionResponse"];
                 };
             };
+            403: components["responses"]["PublicDemoRefused"];
         };
     };
     getSession: {
@@ -1564,6 +1645,7 @@ export interface operations {
                     "application/json": components["schemas"]["MessageResponse"];
                 };
             };
+            403: components["responses"]["PublicDemoRefused"];
             /** @description Session not found */
             404: {
                 headers: {
@@ -2430,6 +2512,7 @@ export interface operations {
                     "application/json": components["schemas"]["ScenarioExecutionResponse"];
                 };
             };
+            403: components["responses"]["PublicDemoRefused"];
             /** @description Scenario execution error */
             500: {
                 headers: {

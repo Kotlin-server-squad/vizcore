@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.publicDemoMode
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -31,6 +32,12 @@ data class HealthStatus(
      * offering an action that 404s in memory mode.
      */
     val sharingEnabled: Boolean = false,
+    /**
+     * Whether this is a public demo server (`PUBLIC_DEMO_MODE`): visitors watch and run the built-in
+     * demos, and connecting an app, custom scenarios, deleting and sharing sessions are refused with
+     * 403 unless an admin asks. The frontend hides those actions instead of offering ones that fail.
+     */
+    val publicDemo: Boolean = false,
 )
 
 private val startTime = System.currentTimeMillis()
@@ -69,6 +76,7 @@ private suspend fun ApplicationCall.respondHealth() {
                 ),
             // Sharing requires the DB-backed (tenant-scoped) store; absent in memory mode.
             sharingEnabled = tenantScopedStore() != null,
+            publicDemo = application.publicDemoMode,
         )
 
     val httpStatus = if (healthy) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable

@@ -5,6 +5,7 @@ import { SessionsHome } from '@/components/sessions/SessionsHome'
 import { ConnectWizard } from '@/components/connect/ConnectWizard'
 import { NewDemoSessionModal } from '@/components/sessions/NewDemoSessionModal'
 import { CompareOverlay } from '@/components/sessions/CompareOverlay'
+import { usePublicDemo } from '@/hooks/use-public-demo'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -22,6 +23,8 @@ export function HomePage() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [demoOpen, setDemoOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
+  // A public demo's visitor cannot connect an app: no Connect, no wizard.
+  const publicDemo = usePublicDemo()
 
   return (
     <Layout>
@@ -30,9 +33,10 @@ export function HomePage() {
           onConnect={() => setWizardOpen(true)}
           onNewDemo={() => setDemoOpen(true)}
           onCompare={() => setCompareOpen(true)}
+          publicDemo={publicDemo}
         />
       </div>
-      <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
+      {!publicDemo && <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />}
       <NewDemoSessionModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
       <CompareOverlay isOpen={compareOpen} onClose={() => setCompareOpen(false)} />
     </Layout>

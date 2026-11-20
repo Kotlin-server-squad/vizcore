@@ -167,3 +167,43 @@ describe('sessionDisplayName (#145)', () => {
     expect(sessionDisplayName('custom-id')).toBe('custom-id')
   })
 })
+
+describe('SessionsSidebar - on a public demo server', () => {
+  it('offers no Connect and says how to run vizcore yourself', () => {
+    useSessionsMock.mockReturnValue({ data: [liveSession, demoSession], isLoading: false })
+    render(<SessionsSidebar onConnect={vi.fn()} onNewDemo={vi.fn()} publicDemo />)
+
+    expect(screen.queryByRole('button', { name: /connect/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /new demo session/i })).toBeInTheDocument()
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent('This is a public demo.')
+    expect(note).toHaveTextContent(/run vizcore on your own machine/)
+    expect(screen.getByRole('link', { name: /how to run vizcore and connect your app/i })).toHaveAttribute(
+      'href',
+      'https://github.com/Kotlin-server-squad/vizcore#quickstart',
+    )
+    // The sessions themselves are listed as everywhere else.
+    expect(screen.getByText('APP')).toBeInTheDocument()
+    expect(screen.getByText('DEMO')).toBeInTheDocument()
+  })
+
+  it('with no sessions offers a demo, not "Connect your app"', () => {
+    const onNewDemo = vi.fn()
+    useSessionsMock.mockReturnValue({ data: [], isLoading: false })
+    render(<SessionsSidebar onConnect={vi.fn()} onNewDemo={onNewDemo} publicDemo />)
+
+    expect(screen.queryByText('No app connected')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /connect/i })).not.toBeInTheDocument()
+    expect(screen.getByText('No sessions yet')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Run a demo scenario' }))
+    expect(onNewDemo).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows no note and keeps Connect when the server is not a public demo', () => {
+    useSessionsMock.mockReturnValue({ data: [liveSession], isLoading: false })
+    render(<SessionsSidebar onConnect={vi.fn()} />)
+
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /connect/i })).toBeInTheDocument()
+  })
+})

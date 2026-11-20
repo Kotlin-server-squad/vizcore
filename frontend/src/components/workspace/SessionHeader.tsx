@@ -11,6 +11,7 @@ import {
 } from '@heroui/react'
 import { FiCheck, FiMoreHorizontal, FiPause, FiPlay, FiRadio } from 'react-icons/fi'
 import { useCapabilities } from '@/hooks/use-capabilities'
+import { isPublicDemoVisitor } from '@/lib/public-demo'
 import { useLook, useLookSlot } from '@/looks/look-context'
 import { useLookExperiment } from '@/looks/experiment/LookExperimentLayer'
 import { parseLook } from '@/looks/registry'
@@ -114,6 +115,8 @@ export function SessionHeader({
   // that 404s (explicit false only — stay enabled while still loading).
   const { data: capabilities } = useCapabilities()
   const sharingDisabled = capabilities?.sharingEnabled === false
+  // A public demo server refuses a visitor's Share, Reset (a delete) and Clear: not offered there.
+  const publicDemo = isPublicDemoVisitor(capabilities)
   // The Look switch (PR L0): offered only where the page has one (not the shared view).
   const { look, setLook, looks } = useLook()
   // The look experiment, while it runs (null otherwise: the menu is as without it).
@@ -123,7 +126,7 @@ export function SessionHeader({
   // The page's own actions in "⋯".
   const actionItems = [
     // Owner only: a shared link can never re-share (ADR-019, T-03-22).
-    ...(readOnly
+    ...(readOnly || publicDemo
       ? []
       : [
           <DropdownItem
@@ -136,7 +139,7 @@ export function SessionHeader({
     // Session checks (M-3) — validation is an action, not a tab.
     <DropdownItem key="checks">Checks</DropdownItem>,
     <DropdownItem key="refresh">Refresh</DropdownItem>,
-    ...(scenario
+    ...(scenario && !publicDemo
       ? [
           <DropdownItem key="reset" description="Deletes this session and starts a fresh one">
             Reset session

@@ -6,8 +6,11 @@ import { SessionHeader } from './SessionHeader'
 import { LOOK_STORAGE_KEY, LookProvider, forgetVisitLook } from '@/looks/look-context'
 import { LOOKS } from '@/looks/registry'
 import type { SessionSnapshot } from '@/types/api'
+import { clearToken, setToken } from '@/lib/auth-store'
 
-vi.mock('@/hooks/use-capabilities', () => ({ useCapabilities: () => ({ data: { sharingEnabled: true } }) }))
+// What /health says the server can do; a test may switch it to a public demo.
+const capabilities = { current: { sharingEnabled: true, publicDemo: false } }
+vi.mock('@/hooks/use-capabilities', () => ({ useCapabilities: () => ({ data: capabilities.current }) }))
 vi.mock('../export/ExportMenu', () => ({ ExportMenu: () => <div data-testid="export-menu" /> }))
 // The look experiment's actions, as the session page's layer provides them (null: off).
 const experiment: { current: null | { openVote: () => void; switched: (from: string, to: string) => void } } = {
@@ -206,6 +209,52 @@ describe('SessionHeader', () => {
       const menu = await screen.findByRole('menu')
       expect(within(menu).queryByRole('menuitem', { name: /share/i })).toBeNull()
       expect(within(menu).getByRole('menuitem', { name: /checks/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('on a public demo server', () => {
+    const scenario = {
+      run: vi.fn(), runAgain: vi.fn(), reset: vi.fn(), clear: vi.fn(),
+      isRunPending: false, isRunAgainPending: false, isResetPending: false, errorText: null,
+    }
+
+    beforeEach(() => {
+      capabilities.current = { sharingEnabled: true, publicDemo: true }
+      localStorage.clear()
+      forgetVisitLook()
+    })
+    afterEach(() => {
+      capabilities.current = { sharingEnabled: true, publicDemo: false }
+      clearToken()
+    })
+
+    // In every look: the menu is the header's own, whatever the look draws around it.
+    it.each(LOOKS.map((l) => [l.label, l.id] as const))(
+      'offers a visitor no Share, Reset session or Clear events (%s)',
+      async (_, lookId) => {
+        localStorage.setItem(LOOK_STORAGE_KEY, lookId)
+        renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } }, { withLook: true })
+        // Running the demo is what a visitor is here for.
+        expect(screen.getByRole('button', { name: 'Run Scenario' })).toBeEnabled()
+        await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+        const menu = await screen.findByRole('menu')
+        expect(within(menu).queryByRole('menuitem', { name: /share/i })).toBeNull()
+        expect(within(menu).queryByRole('menuitem', { name: /reset session/i })).toBeNull()
+        expect(within(menu).queryByRole('menuitem', { name: /clear events/i })).toBeNull()
+        expect(within(menu).getByRole('menuitem', { name: /checks/i })).toBeInTheDocument()
+        expect(within(menu).getByRole('menuitem', { name: /refresh/i })).toBeInTheDocument()
+      },
+    )
+
+    it('keeps them for a signed-in admin', async () => {
+      const payload = btoa(JSON.stringify({ sub: 'owner', role: 'ADMIN' }))
+      setToken(`header.${payload}.signature`)
+      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
+      await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      const menu = await screen.findByRole('menu')
+      expect(within(menu).getByRole('menuitem', { name: /share/i })).toBeInTheDocument()
+      expect(within(menu).getByRole('menuitem', { name: /reset session/i })).toBeInTheDocument()
+      expect(within(menu).getByRole('menuitem', { name: /clear events/i })).toBeInTheDocument()
     })
   })
 

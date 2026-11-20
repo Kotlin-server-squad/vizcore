@@ -27,8 +27,10 @@ import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.share.ShareService
 import com.jh.proj.coroutineviz.share.registerShareOwnerRoutes
 import com.jh.proj.coroutineviz.share.registerSharedPublicRoute
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.plugins.ratelimit.*
+import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 import kotlin.time.ExperimentalTime
@@ -88,28 +90,55 @@ fun Application.configureRouting() {
         // configureRateLimit) so protected routes are authenticated AND rate-limited.
         authenticatedApi {
             rateLimit(RateLimitName(API_RATE_LIMIT_NAME)) {
-                registerVizScenarioRoutes()
-                registerSyncScenarioRoutes()
-                registerTestRoutes()
-                registerSessionRoutes()
-                registerSessionHealthRoutes()
-                // WebSocket ingest (RCO-05): inherits auth + the "api" stream bucket
-                // + D-04a fail-open from this authenticatedApi/rateLimit block.
-                registerIngestRoutes()
-                registerValidationRoutes()
-                registerScenarioRunnerRoutes()
-                registerFlowScenarioRoutes()
-                registerPatternRoutes()
-                registerComparisonRoutes()
-                // Owner share management (SHAR-01): mint/list/revoke require a credential
-                // when auth is on (T-03-16). createdBy is resolved from the principal.
-                shareService?.let { registerShareOwnerRoutes(it, publicBaseUrl) }
-                // The look experiment: the same access as the sessions list; the writes take only its
-                // anonymous events and votes, and nothing while it is off.
-                registerLookExperimentRoutes(lookExperiment)
+                // Public demo mode (PUBLIC_DEMO_MODE): a visitor's writes are refused unless they
+                // start or run a built-in demo, and the adminOnlyInPublicDemo routes are refused
+                // whole. With the mode off both register their routes as they are.
+                publicDemoGuarded {
+                    // Developer endpoints, not demos the UI offers (#280).
+                    adminOnlyInPublicDemo("this developer endpoint is not open to visitors") {
+                        registerVizScenarioRoutes()
+                        registerTestRoutes()
+                    }
+                    registerSyncScenarioRoutes()
+                    registerSessionRoutes()
+                    registerSessionHealthRoutes()
+                    // WebSocket ingest (RCO-05): inherits auth + the "api" stream bucket
+                    // + D-04a fail-open from this authenticatedApi/rateLimit block.
+                    adminOnlyInPublicDemo("visitors cannot connect an app") {
+                        registerIngestRoutes()
+                    }
+                    registerValidationRoutes()
+                    registerScenarioRunnerRoutes()
+                    registerFlowScenarioRoutes()
+                    registerPatternRoutes()
+                    registerComparisonRoutes()
+                    // Owner share management (SHAR-01): mint/list/revoke require a credential
+                    // when auth is on (T-03-16). createdBy is resolved from the principal.
+                    adminOnlyInPublicDemo("visitors cannot share sessions") {
+                        if (shareService != null) {
+                            registerShareOwnerRoutes(shareService, publicBaseUrl)
+                        } else if (application.publicDemoMode) {
+                            registerShareRoutesWithoutSharing()
+                        }
+                    }
+                    // The look experiment: the same access as the sessions list; the writes take only its
+                    // anonymous events and votes, and nothing while it is off.
+                    registerLookExperimentRoutes(lookExperiment)
+                }
             }
         }
     }
+}
+
+/**
+ * The owner's share routes on a public demo server, which has no database and so no sharing: they
+ * are there so that a visitor is told why (403, by [adminOnlyInPublicDemo] around them) instead
+ * of getting a bare 404. An admin gets the 404 the missing routes give on any server without sharing.
+ */
+private fun Route.registerShareRoutesWithoutSharing() {
+    post("/api/sessions/{id}/share") { call.respond(HttpStatusCode.NotFound) }
+    get("/api/sessions/{id}/shares") { call.respond(HttpStatusCode.NotFound) }
+    delete("/api/sessions/{id}/shares/{token}") { call.respond(HttpStatusCode.NotFound) }
 }
 
 /**

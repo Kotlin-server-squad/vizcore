@@ -12,6 +12,37 @@
     }
   ],
   "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Application health status and server capabilities",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Application is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Application is degraded (memory usage above 90%)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions": {
       "get": {
         "operationId": "listSessions",
@@ -62,6 +93,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "$ref": "#/components/responses/PublicDemoRefused"
           }
         }
       }
@@ -142,6 +176,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "$ref": "#/components/responses/PublicDemoRefused"
           },
           "404": {
             "description": "Session not found",
@@ -1575,6 +1612,9 @@
               }
             }
           },
+          "403": {
+            "$ref": "#/components/responses/PublicDemoRefused"
+          },
           "500": {
             "description": "Scenario execution error",
             "content": {
@@ -2707,9 +2747,10 @@
               "demo-limit",
               "demo-time-limit",
               "summaries-unavailable",
-              "history-trimmed"
+              "history-trimmed",
+              "public-demo"
             ],
-            "description": "Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s)"
+            "description": "Machine-readable reason, present only where a client acts on it (the demo limit's and the session health's 503s, and the 403 a public demo server gives a visitor)"
           }
         }
       },
@@ -5289,6 +5330,86 @@
               }
             ],
             "nullable": true
+          }
+        }
+      },
+      "HealthStatus": {
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "sessions",
+          "uptimeMs",
+          "memory"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UP",
+              "DEGRADED"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "uptimeMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryInfo"
+          },
+          "components": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "sharingEnabled": {
+            "type": "boolean",
+            "description": "Whether share links are available (only with the database)"
+          },
+          "publicDemo": {
+            "type": "boolean",
+            "description": "Whether this is a public demo server (PUBLIC_DEMO_MODE). Visitors can watch and run the built-in demos; connecting an app, custom scenarios, deleting and sharing sessions are refused with 403 unless an admin credential is sent"
+          }
+        }
+      },
+      "MemoryInfo": {
+        "type": "object",
+        "required": [
+          "usedMb",
+          "maxMb",
+          "usagePercent"
+        ],
+        "properties": {
+          "usedMb": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "maxMb": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "usagePercent": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      }
+    },
+    "responses": {
+      "PublicDemoRefused": {
+        "description": "Refused on a public demo server (PUBLIC_DEMO_MODE) for a caller without an admin credential. The error says what is not open to visitors",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
           }
         }
       }

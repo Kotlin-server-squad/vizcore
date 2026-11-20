@@ -77,6 +77,20 @@ rateLimit:
     requestsPerMinute: ${RATE_LIMIT_LOGIN_RPM:10}            # POST /api/auth/token
   sessionCreate:
     requestsPerMinute: ${RATE_LIMIT_SESSION_CREATE_RPM:10}   # POST /api/sessions (also draws on write)
+  # How many reverse proxies stand between the visitor and this server (Traefik, Cloudflare, the
+  # frontend image's nginx). Each appends the address it got the request from to X-Forwarded-For;
+  # with N here, the Nth entry from the right is the visitor and is what anonymous limits count by.
+  # 0 (the default) never reads the header: set it only when the backend port is reachable through
+  # those proxies alone, or anyone can pick their own bucket by sending the header themselves.
+  trustedProxyHops: ${TRUSTED_PROXY_HOPS:0}
+
+publicDemo:
+  # A server anyone can open (docs/DEPLOYMENT.md, "Public demo"). Off by default. When true, a
+  # visitor with no credential can list and open sessions and run the built-in demos; connecting an
+  # app (ingest), custom scenarios, deleting or resetting a session, sharing and the developer
+  # endpoints answer 403 unless an admin credential is sent. Needs storage.type=memory, where
+  # session.maxAgeMs and session.maxCount bound what demo runs leave behind. Restart to change.
+  enabled: ${PUBLIC_DEMO_MODE:false}
 
 scenarios:
   # At most this many demos run on the server at the same time, across all clients. A demo holds

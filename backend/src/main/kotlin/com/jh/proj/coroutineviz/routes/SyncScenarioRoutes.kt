@@ -1,5 +1,6 @@
 package com.jh.proj.coroutineviz.routes
 
+import com.jh.proj.coroutineviz.adminOnlyInPublicDemo
 import com.jh.proj.coroutineviz.auth.resolveTenant
 import com.jh.proj.coroutineviz.scenarios.SyncScenarios
 import com.jh.proj.coroutineviz.session.SessionManager
@@ -30,86 +31,10 @@ data class SyncScenarioResponse(
  * with full event visualization.
  */
 fun Route.registerSyncScenarioRoutes() {
-    // ========================================================================
-    // MUTEX SCENARIOS
-    // ========================================================================
-
-    /**
-     * Thread-safe counter using Mutex
-     */
-    demoGet("/api/sync/mutex/counter") {
-        call.runSyncScenario("Thread-Safe Counter") { SyncScenarios.runCounter(it).join() }
-    }
-
-    /**
-     * Bank account transfer with consistent lock ordering
-     */
-    demoGet("/api/sync/mutex/bank-transfer") {
-        call.runSyncScenario("Bank Account Transfer") { SyncScenarios.runBankTransfer(it).join() }
-    }
-
-    /**
-     * Cache with thread-safe read-through pattern
-     */
-    demoGet("/api/sync/mutex/cache") {
-        call.runSyncScenario("Cache Read-Through") { SyncScenarios.runCache(it).join() }
-    }
-
-    /**
-     * Deadlock demonstration (intentional)
-     */
-    demoGet("/api/sync/mutex/deadlock-demo") {
-        call.runSyncScenario("Deadlock Demonstration") { SyncScenarios.runDeadlock(it).join() }
-    }
-
-    // ========================================================================
-    // SEMAPHORE SCENARIOS
-    // ========================================================================
-
-    /**
-     * Database connection pool limiting
-     */
-    demoGet("/api/sync/semaphore/connection-pool") {
-        call.runSyncScenario("Database Connection Pool") { SyncScenarios.runConnectionPool(it).join() }
-    }
-
-    /**
-     * API rate limiter
-     */
-    demoGet("/api/sync/semaphore/rate-limiter") {
-        call.runSyncScenario("API Rate Limiter") { SyncScenarios.runRateLimiter(it).join() }
-    }
-
-    /**
-     * Parallel file processor with I/O throttling
-     */
-    demoGet("/api/sync/semaphore/file-processor") {
-        call.runSyncScenario("Parallel File Processor") { SyncScenarios.runFileProcessor(it).join() }
-    }
-
-    /**
-     * Resource pool with timeout handling
-     */
-    demoGet("/api/sync/semaphore/resource-timeout") {
-        call.runSyncScenario("Resource Pool with Timeout") { SyncScenarios.runResourceTimeout(it).join() }
-    }
-
-    /**
-     * Producer-Consumer with bounded buffer
-     */
-    demoGet("/api/sync/semaphore/producer-consumer") {
-        call.runSyncScenario("Producer-Consumer Buffer") { SyncScenarios.runProducerConsumer(it).join() }
-    }
-
-    // ========================================================================
-    // COMBINED SCENARIOS
-    // ========================================================================
-
-    /**
-     * E-commerce order processing (Mutex + Semaphore)
-     */
-    demoGet("/api/sync/combined/ecommerce") {
-        call.runSyncScenario("E-commerce Order Processing") { SyncScenarios.runOrderProcessing(it).join() }
+    // Each call of these opens a session of its own; a public demo's visitors use the session-aware
+    // POST variants below, as the UI does.
+    adminOnlyInPublicDemo("visitors start a demo from the page, not from this address") {
+        registerSelfCreatingSyncRuns()
     }
 
     // ========================================================================
@@ -237,6 +162,90 @@ fun Route.registerSyncScenarioRoutes() {
     }
     demoPost("/api/scenarios/sync/combined/ecommerce") {
         call.runSyncScenarioInSession("E-commerce Order Processing") { SyncScenarios.runOrderProcessing(it).join() }
+    }
+}
+
+private fun Route.registerSelfCreatingSyncRuns() {
+    // ========================================================================
+    // MUTEX SCENARIOS
+    // ========================================================================
+
+    /**
+     * Thread-safe counter using Mutex
+     */
+    demoGet("/api/sync/mutex/counter") {
+        call.runSyncScenario("Thread-Safe Counter") { SyncScenarios.runCounter(it).join() }
+    }
+
+    /**
+     * Bank account transfer with consistent lock ordering
+     */
+    demoGet("/api/sync/mutex/bank-transfer") {
+        call.runSyncScenario("Bank Account Transfer") { SyncScenarios.runBankTransfer(it).join() }
+    }
+
+    /**
+     * Cache with thread-safe read-through pattern
+     */
+    demoGet("/api/sync/mutex/cache") {
+        call.runSyncScenario("Cache Read-Through") { SyncScenarios.runCache(it).join() }
+    }
+
+    /**
+     * Deadlock demonstration (intentional)
+     */
+    demoGet("/api/sync/mutex/deadlock-demo") {
+        call.runSyncScenario("Deadlock Demonstration") { SyncScenarios.runDeadlock(it).join() }
+    }
+
+    // ========================================================================
+    // SEMAPHORE SCENARIOS
+    // ========================================================================
+
+    /**
+     * Database connection pool limiting
+     */
+    demoGet("/api/sync/semaphore/connection-pool") {
+        call.runSyncScenario("Database Connection Pool") { SyncScenarios.runConnectionPool(it).join() }
+    }
+
+    /**
+     * API rate limiter
+     */
+    demoGet("/api/sync/semaphore/rate-limiter") {
+        call.runSyncScenario("API Rate Limiter") { SyncScenarios.runRateLimiter(it).join() }
+    }
+
+    /**
+     * Parallel file processor with I/O throttling
+     */
+    demoGet("/api/sync/semaphore/file-processor") {
+        call.runSyncScenario("Parallel File Processor") { SyncScenarios.runFileProcessor(it).join() }
+    }
+
+    /**
+     * Resource pool with timeout handling
+     */
+    demoGet("/api/sync/semaphore/resource-timeout") {
+        call.runSyncScenario("Resource Pool with Timeout") { SyncScenarios.runResourceTimeout(it).join() }
+    }
+
+    /**
+     * Producer-Consumer with bounded buffer
+     */
+    demoGet("/api/sync/semaphore/producer-consumer") {
+        call.runSyncScenario("Producer-Consumer Buffer") { SyncScenarios.runProducerConsumer(it).join() }
+    }
+
+    // ========================================================================
+    // COMBINED SCENARIOS
+    // ========================================================================
+
+    /**
+     * E-commerce order processing (Mutex + Semaphore)
+     */
+    demoGet("/api/sync/combined/ecommerce") {
+        call.runSyncScenario("E-commerce Order Processing") { SyncScenarios.runOrderProcessing(it).join() }
     }
 }
 

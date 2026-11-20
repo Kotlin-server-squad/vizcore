@@ -11,16 +11,19 @@ export function SessionsHome({
   onConnect,
   onNewDemo,
   onCompare,
+  publicDemo,
 }: {
   onConnect: () => void
   onNewDemo?: () => void
   onCompare?: () => void
+  publicDemo?: boolean
 }) {
   return (
     <SessionsSidebar
       onConnect={onConnect}
       onNewDemo={onNewDemo}
       onCompare={onCompare}
+      publicDemo={publicDemo}
       className="w-full"
     />
   )
