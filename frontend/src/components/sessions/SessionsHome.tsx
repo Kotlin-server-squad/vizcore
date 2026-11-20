@@ -10,16 +10,19 @@ import { SessionsSidebar } from './SessionsSidebar'
 export function SessionsHome({
   onConnect,
   onNewDemo,
+  isNewDemoDisabled,
   onCompare,
 }: {
   onConnect: () => void
   onNewDemo?: () => void
+  isNewDemoDisabled?: boolean
   onCompare?: () => void
 }) {
   return (
     <SessionsSidebar
       onConnect={onConnect}
       onNewDemo={onNewDemo}
+      isNewDemoDisabled={isNewDemoDisabled}
       onCompare={onCompare}
       className="w-full"
     />
