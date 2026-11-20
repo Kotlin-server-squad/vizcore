@@ -6,6 +6,7 @@ import com.jh.proj.coroutineviz.auth.ApiKeyPrincipal
 import com.jh.proj.coroutineviz.auth.Role
 import com.jh.proj.coroutineviz.auth.UserPrincipal
 import com.jh.proj.coroutineviz.routes.ErrorResponse
+import com.jh.proj.coroutineviz.routes.SessionDemos
 import com.jh.proj.coroutineviz.session.SessionManager
 import com.jh.proj.coroutineviz.session.VizSession
 import io.ktor.http.HttpStatusCode
@@ -23,6 +24,8 @@ import io.ktor.server.routing.RouteSelectorEvaluation
 import io.ktor.server.routing.RoutingResolveContext
 import io.ktor.server.routing.application
 import io.ktor.util.AttributeKey
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("PublicDemo")
@@ -92,6 +95,9 @@ private suspend fun ApplicationCall.refuseInPublicDemo(message: String) {
     respond(HttpStatusCode.Forbidden, ErrorResponse(error = message, code = PUBLIC_DEMO_ERROR_CODE))
 }
 
+private val NOT_THIS_DEMOS_SESSION =
+    publicDemoRefusal("visitors can run a demo only in a session that was started for that demo")
+
 private const val ONE_RUN_PER_SESSION =
     "This is a public demo: a demo runs once, in a session of its own. Use Run again to start a new session."
 
@@ -120,18 +126,34 @@ private val PublicDemoWriteGuard =
                     when {
                         // A run with no session, or with one that is gone, opens a session of its own.
                         session == null -> call.attributes.put(MayAddSessionKey, Unit)
+                        // A session with no demo is an app's, and one with another demo is someone
+                        // else's run: the list of sessions is public, so its id is no secret.
+                        SessionDemos.of(session.sessionId) != kind.demoId -> call.refuseInPublicDemo(NOT_THIS_DEMOS_SESSION)
                         sessions.claimForRun(session) -> call.attributes.put(ClaimedSessionKey, session)
                         else -> call.refuseInPublicDemo(ONE_RUN_PER_SESSION)
                     }
                 }
                 is VisitorRequest.Refused -> call.refuseInPublicDemo(kind.message)
             }
+            // A request the client gave up on is never answered: its claim and its session are
+            // settled when it ends, however it ends.
+            if (call.attributes.contains(ClaimedSessionKey) || call.attributes.contains(MayAddSessionKey)) {
+                currentCoroutineContext().job.invokeOnCompletion { sessions.settle(call) }
+            }
         }
-        onCallRespond { call, _ ->
-            call.attributes.getOrNull(ClaimedSessionKey)?.let(sessions::runAnswered)
-            if (call.attributes.contains(MayAddSessionKey)) sessions.trimToLimit()
-        }
+        onCallRespond { call, _ -> sessions.settle(call) }
     }
+
+/**
+ * Gives up the claim [call] holds, once, and applies the limit when it may have added a session.
+ * Called before the answer, so the claim is free and the limit holds by the time the client reads
+ * it, and again when the request ends.
+ */
+private fun VisitorSessions.settle(call: ApplicationCall) {
+    // Taken, not read: a later call must not give up a claim another request holds by then.
+    call.attributes.takeOrNull(ClaimedSessionKey)?.let(::runAnswered)
+    if (call.attributes.contains(MayAddSessionKey)) trimToLimit()
+}
 
 private class AdminOnlyConfig {
     var message: String = publicDemoRefusal("visitors can watch and run the built-in demos only")

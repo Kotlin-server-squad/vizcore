@@ -4,6 +4,7 @@ import com.jh.proj.coroutineviz.auth.ApiKeyStore
 import com.jh.proj.coroutineviz.auth.JwtConfig
 import com.jh.proj.coroutineviz.auth.Role
 import com.jh.proj.coroutineviz.routes.DemoRunsKey
+import com.jh.proj.coroutineviz.routes.SessionDemos
 import com.jh.proj.coroutineviz.routes.demoCatalog
 import com.jh.proj.coroutineviz.session.SessionManager
 import io.ktor.client.HttpClient
@@ -32,12 +33,18 @@ import io.ktor.server.engine.applicationEnvironment
 import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.response.respond
+import io.ktor.server.routing.post
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.close
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -50,6 +57,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
@@ -374,11 +382,39 @@ class PublicDemoModeTest {
         }
 
     @Test
+    fun `a visitor cannot run a demo into a session an admin opened for an app`() =
+        testApplication {
+            publicDemo(*credentials)
+            // Listed for everyone, and empty until the app connects.
+            val appSession = client.post("/api/sessions?name=my-app&correlation=abc") { key(adminKey) }.sessionId()
+            assertTrue(appSession in client.sessionIds())
+
+            client.post("/api/scenarios/$demoId?sessionId=$appSession").assertRefusedAsPublicDemo("run into an app's session")
+
+            assertEquals(0L, SessionManager.getSession(appSession)?.lastSeq)
+            // The admin still may.
+            assertEquals(HttpStatusCode.OK, client.post("/api/scenarios/$demoId?sessionId=$appSession") { key(adminKey) }.status)
+        }
+
+    @Test
+    fun `a visitor cannot run another demo into a session started for one`() =
+        testApplication {
+            publicDemo()
+            val sessionId = client.demoSession()
+
+            client.post("/api/scenarios/parallel?sessionId=$sessionId").assertRefusedAsPublicDemo("run another demo")
+
+            assertEquals(0L, SessionManager.getSession(sessionId)?.lastSeq)
+            // Its own demo still runs in it.
+            assertEquals(HttpStatusCode.OK, client.post("/api/scenarios/$demoId?sessionId=$sessionId").status)
+        }
+
+    @Test
     fun `every demo in the catalog is open to a visitor, and nothing else under scenarios is`() {
         for (demo in demoCatalog) {
             val path = demo.endpoint.substringBefore('?')
             assertEquals(
-                VisitorRequest.DemoRun(sessionId = "s-1"),
+                VisitorRequest.DemoRun(demoId = demo.id, sessionId = "s-1"),
                 classifyVisitorRequest(HttpMethod.Post, path, parametersOf("sessionId", "s-1")),
                 "POST $path",
             )
@@ -416,6 +452,40 @@ class PublicDemoModeTest {
             slot.handlerEnded()
 
             assertEquals(HttpStatusCode.OK, client.post("/api/scenarios/$demoId?sessionId=$sessionId").status)
+        }
+
+    @Test
+    fun `a run that was cancelled before it started leaves its session free`() =
+        testApplication {
+            environment { config = MapApplicationConfig("publicDemo.enabled" to "true") }
+            val first = AtomicBoolean(true)
+            application {
+                configurePublicDemo()
+                routing {
+                    publicDemoGuarded {
+                        post("/api/scenarios/$demoId") {
+                            // The first request ends as one whose client went away: cancelled, with no answer.
+                            if (first.getAndSet(false)) {
+                                currentCoroutineContext().cancel()
+                                awaitCancellation()
+                            }
+                            call.respond(HttpStatusCode.OK)
+                        }
+                    }
+                }
+            }
+            val session = SessionManager.createSession("scenario-$demoId")
+            SessionDemos.record(session.sessionId, demoId)
+
+            withContext(Dispatchers.Default) {
+                withTimeout(10.seconds) {
+                    runCatching { client.post("/api/scenarios/$demoId?sessionId=${session.sessionId}") }
+                }
+                assertEquals(false, first.get(), "the first request must have reached the route")
+                withTimeout(10.seconds) {
+                    while (client.post("/api/scenarios/$demoId?sessionId=${session.sessionId}").status != HttpStatusCode.OK) delay(20)
+                }
+            }
         }
 
     // -- With credentials configured --------------------------------------------------------------

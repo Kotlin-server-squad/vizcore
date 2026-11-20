@@ -151,7 +151,8 @@ What a visitor (no credential) can do:
 - list and open sessions, and read everything about them: the live stream, events, replay,
   export, health, Checks, compare
 - start a session for a built-in demo and run that demo in it, once. "Run again" opens a new
-  session. `MAX_CONCURRENT_DEMOS`, `MAX_DEMO_RUN_SECONDS` and the rate limits apply as always
+  session. A demo runs only in a session that was started for it: not in a session an admin
+  opened for an app, and not in one started for another demo. `MAX_CONCURRENT_DEMOS`, `MAX_DEMO_RUN_SECONDS` and the rate limits apply as always
 
 What a visitor cannot do; each answers `403` with `"code": "public-demo"` and a sentence saying
 what is not open to visitors, never a `401`:
@@ -203,7 +204,9 @@ visitor, and one that is wrong gets `401`. `API_KEY` alone adds a `runner` key, 
 Public demo mode decides who may do what. It does not cap how many people watch at once (open
 live streams), and all visitors share the `MAX_CONCURRENT_DEMOS` slots: when they are taken, the
 next demo gets "Server busy" for a few seconds. Put the server behind a reverse proxy and set
-`TRUSTED_PROXY_HOPS`, or every visitor shares one rate-limit bucket.
+`TRUSTED_PROXY_HOPS`, or every visitor shares one rate-limit bucket. Before you set it, make sure
+the backend port is not reachable past the proxy (see
+[Behind a reverse proxy](#behind-a-reverse-proxy)): `docker-compose.prod.yml` publishes it.
 
 ## Monitoring
 
@@ -277,6 +280,21 @@ The number has to be exact, and the backend must be reachable through those prox
   visitor sent, so anyone can pick a new bucket for every request by sending their own
   `X-Forwarded-For`
 - too low: a proxy is counted as the visitor, which is the shared bucket again
+
+Two things the table takes for granted:
+
+- **The backend port is closed to the outside.** `docker-compose.prod.yml` publishes it on every
+  interface (`${BACKEND_PORT:-8080}:8080`). Before setting `TRUSTED_PROXY_HOPS` to 1 or more with
+  that file, bind it to the machine itself (`"127.0.0.1:${BACKEND_PORT:-8080}:8080"`), or remove
+  the `ports:` entry when the proxy reaches the backend over the Docker network.
+- **Each proxy trusts the one before it, and appends.** A proxy that does not trust its upstream
+  replaces `X-Forwarded-For` instead of adding to it. Traefik trusts none by default: for the
+  Cloudflare row it must list Cloudflare's address ranges in
+  `entryPoints.<name>.forwardedHeaders.trustedIPs`, or it writes the Cloudflare edge's address
+  over the visitor's. The backend then finds fewer entries than hops and counts by the
+  connection's address, the shared bucket again; with the number lowered to match, it counts
+  per Cloudflare edge, not per visitor. An nginx of your own in the chain needs
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`.
 
 `0` never reads the header. A request with fewer entries than hops, or with an entry that is not
 an IP address, is counted by the connection's address. The setting affects rate limits only.

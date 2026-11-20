@@ -20,7 +20,9 @@
 #                         demos only (docs/DEPLOYMENT.md, "Public demo"). Default false
 #   TRUSTED_PROXY_HOPS    number of reverse proxies in front of the backend, this file's frontend
 #                         nginx included, so rate limits count visitors and not the proxy
-#                         (docs/DEPLOYMENT.md, "Behind a reverse proxy"). Default 0 = trust none
+#                         (docs/DEPLOYMENT.md, "Behind a reverse proxy"). Default 0 = trust none.
+#                         Before raising it, close the backend port below to the outside: bind
+#                         it to 127.0.0.1 or remove its ports entry
 #   SEED_USER, SEED_HASH_B64, SEED_ROLE, JWT_SECRET  one user who can sign in, e.g. the admin of
 #                         a public demo. Default none
 services:

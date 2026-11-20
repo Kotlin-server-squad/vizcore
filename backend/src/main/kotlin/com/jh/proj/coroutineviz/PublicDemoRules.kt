@@ -27,8 +27,9 @@ internal sealed interface VisitorRequest {
     /** Opens a session for a built-in demo. */
     data object NewDemoSession : VisitorRequest
 
-    /** Runs a built-in demo, into the session named [sessionId] when there is one. */
+    /** Runs the built-in demo [demoId], into the session named [sessionId] when there is one. */
     data class DemoRun(
+        val demoId: String,
         val sessionId: String?,
     ) : VisitorRequest
 
@@ -71,12 +72,14 @@ private fun classifyVisitorPost(
         segments == SESSION_CREATE_SEGMENTS -> classifySessionCreate(query)
         // The built-in demos by name, each bounded by MAX_CONCURRENT_DEMOS and MAX_DEMO_RUN_SECONDS.
         // "custom" is not one of them, and neither is a demo route nobody put in the catalog.
-        segments.startsWith(SCENARIO_PREFIX) && segments.size > SCENARIO_PREFIX.size ->
-            if (SessionDemos.isKnown(segments.drop(SCENARIO_PREFIX.size).joinToString("/"))) {
-                VisitorRequest.DemoRun(query["sessionId"]?.takeIf { it.isNotEmpty() })
+        segments.startsWith(SCENARIO_PREFIX) && segments.size > SCENARIO_PREFIX.size -> {
+            val demoId = segments.drop(SCENARIO_PREFIX.size).joinToString("/")
+            if (SessionDemos.isKnown(demoId)) {
+                VisitorRequest.DemoRun(demoId, query["sessionId"]?.takeIf { it.isNotEmpty() })
             } else {
                 VisitorRequest.Refused(publicDemoRefusal("visitors can run the built-in demos, not their own scenarios"))
             }
+        }
         // Checks: reads the session's events and keeps one small result per session.
         segments.startsWith(VALIDATE_PREFIX) && segments.size == VALIDATE_PREFIX.size + 1 -> VisitorRequest.Allowed
         // The look experiment's anonymous events and votes; nothing is taken while it is off.

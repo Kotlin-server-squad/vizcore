@@ -23,10 +23,15 @@ internal class VisitorSessions(
      * into it, or another run is being started in it this moment. A session takes one run: a second
      * would add to what another visitor is watching, and a session run over and over never goes
      * idle, so it would outgrow SESSION_MAX_AGE_MS. "Run again" opens a new session.
+     *
+     * Synchronized with [runAnswered]: a claim is given up only after its run left events, so a
+     * request that saw the session empty cannot take it once that run is over.
      */
+    @Synchronized
     fun claimForRun(session: VizSession): Boolean = !session.hasOpenIngestSocket && session.lastSeq == 0L && starting.add(session)
 
-    /** The request that claimed [session] has its answer: a run that started left events in it. */
+    /** The request that claimed [session] is over: a run that started left events in it. */
+    @Synchronized
     fun runAnswered(session: VizSession) {
         starting.remove(session)
     }
@@ -34,7 +39,7 @@ internal class VisitorSessions(
     /**
      * Removes the sessions beyond [maxSessions], the least recently active first and never one an
      * app is streaming into. Called once a visitor's request has added a session, before it is
-     * answered: the periodic sweep does the same, but only every SESSION_CHECK_INTERVAL_MS, and
+     * answered and again when it is over: the periodic sweep does the same, but only every SESSION_CHECK_INTERVAL_MS, and
      * many visitors can open many sessions in between.
      */
     @Synchronized
