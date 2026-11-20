@@ -1,13 +1,20 @@
 import { Button, Card, CardBody, CardHeader, Chip } from '@heroui/react'
-import { FiAlertTriangle } from 'react-icons/fi'
+import { FiAlertTriangle, FiZap } from 'react-icons/fi'
 import type { Mistake } from '@/content/gallery/types'
 
 /**
  * One common mistake. Amber marks it as a potential problem, never red, and
  * only in the icon and border: amber text is too faint on a light background.
- * The id is the anchor How-it-works pages link to.
+ * The id is the anchor How-it-works pages link to. A mistake whose demo the
+ * catalog has gets Run (`run`); the others say their demo is still to come.
  */
-export function MistakeCard({ mistake }: { mistake: Mistake }) {
+export function MistakeCard({
+  mistake,
+  run,
+}: {
+  mistake: Mistake
+  run?: { isStarting: boolean; isDisabled: boolean; onRun: () => void }
+}) {
   return (
     <Card id={mistake.id} data-testid="mistake-card" className="flex scroll-mt-20 flex-col border border-warning-300">
       <CardHeader className="flex flex-col items-start gap-1 pb-0">
@@ -35,9 +42,24 @@ export function MistakeCard({ mistake }: { mistake: Mistake }) {
             <span className="text-default-600">{mistake.fix}</span>
           </p>
         </div>
-        <Button variant="bordered" isDisabled fullWidth>
-          Demo coming
-        </Button>
+        {run ? (
+          <Button
+            color="primary"
+            variant="flat"
+            startContent={run.isStarting ? undefined : <FiZap className="h-4 w-4" />}
+            isLoading={run.isStarting}
+            isDisabled={run.isDisabled}
+            onPress={run.onRun}
+            aria-label={`Run the demo: ${mistake.title}`}
+            fullWidth
+          >
+            Run the demo
+          </Button>
+        ) : (
+          <Button variant="bordered" isDisabled fullWidth>
+            Demo coming
+          </Button>
+        )}
       </CardBody>
     </Card>
   )

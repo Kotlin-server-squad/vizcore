@@ -11,6 +11,7 @@ import { useStartDemo } from './use-start-demo'
 import type { Scenario } from '@/types/api'
 
 const nested = { id: 'nested', name: 'Nested: Product Page', description: '' } as Scenario
+const order = { id: 'order-processing', name: 'Order Processing', description: '' } as Scenario
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -27,8 +28,38 @@ describe('useStartDemo', () => {
     expect(navigate).toHaveBeenCalledWith({
       to: '/sessions/$sessionId',
       params: { sessionId: 'sid-1' },
-      search: { scenarioId: 'nested', scenarioName: 'Nested: Product Page' },
+      search: { scenarioId: 'nested', scenarioName: 'Nested: Product Page', run: true },
     })
+  })
+
+  it('opens a second ending with its variant, and says which ending is starting', async () => {
+    let finish: (v: { sessionId: string }) => void = () => {}
+    mutateAsync.mockReturnValue(new Promise((resolve) => (finish = resolve)))
+    const { result } = renderHook(() => useStartDemo())
+
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current.start(order, 'card-declined')
+    })
+    expect(result.current.preparing).toBe('order-processing')
+    expect(result.current.preparingVariant).toBe('card-declined')
+    await act(async () => {
+      finish({ sessionId: 'sid-1' })
+      await pending
+    })
+    expect(result.current.preparingVariant).toBeNull()
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/sessions/$sessionId',
+      params: { sessionId: 'sid-1' },
+      search: { scenarioId: 'order-processing', scenarioName: 'Order Processing', run: true, variant: 'card-declined' },
+    })
+  })
+
+  it('ignores a variant the demo does not have', async () => {
+    const { result } = renderHook(() => useStartDemo())
+    await act(() => result.current.start(nested, 'card-declined'))
+    await act(() => result.current.start(order, 'email-retried'))
+    for (const [call] of navigate.mock.calls) expect(call.search).not.toHaveProperty('variant')
   })
 
   it('calls onStarted before it navigates', async () => {

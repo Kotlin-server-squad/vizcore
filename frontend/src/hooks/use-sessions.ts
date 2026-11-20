@@ -1,11 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { pollInterval } from '@/lib/poll-interval'
+import type { SessionInfo } from '@/types/api'
 
+/** How often an open sessions list re-reads itself; a hidden tab does not. */
+export const SESSIONS_REFRESH_MS = 30_000
+
+/**
+ * The sessions list. It re-reads itself when the window gets the focus back
+ * and on a slow interval (never sooner than a 429's Retry-After), so an app
+ * that has just connected appears without a reload.
+ */
 export function useSessions() {
-  return useQuery({
+  // Typed here: the interval function would otherwise widen the error type.
+  return useQuery<SessionInfo[], Error>({
     queryKey: ['sessions'],
     queryFn: () => apiClient.listSessions(),
+    refetchOnWindowFocus: true,
+    refetchInterval: pollInterval(SESSIONS_REFRESH_MS),
   })
 }
 

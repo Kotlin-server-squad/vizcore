@@ -227,6 +227,51 @@ describe('SessionHeader', () => {
     })
   })
 
+  describe('a demo with two endings', () => {
+    const actions = (over = {}) => ({
+      run: vi.fn(), runAgain: vi.fn(), reset: vi.fn(), clear: vi.fn(), isRunPending: false, isRunAgainPending: false,
+      isResetPending: false, errorText: null, ...over,
+    })
+    const finished = { outcome: 'finished', failedCount: 0, ended: true } as const
+
+    beforeEach(() => {
+      localStorage.clear()
+      forgetVisitLook()
+    })
+
+    // Registry-driven: the same markup in every look.
+    it.each(LOOKS.map((l) => l.id))('says which ending plays and offers the other one, in look %s', async (look) => {
+      localStorage.setItem(LOOK_STORAGE_KEY, look)
+      const play = vi.fn()
+      const scenario = actions({ ending: 'card declined', otherEnding: { label: 'Play: it works', play, isPending: false } })
+      renderHeader({ scenario, outcome: finished }, { withLook: true })
+      expect(screen.getByTestId('run-ending')).toHaveTextContent('Ending: card declined')
+      // After the rung, where the other status pills are.
+      expect(screen.getByTestId('rung-badge').nextElementSibling).toBe(screen.getByTestId('run-ending'))
+      const other = screen.getByRole('button', { name: 'Play: it works' })
+      // Next to Run again, and styled with it.
+      expect(screen.getByRole('button', { name: 'Run again' }).nextElementSibling).toBe(other)
+      expect(other).toHaveAttribute('data-look-part', 'run-again')
+      await userEvent.click(other)
+      expect(play).toHaveBeenCalledTimes(1)
+      expect(scenario.runAgain).not.toHaveBeenCalled()
+    })
+
+    it('offers the second ending before the run too, and names no ending for the usual one', () => {
+      const scenario = actions({ otherEnding: { label: 'Play: card declined', play: vi.fn(), isPending: false } })
+      renderHeader({ scenario, outcome: { outcome: 'notStarted', failedCount: 0, ended: false } })
+      expect(screen.getByRole('button', { name: 'Run Scenario' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Play: card declined' })).toBeInTheDocument()
+      expect(screen.queryByTestId('run-ending')).toBeNull()
+    })
+
+    it('has neither for a demo with one ending', () => {
+      renderHeader({ scenario: actions(), outcome: finished })
+      expect(screen.queryByTestId('run-ending')).toBeNull()
+      expect(screen.queryByRole('button', { name: /^Play: / })).toBeNull()
+    })
+  })
+
   describe('the Look choice (trial)', () => {
     beforeEach(() => {
       localStorage.clear()

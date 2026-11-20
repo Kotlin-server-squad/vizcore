@@ -7,7 +7,7 @@ const useScenariosMock = vi.fn()
 vi.mock('@/hooks/use-scenarios', () => ({ useScenarios: () => useScenariosMock() }))
 
 const start = vi.fn()
-const startState = { preparing: null as string | null, startError: null as unknown }
+const startState = { preparing: null as string | null, preparingVariant: null as string | null, startError: null as unknown }
 vi.mock('@/hooks/use-start-demo', () => ({
   useStartDemo: () => ({ start, ...startState }),
 }))
@@ -32,6 +32,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { GalleryPage } from './GalleryPage'
 import { MISTAKES } from '@/content/gallery/mistakes'
+import type { Mistake } from '@/content/gallery/types'
 import { GUIDES } from '@/content/gallery/guides'
 import { demoSlug } from '@/lib/demo-slug'
 import { ApiError } from '@/lib/api-errors'
@@ -45,6 +46,7 @@ const refetch = vi.fn()
 beforeEach(() => {
   vi.clearAllMocks()
   startState.preparing = null
+  startState.preparingVariant = null
   startState.startError = null
   useScenariosMock.mockReturnValue({ data: { scenarios: all }, isLoading: false, error: null, refetch })
 })
@@ -53,12 +55,15 @@ afterEach(() => {
   window.location.hash = ''
 })
 
-const renderPage = (group?: string, onGroupChange = vi.fn()) =>
+const renderPage = (group?: string, onGroupChange = vi.fn(), mistakes?: Mistake[]) =>
   render(
     <HeroUIProvider>
-      <GalleryPage group={group} onGroupChange={onGroupChange} />
+      <GalleryPage group={group} onGroupChange={onGroupChange} mistakes={mistakes} />
     </HeroUIProvider>,
   )
+
+/** The mistakes once the first of them has a demo to run: the Common mistakes tab is there only then. */
+const RUNNABLE: Mistake[] = MISTAKES.map((m, i) => (i === 0 ? { ...m, demoId: 'nested' } : m))
 
 /**
  * Every demo in the catalog has a guide now. A demo the server adds before its guide is written still gets a card
@@ -82,9 +87,40 @@ const UNGUIDED = {
 const cardTitles = () => screen.queryAllByTestId('demo-card').map((c) => within(c).getByRole('heading').textContent)
 
 describe('GalleryPage', () => {
-  it('has a tab per catalog group, in order, then Common mistakes, each with its count', () => {
+  it('has a tab per catalog group, in order, each with its count', () => {
     renderPage()
     expect(screen.getByRole('heading', { level: 1, name: 'Example Gallery' })).toBeInTheDocument()
+    const tabs = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(tabs).toHaveLength(8)
+    LABELS.forEach((label, i) => {
+      const count = all.filter((s) => s.groupLabel === label).length
+      expect(tabs[i]).toBe(`${label}${count}`)
+    })
+  })
+
+  it('has no Common mistakes tab while no mistake has a demo to run', () => {
+    // The app's own content: this fails, on purpose, once a mistake gets its demo; the tab is back then.
+    expect(MISTAKES.some((m) => m.demoId !== undefined)).toBe(false)
+    renderPage()
+    expect(screen.queryByRole('tab', { name: /^Common mistakes/ })).toBeNull()
+  })
+
+  it('shows the first group for a link to the hidden Common mistakes tab', () => {
+    window.location.hash = '#LEAKED_COROUTINE'
+    renderPage('mistakes')
+    expect(screen.queryAllByTestId('mistake-card')).toHaveLength(0)
+    expect(cardTitles()).toEqual(all.filter((s) => s.group === 'real-life').map((s) => s.name))
+    expect(screen.getByRole('tab', { name: /^Real life/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('says so instead of failing when there is nothing to show at all', () => {
+    useScenariosMock.mockReturnValue({ data: { scenarios: [] }, isLoading: false, error: null, refetch })
+    renderPage('mistakes')
+    expect(screen.getByText('The server lists no examples.')).toBeInTheDocument()
+  })
+
+  it('adds Common mistakes after the groups once a mistake has a demo to run', () => {
+    renderPage(undefined, vi.fn(), RUNNABLE)
     const tabs = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(tabs).toHaveLength(9)
     LABELS.forEach((label, i) => {
@@ -125,7 +161,7 @@ describe('GalleryPage', () => {
 
   it('reports the tab the reader picks', async () => {
     const onGroupChange = vi.fn()
-    renderPage('basics', onGroupChange)
+    renderPage('basics', onGroupChange, RUNNABLE)
     await userEvent.click(screen.getByRole('tab', { name: /^Flow/ }))
     expect(onGroupChange).toHaveBeenLastCalledWith('flow')
     await userEvent.click(screen.getByRole('tab', { name: /^Common mistakes/ }))
@@ -170,7 +206,7 @@ describe('GalleryPage', () => {
 
   it('ignores a malformed link fragment instead of failing', () => {
     window.location.hash = '#%'
-    renderPage('mistakes')
+    renderPage('mistakes', vi.fn(), RUNNABLE)
     expect(screen.getAllByTestId('mistake-card')).toHaveLength(MISTAKES.length)
   })
 
@@ -181,16 +217,59 @@ describe('GalleryPage', () => {
     expect(refetch).toHaveBeenCalled()
   })
 
-  it('lists the common mistakes, each with an anchor and its demo still to come', () => {
-    renderPage('mistakes')
+  it.each([
+    ['order-processing', 'Play: card declined', 'card-declined'],
+    ['user-registration', 'Play: email retried', 'email-retried'],
+    ['report-generation', 'Play: slow API cancelled', 'slow-api-cancelled'],
+  ])('gives %s a second button, %s, which starts that ending', async (id, label, variant) => {
+    renderPage('real-life')
+    const card = screen.getAllByTestId('demo-card').find((c) => c.getAttribute('data-demo-id') === id)!
+    const buttons = within(card).getAllByRole('button')
+    // Run stays the main button, before the second ending's.
+    expect(buttons.map((b) => b.textContent)).toEqual(['Run', label])
+    await userEvent.click(buttons[1]!)
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ id }), variant)
+    await userEvent.click(buttons[0]!)
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ id }))
+  })
+
+  it('gives a demo with one ending one button', () => {
+    renderPage('basics')
+    expect(screen.queryByRole('button', { name: /^Play: / })).toBeNull()
+  })
+
+  it('shows which ending is starting, and holds the other button', () => {
+    startState.preparing = 'order-processing'
+    startState.preparingVariant = 'card-declined'
+    renderPage('real-life')
+    const card = screen.getAllByTestId('demo-card').find((c) => c.getAttribute('data-demo-id') === 'order-processing')!
+    const [run, second] = within(card).getAllByRole('button')
+    expect(run).toBeDisabled()
+    expect(second).toHaveAttribute('data-loading', 'true')
+  })
+
+  it('no longer tells the reader to add a parameter to the address', () => {
+    renderPage('real-life')
+    for (const card of screen.getAllByTestId('demo-card')) expect(card.textContent).not.toMatch(/\?\w+=true/)
+  })
+
+  it('lists the common mistakes, each with an anchor, and Run for the one that has a demo', () => {
+    renderPage('mistakes', vi.fn(), RUNNABLE)
     const cards = screen.getAllByTestId('mistake-card')
     expect(cards.map((c) => c.id).sort()).toEqual(MISTAKES.map((m) => m.id).sort())
     for (const card of cards) {
-      const mistake = MISTAKES.find((m) => m.id === card.id)!
+      const mistake = RUNNABLE.find((m) => m.id === card.id)!
       expect(within(card).getByRole('heading', { name: mistake.title })).toBeInTheDocument()
-      expect(within(card).getByRole('button', { name: /demo coming/i })).toBeDisabled()
+      if (mistake.demoId) expect(within(card).getByRole('button', { name: `Run the demo: ${mistake.title}` })).toBeEnabled()
+      else expect(within(card).getByRole('button', { name: /demo coming/i })).toBeDisabled()
       expect(within(card).queryByText('Detected by the visualizer') !== null).toBe(mistake.detected)
     }
+  })
+
+  it('runs the demo of a mistake that has one', async () => {
+    renderPage('mistakes', vi.fn(), RUNNABLE)
+    await userEvent.click(screen.getByRole('button', { name: `Run the demo: ${RUNNABLE[0]!.title}` }))
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ id: 'nested' }))
   })
 
   it('scrolls to the mistake named in the link', () => {
@@ -201,7 +280,7 @@ describe('GalleryPage', () => {
     }
     try {
       window.location.hash = '#LEAKED_COROUTINE'
-      renderPage('mistakes')
+      renderPage('mistakes', vi.fn(), RUNNABLE)
       expect(scrolled).toContain('LEAKED_COROUTINE')
     } finally {
       Element.prototype.scrollIntoView = original
@@ -217,11 +296,11 @@ describe('GalleryPage', () => {
     try {
       window.location.hash = '#WRONG_DISPATCHER'
       useScenariosMock.mockReturnValue({ data: undefined, isLoading: true, error: null, refetch })
-      const { rerender } = renderPage('mistakes')
+      const { rerender } = renderPage('mistakes', vi.fn(), RUNNABLE)
       useScenariosMock.mockReturnValue({ data: { scenarios: all }, isLoading: false, error: null, refetch })
       rerender(
         <HeroUIProvider>
-          <GalleryPage group="mistakes" onGroupChange={vi.fn()} />
+          <GalleryPage group="mistakes" onGroupChange={vi.fn()} mistakes={RUNNABLE} />
         </HeroUIProvider>,
       )
       expect(scrolled).toContain('WRONG_DISPATCHER')
