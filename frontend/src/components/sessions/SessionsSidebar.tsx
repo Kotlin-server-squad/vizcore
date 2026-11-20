@@ -23,6 +23,7 @@ export function SessionsSidebar({
   selectedSessionId,
   className = 'w-[320px] shrink-0',
   onNewDemo,
+  isNewDemoDisabled = false,
   onCompare,
 }: {
   onConnect: () => void
@@ -31,6 +32,8 @@ export function SessionsSidebar({
   className?: string
   /** Opens the re-hosted scenario picker (D-2). Omitted in the sidebar placement. */
   onNewDemo?: () => void
+  /** Another demo is being started by the page; one start at a time. */
+  isNewDemoDisabled?: boolean
   /** Opens the re-hosted comparison overlay (D-3). Omitted in the sidebar placement. */
   onCompare?: () => void
 }) {
@@ -70,7 +73,7 @@ export function SessionsSidebar({
               </Button>
             )}
             {onNewDemo && (
-              <Button size="sm" variant="flat" onPress={onNewDemo}>
+              <Button size="sm" variant="flat" isDisabled={isNewDemoDisabled} onPress={onNewDemo}>
                 New demo session
               </Button>
             )}
@@ -106,7 +109,7 @@ export function SessionsSidebar({
               {/* Opens the demo picker in place. It used to navigate to
                   /scenarios, which redirects straight back here (#139). */}
               {onNewDemo && (
-                <Button variant="light" size="sm" onPress={onNewDemo}>
+                <Button variant="light" size="sm" isDisabled={isNewDemoDisabled} onPress={onNewDemo}>
                   Run a demo scenario instead
                 </Button>
               )}

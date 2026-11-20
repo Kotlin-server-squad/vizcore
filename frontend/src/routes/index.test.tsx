@@ -49,8 +49,10 @@ vi.mock('@/components/sessions/CompareOverlay', () => ({
 import { HomePage } from './index'
 import { ORDER_STORY, ORDER_STORY_DEMO } from '@/content/home/order-story'
 import { ApiError } from '@/lib/api-errors'
+import { FRONT_DOOR_APPS_KEY } from '@/lib/front-door-memory'
 
 const liveSession: SessionInfo = { sessionId: 'order-service-1', coroutineCount: 3 }
+const demoSession: SessionInfo = { sessionId: 'scenario-Order Processing-1728383000000', coroutineCount: 6 }
 const order = catalog.scenarios.find((s) => s.id === 'order-processing')!
 const realLife = catalog.scenarios.filter((s) => s.category === 'realistic')
 
@@ -60,6 +62,7 @@ const precedes = (a: Element, b: Element) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
   startState.preparing = null
   startState.preparingVariant = null
   startState.startError = null
@@ -174,7 +177,7 @@ describe('root route: the front door', () => {
     expect(screen.getByRole('button', { name: 'How to connect in 3 steps' })).toBeInTheDocument()
   })
 
-  it('with sessions, puts the list right under a smaller hero, above the stories', () => {
+  it('with an app in the list, puts the list right under a smaller hero, above the stories', () => {
     useSessionsMock.mockReturnValue({ data: [liveSession], isLoading: false })
     render(<HomePage />)
     expect(screen.getByText('order-service-1')).toBeInTheDocument()
@@ -186,6 +189,58 @@ describe('root route: the front door', () => {
     // The picture gives way to the list; both ways in stay.
     expect(screen.queryByTestId('order-story-bar')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Watch a checkout run' })).toBeInTheDocument()
+  })
+
+  // With auth off the list is the whole server's: other visitors' demo
+  // sessions must not take the picture away from a first-time visitor.
+  it('with only demo sessions in the list, keeps the picture and the list below the stories', () => {
+    useSessionsMock.mockReturnValue({ data: [demoSession], isLoading: false })
+    render(<HomePage />)
+    expect(screen.getAllByTestId('order-story-bar')).toHaveLength(ORDER_STORY.bars.length)
+    const stories = screen.getByRole('heading', { name: 'Three real-life stories' })
+    const sessions = screen.getByRole('heading', { name: 'Sessions' })
+    expect(precedes(stories, sessions)).toBe(true)
+    expect(screen.getByText('Demo scenarios')).toBeInTheDocument()
+  })
+
+  it('while the list loads, lays itself out as it was last time, so it does not jump', () => {
+    useSessionsMock.mockReturnValue({ data: [liveSession], isLoading: false })
+    const { unmount } = render(<HomePage />)
+    expect(localStorage.getItem(FRONT_DOOR_APPS_KEY)).toBe('1')
+    unmount()
+
+    useSessionsMock.mockReturnValue({ data: undefined, isLoading: true, isPending: true })
+    const loading = render(<HomePage />)
+    expect(screen.queryByTestId('order-story-bar')).not.toBeInTheDocument()
+    expect(
+      precedes(screen.getByRole('heading', { name: 'Sessions' }), screen.getByRole('heading', { name: 'Three real-life stories' })),
+    ).toBe(true)
+    loading.unmount()
+
+    // The app is gone: the full front door is back, and stays for the next visit.
+    useSessionsMock.mockReturnValue({ data: [], isLoading: false })
+    render(<HomePage />)
+    expect(screen.getAllByTestId('order-story-bar')).toHaveLength(ORDER_STORY.bars.length)
+    expect(localStorage.getItem(FRONT_DOOR_APPS_KEY)).toBeNull()
+  })
+
+  it('a first visit shows the full front door while the list loads', () => {
+    useSessionsMock.mockReturnValue({ data: undefined, isLoading: true, isPending: true })
+    render(<HomePage />)
+    expect(screen.getAllByTestId('order-story-bar')).toHaveLength(ORDER_STORY.bars.length)
+  })
+
+  it('while a demo starts, the list does not offer to start another', () => {
+    useSessionsMock.mockReturnValue({ data: [liveSession], isLoading: false })
+    startState.preparing = 'order-processing'
+    const { unmount } = render(<HomePage />)
+    expect(screen.getByRole('button', { name: /new demo session/i })).toBeDisabled()
+    unmount()
+
+    useSessionsMock.mockReturnValue({ data: [], isLoading: false })
+    render(<HomePage />)
+    expect(screen.getByRole('button', { name: 'Run a demo scenario instead' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'How to connect in 3 steps' })).toBeEnabled()
   })
 
   it('offers the re-hosted demo and compare actions alongside Connect', () => {

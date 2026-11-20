@@ -3,7 +3,7 @@ import { FiPlay } from 'react-icons/fi'
 import { OrderStoryPicture } from './OrderStoryPicture'
 
 interface HomeHeroProps {
-  /** With sessions to show, the hero gives up its picture so the list sits right under it. */
+  /** With the visitor's app in the list, the hero gives up its picture so the list sits right under it. */
   compact: boolean
   /** The checkout demo is being started. */
   isStarting: boolean

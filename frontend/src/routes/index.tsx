@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Layout } from '@/components/Layout'
 import { SessionsHome } from '@/components/sessions/SessionsHome'
@@ -12,6 +12,8 @@ import { ORDER_STORY_DEMO } from '@/content/home/order-story'
 import { useScenarios } from '@/hooks/use-scenarios'
 import { useSessions } from '@/hooks/use-sessions'
 import { useStartDemo } from '@/hooks/use-start-demo'
+import { rememberHadApps, rememberedHadApps } from '@/lib/front-door-memory'
+import { deriveSessionKind } from '@/lib/session-kind'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -23,8 +25,10 @@ export const Route = createFileRoute('/')({
  * still picture of that story, the Real life demos with both their endings,
  * and the badged sessions list (D-1).
  *
- * A visitor with sessions came for them: the hero drops its picture and the
- * list sits right under it, above the stories. With none, the list comes last.
+ * A visitor whose app is in the list came for it: the hero drops its picture
+ * and the list sits right under it, above the stories. Without one the list
+ * comes last. Demo sessions do not count: with auth off the list is the whole
+ * server's, and other visitors' demo runs must not take the front door away.
  * Nothing runs on page load; a demo starts only on a click.
  *
  * Exported so it can be rendered directly in tests without binding to the
@@ -44,12 +48,20 @@ export function HomePage() {
   const startingCheckout = preparing === checkout.id && !preparingVariant
 
   const { data: sessions } = useSessions()
-  const hasSessions = (sessions?.length ?? 0) > 0
+  // Until the list is in, as it was on the last visit: the page must not jump
+  // under a returning visitor when it loads.
+  const [hadApps] = useState(rememberedHadApps)
+  const hasApps = sessions ? sessions.some((s) => deriveSessionKind(s) !== 'demo') : hadApps
+  useEffect(() => {
+    if (sessions) rememberHadApps(hasApps)
+  }, [sessions, hasApps])
 
   const sessionsList = (
     <SessionsHome
       onConnect={() => setWizardOpen(true)}
       onNewDemo={() => setDemoOpen(true)}
+      // The dialog has its own start: not while this page's is under way.
+      isNewDemoDisabled={preparing !== null}
       onCompare={() => setCompareOpen(true)}
     />
   )
@@ -58,16 +70,16 @@ export function HomePage() {
     <Layout>
       <div className="vz-still-when-reduced container-custom flex flex-col gap-10 py-8">
         <HomeHero
-          compact={hasSessions}
+          compact={hasApps}
           isStarting={startingCheckout}
           isDisabled={preparing !== null && !startingCheckout}
           onWatch={() => void start(checkout)}
           onConnect={() => setWizardOpen(true)}
         />
         {startError && <DemoStartAlert startError={startError} />}
-        {hasSessions && sessionsList}
+        {hasApps && sessionsList}
         <RealLifeStories demoStart={demoStart} />
-        {!hasSessions && sessionsList}
+        {!hasApps && sessionsList}
       </div>
       <ConnectWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />
       <NewDemoSessionModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
