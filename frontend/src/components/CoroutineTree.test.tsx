@@ -176,7 +176,8 @@ describe('CoroutineTree', () => {
     expect(node.className).toContain('ring-2')
     expect(node.className).toContain('ring-primary')
     // Selected is said, not only drawn.
-    expect(node).toHaveAttribute('aria-pressed', 'true')
+    expect(node).toHaveAttribute('aria-current', 'true')
+    expect(node).not.toHaveAttribute('aria-pressed')
   })
 
   it('keeps nodes presentational (no role=button) when onSelect is omitted (back-compat)', () => {

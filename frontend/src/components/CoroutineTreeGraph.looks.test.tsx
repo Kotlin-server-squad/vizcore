@@ -216,8 +216,12 @@ describe('graph cards per look', () => {
     'look %s: a card is named for what activating it does, and says whether it is the selected one',
     id => {
       renderIn(id, { onSelect: vi.fn(), selectedNodeId: 'o2' })
-      expect(screen.getByRole('button', { name: 'Inspect order-2' })).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByRole('button', { name: 'Inspect order-1' })).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByRole('button', { name: 'Inspect order-2' })).toHaveAttribute('aria-current', 'true')
+      // Not a toggle: activating the selected card again does not unselect it, so nothing is "pressed".
+      expect(screen.getByRole('button', { name: 'Inspect order-1' })).not.toHaveAttribute('aria-current')
+      for (const card of screen.getAllByRole('button', { name: /^Inspect / })) {
+        expect(card).not.toHaveAttribute('aria-pressed')
+      }
       expect(screen.queryByRole('button', { name: /open source/i })).toBeNull()
     }
   )

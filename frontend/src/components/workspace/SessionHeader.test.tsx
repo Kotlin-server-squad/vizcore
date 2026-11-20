@@ -176,6 +176,10 @@ describe('SessionHeader', () => {
       renderHeader({ outcome: { outcome: 'running', failedCount: 0, ended: false } })
       expect(screen.getByRole('button', { name: 'Replay' })).toBeInTheDocument()
       cleanup()
+      // A shared view is a finished capture, an attached app's included (no run outcome there).
+      renderHeader({ readOnly: true, outcome: null })
+      expect(screen.getByRole('button', { name: 'Replay from start' })).toBeInTheDocument()
+      cleanup()
       // In replay the button leaves it, whatever the run did.
       renderHeader({ replayActive: true, outcome: { outcome: 'finished', failedCount: 0, ended: true } })
       expect(screen.getByRole('button', { name: 'Exit replay' })).toBeInTheDocument()

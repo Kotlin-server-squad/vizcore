@@ -5,9 +5,9 @@
  * Rules are keyed on the graph's own data-card-look, not on <html>'s
  * data-look: an export sets the page's look aside (Classic dark), and the
  * cards must keep the styling that fits their size.
- * Sketch K-A-Compact: a 1 px card, the name in mono with its state's square
- * dot (a "Class.method" name as the class and, under it, the method on up to
- * two lines), the state on the right, the second line under them (up to two lines).
+ * Sketch K-A-Compact: a 1 px card, the state's square dot and the state, the
+ * name in mono under them (a "Class.method" name as the class on its own line
+ * and, under it, the method on up to two lines), then the second line (up to two lines).
  * Text is at least 12 px. Shown: the name, a state pill and the second line. Hidden: the icon, the
  * running tint, the progress bar and the ID / Job / Scope rows (the Inspector
  * shows those for the selected coroutine).
@@ -59,14 +59,13 @@
 [data-card-look='a'] [data-look-part='node-head'] {
   margin: 0;
 }
-/* As the sketch: the state's square dot, the name and, on the right, the state; the second line under them.
-   The name's two parts are cells of this grid themselves (node-name has no box): the class beside the state, the
-   method under both on the card's whole width; a name with no class sits beside the state. */
+/* The state's square dot and the state on the first row, the name under them, then the second line.
+   The name's two parts are cells of this grid themselves (node-name has no box), each on the card's whole width
+   beside the dot's column: the class on a row of its own (157 px, 21 letters), the method under it. */
 [data-card-look='a'] [data-look-part='node-text'] {
   display: grid;
-  /* The dot, the name, and the state on at most 6em of the row ("Waiting for…" is cut short; its colour is also
-     the dot). */
-  grid-template-columns: 7px minmax(0, 1fr) minmax(0, max-content);
+  /* The dot, and everything else. */
+  grid-template-columns: 7px minmax(0, 1fr);
   align-items: start;
   column-gap: 6px;
   row-gap: 2px;
@@ -88,41 +87,41 @@
   font-weight: 500;
   line-height: 18px;
 }
-/* The class: one muted line (cut with an ellipsis only when it is longer than the row). */
+/* The class: one muted line across the card (cut with an ellipsis only when it is longer than that). */
 [data-card-look='a'] [data-look-part='node-name-owner'] {
-  grid-row: 1;
-  grid-column: 2;
+  grid-row: 2;
+  grid-column: 2 / -1;
   font-size: 12px;
   line-height: 18px;
 }
 /* The method: up to two lines across the card, wrapping between its words. */
 [data-card-look='a'] [data-look-part='node-name-method'] {
-  grid-row: 2;
+  grid-row: 3;
   grid-column: 2 / -1;
 }
-/* A name with no class: beside the state, on up to three lines (the height of the class and the method). */
+/* A name with no class: on up to three lines (the height of the class and the method). */
 [data-card-look='a'] [data-look-part='node-name-method']:only-child {
-  grid-row: 1 / span 2;
-  grid-column: 2;
+  grid-row: 2 / span 2;
   -webkit-line-clamp: 3;
 }
-/* The state: the sketch's coloured word, on a faint tint of its colour. */
+/* The state: the sketch's coloured word, on a faint tint of its colour, beside its dot and whole
+   ("Waiting for children" fits the row). */
 [data-card-look='a'] [data-look-part='node-state'] {
   grid-row: 1;
-  grid-column: 3;
+  grid-column: 2 / -1;
+  justify-self: start;
   display: block;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  max-width: 6em;
   padding: 0 4px;
   border-radius: 3px;
   font-size: 12px;
-  line-height: 17px;
+  line-height: 18px;
   background: hsl(var(--card-hue) / 0.14);
   color: hsl(var(--card-ink));
 }
-/* The name has the dot; the state's running mark goes. */
+/* The row has the dot; the state's running mark goes. */
 [data-card-look='a'] [data-look-part='node-state'] > span:not([data-look-part]) {
   display: none;
 }

@@ -576,7 +576,8 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
             tabIndex: 0,
             // Activating it selects the coroutine, which opens it in the Inspector.
             'aria-label': `Inspect ${node.label || node.id}`,
-            'aria-pressed': selected,
+            // The selected one of the set; not a toggle (activating it again does not unselect).
+            'aria-current': selected ? ('true' as const) : undefined,
             onClick: () => (onClickSelect ?? onSelect)(node.id),
             onKeyDown: (e: React.KeyboardEvent) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -710,7 +711,8 @@ function GroupCard({ group, onSelect, onClickSelect, selected, onToggle }: Group
             role: 'button',
             tabIndex: 0,
             'aria-label': `Group ${group.label}: ${size} coroutines`,
-            'aria-pressed': selected,
+            // The selected one of the set; not a toggle (activating it again does not unselect).
+            'aria-current': selected ? ('true' as const) : undefined,
             onClick: () => (onClickSelect ?? onSelect)(group.id),
             onKeyDown: (e: React.KeyboardEvent) => {
               if (e.target !== e.currentTarget) return
