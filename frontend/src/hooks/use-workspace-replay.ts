@@ -8,6 +8,11 @@ import type { VizEvent } from '@/types/api'
 export interface EnterReplayOptions {
   /** Seek to this event instead of the end (story Reveal, Part 9 P-8). */
   atSeq?: number
+  /**
+   * Open at the first retained event, paused and ready to play, instead of at the end (the header's Replay button:
+   * at the end, Play has nothing left to play). `atSeq` wins when its event is in the snapshot.
+   */
+  fromStart?: boolean
   /** Events the stream shed before the snapshot was frozen; defaults to the live stream's count when it is on. */
   shedCount?: number
 }
@@ -48,6 +53,8 @@ export function useWorkspaceReplay({
   const [replayShedCount, setReplayShedCount] = useState(0)
   // The event the post-entry seek goes to, instead of the end; read once by the seek below.
   const pendingSeekSeq = useRef<number | null>(null)
+  // Whether that seek, with no such event, goes to the first event instead of the last; read once with it.
+  const pendingFromStart = useRef(false)
   // The frozen list itself, so freezing it again (a recording of a paused replay) keeps its shed count.
   const replaySnapshotRef = useRef<VizEvent[]>([])
 
@@ -81,7 +88,8 @@ export function useWorkspaceReplay({
     : 0
 
   // Enter replay: freeze the given snapshot and activate replay. The seek to
-  // the end (D-03) is performed by the effect below once useReplay has applied
+  // the end (D-03), or to the start or the event the caller asked for, is
+  // performed by the effect below once useReplay has applied
   // the new snapshot (it resets to index 0 on events-identity change, so the
   // seek must follow that reset).
   //
@@ -102,6 +110,7 @@ export function useWorkspaceReplay({
           ? liveEvents
           : storedEvents || []
       pendingSeekSeq.current = options?.atSeq ?? null
+      pendingFromStart.current = options?.fromStart ?? false
       const refreezing = Array.isArray(snapshot) && snapshot === replaySnapshotRef.current && snapshot.length > 0
       setReplayShedCount(prev => options?.shedCount ?? (refreezing ? prev : streamEnabled ? droppedCount : 0))
       replaySnapshotRef.current = frozen
@@ -146,7 +155,7 @@ export function useWorkspaceReplay({
   })
 
   // On entering replay (snapshot applied), jump to the end and stay paused
-  // (D-03). Keyed on the snapshot identity so re-entry re-seeks; useReplay's
+  // (D-03), unless the caller asked for an event or for the start. Keyed on the snapshot identity so re-entry re-seeks; useReplay's
   // own reset-to-0 effect runs first on the same identity change.
   //
   // CR-01: this auto-seek-to-end MUST be suppressed while a recording is being
@@ -166,9 +175,11 @@ export function useWorkspaceReplay({
     if (seekedSnapshotRef.current === replaySnapshot) return
     seekedSnapshotRef.current = replaySnapshot
     const target = pendingSeekSeq.current
+    const fromStart = pendingFromStart.current
     pendingSeekSeq.current = null
+    pendingFromStart.current = false
     const at = target === null ? -1 : replaySnapshot.findIndex(e => e.seq === target)
-    replaySeekTo(at >= 0 ? at : replaySnapshot.length - 1)
+    replaySeekTo(at >= 0 ? at : fromStart ? 0 : replaySnapshot.length - 1)
   }, [
     replayActive,
     replaySnapshot,

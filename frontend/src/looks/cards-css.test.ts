@@ -66,6 +66,21 @@ describe('the looks’ graph cards', () => {
     }
   )
 
+  // The card's height (card.ts) holds a class line and the name on a fixed number of lines: a rule that let the
+  // name grow freely, or cut it to one line again, would break one or the other.
+  it.each(folders)(
+    '$name shows a "Class.method" name as a class line and the method on two lines at most',
+    ({ css }) => {
+      expect(rulesFor(css, 'node-name-owner')).toMatch(/line-height:\s*\d+px/)
+      expect(rulesFor(css, 'node-name-owner')).not.toMatch(/display:\s*none/)
+      const clamps = [...rulesFor(css, 'node-name-method').matchAll(/-webkit-line-clamp:\s*(\d+)/g)].map(m => Number(m[1]))
+      // Tailwind's line-clamp-2 on the shared markup is the default; a look may only restate it or, for a name with
+      // no class line, use that line too.
+      for (const lines of clamps) expect([2, 3]).toContain(lines)
+      expect(rulesFor(css, 'node-name')).not.toMatch(/-webkit-line-clamp|white-space:\s*nowrap/)
+    }
+  )
+
   it.each(folders)(
     '$name keeps the selection ring: no rule overrides the card’s box-shadow',
     ({ css }) => {

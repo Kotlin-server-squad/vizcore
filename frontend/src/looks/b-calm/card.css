@@ -63,12 +63,20 @@
   align-items: flex-start;
   gap: 4px;
 }
+/* The name: a class on its own muted line, then the name itself on up to two lines, wrapping between its words
+   (CoroutineName). card.ts's height holds all three lines. */
 [data-card-look='b'] [data-look-part='node-name'] {
   max-width: 100%;
   font-size: 16px;
   font-weight: 600;
   line-height: 20px;
-  -webkit-line-clamp: 1;
+}
+[data-card-look='b'] [data-look-part='node-name-owner'] {
+  font-size: 13px;
+  line-height: 16px;
+}
+[data-card-look='b'] [data-look-part='node-name-method'] {
+  -webkit-line-clamp: 2;
 }
 [data-card-look='b'] [data-look-part='node-state'] {
   display: inline-flex;

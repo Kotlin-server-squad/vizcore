@@ -117,7 +117,7 @@ describe('SessionWorkspace — the Timeline (Part 10, S-10)', () => {
     stream(contended())
     render(<SessionWorkspace sessionId="session-1" startLive />, { wrapper })
     await userEvent.click(screen.getByRole('button', { name: 'List' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Open source for order-2' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Inspect order-2' }))
     expect(screen.queryByTestId('inspector-timeline-sentence')).toBeNull()
   })
 

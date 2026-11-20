@@ -91,14 +91,14 @@ beforeEach(() => {
 })
 
 describe('graph cards per look', () => {
-  it('gives every look a card size, and Classic 280 × 260 (Part 7 added its facts row)', () => {
+  it('gives every look a card size, and Classic 280 × 276 (Part 7 added its facts row, the name its class line)', () => {
     for (const { id } of LOOKS) expect(CARDS[id], id).toBeDefined()
-    expect(CARDS.classic).toEqual({ width: 280, height: 260 })
+    expect(CARDS.classic).toEqual({ width: 280, height: 276 })
   })
 
   it('draws Classic’s cards at its size outside the session page (no look)', () => {
     const { container } = renderIn(null)
-    expect(box(container, 'o1')).toMatchObject({ width: 280, height: 260 })
+    expect(box(container, 'o1')).toMatchObject({ width: 280, height: 276 })
   })
 
   it.each(LOOKS.map(l => l.id))(
@@ -146,12 +146,12 @@ describe('graph cards per look', () => {
     id => {
       const onSelect = vi.fn()
       renderIn(id, { onSelect, selectedNodeId: 'o2' })
-      const card = screen.getByRole('button', { name: 'Open source for order-1' })
+      const card = screen.getByRole('button', { name: 'Inspect order-1' })
       fireEvent.click(card)
       fireEvent.keyDown(card, { key: 'Enter' })
       fireEvent.keyDown(card, { key: ' ' })
       expect(onSelect.mock.calls).toEqual([['o1'], ['o1'], ['o1']])
-      expect(screen.getByRole('button', { name: 'Open source for order-2' })).toHaveClass(
+      expect(screen.getByRole('button', { name: 'Inspect order-2' })).toHaveClass(
         'ring-2',
         'ring-primary'
       )
@@ -173,6 +173,56 @@ describe('graph cards per look', () => {
       )
       expect(card.querySelector('[data-look-part="node-details"]')).toHaveTextContent('job-c')
       expect(card.querySelector('[data-look-part="node-icon"]')).not.toBeNull()
+    }
+  )
+
+  it.each(LOOKS.map(l => l.id))(
+    'look %s: "Class.method" reads as the class on its own line and the method under it, the full name in the title',
+    id => {
+      const named = [
+        ...tree,
+        coroutine({ id: 'm', label: 'OrderService.processOrderWithRetry', parentId: 'root' }),
+      ]
+      const { container } = renderIn(id, { coroutines: named, onSelect: vi.fn() })
+      const name = box(container, 'm').el.querySelector('[data-look-part="node-name"]')!
+      const owner = name.querySelector('[data-look-part="node-name-owner"]')!
+      const method = name.querySelector('[data-look-part="node-name-method"]')!
+      expect(owner).toHaveTextContent('OrderService')
+      expect(method).toHaveTextContent('processOrderWithRetry')
+      // It may wrap between its words, never inside one unless a word alone is too long.
+      expect([...method.childNodes].filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent)).toEqual([
+        'process',
+        'Order',
+        'With',
+        'Retry',
+      ])
+      expect(method.querySelectorAll('wbr')).toHaveLength(3)
+      // The whole name is still the card's text, its tooltip and its accessible name.
+      expect(name).toHaveTextContent('OrderService.processOrderWithRetry')
+      for (const part of [name, owner, method]) {
+        expect(part).toHaveAttribute('title', 'OrderService.processOrderWithRetry')
+      }
+      expect(screen.getByRole('button', { name: 'Inspect OrderService.processOrderWithRetry' })).toBeInTheDocument()
+      // A name with no class is one line: no class part.
+      const plain = box(container, 'o1').el.querySelector('[data-look-part="node-name"]')!
+      expect(plain.querySelector('[data-look-part="node-name-owner"]')).toBeNull()
+      expect(plain.querySelector('[data-look-part="node-name-method"]')).toHaveTextContent('order-1')
+      // The card's box is the look's whatever the name: the layout and the connectors do not move.
+      expect(box(container, 'm')).toMatchObject({ width: CARDS[id].width, height: CARDS[id].height })
+    }
+  )
+
+  it.each(LOOKS.map(l => l.id))(
+    'look %s: a card is named for what activating it does, and says whether it is the selected one',
+    id => {
+      renderIn(id, { onSelect: vi.fn(), selectedNodeId: 'o2' })
+      expect(screen.getByRole('button', { name: 'Inspect order-2' })).toHaveAttribute('aria-current', 'true')
+      // Not a toggle: activating the selected card again does not unselect it, so nothing is "pressed".
+      expect(screen.getByRole('button', { name: 'Inspect order-1' })).not.toHaveAttribute('aria-current')
+      for (const card of screen.getAllByRole('button', { name: /^Inspect / })) {
+        expect(card).not.toHaveAttribute('aria-pressed')
+      }
+      expect(screen.queryByRole('button', { name: /open source/i })).toBeNull()
     }
   )
 

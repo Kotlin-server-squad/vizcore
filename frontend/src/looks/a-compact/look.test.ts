@@ -116,7 +116,26 @@ describe('A · Compact', () => {
 
   it('leaves the graph’s cards to card.css, whose size card.ts gives the layout', () => {
     expect(layoutCss).not.toMatch(/data-look-part='node/)
-    expect(compactCard).toEqual({ width: 188, height: 84, fitMinZoom: 1 })
+    expect(compactCard).toEqual({ width: 188, height: 142, fitMinZoom: 1 })
+  })
+
+  it('gives the class a row of its own across the card, so a 20-letter class is not cut beside the state', () => {
+    const own = (part: string) =>
+      parseRules(cardCss)
+        .filter(rule => rule.selectors.some(sel => sel.endsWith(`[data-look-part='${part}']`)))
+        .map(rule => rule.body)
+        .join(';')
+    const row = (body: string) => Number(/grid-row:\s*(\d+)/.exec(body)?.[1])
+    expect(own('node-name-owner')).toMatch(/grid-column:\s*2\s*\/\s*-1/)
+    expect(row(own('node-state'))).not.toBe(row(own('node-name-owner')))
+    // The state has its row too, so "Waiting for children" is whole: no width limit on it.
+    expect(own('node-state')).not.toMatch(/max-width/)
+    // 188 px less the border (2), the padding (16), the dot (7) and its gap (6) is 157 px for the class: 21 letters
+    // of 12 px mono (0.6 em each, 7.2 px).
+    expect(Math.floor((compactCard.width - 2 - 16 - 7 - 6) / 7.2)).toBeGreaterThanOrEqual(20)
+    // The state row (18), the class (18), the method on two lines (36), the second line on two (32) and the facts
+    // row (16), 2 px apart, inside 6 px of padding and a 1 px border.
+    expect(2 + 12 + 18 + 2 + 18 + 2 + 36 + 2 + 32 + 2 + 16).toBe(compactCard.height)
   })
 
   it('fits a root and six children side by side at full size on a 1440 px window', () => {
@@ -238,7 +257,7 @@ async function renderPage() {
     }),
     { wrapper, container: page.appendChild(document.createElement('div')) }
   )
-  await userEvent.click(screen.getByRole('button', { name: 'Open source for order-2' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Inspect order-2' }))
 }
 
 /**
@@ -251,7 +270,8 @@ async function renderBigApp() {
     state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const,
   })
   const coroutines = [
-    { id: 'req', jobId: 'j', parentId: null, scopeId: 's', label: 'request-1', state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const },
+    // A "Class.method" name, so the card draws its class line.
+    { id: 'req', jobId: 'j', parentId: null, scopeId: 's', label: 'OrderService.handleRequest', state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const },
     ...Array.from({ length: 210 }, (_, i) => member(i)),
     { id: 'viz', jobId: 'j', parentId: null, scopeId: 's', label: 'nonce-generator', state: 'ACTIVE' as CoroutineState, roundId: 'round:viz', origin: 'VIZCORE' as const },
     // Siblings that group by name (S-12), one with a child, so the group card shows "+1 below them".

@@ -287,7 +287,7 @@ describe('SessionWorkspace request budget (#124 / #137)', { timeout: 30_000 }, (
     const es = FakeEventSource.instances[0]!
     act(() => es.open())
     fireEvent.click(screen.getByRole('button', { name: 'List' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Open source for worker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect worker' }))
     await advance(15_000)
     const fetchesBefore = fetchMock.mock.calls.length
     const start = requestCount()

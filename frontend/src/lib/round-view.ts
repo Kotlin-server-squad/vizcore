@@ -340,8 +340,8 @@ export function revealPlan(
 /**
  * The pool cut at the cap, plus the forced coroutines past it, drawn in pool order; and the figures for the cap note.
  *
- * Which coroutines make the cut is decided by id, not by the snapshot's order: the server lists its nodes in a hash
- * map's order, which reshuffles as a busy app adds coroutines, and the drawn set must not churn with every refresh.
+ * Which coroutines make the cut is decided by id, not by the snapshot's order (an older server lists its nodes in a
+ * hash map's order, which reshuffles as a busy app adds coroutines): the drawn set must not churn with every refresh.
  * A pool within the cap is drawn whole, in its own order, as before.
  */
 export function capRendered(
