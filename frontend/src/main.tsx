@@ -38,7 +38,8 @@ if (!rootElement.innerHTML) {
   root.render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <HeroUIProvider>
+        {/* Ripples and dialogs hold still when the system asks for reduced motion. */}
+        <HeroUIProvider reducedMotion="user">
           {/* ToastProvider must mount above the router so it exists before any
               addToast() call fires (issue #5086 ordering footgun). */}
           <ToastProvider placement="bottom-right" />

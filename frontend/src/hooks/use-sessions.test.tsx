@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { useSessions, useCreateSession, useDeleteSession } from './use-sessions'
+import { useSessions, useCreateSession, useDeleteSession, SESSIONS_REFRESH_MS } from './use-sessions'
 import { apiClient } from '@/lib/api-client'
 
 // Mock the api client module
@@ -72,6 +72,46 @@ describe('useSessions', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     expect(result.current.error?.message).toBe('Network error')
+  })
+
+  it('re-reads the list when the window gets the focus back, so a new app appears without a reload', async () => {
+    mockedApiClient.listSessions.mockResolvedValueOnce([])
+    mockedApiClient.listSessions.mockResolvedValue([{ sessionId: 'my-app-1', coroutineCount: 1 }])
+    // The app's own client turns focus refetching off by default; this list opts back in.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0, refetchOnWindowFocus: false } },
+    })
+    const { result } = renderHook(() => useSessions(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() => expect(result.current.data).toEqual([]))
+
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+
+    await waitFor(() => expect(result.current.data).toEqual([{ sessionId: 'my-app-1', coroutineCount: 1 }]))
+    focusManager.setFocused(undefined)
+  })
+
+  it('re-reads the list on a slow interval', async () => {
+    vi.useFakeTimers()
+    try {
+      mockedApiClient.listSessions.mockResolvedValue([])
+      renderHook(() => useSessions(), { wrapper: createWrapper() })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(mockedApiClient.listSessions).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(SESSIONS_REFRESH_MS - 1000)
+      expect(mockedApiClient.listSessions).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(mockedApiClient.listSessions).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

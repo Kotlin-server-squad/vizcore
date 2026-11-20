@@ -16,10 +16,20 @@ interface DemoCardProps {
   /** Another demo is starting; one start at a time. */
   isDisabled?: boolean
   onRun: () => void
+  /** The demo's second ending, if it has one: a second button, named after how it ends. */
+  secondEnding?: { label: string; isStarting: boolean; onPlay: () => void }
 }
 
-/** One demo in the Gallery: what it shows, how long it runs, and Run. */
-export function DemoCard({ scenario, groupLabel, guide, isStarting, isDisabled = false, onRun }: DemoCardProps) {
+/** One demo in the Gallery: what it shows, how long it runs, and Run; a second ending has a button of its own. */
+export function DemoCard({
+  scenario,
+  groupLabel,
+  guide,
+  isStarting,
+  isDisabled = false,
+  onRun,
+  secondEnding,
+}: DemoCardProps) {
   return (
     <Card data-testid="demo-card" data-demo-id={scenario.id} className="flex flex-col">
       <CardHeader className="flex items-start justify-between gap-2 pb-0">
@@ -49,33 +59,47 @@ export function DemoCard({ scenario, groupLabel, guide, isStarting, isDisabled =
             </div>
           )}
         </div>
-        <div className="flex gap-2">
-          {guide && (
-            // A router Link styled as a button, so it keeps its link role and typed params.
-            <Link
-              to="/gallery/$slug"
-              params={{ slug: demoSlug(scenario.id) }}
-              aria-label={`How it works: ${scenario.name}`}
-              // HeroUI shows focus through data-focus-visible, which a router Link never sets.
-              className={`${button({ variant: 'bordered', fullWidth: true })} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            {guide && (
+              // A router Link styled as a button, so it keeps its link role and typed params.
+              <Link
+                to="/gallery/$slug"
+                params={{ slug: demoSlug(scenario.id) }}
+                aria-label={`How it works: ${scenario.name}`}
+                // HeroUI shows focus through data-focus-visible, which a router Link never sets.
+                className={`${button({ variant: 'bordered', fullWidth: true })} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
+              >
+                <FiBookOpen className="h-4 w-4" aria-hidden />
+                How it works
+              </Link>
+            )}
+            <Button
+              color="primary"
+              variant="flat"
+              startContent={isStarting ? undefined : <FiZap className="h-4 w-4" />}
+              isLoading={isStarting}
+              isDisabled={isDisabled || secondEnding?.isStarting === true}
+              onPress={onRun}
+              // Names repeat across groups (two Producer-Consumers).
+              aria-label={`Run ${scenario.name} (${groupLabel})`}
+              fullWidth
             >
-              <FiBookOpen className="h-4 w-4" aria-hidden />
-              How it works
-            </Link>
+              Run
+            </Button>
+          </div>
+          {secondEnding && (
+            <Button
+              variant="bordered"
+              isLoading={secondEnding.isStarting}
+              isDisabled={isDisabled || isStarting}
+              onPress={secondEnding.onPlay}
+              aria-label={`${secondEnding.label}, ${scenario.name} (${groupLabel})`}
+              fullWidth
+            >
+              {secondEnding.label}
+            </Button>
           )}
-          <Button
-            color="primary"
-            variant="flat"
-            startContent={isStarting ? undefined : <FiZap className="h-4 w-4" />}
-            isLoading={isStarting}
-            isDisabled={isDisabled}
-            onPress={onRun}
-            // Names repeat across groups (two Producer-Consumers).
-            aria-label={`Run ${scenario.name} (${groupLabel})`}
-            fullWidth
-          >
-            Run
-          </Button>
         </div>
       </CardBody>
     </Card>

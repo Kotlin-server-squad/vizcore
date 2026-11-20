@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
-import { MISTAKES } from './mistakes'
+// What GET /api/scenarios serves; a backend test keeps this copy equal to it.
+import catalog from '@/test/demo-catalog.json'
+import { MISTAKES, hasRunnableMistake } from './mistakes'
 import { GUIDES } from './guides'
 import type { MistakeId } from './types'
 
@@ -66,6 +68,16 @@ describe('common mistakes', () => {
       expect(m.whatGoesWrong.length, m.id).toBeGreaterThan(20)
       expect(m.fix.length, m.id).toBeGreaterThan(20)
     }
+  })
+
+  it('counts as runnable only once a mistake names its demo', () => {
+    expect(hasRunnableMistake(MISTAKES.map(({ demoId: _demoId, ...m }) => m))).toBe(false)
+    expect(hasRunnableMistake([{ ...MISTAKES[0]!, demoId: 'nested' }, ...MISTAKES.slice(1)])).toBe(true)
+  })
+
+  it('names only demos the catalog has', () => {
+    const ids = new Set(catalog.scenarios.map((s) => s.id))
+    for (const m of MISTAKES) if (m.demoId !== undefined) expect(ids, m.id).toContain(m.demoId)
   })
 
   it('points guides only at mistakes that exist', () => {
