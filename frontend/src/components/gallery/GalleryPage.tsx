@@ -5,7 +5,9 @@ import { useScenarios } from '@/hooks/use-scenarios'
 import { useStartDemo } from '@/hooks/use-start-demo'
 import { groupDemos } from '@/lib/demo-groups'
 import { GUIDES } from '@/content/gallery/guides'
-import { MISTAKES } from '@/content/gallery/mistakes'
+import { MISTAKES, hasRunnableMistake } from '@/content/gallery/mistakes'
+import type { Mistake } from '@/content/gallery/types'
+import { playLabel, secondEnding } from '@/lib/demo-variants'
 import { DemoStartAlert } from '../demos/DemoStartAlert'
 import { ErrorState } from '../ErrorState'
 import { DemoCard } from './DemoCard'
@@ -20,20 +22,30 @@ interface GalleryPageProps {
   /** The tab from `?group=`; unknown or missing shows the first group. */
   group?: string
   onGroupChange: (group: string) => void
+  /** The common mistakes; the app's own unless a test says otherwise. */
+  mistakes?: Mistake[]
 }
 
 /**
- * The Gallery (G-1): every demo by topic, as the server lists them, plus the
- * common mistakes. Run opens the same session view as the "New demo session"
- * dialog.
+ * The Gallery (G-1): every demo by topic, as the server lists them. Run opens
+ * the same session view as the "New demo session" dialog and starts the demo
+ * there; a demo with a second ending has a second button for it.
+ *
+ * The Common mistakes tab is there only while a mistake has a demo to run
+ * (`hasRunnableMistake`). Until then a link to `?group=mistakes` shows the
+ * first tab, like any unknown group.
  */
-export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
+export function GalleryPage({ group, onGroupChange, mistakes = MISTAKES }: GalleryPageProps) {
   const { data, isLoading, isPending, error, refetch } = useScenarios()
-  const { start, preparing, startError } = useStartDemo()
+  const { start, preparing, preparingVariant, startError } = useStartDemo()
   const groups = useMemo(() => groupDemos(data?.scenarios ?? []), [data?.scenarios])
 
+  const showsMistakes = hasRunnableMistake(mistakes)
+
   const selected =
-    group === MISTAKES_TAB || groups.some((g) => g.key === group) ? group! : (groups[0]?.key ?? MISTAKES_TAB)
+    (showsMistakes && group === MISTAKES_TAB) || groups.some((g) => g.key === group)
+      ? group!
+      : (groups[0]?.key ?? (showsMistakes ? MISTAKES_TAB : ''))
 
   // A link such as /gallery?group=mistakes#LEAKED_COROUTINE: the card renders
   // after the page does, so the browser's own jump to the anchor misses it.
@@ -83,6 +95,8 @@ export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
         </div>
       ) : failed ? (
         <ErrorState error={error} subject="The demo list" onRetry={() => void refetch()} />
+      ) : groups.length === 0 && !showsMistakes ? (
+        <p className="text-default-600">The server lists no examples.</p>
       ) : (
         <Tabs
           aria-label="Gallery topics"
@@ -96,40 +110,68 @@ export function GalleryPage({ group, onGroupChange }: GalleryPageProps) {
             ...groups.map((g) => (
               <Tab key={g.key} title={<TabTitle label={g.label} count={g.demos.length} />}>
                 <div className={GRID}>
-                  {g.demos.map((scenario) => (
-                    <DemoCard
-                      key={scenario.id}
-                      scenario={scenario}
-                      groupLabel={g.label}
-                      guide={GUIDES[scenario.id]}
-                      isStarting={preparing === scenario.id}
-                      isDisabled={preparing !== null && preparing !== scenario.id}
-                      onRun={() => void start(scenario)}
-                    />
-                  ))}
+                  {g.demos.map((scenario) => {
+                    const second = secondEnding(scenario.id)
+                    const starting = preparing === scenario.id
+                    return (
+                      <DemoCard
+                        key={scenario.id}
+                        scenario={scenario}
+                        groupLabel={g.label}
+                        guide={GUIDES[scenario.id]}
+                        isStarting={starting && !preparingVariant}
+                        isDisabled={preparing !== null && !starting}
+                        onRun={() => void start(scenario)}
+                        secondEnding={
+                          second && {
+                            label: playLabel(second.outcome),
+                            isStarting: starting && preparingVariant === second.id,
+                            onPlay: () => void start(scenario, second.id),
+                          }
+                        }
+                      />
+                    )
+                  })}
                 </div>
               </Tab>
             )),
-            <Tab
-              key={MISTAKES_TAB}
-              title={
-                <TabTitle
-                  label="Common mistakes"
-                  count={MISTAKES.length}
-                  icon={<FiAlertTriangle className="h-4 w-4 text-warning" aria-hidden />}
-                />
-              }
-            >
-              <p className="mb-4 max-w-2xl text-sm text-default-600">
-                The mistakes people make most often with coroutines, what goes wrong, and what to do instead. Their
-                demos are on the way.
-              </p>
-              <div className={GRID}>
-                {MISTAKES.map((mistake) => (
-                  <MistakeCard key={mistake.id} mistake={mistake} />
-                ))}
-              </div>
-            </Tab>,
+            ...(showsMistakes
+              ? [
+                  <Tab
+                    key={MISTAKES_TAB}
+                    title={
+                      <TabTitle
+                        label="Common mistakes"
+                        count={mistakes.length}
+                        icon={<FiAlertTriangle className="h-4 w-4 text-warning" aria-hidden />}
+                      />
+                    }
+                  >
+                    <p className="mb-4 max-w-2xl text-sm text-default-600">
+                      The mistakes people make most often with coroutines, what goes wrong, and what to do instead.
+                    </p>
+                    <div className={GRID}>
+                      {mistakes.map((mistake) => {
+                        // Run only for a demo the server really lists.
+                        const demo = data?.scenarios.find((s) => s.id === mistake.demoId)
+                        return (
+                          <MistakeCard
+                            key={mistake.id}
+                            mistake={mistake}
+                            run={
+                              demo && {
+                                isStarting: preparing === demo.id,
+                                isDisabled: preparing !== null && preparing !== demo.id,
+                                onRun: () => void start(demo),
+                              }
+                            }
+                          />
+                        )
+                      })}
+                    </div>
+                  </Tab>,
+                ]
+              : []),
           ]}
         </Tabs>
       )}

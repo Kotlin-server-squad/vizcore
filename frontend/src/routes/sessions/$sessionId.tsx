@@ -13,8 +13,10 @@ interface SessionSearchParams {
   live?: boolean
   /** A trial look for this page (PR L0): `a`, `b`, `c` or `classic`. Read once, then removed. */
   look?: string
-  /** Opened by Run again: start the run here (S-13). Read once, then removed. */
+  /** Opened by Run (Gallery, demo picker) or Run again: start the run here (S-13). Read once, then removed. */
   run?: boolean
+  /** Which ending of the demo this session plays (demo-variants). Kept, so Run again plays the same one. */
+  variant?: string
 }
 
 export const Route = createFileRoute('/sessions/$sessionId')({
@@ -25,6 +27,8 @@ export const Route = createFileRoute('/sessions/$sessionId')({
       scenarioName: search.scenarioName as string | undefined,
       live: search.live === true || search.live === 'true' ? true : undefined,
       run: search.run === true || search.run === 'true' ? true : undefined,
+      // Text only; whether this demo has such an ending is checked where the demo is known (SessionWorkspace).
+      variant: typeof search.variant === 'string' && search.variant.length > 0 ? search.variant : undefined,
       // Present but not text (the search parser reads `?look=1`, `null` or `["a"]` as
       // JSON): unknown, so Classic, never the remembered look.
       look:
@@ -43,7 +47,7 @@ function SessionDetailPage() {
     () => void navigate({ search: prev => ({ ...prev, look: undefined }), replace: true }),
     [navigate]
   )
-  // Run again's request to start the run: dropped once read, so a reload never starts a second one.
+  // The request to start the run: dropped once read, so a reload never starts a second one.
   const dropRunFromAddress = useCallback(
     () => void navigate({ search: prev => ({ ...prev, run: undefined }), replace: true }),
     [navigate]
@@ -75,6 +79,7 @@ function SessionDetailPage() {
               scenarioName={search.scenarioName}
               startLive={search.live}
               autoRun={search.run}
+              variant={search.variant}
               onAutoRunConsumed={dropRunFromAddress}
             />
           </div>

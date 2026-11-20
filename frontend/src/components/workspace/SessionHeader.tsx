@@ -74,7 +74,7 @@ interface SessionHeaderProps {
  * with any failed coroutine is Failed, in red), the app connection of an
  * attached app (`connection`: the pill, last data, start time) and the
  * view (updating, paused, replay, loaded). Then the actions: Run, then Run
- * again (demos, S-13), Replay, Pause view, Export and "⋯".
+ * again (demos, S-13), the demo's other ending where it has two, Replay, Pause view, Export and "⋯".
  *
  * Presentational apart from `useCapabilities`, which decides whether Share is
  * offered — nothing else in the workspace reads it.
@@ -164,6 +164,12 @@ export function SessionHeader({
         <Chip size="sm" variant="flat" color={rung === 'demo' ? 'default' : 'primary'} data-testid="rung-badge">
           {RUNG_LABEL[rung]}
         </Chip>
+        {/* Which of the demo's two endings this run plays. */}
+        {scenario?.ending && (
+          <Chip size="sm" variant="flat" data-testid="run-ending">
+            Ending: {scenario.ending}
+          </Chip>
+        )}
         {/* A live region, so a screen reader hears a run fail without moving
             focus (#290). Always mounted for a demo, so the change is heard. */}
         {outcome && (
@@ -222,6 +228,18 @@ export function SessionHeader({
               onRun={() => void scenario.run()}
               onRunAgain={() => void scenario.runAgain()}
             />
+          )}
+          {/* The demo's other ending, one click away: a new session, like Run again. */}
+          {scenario?.otherEnding && outcome && (
+            <Button
+              data-look-part="run-again"
+              size="sm"
+              variant="bordered"
+              onPress={() => void scenario.otherEnding?.play()}
+              isLoading={scenario.otherEnding.isPending}
+            >
+              {scenario.otherEnding.label}
+            </Button>
           )}
           {/* Replay toggle (D-01) — always available, the shared view included. */}
           <Button

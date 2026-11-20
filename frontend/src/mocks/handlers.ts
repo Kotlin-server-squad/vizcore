@@ -18,7 +18,7 @@ const mockScenarios: Scenario[] = [
   {
     id: 'order-processing',
     name: '🛒 Order Processing: Running Shoes for Anna',
-    description: "Anna buys running shoes. The backend checks her order, asks the warehouse, charges her card and saves the order, one step after the other, then sends the email, the SMS and an analytics event at once. With ?fail=true her card is declined: the payment fails, so does the order, and nothing is saved or sent.",
+    description: "Anna buys running shoes. The backend checks her order, asks the warehouse, charges her card and saves the order, one step after the other, then sends the email, the SMS and an analytics event at once. In the second ending (Play: card declined) her card is declined: the payment fails, so does the order, and nothing is saved or sent.",
     endpoint: '/api/scenarios/order-processing',
     category: 'realistic',
     duration: '~15 seconds',
@@ -26,7 +26,7 @@ const mockScenarios: Scenario[] = [
   {
     id: 'user-registration',
     name: '👤 User Registration: Ben Joins a Recipe App',
-    description: "Ben signs up. His details are checked, the email looked up and the account created, one after the other; then profile, settings and avatar at once, and the welcome email, a Slack message and an analytics event. With ?failEmail=true the mail server times out once and the email is sent on the second try.",
+    description: "Ben signs up. His details are checked, the email looked up and the account created, one after the other; then profile, settings and avatar at once, and the welcome email, a Slack message and an analytics event. In the second ending (Play: email retried) the mail server times out once and the email is sent on the second try.",
     endpoint: '/api/scenarios/user-registration',
     category: 'realistic',
     duration: '~12 seconds',
@@ -34,7 +34,7 @@ const mockScenarios: Scenario[] = [
   {
     id: 'report-generation',
     name: '📊 Report Generation: The Monthly Sales Report',
-    description: "A shop's monthly sales report: four sources fetched at once, added up, written into a PDF part by part and delivered three ways at once. The analytics API gets at most 4 s; with ?timeout=true it is too slow, its request is cancelled and the report goes out without analytics.",
+    description: "A shop's monthly sales report: four sources fetched at once, added up, written into a PDF part by part and delivered three ways at once. The analytics API gets at most 4 s; in the second ending (Play: slow API cancelled) it is too slow, its request is cancelled and the report goes out without analytics.",
     endpoint: '/api/scenarios/report-generation',
     category: 'realistic',
     duration: '~15 seconds',

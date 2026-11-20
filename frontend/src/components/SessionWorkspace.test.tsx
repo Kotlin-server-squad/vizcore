@@ -524,6 +524,138 @@ describe('SessionWorkspace', () => {
     expect(onAutoRunConsumed).toHaveBeenCalledTimes(1)
   })
 
+  it('starts the run once, however often the page renders again', async () => {
+    const mutateAsync = vi.fn(() => Promise.resolve({ sessionId: 'session-1' }))
+    vi.mocked(useRunScenario).mockReturnValue({ mutateAsync, isPending: false } as unknown as ReturnType<typeof useRunScenario>)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const page = (
+      <SessionWorkspace sessionId="session-1" scenarioId="nested" scenarioName="Nested" autoRun onAutoRunConsumed={vi.fn()} />
+    )
+    const { rerender } = render(page, { wrapper: createWrapper() })
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    rerender(page)
+    rerender(page)
+    expect(mutateAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start a run it was not asked for (the route drops ?run once read: $sessionId.test.tsx)', () => {
+    const mutateAsync = vi.fn(() => Promise.resolve({ sessionId: 'session-1' }))
+    vi.mocked(useRunScenario).mockReturnValue({ mutateAsync, isPending: false } as unknown as ReturnType<typeof useRunScenario>)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="session-1" scenarioId="nested" scenarioName="Nested" />, { wrapper: createWrapper() })
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('runs the ending the address names, and says which one in the header', async () => {
+    const mutateAsync = vi.fn(() => Promise.resolve({ sessionId: 'session-1' }))
+    vi.mocked(useRunScenario).mockReturnValue({ mutateAsync, isPending: false } as unknown as ReturnType<typeof useRunScenario>)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(
+      <SessionWorkspace
+        sessionId="session-1"
+        scenarioId="order-processing"
+        scenarioName="Order Processing"
+        variant="card-declined"
+        autoRun
+        onAutoRunConsumed={vi.fn()}
+      />,
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        scenarioId: 'order-processing',
+        sessionId: 'session-1',
+        params: { fail: 'true' },
+      }),
+    )
+    expect(screen.getByTestId('run-ending')).toHaveTextContent('Ending: card declined')
+    expect(screen.getByRole('button', { name: 'Play: it works' })).toBeInTheDocument()
+  })
+
+  it('names the usual ending of a demo that has two', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(
+      <SessionWorkspace sessionId="session-1" scenarioId="order-processing" scenarioName="Order Processing" />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByTestId('run-ending')).toHaveTextContent('Ending: it works')
+    expect(screen.getByRole('button', { name: 'Play: card declined' })).toBeInTheDocument()
+  })
+
+  it('keeps the ending of a session reopened from the list, whose address names none', async () => {
+    const mutateAsync = vi.fn(() => Promise.resolve({ sessionId: 'session-1' }))
+    vi.mocked(useRunScenario).mockReturnValue({ mutateAsync, isPending: false } as unknown as ReturnType<typeof useRunScenario>)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ demoId: 'order-processing', coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    const first = render(
+      <SessionWorkspace
+        sessionId="session-1"
+        scenarioId="order-processing"
+        scenarioName="Order Processing"
+        variant="card-declined"
+      />,
+      { wrapper: createWrapper() },
+    )
+    first.unmount()
+
+    render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
+    expect(screen.getByTestId('run-ending')).toHaveTextContent('Ending: card declined')
+    expect(screen.getByRole('button', { name: 'Play: it works' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /run scenario/i }))
+    expect(mutateAsync).toHaveBeenCalledWith({
+      scenarioId: 'order-processing',
+      sessionId: 'session-1',
+      params: { fail: 'true' },
+    })
+  })
+
+  it('names no ending for a two-ending session this browser never opened with its ending', () => {
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ demoId: 'order-processing', coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(<SessionWorkspace sessionId="session-9" />, { wrapper: createWrapper() })
+    expect(screen.queryByTestId('run-ending')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play: card declined' })).toBeInTheDocument()
+  })
+
+  it('ignores an ending the demo does not have', async () => {
+    const mutateAsync = vi.fn(() => Promise.resolve({ sessionId: 'session-1' }))
+    vi.mocked(useRunScenario).mockReturnValue({ mutateAsync, isPending: false } as unknown as ReturnType<typeof useRunScenario>)
+    mockedUseSession.mockReturnValue({
+      data: makeSession({ coroutineCount: 0, coroutines: [] }),
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useSession>)
+    render(
+      <SessionWorkspace sessionId="session-1" scenarioId="nested" scenarioName="Nested" variant="card-declined" autoRun />,
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ scenarioId: 'nested', sessionId: 'session-1' }))
+    expect(screen.queryByTestId('run-ending')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Play: / })).not.toBeInTheDocument()
+  })
+
   it('lets the user switch the live stream OFF on scenario pages (WR-04: auto-enable only once)', async () => {
     mockedUseSession.mockReturnValue({
       data: makeSession(),

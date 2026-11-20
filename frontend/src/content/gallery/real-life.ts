@@ -8,9 +8,9 @@ import type { DemoGuide } from './types'
  * `// <number>` comments are step markers; durations read `// takes 1.5 s`.
  *
  * A coroutine in a step (delay) or in await() shows as Suspended in the tree;
- * one waiting in join() or joinAll() shows as Active. Each demo has a failure
- * option that only the API starts (`?fail=true` …), not Run: the guides tell
- * what it does in one step, as it really happens.
+ * one waiting in join() or joinAll() shows as Active. Each demo has a second
+ * ending with a button of its own ("Play: card declined" …, lib/demo-variants):
+ * the guides tell what it does in one step, as it really happens.
  */
 export const REAL_LIFE_GUIDES: DemoGuide[] = [
   {
@@ -35,7 +35,7 @@ export const REAL_LIFE_GUIDES: DemoGuide[] = [
       },
       {
         title: 'The payment',
-        text: 'PaymentService.processPayment runs from 6 to 10 s: it contacts the payment provider, Anna confirms in her banking app, and the bank answers. The card is accepted, and Database.saveOrder saves the order (10 to 11.5 s). With ?fail=true (an option of the API, not of Run) the bank declines the card at 10 s: processPayment fails, its failure cancels processOrder, which was waiting in join(), and processOrder fails too. Nothing after it starts: no order is saved and no confirmation is sent.',
+        text: 'PaymentService.processPayment runs from 6 to 10 s: it contacts the payment provider, Anna confirms in her banking app, and the bank answers. The card is accepted, and Database.saveOrder saves the order (10 to 11.5 s). With “Play: card declined” the bank declines the card at 10 s: processPayment fails, its failure cancels processOrder, which was waiting in join(), and processOrder fails too. Nothing after it starts: no order is saved and no confirmation is sent.',
       },
       {
         title: 'Three notifications at once',
@@ -97,7 +97,7 @@ suspend fun sendWelcome() {            // EmailService.sendWelcome
       },
       {
         title: 'A retry that really retries',
-        text: 'sendWelcome sends each try in a child of its own, EmailService.attempt-1, -2 …, inside coroutineScope. coroutineScope hands a failed child\'s exception back to sendWelcome instead of cancelling it, so sendWelcome can catch it and try again. Here the first try works. With ?failEmail=true (an option of the API, not of Run) the mail server does not answer: attempt-1 fails at 12 s, sendWelcome waits 1 s, and attempt-2 sends the email at 15.5 s. The registration completes, and Slack and the analytics event are not touched. A try/catch around launch { … }.join() would not have helped: the failed child would have failed sendWelcome, and through it the whole registration.',
+        text: 'sendWelcome sends each try in a child of its own, EmailService.attempt-1, -2 …, inside coroutineScope. coroutineScope hands a failed child\'s exception back to sendWelcome instead of cancelling it, so sendWelcome can catch it and try again. Here the first try works. With “Play: email retried” the mail server does not answer: attempt-1 fails at 12 s, sendWelcome waits 1 s, and attempt-2 sends the email at 15.5 s. The registration completes, and Slack and the analytics event are not touched. A try/catch around launch { … }.join() would not have helped: the failed child would have failed sendWelcome, and through it the whole registration.',
       },
     ],
     keyIdea:
@@ -136,7 +136,7 @@ suspend fun fetchMetrics() =           // AnalyticsApi.fetchMetrics
       },
       {
         title: 'A time limit for the slow service',
-        text: 'fetchMetrics gives the analytics API at most 4 s with withTimeoutOrNull. The demo runs the call in a coroutine of its own, AnalyticsApi.request, so you can see it in the tree. Here it answers in 3 s. With ?timeout=true (an option of the API, not of Run) it would take 5 s: at 4 s the time limit cancels the request, which ends Cancelled, and withTimeoutOrNull returns null. fetchMetrics completes with "analytics: not available this month", and the rest of the report goes on as usual.',
+        text: 'fetchMetrics gives the analytics API at most 4 s with withTimeoutOrNull. The demo runs the call in a coroutine of its own, AnalyticsApi.request, so you can see it in the tree. Here it answers in 3 s. With “Play: slow API cancelled” it would take 5 s: at 4 s the time limit cancels the request, which ends Cancelled, and withTimeoutOrNull returns null. fetchMetrics completes with "analytics: not available this month", and the rest of the report goes on as usual.',
       },
       {
         title: 'Add up, then write',
