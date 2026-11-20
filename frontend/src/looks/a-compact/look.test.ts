@@ -116,7 +116,7 @@ describe('A · Compact', () => {
 
   it('leaves the graph’s cards to card.css, whose size card.ts gives the layout', () => {
     expect(layoutCss).not.toMatch(/data-look-part='node/)
-    expect(compactCard).toEqual({ width: 188, height: 84, fitMinZoom: 1 })
+    expect(compactCard).toEqual({ width: 188, height: 122, fitMinZoom: 1 })
   })
 
   it('fits a root and six children side by side at full size on a 1440 px window', () => {
@@ -236,7 +236,7 @@ async function renderPage() {
     }),
     { wrapper, container: page.appendChild(document.createElement('div')) }
   )
-  await userEvent.click(screen.getByRole('button', { name: 'Open source for order-2' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Inspect order-2' }))
 }
 
 /**
@@ -249,7 +249,8 @@ async function renderBigApp() {
     state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const,
   })
   const coroutines = [
-    { id: 'req', jobId: 'j', parentId: null, scopeId: 's', label: 'request-1', state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const },
+    // A "Class.method" name, so the card draws its class line.
+    { id: 'req', jobId: 'j', parentId: null, scopeId: 's', label: 'OrderService.handleRequest', state: 'COMPLETED' as CoroutineState, roundId: 'round:req', origin: 'APP' as const },
     ...Array.from({ length: 210 }, (_, i) => member(i)),
     { id: 'viz', jobId: 'j', parentId: null, scopeId: 's', label: 'nonce-generator', state: 'ACTIVE' as CoroutineState, roundId: 'round:viz', origin: 'VIZCORE' as const },
     // Siblings that group by name (S-12), one with a child, so the group card shows "+1 below them".

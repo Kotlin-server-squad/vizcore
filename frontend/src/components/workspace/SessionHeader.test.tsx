@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { SessionHeader } from './SessionHeader'
@@ -166,6 +166,20 @@ describe('SessionHeader', () => {
       renderHeader()
       expect(screen.getByRole('button', { name: 'Replay' })).toBeInTheDocument()
       expect(screen.getByTestId('export-menu')).toBeInTheDocument()
+    })
+
+    it('calls it "Replay from start" once the run has ended, and "Replay" while it runs', async () => {
+      const { onToggleReplay } = renderHeader({ outcome: { outcome: 'finished', failedCount: 0, ended: true } })
+      await userEvent.click(screen.getByRole('button', { name: 'Replay from start' }))
+      expect(onToggleReplay).toHaveBeenCalledTimes(1)
+      cleanup()
+      renderHeader({ outcome: { outcome: 'running', failedCount: 0, ended: false } })
+      expect(screen.getByRole('button', { name: 'Replay' })).toBeInTheDocument()
+      cleanup()
+      // In replay the button leaves it, whatever the run did.
+      renderHeader({ replayActive: true, outcome: { outcome: 'finished', failedCount: 0, ended: true } })
+      expect(screen.getByRole('button', { name: 'Exit replay' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Replay from start' })).toBeNull()
     })
 
     it('puts Share, Checks and Refresh in "⋯"', async () => {

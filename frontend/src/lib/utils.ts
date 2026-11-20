@@ -79,6 +79,10 @@ export function formatRelativeTime(nanos: number, baseNanos: number): string {
   return `+${deltaMs.toFixed(2)}ms`
 }
 
+/**
+ * The flat list as a tree. Roots and each parent's children keep the list's order, which is the session's start
+ * order (the snapshot's and the replay projection's): no view sorts siblings itself.
+ */
 export function buildCoroutineTree<T extends { id: string; parentId: string | null }>(nodes: T[]) {
   type TreeNode = T & { children: TreeNode[] }
   const nodeMap = new Map(nodes.map(n => [n.id, { ...n, children: [] as TreeNode[] } as TreeNode]))

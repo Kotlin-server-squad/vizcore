@@ -28,6 +28,35 @@ describe('useWorkspaceReplay — entering replay', () => {
     expect(result.current.replay.currentIndex).toBe(4)
   })
 
+  it('opens at the first event, paused, when asked to start from the start (the header button)', () => {
+    const { result } = setup()
+    act(() => result.current.enterReplay(undefined, { fromStart: true }))
+    expect(result.current.replayActive).toBe(true)
+    expect(result.current.replay.currentIndex).toBe(0)
+    expect(result.current.replay.currentEvent?.seq).toBe(1)
+    expect(result.current.replay.isPlaying).toBe(false)
+    // Play has the whole run ahead of it.
+    expect(result.current.replay.events).toHaveLength(5)
+  })
+
+  it('goes to the start again when replay is left and entered again', () => {
+    const { result } = setup()
+    act(() => result.current.enterReplay(undefined, { fromStart: true }))
+    act(() => result.current.replay.seekTo(3))
+    act(() => result.current.exitReplay())
+    act(() => result.current.enterReplay(undefined, { fromStart: true }))
+    expect(result.current.replay.currentIndex).toBe(0)
+  })
+
+  it('an explicit event wins over the start, and a later plain entry goes to the end again', () => {
+    const { result } = setup()
+    act(() => result.current.enterReplay(events, { atSeq: 4, fromStart: true }))
+    expect(result.current.replay.currentIndex).toBe(3)
+    act(() => result.current.exitReplay())
+    act(() => result.current.enterReplay())
+    expect(result.current.replay.currentIndex).toBe(4)
+  })
+
   it('seeks to a given event when asked (story Reveal, plan P-8)', () => {
     const { result } = setup()
     act(() => result.current.enterReplay(events, { atSeq: 3 }))

@@ -17,6 +17,7 @@ import { chooseRowWidth, layoutTree, type TreeLayout } from '@/lib/tree-layout'
 import { useLook, useLookCard } from '@/looks/look-context'
 import { groupMix, type NameGroup } from '@/lib/name-groups'
 import { CardFacts, CardStateContext } from './CardFacts'
+import { CoroutineName } from './CoroutineName'
 import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize2, FiMinimize2, FiCrosshair } from 'react-icons/fi'
 
 interface CoroutineTreeGraphProps {
@@ -53,7 +54,7 @@ const isRunning = isActiveState
 
 /**
  * Spacing the layout reserves between cards. The card size is the look's
- * (`useLookCard`, Classic's 280 × 240 outside the session page); the card is
+ * (`useLookCard`, Classic's 280 × 276 outside the session page); the card is
  * drawn at exactly that size.
  */
 const H_GAP = 40
@@ -573,7 +574,9 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
         ? {
             role: 'button',
             tabIndex: 0,
-            'aria-label': `Open source for ${node.label || node.id}`,
+            // Activating it selects the coroutine, which opens it in the Inspector.
+            'aria-label': `Inspect ${node.label || node.id}`,
+            'aria-pressed': selected,
             onClick: () => (onClickSelect ?? onSelect)(node.id),
             onKeyDown: (e: React.KeyboardEvent) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -629,13 +632,9 @@ function NodeCard({ node, isRoot, onSelect, onClickSelect, selected, activity }:
             </div>
           )}
           <div data-look-part="node-text" className="min-w-0 flex-1">
-            {/* Names like dashboard.notifications.unread have no spaces: let them break anywhere, over two lines. */}
-            <div
-              data-look-part="node-name"
-              className="line-clamp-2 text-base font-bold leading-6 [overflow-wrap:anywhere]"
-              title={node.label || node.id}
-            >
-              {node.label || node.id}
+            {/* The class on its own small line, the name under it on up to two (CoroutineName). */}
+            <div data-look-part="node-name" className="text-base font-bold leading-6" title={node.label || node.id}>
+              <CoroutineName label={node.label || node.id} />
             </div>
             <div data-look-part="node-state" className="text-xs text-default-500">
               {stateLabel(node.state)}
@@ -711,6 +710,7 @@ function GroupCard({ group, onSelect, onClickSelect, selected, onToggle }: Group
             role: 'button',
             tabIndex: 0,
             'aria-label': `Group ${group.label}: ${size} coroutines`,
+            'aria-pressed': selected,
             onClick: () => (onClickSelect ?? onSelect)(group.id),
             onKeyDown: (e: React.KeyboardEvent) => {
               if (e.target !== e.currentTarget) return

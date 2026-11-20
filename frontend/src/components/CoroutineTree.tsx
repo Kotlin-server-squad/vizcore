@@ -173,7 +173,8 @@ function TreeNode({ node, depth, onSelect, selectedNodeId, pendingChildCounts, a
                 // `isPressable`; this also makes the Card a real role="button"
                 // focusable target firing on click + Enter/Space natively.
                 isPressable: true,
-                'aria-label': `Open source for ${node.label || node.id}`,
+                'aria-label': `Inspect ${node.label || node.id}`,
+                'aria-pressed': isSelected,
                 onPress: () => onSelect(node.id),
               }
             : {})}

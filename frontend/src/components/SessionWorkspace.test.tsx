@@ -812,7 +812,7 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     expect(screen.getByTestId('export-menu')).toBeInTheDocument()
   })
 
-  it('entering replay seeks to end + says Replay in the view pill + controller (D-03/D-13/D-15)', async () => {
+  it('entering replay opens at the first event + says Replay in the view pill + controller (D-13/D-15)', async () => {
     // Provide stored events so totalEvents > 0
     vi.doMock('@/hooks/use-sessions')
     mockedUseSession.mockReturnValue({
@@ -832,8 +832,9 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     expect(screen.getByTestId('view-status')).toHaveTextContent(/^Replay/)
     const controller = screen.getByTestId('replay-controller')
     expect(controller).toBeInTheDocument()
-    // Seeked to end → totalEvents reflects all captured events
+    // At the first event, paused, with every captured event ahead of it: Play has a run to play.
     expect(controller).toHaveAttribute('data-total', String(replayEvents.length))
+    expect(controller).toHaveAttribute('data-index', '0')
     // Exit toggle now present
     expect(screen.getByRole('button', { name: /exit replay/i })).toBeInTheDocument()
   })
@@ -852,10 +853,10 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     render(<SessionWorkspace sessionId="session-1" />, { wrapper: createWrapper() })
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
 
-    // At end: both c1 and c2 projected from the events (not session.coroutines,
-    // which has only c-root from makeSession).
+    // At the first event: c1 projected from the events (not session.coroutines,
+    // which has only c-root from makeSession); c2 is not created yet.
     const graph = screen.getByTestId('coroutine-tree-graph')
-    expect(graph).toHaveAttribute('data-ids', 'c1,c2')
+    expect(graph).toHaveAttribute('data-ids', 'c1')
   })
 
   it('keeps every Evidence section on the replay cursor, with no live-data notice, and names the moment (Part 8)', async () => {
@@ -890,10 +891,11 @@ describe('SessionWorkspace - replay mode (RPLY-01/02/03, D-01..18)', () => {
     await userEvent.click(screen.getByRole('button', { name: /^replay$/i }))
     await userEvent.click(screen.getByTestId('select-c1'))
     expect(await screen.findByTestId('inspector')).toBeInTheDocument()
-    const last = replayEvents[replayEvents.length - 1]!.seq
+    // The header's Replay opens at the first event.
+    const first = replayEvents[0]!.seq
     await waitFor(() =>
       expect(mockedApiClient.getTimelineAt).toHaveBeenCalledWith(
-        { source: { kind: 'session', sessionId: 'session-1' }, binding: { kind: 'replay', atSeq: last } },
+        { source: { kind: 'session', sessionId: 'session-1' }, binding: { kind: 'replay', atSeq: first } },
         'c1',
       ),
     )

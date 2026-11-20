@@ -90,7 +90,7 @@ function wrapper({ children }: { children: ReactNode }) {
 async function openList() {
   await userEvent.click(screen.getByRole('button', { name: 'List' }))
 }
-const card = (name: string) => screen.getByRole('button', { name: `Open source for ${name}` })
+const card = (name: string) => screen.getByRole('button', { name: `Inspect ${name}` })
 
 describe('SessionWorkspace — one selection, live facts (S-2, S-6)', () => {
   beforeEach(() => {
