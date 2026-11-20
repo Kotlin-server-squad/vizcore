@@ -9,7 +9,7 @@
  * The output deep-equals the server's GET /api/sessions/{id} `coroutines` list
  * for the same event prefix: same ids, parentId, scopeId, label, and terminal /
  * in-progress state. Nodes are emitted in CREATION order (first CoroutineCreated
- * seen), matching the backend RuntimeSnapshot.coroutines insertion-ordered map.
+ * seen), matching the backend RuntimeSnapshot.nodes() start order (first creation seq).
  * A re-emitted CoroutineCreated for an existing id is LAST-write-wins (overwrites
  * the node fields and resets state to CREATED) at the original insertion
  * position — exactly the backend LinkedHashMap re-assignment semantics.
@@ -57,7 +57,7 @@ function isCoroutineEvent(event: VizEvent): event is CoroutineEvent {
  */
 export function projectCoroutines(events: VizEvent[]): CoroutineNode[] {
   // Insertion-ordered map: preserves first-seen (creation) order on iteration,
-  // matching the backend RuntimeSnapshot.coroutines (LinkedHashMap) order.
+  // matching the backend RuntimeSnapshot.nodes() order (first creation seq).
   const nodes = new Map<string, CoroutineNode>()
 
   for (const event of events) {

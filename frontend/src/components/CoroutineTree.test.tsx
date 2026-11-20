@@ -152,7 +152,7 @@ describe('CoroutineTree', () => {
 
     render(<CoroutineTree coroutines={coroutines} onSelect={onSelect} />)
 
-    const node = screen.getByRole('button', { name: 'Open source for Clickable' })
+    const node = screen.getByRole('button', { name: 'Inspect Clickable' })
     expect(node).toBeInTheDocument()
 
     await userEvent.click(node)
@@ -172,9 +172,12 @@ describe('CoroutineTree', () => {
       />,
     )
 
-    const node = screen.getByRole('button', { name: 'Open source for Selected' })
+    const node = screen.getByRole('button', { name: 'Inspect Selected' })
     expect(node.className).toContain('ring-2')
     expect(node.className).toContain('ring-primary')
+    // Selected is said, not only drawn.
+    expect(node).toHaveAttribute('aria-current', 'true')
+    expect(node).not.toHaveAttribute('aria-pressed')
   })
 
   it('keeps nodes presentational (no role=button) when onSelect is omitted (back-compat)', () => {
@@ -186,7 +189,7 @@ describe('CoroutineTree', () => {
 
     expect(screen.getByText('Presentational')).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Open source for Presentational' }),
+      screen.queryByRole('button', { name: 'Inspect Presentational' }),
     ).toBeNull()
   })
 })

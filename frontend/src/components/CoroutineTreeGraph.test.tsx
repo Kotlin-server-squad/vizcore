@@ -473,7 +473,7 @@ describe('CoroutineTreeGraph', () => {
     it('does not select the card a drag ends on, but selects on the next plain click', () => {
       const onSelect = vi.fn()
       render(<CoroutineTreeGraph coroutines={[makeCoroutine({ id: 'c-1', label: 'Worker-1' })]} onSelect={onSelect} />)
-      const card = screen.getByRole('button', { name: 'Open source for Worker-1' })
+      const card = screen.getByRole('button', { name: 'Inspect Worker-1' })
 
       press()
       drag(40)

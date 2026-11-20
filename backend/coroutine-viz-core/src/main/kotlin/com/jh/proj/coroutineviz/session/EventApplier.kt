@@ -60,7 +60,7 @@ class EventApplier(
     }
 
     private fun handleCreated(e: CoroutineCreated) {
-        snapshot.coroutines[e.coroutineId] =
+        snapshot.created(
             CoroutineNode(
                 id = e.coroutineId,
                 jobId = e.jobId,
@@ -68,7 +68,9 @@ class EventApplier(
                 scopeId = e.scopeId,
                 label = e.label,
                 state = CoroutineState.CREATED,
-            )
+            ),
+            seq = e.seq,
+        )
     }
 
     private fun handleStarted(e: CoroutineStarted) {

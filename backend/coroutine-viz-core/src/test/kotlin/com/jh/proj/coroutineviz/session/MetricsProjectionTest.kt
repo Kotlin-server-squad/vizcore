@@ -213,9 +213,13 @@ class MetricsProjectionTest {
                 started(session, "a", "Dispatchers.IO", 1),
                 created(session, "b", "Dispatchers.Default", 2),
                 started(session, "b", "Dispatchers.Default", 3),
-                completed(session, "a", "Dispatchers.IO", 4),
                 created(session, "c", "Dispatchers.IO", 5 * msToNanos),
                 started(session, "c", "Dispatchers.IO", 5 * msToNanos + 1),
+                // Last, so that only the end state has active 2 with peak 3: the live path below waits for exactly
+                // that. With "a" completed before "c" was created, the state after "b" started (active 2, peak 2)
+                // equalled the end state, the wait could stop there, and the snapshot after it caught "a" completed
+                // and "c" not yet created (active 1).
+                completed(session, "a", "Dispatchers.IO", 5 * msToNanos + 2),
             )
         }
 

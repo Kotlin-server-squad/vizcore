@@ -37,6 +37,19 @@ describe('mergeSummaryNodes', () => {
     ])
   })
 
+  it('lists the added coroutines in start order (creation time, then id), whatever order the server sent', () => {
+    const merged = mergeSummaryNodes(
+      [client('projected', CoroutineState.ACTIVE)],
+      [
+        server('late', { createdAtNanos: 30 }),
+        server('tie-b', { createdAtNanos: 20 }),
+        server('first', { createdAtNanos: 10 }),
+        server('tie-a', { createdAtNanos: 20 }),
+      ],
+    )
+    expect(merged.map(c => c.id)).toEqual(['first', 'tie-a', 'tie-b', 'late', 'projected'])
+  })
+
   it('keeps the state the replayed events give a coroutine they created', () => {
     const merged = mergeSummaryNodes([client('a', CoroutineState.COMPLETED)], [server('a', { summaryState: 'ACTIVE' })])
     expect(merged).toEqual([client('a', CoroutineState.COMPLETED)])

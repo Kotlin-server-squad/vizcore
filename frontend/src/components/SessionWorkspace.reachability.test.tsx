@@ -224,7 +224,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     await userEvent.click(screen.getByRole('button', { name: 'List' }))
 
     // Click the live coroutine node — additive onSelect wiring (08.2 idiom).
-    const node = await screen.findByRole('button', { name: 'Open source for LiveWorker' })
+    const node = await screen.findByRole('button', { name: 'Inspect LiveWorker' })
     await userEvent.click(node)
 
     // The inline source panel renders the real file:line frame from the fetched
@@ -251,7 +251,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
     expect(screen.getByRole('tab', { name: 'Learn' })).toHaveAttribute('aria-selected', 'true')
 
     await userEvent.click(screen.getByRole('button', { name: 'List' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Open source for LiveWorker' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Inspect LiveWorker' }))
 
     expect(screen.getByRole('tab', { name: 'Inspector' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', { level: 2, name: /LiveWorker/ })).toBeVisible()
@@ -262,7 +262,7 @@ describe('SessionWorkspace — live source-attribution reachability (RCO-06)', (
 
     await userEvent.click(screen.getByRole('button', { name: 'List' }))
 
-    const node = await screen.findByRole('button', { name: 'Open source for LiveWorker' })
+    const node = await screen.findByRole('button', { name: 'Inspect LiveWorker' })
     await userEvent.click(node)
 
     // The inline source panel renders its file:line jump target…

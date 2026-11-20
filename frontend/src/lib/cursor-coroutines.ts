@@ -49,6 +49,9 @@ function stateOf(node: MomentHierarchyNode): CoroutineState {
  * The cursor's coroutines when the replay does not start at the session's beginning (Part 8, M-9): the coroutines the
  * replayed events created, as the page projects them, plus, before them, every coroutine the server knows at the
  * cursor that those events never created, from its durable summary (`fromSummary`).
+ *
+ * In start order, like the live snapshot and the projection: the added ones by creation time, then id (they were
+ * created before the replay's first event, so before every projected one).
  */
 export function mergeSummaryNodes(
   projected: readonly CoroutineNode[],
@@ -57,6 +60,7 @@ export function mergeSummaryNodes(
   const known = new Set(projected.map(c => c.id))
   const added = atCursor
     .filter(n => !known.has(n.id))
+    .sort((a, b) => a.createdAtNanos - b.createdAtNanos || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .map(
       (n): CoroutineNode => ({
         id: n.id,

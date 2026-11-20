@@ -241,7 +241,8 @@ export function SessionHeader({
               {scenario.otherEnding.label}
             </Button>
           )}
-          {/* Replay toggle (D-01) — always available, the shared view included. */}
+          {/* Replay toggle (D-01) — always available, the shared view included. It opens at the first event, ready
+              to play; once the run has ended, or in a shared view (a finished capture), the button says so. */}
           <Button
             size="sm"
             color={replayActive ? 'primary' : 'default'}
@@ -249,7 +250,7 @@ export function SessionHeader({
             startContent={<FiPlay aria-hidden />}
             onPress={onToggleReplay}
           >
-            {replayActive ? 'Exit replay' : 'Replay'}
+            {replayActive ? 'Exit replay' : outcome?.ended || readOnly ? 'Replay from start' : 'Replay'}
           </Button>
           {/* A shared session is a frozen capture: no live stream to pause (T-03-22). */}
           {!readOnly && (

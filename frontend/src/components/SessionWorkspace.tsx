@@ -312,6 +312,9 @@ export function SessionWorkspace({
     // A session the server never trimmed starts at its oldest held event, whatever its seq (seqs also number ids).
     sessionFirstSeq: session && session.trimmed === false ? (session.oldestRetainedSeq ?? undefined) : undefined,
   })
+  // Start order (creation seq, then id) in both: the server sorts its snapshot so, and the replay projects events in
+  // seq order. The graph, the list and the timeline all draw this one list in the order given, so siblings read the
+  // same in every view, live and in replay, and never swap places while the session runs.
   const panelCoroutines = replayActive ? oneMoment.coroutines : (session?.coroutines ?? EMPTY_COROUTINES)
   // The session's health at the page's moment (Part 7, P-1): live; at the replay cursor; or as a shared link loaded it.
   const healthMode: HealthMode = replayActive
@@ -998,7 +1001,8 @@ export function SessionWorkspace({
         replayActive={replayActive}
         replayAtNanos={replayAtNanos}
         newEventsCount={newEventsCount}
-        onToggleReplay={replayActive ? exitReplay : () => enterReplay()}
+        // From the header, replay opens at the first retained event, ready to play (at the end, Play does nothing).
+        onToggleReplay={replayActive ? exitReplay : () => enterReplay(undefined, { fromStart: true })}
         onExitReplay={exitReplay}
         loadedAtMs={dataUpdatedAt}
         // A shared view reloads the whole page: the payload, its health and its cut come back together (M-11).

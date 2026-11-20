@@ -63,13 +63,21 @@
   align-items: flex-start;
   gap: 6px;
 }
+/* The name: a class on its own muted line, then the name itself on up to two lines, wrapping between its words
+   (CoroutineName). card.ts's height holds all three lines. */
 [data-card-look='c'] [data-look-part='node-name'] {
   max-width: 100%;
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
-  -webkit-line-clamp: 1;
+}
+[data-card-look='c'] [data-look-part='node-name-owner'] {
+  font-size: 12px;
+  line-height: 16px;
+}
+[data-card-look='c'] [data-look-part='node-name-method'] {
+  -webkit-line-clamp: 2;
 }
 /* A filled pill in the state's colour, in the display face. */
 [data-card-look='c'] [data-state] [data-look-part='node-state'] {

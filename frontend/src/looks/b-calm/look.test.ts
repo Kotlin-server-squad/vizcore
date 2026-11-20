@@ -123,7 +123,7 @@ describe('B’s graph card', () => {
     }
   })
 
-  it('holds the name, the pill and one line of the second line inside its box, as card.css draws them', () => {
+  it('holds the name on three lines, the pill and one line of the second line inside its box, as card.css draws them', () => {
     const node = rule('node')
     const [padTop, padBottom] = vertical(node.get('padding'))
     const border = 2 * px(node.get('border-width'))
@@ -134,23 +134,26 @@ describe('B’s graph card', () => {
       border +
       padTop +
       padBottom +
-      px(rule('node-name').get('line-height')) +
+      // The class line, then the name itself on up to two lines.
+      px(rule('node-name-owner').get('line-height')) +
+      2 * px(rule('node-name').get('line-height')) +
       gap +
       (pillTop + px(pill.get('line-height')) + pillBottom) +
       gap +
       px(rule('node-activity').get('line-height'))
     expect(contentHeight).toBeLessThanOrEqual(calmCard.height)
-    // The name and the second line keep to one line each, so nothing grows past that.
-    expect(rule('node-name').get('-webkit-line-clamp')).toBe('1')
+    // The name keeps to two lines under its class and the second line to one, so nothing grows past that.
+    expect(rule('node-name-method').get('-webkit-line-clamp')).toBe('2')
     expect(rule('node-activity').get('white-space')).toBe('nowrap')
   })
 
   it('is short enough for the root and its first row of children above the default dock at 1440 × 900', () => {
-    // The graph canvas there is 330 px tall in B with its 35 % dock (measured, Part 7; 287 px at 40 %); the fit starts
+    // The graph canvas there was measured 330 px tall in B with a 35 % dock and 287 px at 40 % (Part 7): 8.6 px for
+    // each per cent of dock, so about 398 px at 27 % (worked out from those two, not measured again). The fit starts
     // 40 px down (the zoom buttons), and the layout puts 32 px of padding above the root and 64 px between the rows
     // (CoroutineTreeGraph).
-    expect(calmCard.dockShare).toBe(0.35)
-    const canvas = 330
+    expect(calmCard.dockShare).toBe(0.27)
+    const canvas = 398
     const bottomOfChildren = 40 + (32 + calmCard.height + 64 + calmCard.height) * calmCard.fitMinZoom!
     expect(bottomOfChildren).toBeLessThanOrEqual(canvas)
     // Six children (the E-commerce demo) side by side fit the canvas's 1,374 px width at the floor.
