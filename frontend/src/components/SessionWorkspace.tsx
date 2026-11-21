@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Card,
   CardBody,
@@ -53,6 +53,7 @@ import { isDemoSessionId, sessionDisplayName } from '@/lib/session-kind'
 import { UNKNOWN_STATE } from '@/lib/cursor-coroutines'
 import { metricsAt } from '@/lib/moment-metrics'
 import { useDockLayout } from '@/hooks/use-dock-layout'
+import { GraphFirstViewContext } from './graph-first-view'
 import { deriveRunOutcome } from '@/lib/run-outcome'
 import { useRecordedSpan } from '@/hooks/use-recorded-span'
 import { countEvidence, evidenceTabLabel } from '@/lib/evidence-summary'
@@ -258,7 +259,26 @@ export function SessionWorkspace({
 
   // The dock's size, fold and maximise (S-1), remembered per browser.
   // A look may start the dock smaller, so its cards fit the first view (card.ts `dockShare`).
-  const dock = useDockLayout(useLookCard().dockShare)
+  // The graph says how much canvas it has to spare for the root and its first row; the dock, until the user sizes
+  // it, starts no taller than leaves that room (graph-first-view.ts). The canvas grows by what the dock gives up, so
+  // the dock's height plus the spare stays the same as the dock settles: no back and forth.
+  const [firstViewLimit, setFirstViewLimit] = useState<number | null>(null)
+  const dock = useDockLayout(useLookCard().dockShare, firstViewLimit)
+  const dockNow = useRef(dock)
+  useLayoutEffect(() => {
+    dockNow.current = dock
+  })
+  const reportFirstView = useCallback((sparePx: number | null) => {
+    if (sparePx === null) {
+      setFirstViewLimit(null)
+      return
+    }
+    const { height, folded, maximised } = dockNow.current
+    // A folded or hidden dock takes no room from the canvas, so the spare says nothing about its height.
+    if (folded || maximised) return
+    const limit = Math.round(height + sparePx)
+    setFirstViewLimit(prev => (prev !== null && Math.abs(prev - limit) < 2 ? prev : limit))
+  }, [])
   // The layout around the main view and the dock is the look's (PR L0); Classic's by default.
   const sessionBody = useLookSlot('SessionBody')
   // Which demo this session runs (S-13): the address's, else the one the session
@@ -1079,6 +1099,7 @@ export function SessionWorkspace({
         sharedRef: dock.sharedRef,
         overview: { counts: stateCounts, coroutines: viewCoroutines, activity },
         main: (
+          <GraphFirstViewContext.Provider value={reportFirstView}>
           <CoroutineCanvas
             coroutines={renderedCoroutines}
             viewMode={viewMode}
@@ -1153,6 +1174,7 @@ export function SessionWorkspace({
             maximised={dock.maximised}
             onToggleMaximise={dock.toggleMaximise}
           />
+          </GraphFirstViewContext.Provider>
         ),
         // The dock (S-1): one tab per question (S-4). Maximise hides it,
         // never unmounts it, and so do folding and switching tabs: a panel

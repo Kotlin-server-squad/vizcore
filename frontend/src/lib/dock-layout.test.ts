@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
+  DOCK_FIRST_VIEW_MIN_PX,
   DOCK_MIN_PX,
   DOCK_STORAGE_KEY,
   MAIN_MIN_PX,
@@ -7,6 +8,7 @@ import {
   dockMaxHeight,
   initialDockHeight,
   readDockPrefs,
+  startingDockHeight,
   writeDockPrefs,
 } from './dock-layout'
 
@@ -57,5 +59,28 @@ describe('remembered dock prefs', () => {
     expect(readDockPrefs()).toEqual({ height: null, folded: false })
     localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify({ height: 'tall', folded: 'yes' }))
     expect(readDockPrefs()).toEqual({ height: null, folded: false })
+  })
+})
+
+describe('starting dock height and the graph’s first view', () => {
+  it('starts at the look’s share until the graph has measured', () => {
+    expect(startingDockHeight(312, null)).toBe(312)
+  })
+
+  it('keeps the share when the graph has room to spare', () => {
+    expect(startingDockHeight(312, 400)).toBe(312)
+  })
+
+  it('gives way so the root and its first row fit (A on a 779 px window: 312 px share, room for 270)', () => {
+    expect(startingDockHeight(312, 270)).toBe(270)
+  })
+
+  it('never gives way below the tab row and a few lines', () => {
+    expect(startingDockHeight(312, 40)).toBe(DOCK_FIRST_VIEW_MIN_PX)
+    expect(startingDockHeight(312, -200)).toBe(DOCK_FIRST_VIEW_MIN_PX)
+  })
+
+  it('keeps a share already below that floor (C: 17 % of a short window) rather than growing it', () => {
+    expect(startingDockHeight(132, 40)).toBe(132)
   })
 })

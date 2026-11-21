@@ -30,6 +30,24 @@ export function initialDockHeight(windowHeight: number, share: number = DOCK_SHA
 }
 
 /**
+ * The smallest dock the first view gives way to: its tab row and about three lines. Below it the
+ * dock would look broken; a window that short shows the root and the top of its first row instead.
+ */
+export const DOCK_FIRST_VIEW_MIN_PX = 160
+
+/**
+ * The dock's starting height once the graph has said how tall a dock still leaves it room for the
+ * root and its first row of children (`firstViewLimit`; null until the graph has measured). The
+ * look's share stays the most it starts at: on a laptop window (about 720 to 790 px tall) the page
+ * above the main view takes the same pixels as on a tall one, so a share alone pushes the first row
+ * of children off the canvas.
+ */
+export function startingDockHeight(shareHeight: number, firstViewLimit: number | null): number {
+  if (firstViewLimit === null || firstViewLimit >= shareHeight) return shareHeight
+  return Math.max(Math.min(shareHeight, DOCK_FIRST_VIEW_MIN_PX), Math.round(firstViewLimit))
+}
+
+/**
  * The largest dock that leaves the main view its minimum, given the height the
  * two share. Zero means "not measured yet" (first render, or jsdom): no limit.
  */
