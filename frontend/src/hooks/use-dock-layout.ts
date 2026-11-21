@@ -4,6 +4,7 @@ import {
   dockMaxHeight,
   initialDockHeight,
   readDockPrefs,
+  startingDockHeight,
   writeDockPrefs,
 } from '@/lib/dock-layout'
 
@@ -29,6 +30,8 @@ export interface DockLayout {
 export function useDockLayout(
   /** The look's starting share of the window (its card.ts `dockShare`); the default without it. */
   startShare?: number,
+  /** The tallest dock that leaves the graph room for the root and its first row (null: not measured). */
+  firstViewLimit: number | null = null,
 ): DockLayout {
   const [prefs] = useState(readDockPrefs)
   // The size the user gave the dock (resized now, or remembered) wins. Without one, the dock
@@ -36,7 +39,8 @@ export function useDockLayout(
   // nothing but a resize stores a size: folding must not turn one look's start into everyone's.
   const [userHeight, setUserHeight] = useState<number | null>(prefs.height)
   const [windowHeight] = useState(() => window.innerHeight)
-  const wanted = userHeight ?? initialDockHeight(windowHeight, startShare)
+  // Until the user sizes it, the dock also gives way to the graph's first view (never below a few lines).
+  const wanted = userHeight ?? startingDockHeight(initialDockHeight(windowHeight, startShare), firstViewLimit)
   const [folded, setFolded] = useState(prefs.folded)
   const [maximised, setMaximised] = useState(false)
   const [shared, setShared] = useState(0)

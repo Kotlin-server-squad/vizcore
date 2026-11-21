@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useDockLayout } from './use-dock-layout'
-import { DOCK_MIN_PX, readDockPrefs, writeDockPrefs } from '@/lib/dock-layout'
+import { DOCK_FIRST_VIEW_MIN_PX, DOCK_MIN_PX, readDockPrefs, writeDockPrefs } from '@/lib/dock-layout'
 
 beforeEach(() => localStorage.clear())
 
@@ -21,6 +21,24 @@ describe('useDockLayout', () => {
   it('opens at 40 % when the look brings no share (Classic, A and B today)', () => {
     const { result } = renderHook(() => useDockLayout(undefined))
     expect(result.current.height).toBe(Math.round(window.innerHeight * 0.4))
+  })
+
+  it('starts lower when the graph needs the room for its first view, and back at the share when it has room', () => {
+    const share = Math.round(window.innerHeight * 0.4)
+    const { result, rerender } = renderHook(({ limit }: { limit: number | null }) => useDockLayout(undefined, limit), {
+      initialProps: { limit: null as number | null },
+    })
+    expect(result.current.height).toBe(share)
+    rerender({ limit: DOCK_FIRST_VIEW_MIN_PX + 20 })
+    expect(result.current.height).toBe(DOCK_FIRST_VIEW_MIN_PX + 20)
+    rerender({ limit: share + 100 })
+    expect(result.current.height).toBe(share)
+  })
+
+  it('keeps the size the user gave the dock, whatever the graph’s first view needs', () => {
+    writeDockPrefs({ height: 260, folded: false })
+    const { result } = renderHook(() => useDockLayout(undefined, DOCK_FIRST_VIEW_MIN_PX))
+    expect(result.current.height).toBe(260)
   })
 
   it('keeps the size the user left the dock at, whatever the look’s share', () => {

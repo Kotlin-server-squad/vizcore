@@ -18,6 +18,7 @@ import { useLook, useLookCard } from '@/looks/look-context'
 import { groupMix, type NameGroup } from '@/lib/name-groups'
 import { CardFacts, CardStateContext } from './CardFacts'
 import { CoroutineName } from './CoroutineName'
+import { firstViewCanvasPx, useGraphFirstView } from './graph-first-view'
 import { FiLoader, FiZoomIn, FiZoomOut, FiMaximize2, FiMinimize2, FiCrosshair } from 'react-icons/fi'
 
 interface CoroutineTreeGraphProps {
@@ -249,6 +250,22 @@ export function CoroutineTreeGraph({
     const cy = PADDING + pos.y + cardHeight / 2
     api.setTransform(canvasWidth / 2 - cx * scale, canvasSize.height / 2 - cy * scale, scale, 0)
   }, [reveal, layout, canvasWidth, canvasSize.height, fitMinZoom, cardWidth, cardHeight])
+
+  // Tell the session page how much canvas is left once the root and its first row fit, so a dock that has not
+  // been sized yet gives way on a short window (graph-first-view.ts). Not in full screen: the dock is not beside it.
+  const reportFirstView = useGraphFirstView()
+  const firstViewPx = firstViewCanvasPx({
+    cardHeight,
+    vGap: V_GAP,
+    padding: PADDING,
+    toolbarInset: TOOLBAR_INSET,
+    scale: fitMinZoom ?? MIN_READABLE_SCALE,
+  })
+  const hasTree = tree.length > 0
+  useEffect(() => {
+    if (!reportFirstView || isFullscreen || !hasTree || canvasSize.height === 0) return
+    reportFirstView(canvasSize.height - firstViewPx)
+  }, [reportFirstView, isFullscreen, hasTree, canvasSize.height, firstViewPx])
 
   // Entering or leaving full screen changes the canvas size: fit again either way.
   const setFullscreen = useCallback((on: boolean) => {
