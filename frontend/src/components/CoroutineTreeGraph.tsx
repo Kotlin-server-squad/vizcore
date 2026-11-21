@@ -263,8 +263,10 @@ export function CoroutineTreeGraph({
   })
   const hasTree = tree.length > 0
   useEffect(() => {
-    if (!reportFirstView || isFullscreen || !hasTree || canvasSize.height === 0) return
-    reportFirstView(canvasSize.height - firstViewPx)
+    if (!reportFirstView || isFullscreen || canvasSize.height === 0) return
+    // An empty tree (no data yet, cleared events, a filter that hides everything) needs no room: let the dock go
+    // back to the look's share. Switching to List or Timeline keeps the last report, so the dock does not jump.
+    reportFirstView(hasTree ? canvasSize.height - firstViewPx : null)
   }, [reportFirstView, isFullscreen, hasTree, canvasSize.height, firstViewPx])
 
   // Entering or leaving full screen changes the canvas size: fit again either way.

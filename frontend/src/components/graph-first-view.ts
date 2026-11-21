@@ -4,11 +4,14 @@ import { createContext, useContext } from 'react'
  * How the graph tells the session page how much canvas it has to spare for its first view: the
  * canvas height minus what the root and its first row of children need at the look's readable
  * zoom (negative when they do not fit). The session page turns it into the tallest dock that still
- * leaves that room (`startingDockHeight`). Null outside a session page: nothing listens.
+ * leaves that room (`startingDockHeight`). Null when the graph has nothing to draw (the dock goes back to
+ * the look's share). The context is null outside a session page: nothing listens.
  */
-export const GraphFirstViewContext = createContext<((sparePx: number) => void) | null>(null)
+export type ReportFirstView = (sparePx: number | null) => void
 
-export function useGraphFirstView(): ((sparePx: number) => void) | null {
+export const GraphFirstViewContext = createContext<ReportFirstView | null>(null)
+
+export function useGraphFirstView(): ReportFirstView | null {
   return useContext(GraphFirstViewContext)
 }
 

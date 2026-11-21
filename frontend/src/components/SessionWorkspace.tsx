@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Card,
   CardBody,
@@ -265,8 +265,14 @@ export function SessionWorkspace({
   const [firstViewLimit, setFirstViewLimit] = useState<number | null>(null)
   const dock = useDockLayout(useLookCard().dockShare, firstViewLimit)
   const dockNow = useRef(dock)
-  dockNow.current = dock
-  const reportFirstView = useCallback((sparePx: number) => {
+  useLayoutEffect(() => {
+    dockNow.current = dock
+  })
+  const reportFirstView = useCallback((sparePx: number | null) => {
+    if (sparePx === null) {
+      setFirstViewLimit(null)
+      return
+    }
     const { height, folded, maximised } = dockNow.current
     // A folded or hidden dock takes no room from the canvas, so the spare says nothing about its height.
     if (folded || maximised) return
