@@ -30,6 +30,7 @@ describe('B’s CSS', () => {
   it('styles only page parts that exist: every hook and label it targets is in the components', () => {
     const parts = new Set([...css.matchAll(/data-look-part='([\w-]+)'/g)].map(m => m[1]!))
     expect([...parts].sort()).toEqual([
+      'brand-subtitle',
       'checks-status',
       'clue-card',
       'connection',

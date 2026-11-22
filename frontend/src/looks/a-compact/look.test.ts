@@ -94,10 +94,17 @@ function parseRules(text: string): { selectors: string[]; body: string }[] {
 
 const rules = parseRules(layoutCss)
 
-/** Selectors that style an element of the session page (not the look's root block). */
+/** The navbar's brand hooks: the app shell draws them around the session page, not the page itself. */
+const isBrand = (selector: string) => /data-look-part='brand[\w-]*'/.test(selector)
+
+/** Selectors that style an element of the session page (not the look's root block, nor the navbar's brand). */
 const partSelectors = rules
   .flatMap(rule => rule.selectors)
-  .filter(selector => selector !== "html[data-look='a']")
+  .filter(selector => selector !== "html[data-look='a']" && !isBrand(selector))
+
+/** Selectors that style the navbar's brand (checked against the app shell's source). */
+const brandSelectors = rules.flatMap(rule => rule.selectors).filter(isBrand)
+const layoutSource = readFileSync(join(here, '../../components/Layout.tsx'), 'utf8')
 
 /**
  * The card rules' selectors that the test page can show: pseudo-elements stripped, and
@@ -332,6 +339,13 @@ describe('A · Compact on the real page', () => {
     const unmatched = all.filter(selector => !onDemo.has(selector) && document.querySelectorAll(selector).length === 0)
     expect(unmatched).toEqual([])
     expect(cardSelectors.length).toBeGreaterThan(10)
+  })
+
+  it('styles only brand hooks the navbar has', () => {
+    expect(brandSelectors).toEqual(["[data-look='a'] [data-look-part='brand-subtitle']"])
+    for (const part of brandSelectors.flatMap(s => [...s.matchAll(/data-look-part='([\w-]+)'/g)].map(m => m[1]!))) {
+      expect(layoutSource, part).toContain(`data-look-part="${part}"`)
+    }
   })
 
   it('styles the header’s action buttons, and only those, as the sketch’s small buttons', async () => {
