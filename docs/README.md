@@ -49,7 +49,6 @@ Project overview and quickstart: [../README.md](../README.md).
 
 - [Roadmap](planning/ROADMAP.md) — What's done (~92%) and what's left, with priority order
 - [Implementation Analysis](planning/IMPLEMENTATION_ANALYSIS.md) — Deep-dive implementation guide for all remaining features
-- [Business Analysis](planning/BUSINESS_ANALYSIS_V2.md) — Market analysis, GTM strategy, financial projections
 
 ## Topics
 
