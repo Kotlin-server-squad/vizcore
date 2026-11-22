@@ -45,6 +45,12 @@ COPY backend/coroutine-viz-agent coroutine-viz-agent
 COPY backend/src src
 RUN ./gradlew buildFatJar --no-daemon \
       -Porg.gradle.java.installations.paths=/opt/java/openjdk-17
+# Empty directories the runtime stage copies in, owned by its non-root user, for the two places
+# the backend writes under its working directory /app: docs/, where Ktor's openAPI() route
+# (HTTP.kt) generates its static API docs at every start (the path is fixed in Ktor), and data/,
+# where STORAGE_TYPE=database with the default H2 file URL keeps its database. Made here so the
+# runtime stage needs no RUN step.
+RUN mkdir -p /app/runtime-dirs/docs /app/runtime-dirs/data
 
 # eclipse-temurin:21-jre is Ubuntu-based and ships curl, which is what the compose
 # healthcheck shells out to; nothing extra is installed for it.
@@ -52,6 +58,14 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/build/libs/*-all.jar app.jar
 COPY --from=build /app/src/main/resources/logback-prod.xml /app/logback-prod.xml
+COPY --from=build --chown=10001:10001 /app/runtime-dirs/ /app/
 EXPOSE 8080
 ENV JAVA_OPTS="-Xmx512m -Xms256m"
+# Runs as a fixed numeric non-root user, for a Kubernetes Pod Security "restricted" pod
+# (runAsNonRoot, all capabilities dropped). The id is numeric on purpose: no useradd, so this
+# stage still has no RUN step and a multi-arch build needs no emulation. app.jar and
+# logback-prod.xml are root-owned and world-readable, which is all the JVM needs. It writes to
+# /tmp (java.io.tmpdir), /app/docs and, in database mode with the default H2 URL, /app/data; with
+# a read-only root filesystem mount writable volumes (e.g. emptyDir) at /tmp and /app/docs.
+USER 10001:10001
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dlogback.configurationFile=/app/logback-prod.xml -jar app.jar"]
