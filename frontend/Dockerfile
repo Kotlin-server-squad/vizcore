@@ -42,7 +42,12 @@ CMD ["pnpm", "dev", "--host"]
 
 # Deployable static image. LAST on purpose: `docker build -f frontend/Dockerfile .` with no
 # --target must produce this, not the dev server.
-FROM nginx:alpine AS production
+# nginx-unprivileged runs as uid 101 (no root, no `user` directive) and its own nginx.conf
+# already puts the pid file and every temp path (client_body, proxy, fastcgi, uwsgi, scgi) under
+# /tmp, so with a read-only root filesystem only /tmp has to be writable (a Kubernetes Pod
+# Security "restricted" pod mounts an emptyDir there). Port 3000 needs no capability. Pinned to
+# an exact release; this stage still has no RUN step, so a multi-arch build needs no emulation.
+FROM nginxinc/nginx-unprivileged:1.30.6-alpine AS production
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 3000

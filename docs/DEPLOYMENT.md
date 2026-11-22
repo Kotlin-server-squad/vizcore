@@ -62,6 +62,28 @@ echo "$CR_PAT" | docker login ghcr.io -u <github-username> --password-stdin
 docker compose -f docker-compose.prod.yml pull
 ```
 
+### Non-root, read-only root filesystem
+
+Both images run as a non-root user and need no capabilities, as a Kubernetes pod under Pod
+Security "restricted" runs them (`runAsNonRoot`, all capabilities dropped, seccomp
+`RuntimeDefault`). With `readOnlyRootFilesystem: true`, mount a writable volume (an `emptyDir`)
+at each path below:
+
+| Image | User (uid:gid) | Must be writable |
+|---|---|---|
+| backend (`eclipse-temurin:21-jre`) | `10001:10001` | `/tmp`, and `/app/docs`: Ktor's OpenAPI page (`/openapi`) generates its HTML there at every start |
+| frontend (`nginxinc/nginx-unprivileged`, port 3000) | `101:101` (nginx) | `/tmp`: nginx's pid file and temp files |
+
+Both log to stdout; nothing else is written. `STORAGE_TYPE=database` with the default H2 file URL
+also writes `/app/data`; mount a volume there, point `DB_URL` elsewhere, or use PostgreSQL. With
+a writable root filesystem (`docker compose`) nothing needs mounting: `/app/docs` and `/app/data`
+belong to uid 10001. To try the constraints with Docker:
+
+```bash
+docker run --rm --read-only --tmpfs /tmp --tmpfs /app/docs:uid=10001,gid=10001 \
+  --cap-drop ALL --security-opt no-new-privileges -p 8080:8080 vizcore-backend
+```
+
 ## Docker Production
 
 ### Start
