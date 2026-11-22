@@ -270,7 +270,7 @@ cd frontend && pnpm test                          # TypeScript: Vitest
 
 ## Documentation
 
-- [SETUP.md](SETUP.md) — full local setup, architecture overview, troubleshooting
+- [docs/guides/SETUP.md](docs/guides/SETUP.md) — full local setup, architecture overview, troubleshooting
 - [CONTRIBUTING.md](CONTRIBUTING.md) — conventions, commit style, how to submit changes
 - [docs/README.md](docs/README.md) — documentation index (guides, ADRs, topics)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — production deployment, including a public demo server that visitors can only watch and run the built-in demos on (`PUBLIC_DEMO_MODE`)
